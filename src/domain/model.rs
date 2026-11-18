@@ -64,13 +64,6 @@ impl Wall {
     pub fn length(&self) -> f32 {
         self.start.distance(self.end)
     }
-
-    pub fn point_at(&self, t: f32) -> Point {
-        Point::new(
-            self.start.x + (self.end.x - self.start.x) * t,
-            self.start.y + (self.end.y - self.start.y) * t,
-        )
-    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

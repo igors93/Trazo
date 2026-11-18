@@ -5,6 +5,8 @@ use crate::domain::{
     model::{OpeningKind, Project},
 };
 
+mod labels;
+
 const PIXELS_PER_METER: f32 = 100.0;
 const MARGIN: f32 = 130.0;
 
@@ -73,26 +75,6 @@ fn document(project: &Project) -> SvgDocument {
                 svg,
                 "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" fill=\"#eff8f7\"/>"
             );
-            let center = point(Point::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0));
-            let _ = writeln!(
-                svg,
-                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"20\" font-weight=\"700\" fill=\"#1e3a4a\">{}</text>",
-                center.0,
-                center.1 - 4.0,
-                escaped(room.display_name())
-            );
-            let dimensions = format!(
-                "{} × {}",
-                format_meters(b.x - a.x),
-                format_meters(b.y - a.y)
-            );
-            let _ = writeln!(
-                svg,
-                "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"14\" fill=\"#64748b\">{}</text>",
-                center.0,
-                center.1 + 20.0,
-                dimensions
-            );
         }
     }
     for wall in &project.walls {
@@ -145,19 +127,16 @@ fn document(project: &Project) -> SvgDocument {
             svg,
             "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{length:.1}\" y2=\"0\" stroke=\"#24354b\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/></g>"
         );
-        let center = point(wall.point_at(0.5));
-        let dx = wall.end.x - wall.start.x;
-        let dy = wall.end.y - wall.start.y;
-        let normal_length = (dx * dx + dy * dy).sqrt().max(0.001);
-        let (nx, ny) = (-dy / normal_length, dx / normal_length);
-        let _ = writeln!(
-            svg,
-            "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"13\" fill=\"#52657a\">{}</text>",
-            center.0 + nx * 25.0,
-            center.1 + ny * 25.0,
-            format_meters(wall.length())
-        );
     }
+    let mut occupied = labels::write_room_labels(&mut svg, project, &point, wall_width);
+    labels::write_wall_labels(
+        &mut svg,
+        project,
+        &point,
+        pixels_per_meter,
+        wall_width,
+        &mut occupied,
+    );
     let _ = writeln!(
         svg,
         "<text x=\"{MARGIN:.1}\" y=\"55\" font-family=\"Arial, sans-serif\" font-size=\"23\" font-weight=\"700\" fill=\"#172438\">{}</text>",
@@ -206,6 +185,28 @@ pub fn pdf(project: &Project, path: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::domain::model::OpeningKind;
+
+    #[test]
+    fn long_room_names_are_kept_inside_their_exported_room() {
+        let mut project = Project::default();
+        let room_id = project
+            .add_room(
+                Point::new(0.0, 0.0),
+                Point::new(0.5, 0.5),
+                "Quarto com nome excepcionalmente longo",
+            )
+            .unwrap();
+        let svg = document(&project).markup;
+        assert!(svg.contains(&format!("clipPath id=\"room-label-{room_id}\"")));
+        assert!(svg.contains('…'));
+        assert!(!svg.contains("Quarto com nome excepcionalmente longo</text>"));
+        assert!(!svg.contains("0,50 m × 0,50 m</text>"));
+    }
+
+    #[test]
+    fn dimensions_are_never_truncated_to_a_different_value() {
+        assert!(labels::fit_export_text("12,50 m × 6,00 m", 20.0, 14, 10, false).is_none());
+    }
 
     #[test]
     fn large_terrain_export_has_bounded_dimensions() {

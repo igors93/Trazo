@@ -1,4 +1,4 @@
-use eframe::egui::{self, Align2, Color32, FontId, Painter, Pos2, Rect, Stroke, Vec2};
+use eframe::egui::{self, Color32, Painter, Pos2, Rect, Stroke, Vec2};
 
 use crate::domain::{
     geometry::{GRID_METERS, Point, WALL_THICKNESS_METERS, format_meters},
@@ -6,6 +6,9 @@ use crate::domain::{
 };
 
 use super::Selection;
+
+mod labels;
+use labels::{paint_preview_measure, paint_room_labels, paint_terrain_label, paint_wall_labels};
 
 #[derive(Clone, Copy)]
 pub struct ViewTransform {
@@ -60,14 +63,6 @@ pub fn paint(
             Stroke::new(2.0, Color32::from_rgb(79, 124, 169)),
             egui::StrokeKind::Inside,
         );
-        let label = format!(
-            "Terreno · {} × {} · {:.2} m²",
-            format_meters(terrain.width()),
-            format_meters(terrain.height()),
-            terrain.area()
-        )
-        .replace('.', ",");
-        paint_measure(painter, rect.left_top() + egui::vec2(100.0, -17.0), label);
     }
 
     for room in &project.rooms {
@@ -83,25 +78,6 @@ pub fn paint(
                     Color32::from_rgb(234, 247, 244)
                 },
             );
-            let center = rect.center();
-            painter.text(
-                center + egui::vec2(0.0, -10.0),
-                Align2::CENTER_CENTER,
-                room.display_name(),
-                FontId::proportional(17.0),
-                Color32::from_rgb(39, 70, 79),
-            );
-            painter.text(
-                center + egui::vec2(0.0, 13.0),
-                Align2::CENTER_CENTER,
-                format!(
-                    "{} × {}",
-                    format_meters(max.x - min.x),
-                    format_meters(max.y - min.y)
-                ),
-                FontId::proportional(12.0),
-                Color32::from_rgb(100, 121, 129),
-            );
         }
     }
 
@@ -112,6 +88,11 @@ pub fn paint(
             });
         paint_wall(painter, view, wall, project, selected);
     }
+
+    let mut occupied = Vec::new();
+    paint_room_labels(painter, view, project, &mut occupied);
+    paint_wall_labels(painter, view, project, selection, &mut occupied);
+    paint_terrain_label(painter, view, project, &mut occupied);
 
     if let Some(preview) = preview {
         match preview {
@@ -125,10 +106,14 @@ pub fn paint(
                 );
                 painter.circle_filled(view.to_screen(b), 5.0, Color32::from_rgb(40, 176, 158));
                 let midpoint = view.to_screen(a).lerp(view.to_screen(b), 0.5);
-                paint_measure(
+                paint_preview_measure(
                     painter,
                     midpoint + egui::vec2(0.0, -22.0),
-                    format_meters(a.distance(b)),
+                    view.rect,
+                    view.to_screen(b),
+                    &format_meters(a.distance(b)),
+                    view.rect,
+                    &occupied,
                 );
             }
             Preview::Room(a, b) => {
@@ -149,14 +134,18 @@ pub fn paint(
                         ),
                     );
                 }
-                paint_measure(
+                paint_preview_measure(
                     painter,
-                    rect.center() + egui::vec2(0.0, -15.0),
-                    format!(
+                    rect.center(),
+                    rect.shrink(wall_stroke_width(view.scale) / 2.0 + 4.0),
+                    view.to_screen(b),
+                    &format!(
                         "{} × {}",
                         format_meters((b.x - a.x).abs()),
                         format_meters((b.y - a.y).abs())
                     ),
+                    view.rect,
+                    &occupied,
                 );
             }
             Preview::Terrain(a, b) => {
@@ -168,32 +157,24 @@ pub fn paint(
                     Stroke::new(2.0, Color32::from_rgb(79, 124, 169)),
                     egui::StrokeKind::Inside,
                 );
-                paint_measure(
+                paint_preview_measure(
                     painter,
                     rect.center(),
-                    format!(
+                    rect.shrink(4.0),
+                    view.to_screen(b),
+                    &format!(
                         "{} × {} · {:.2} m²",
                         format_meters((b.x - a.x).abs()),
                         format_meters((b.y - a.y).abs()),
                         (b.x - a.x).abs() * (b.y - a.y).abs()
                     )
                     .replace('.', ","),
+                    view.rect,
+                    &occupied,
                 );
             }
         }
     }
-}
-
-fn paint_measure(painter: &Painter, position: Pos2, value: String) {
-    let font = FontId::proportional(13.0);
-    let galley = painter.layout_no_wrap(value, font, Color32::from_rgb(24, 105, 98));
-    let rect = Rect::from_center_size(position, galley.size() + egui::vec2(16.0, 8.0));
-    painter.rect_filled(rect, 5.0, Color32::WHITE);
-    painter.galley(
-        rect.min + egui::vec2(8.0, 4.0),
-        galley,
-        Color32::from_rgb(24, 105, 98),
-    );
 }
 
 fn paint_grid(painter: &Painter, view: ViewTransform) {
@@ -320,14 +301,6 @@ fn paint_wall(
         cursor = right;
     }
     painter.line_segment([a + direction * cursor, b], Stroke::new(wall_width, color));
-    let midpoint = a.lerp(b, 0.5) + normal * (wall_width / 2.0 + 11.0);
-    painter.text(
-        midpoint,
-        Align2::CENTER_CENTER,
-        format_meters(wall.length()),
-        FontId::proportional(11.0),
-        Color32::from_rgb(88, 108, 121),
-    );
 }
 
 fn wall_stroke_width(scale: f32) -> f32 {
