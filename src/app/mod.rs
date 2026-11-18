@@ -1,8 +1,10 @@
 mod canvas;
+mod layout;
+mod toolbar;
 
 use std::path::PathBuf;
 
-use eframe::egui::{self, Color32, Key, PointerButton, RichText, Sense};
+use eframe::egui::{self, Color32, Key, PointerButton, Sense};
 
 use crate::{
     domain::{
@@ -400,224 +402,13 @@ impl FloorPlanApp {
             self.message = "Ação cancelada.".to_owned();
         }
         if actions.5 {
-            if let Some(id) = self.selected_wall.take() {
-                let previous = self.project.clone();
-                self.project.delete_wall(id);
-                self.record_change(previous);
-                self.message = "Parede removida.".to_owned();
-            }
+            self.delete_selected_wall();
         }
     }
 }
 
 impl eframe::App for FloorPlanApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let context = ui.ctx().clone();
-        self.handle_shortcuts(&context);
-        egui::Panel::top("top_bar")
-            .frame(
-                egui::Frame::new()
-                    .fill(Color32::from_rgb(23, 36, 56))
-                    .inner_margin(egui::Margin::symmetric(17, 11)),
-            )
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(
-                        RichText::new("TRAZO")
-                            .strong()
-                            .size(22.0)
-                            .color(Color32::from_rgb(100, 224, 203)),
-                    );
-                    ui.add_space(16.0);
-                    ui.label(
-                        RichText::new("Plantas baixas simples")
-                            .color(Color32::from_rgb(200, 214, 224)),
-                    );
-                    ui.add_space(28.0);
-                    if ui.button("Nova").clicked() {
-                        self.new_project();
-                    }
-                    if ui.button("Abrir").clicked() {
-                        self.open();
-                    }
-                    if ui.button("Salvar").clicked() {
-                        self.save();
-                    }
-                    ui.separator();
-                    if ui
-                        .add_enabled(self.history.can_undo(), egui::Button::new("Desfazer"))
-                        .clicked()
-                    {
-                        self.undo();
-                    }
-                    if ui
-                        .add_enabled(self.history.can_redo(), egui::Button::new("Refazer"))
-                        .clicked()
-                    {
-                        self.redo();
-                    }
-                    ui.separator();
-                    if ui.button("Exportar PNG").clicked() {
-                        self.export_png();
-                    }
-                    if ui.button("Exportar PDF").clicked() {
-                        self.export_pdf();
-                    }
-                });
-            });
-
-        egui::Panel::left("tools")
-            .resizable(false)
-            .exact_size(190.0)
-            .frame(egui::Frame::new().fill(Color32::from_rgb(28, 43, 63)).inner_margin(egui::Margin::same(15)))
-            .show(ui, |ui| {
-                ui.add_space(14.0);
-                ui.label(RichText::new("FERRAMENTAS").strong().size(11.0).color(Color32::from_rgb(147, 175, 188)));
-                ui.add_space(11.0);
-                for (tool, label) in [
-                    (Tool::Wall, "Parede"),
-                    (Tool::Room, "Cômodo"),
-                    (Tool::Move, "Mover parede"),
-                ] {
-                    if ui.add_sized([160.0, 38.0], egui::Button::new(label).selected(self.tool == tool)).clicked() {
-                        self.set_tool(tool);
-                    }
-                    ui.add_space(5.0);
-                }
-                ui.add_space(22.0);
-                ui.label(RichText::new("ABERTURAS").strong().size(11.0).color(Color32::from_rgb(147, 175, 188)));
-                ui.add_space(10.0);
-                for (kind, label) in [(OpeningKind::Door, "Porta"), (OpeningKind::Window, "Janela")] {
-                    let response = ui.add_sized([160.0, 40.0], egui::Button::new(label).selected(self.tool == Tool::Opening(kind)).sense(Sense::click_and_drag()));
-                    if response.clicked() { self.set_tool(Tool::Opening(kind)); }
-                    if response.is_pointer_button_down_on() || response.drag_started() || response.dragged() || response.drag_stopped() {
-                        self.opening_drag = Some(kind);
-                    }
-                    ui.add_space(6.0);
-                }
-                ui.add_space(10.0);
-                ui.label(RichText::new("Arraste para uma parede").size(11.0).color(Color32::from_rgb(176, 193, 201)));
-                ui.add_space(27.0);
-                ui.label(RichText::new("DICA RÁPIDA").strong().size(11.0).color(Color32::from_rgb(147, 175, 188)));
-                ui.add_space(9.0);
-                ui.label(RichText::new("Use a roda do mouse para ampliar e o botão do meio para deslocar a planta.").size(12.0).color(Color32::from_rgb(207, 220, 226)));
-            });
-
-        egui::Panel::right("details")
-            .resizable(false)
-            .exact_size(255.0)
-            .frame(
-                egui::Frame::new()
-                    .fill(Color32::WHITE)
-                    .inner_margin(egui::Margin::same(18)),
-            )
-            .show(ui, |ui| {
-                ui.add_space(13.0);
-                ui.label(
-                    RichText::new("PROJETO")
-                        .strong()
-                        .size(11.0)
-                        .color(Color32::from_rgb(104, 128, 138)),
-                );
-                ui.add_space(8.0);
-                if ui.text_edit_singleline(&mut self.project.name).changed() {
-                    self.dirty = true;
-                }
-                ui.add_space(16.0);
-                ui.separator();
-                ui.add_space(15.0);
-                ui.label(
-                    RichText::new("CÔMODO")
-                        .strong()
-                        .size(11.0)
-                        .color(Color32::from_rgb(104, 128, 138)),
-                );
-                ui.add_space(8.0);
-                egui::ComboBox::from_id_salt("room_kind")
-                    .selected_text(self.room_kind.label())
-                    .show_ui(ui, |ui| {
-                        for kind in RoomKind::ALL {
-                            ui.selectable_value(&mut self.room_kind, kind, kind.label());
-                        }
-                    });
-                ui.label(
-                    RichText::new("Selecione Cômodo e marque dois cantos opostos.")
-                        .size(12.0)
-                        .color(Color32::from_rgb(106, 123, 130)),
-                );
-                ui.add_space(17.0);
-                ui.separator();
-                ui.add_space(15.0);
-                ui.label(
-                    RichText::new("RESUMO DA PLANTA")
-                        .strong()
-                        .size(11.0)
-                        .color(Color32::from_rgb(104, 128, 138)),
-                );
-                ui.add_space(10.0);
-                ui.label(format!("{} paredes", self.project.walls.len()));
-                ui.label(format!("{} cômodos", self.project.rooms.len()));
-                ui.label(format!("{} portas e janelas", self.project.openings.len()));
-                ui.add_space(17.0);
-                if let Some(id) = self.selected_wall {
-                    if let Some(wall) = self.project.walls.iter().find(|wall| wall.id == id) {
-                        ui.separator();
-                        ui.add_space(13.0);
-                        ui.label(
-                            RichText::new("PAREDE SELECIONADA")
-                                .strong()
-                                .size(11.0)
-                                .color(Color32::from_rgb(104, 128, 138)),
-                        );
-                        ui.label(format!("Comprimento: {:.2} m", wall.length()).replace('.', ","));
-                        ui.add_space(8.0);
-                        if ui.button("Excluir parede").clicked() {
-                            let previous = self.project.clone();
-                            self.project.delete_wall(id);
-                            self.record_change(previous);
-                            self.selected_wall = None;
-                        }
-                    }
-                }
-                ui.add_space(17.0);
-                ui.separator();
-                ui.add_space(15.0);
-                ui.label(
-                    RichText::new("GRADE INTELIGENTE")
-                        .strong()
-                        .size(11.0)
-                        .color(Color32::from_rgb(104, 128, 138)),
-                );
-                ui.label(
-                    RichText::new("Encaixe de 25 cm e alinhamento com extremidades existentes.")
-                        .size(12.0)
-                        .color(Color32::from_rgb(106, 123, 130)),
-                );
-            });
-
-        egui::Panel::bottom("status")
-            .frame(
-                egui::Frame::new()
-                    .fill(Color32::from_rgb(231, 239, 241))
-                    .inner_margin(egui::Margin::symmetric(16, 8)),
-            )
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(&self.message).color(Color32::from_rgb(64, 89, 99)));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(format!("Zoom: {:.0}%", self.scale / 60.0 * 100.0));
-                        ui.separator();
-                        ui.label(if self.dirty {
-                            "Alterações não salvas"
-                        } else {
-                            "Projeto salvo"
-                        });
-                    });
-                });
-            });
-
-        egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(Color32::from_rgb(248, 250, 251)))
-            .show(ui, |ui| self.canvas(ui));
+        self.show_layout(ui);
     }
 }
