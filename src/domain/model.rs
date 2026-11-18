@@ -9,6 +9,8 @@ pub struct Project {
     pub walls: Vec<Wall>,
     pub rooms: Vec<Room>,
     pub openings: Vec<Opening>,
+    #[serde(default)]
+    pub terrain: Option<Terrain>,
     next_id: u64,
 }
 
@@ -20,6 +22,7 @@ impl Default for Project {
             walls: Vec::new(),
             rooms: Vec::new(),
             openings: Vec::new(),
+            terrain: None,
             next_id: 1,
         }
     }
@@ -30,6 +33,31 @@ pub struct Wall {
     pub id: u64,
     pub start: Point,
     pub end: Point,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Terrain {
+    pub id: u64,
+    pub min: Point,
+    pub max: Point,
+}
+
+impl Terrain {
+    pub fn width(&self) -> f32 {
+        self.max.x - self.min.x
+    }
+    pub fn height(&self) -> f32 {
+        self.max.y - self.min.y
+    }
+    pub fn area(&self) -> f32 {
+        self.width() * self.height()
+    }
+    pub fn contains(&self, point: Point) -> bool {
+        point.x >= self.min.x
+            && point.x <= self.max.x
+            && point.y >= self.min.y
+            && point.y <= self.max.y
+    }
 }
 
 impl Wall {
@@ -122,6 +150,54 @@ pub struct Opening {
 }
 
 impl Project {
+    pub fn set_terrain(&mut self, first: Point, second: Point) -> Option<u64> {
+        let min = Point::new(first.x.min(second.x), first.y.min(second.y));
+        let max = Point::new(first.x.max(second.x), first.y.max(second.y));
+        if max.x - min.x < 0.25 || max.y - min.y < 0.25 {
+            return None;
+        }
+        let id = self
+            .terrain
+            .as_ref()
+            .map(|terrain| terrain.id)
+            .unwrap_or_else(|| self.id());
+        self.terrain = Some(Terrain { id, min, max });
+        Some(id)
+    }
+
+    pub fn resize_terrain(&mut self, width: f32, height: f32) -> bool {
+        if !width.is_finite() || !height.is_finite() || width < 0.25 || height < 0.25 {
+            return false;
+        }
+        let Some(terrain) = &mut self.terrain else {
+            return false;
+        };
+        terrain.max = Point::new(terrain.min.x + width, terrain.min.y + height);
+        true
+    }
+
+    pub fn move_terrain(&mut self, id: u64, delta: Point) {
+        if let Some(terrain) = &mut self.terrain {
+            if terrain.id == id {
+                terrain.min = terrain.min.translated(delta);
+                terrain.max = terrain.max.translated(delta);
+            }
+        }
+    }
+
+    pub fn delete_terrain(&mut self, id: u64) -> bool {
+        if self
+            .terrain
+            .as_ref()
+            .is_some_and(|terrain| terrain.id == id)
+        {
+            self.terrain = None;
+            true
+        } else {
+            false
+        }
+    }
+
     fn id(&mut self) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
@@ -301,37 +377,54 @@ impl Project {
     }
 
     pub fn bounds(&self) -> Option<(Point, Point)> {
-        if self.walls.is_empty() {
+        if self.walls.is_empty() && self.terrain.is_none() {
             return None;
         }
-        Some((
-            Point::new(
-                self.walls
-                    .iter()
-                    .map(|w| w.start.x.min(w.end.x))
-                    .fold(f32::INFINITY, f32::min),
-                self.walls
-                    .iter()
-                    .map(|w| w.start.y.min(w.end.y))
-                    .fold(f32::INFINITY, f32::min),
-            ),
-            Point::new(
-                self.walls
-                    .iter()
-                    .map(|w| w.start.x.max(w.end.x))
-                    .fold(f32::NEG_INFINITY, f32::max),
-                self.walls
-                    .iter()
-                    .map(|w| w.start.y.max(w.end.y))
-                    .fold(f32::NEG_INFINITY, f32::max),
-            ),
-        ))
+        let mut min = self
+            .terrain
+            .as_ref()
+            .map(|t| t.min)
+            .unwrap_or(Point::new(f32::INFINITY, f32::INFINITY));
+        let mut max = self
+            .terrain
+            .as_ref()
+            .map(|t| t.max)
+            .unwrap_or(Point::new(f32::NEG_INFINITY, f32::NEG_INFINITY));
+        for wall in &self.walls {
+            min.x = min.x.min(wall.start.x.min(wall.end.x));
+            min.y = min.y.min(wall.start.y.min(wall.end.y));
+            max.x = max.x.max(wall.start.x.max(wall.end.x));
+            max.y = max.y.max(wall.start.y.max(wall.end.y));
+        }
+        Some((min, max))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terrain_keeps_exact_area_when_resized_and_moved() {
+        let mut project = Project::default();
+        let id = project
+            .set_terrain(Point::new(0.0, 0.0), Point::new(5.0, 10.0))
+            .unwrap();
+        assert_eq!(project.terrain.as_ref().unwrap().area(), 50.0);
+        assert_eq!(
+            project.bounds(),
+            Some((Point::new(0.0, 0.0), Point::new(5.0, 10.0)))
+        );
+        assert!(project.resize_terrain(50.0, 50.0));
+        assert_eq!(project.terrain.as_ref().unwrap().area(), 2500.0);
+        project.move_terrain(id, Point::new(3.0, 4.0));
+        assert_eq!(
+            project.bounds(),
+            Some((Point::new(3.0, 4.0), Point::new(53.0, 54.0)))
+        );
+        assert!(project.delete_terrain(id));
+        assert_eq!(project.bounds(), None);
+    }
 
     #[test]
     fn room_creates_four_walls_and_connected_move() {

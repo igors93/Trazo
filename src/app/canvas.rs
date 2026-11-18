@@ -29,6 +29,7 @@ impl ViewTransform {
 pub enum Preview {
     Wall(Point, Point),
     Room(Point, Point),
+    Terrain(Point, Point),
 }
 
 pub fn paint(
@@ -40,6 +41,34 @@ pub fn paint(
 ) {
     painter.rect_filled(view.rect, 0.0, Color32::from_rgb(248, 250, 251));
     paint_grid(painter, view);
+
+    if let Some(terrain) = &project.terrain {
+        let rect = Rect::from_two_pos(view.to_screen(terrain.min), view.to_screen(terrain.max));
+        let selected = selection == Some(Selection::Terrain(terrain.id));
+        painter.rect_filled(
+            rect,
+            0.0,
+            if selected {
+                Color32::from_rgb(227, 239, 255)
+            } else {
+                Color32::from_rgb(239, 246, 252)
+            },
+        );
+        painter.rect_stroke(
+            rect,
+            0.0,
+            Stroke::new(2.0, Color32::from_rgb(79, 124, 169)),
+            egui::StrokeKind::Inside,
+        );
+        let label = format!(
+            "Terreno · {} × {} · {:.2} m²",
+            format_meters(terrain.width()),
+            format_meters(terrain.height()),
+            terrain.area()
+        )
+        .replace('.', ",");
+        paint_measure(painter, rect.left_top() + egui::vec2(100.0, -17.0), label);
+    }
 
     for room in &project.rooms {
         if let Some((min, max)) = project.room_bounds(room) {
@@ -124,6 +153,27 @@ pub fn paint(
                     ),
                 );
             }
+            Preview::Terrain(a, b) => {
+                let rect = Rect::from_two_pos(view.to_screen(a), view.to_screen(b));
+                painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(78, 130, 183, 30));
+                painter.rect_stroke(
+                    rect,
+                    0.0,
+                    Stroke::new(2.0, Color32::from_rgb(79, 124, 169)),
+                    egui::StrokeKind::Inside,
+                );
+                paint_measure(
+                    painter,
+                    rect.center(),
+                    format!(
+                        "{} × {} · {:.2} m²",
+                        format_meters((b.x - a.x).abs()),
+                        format_meters((b.y - a.y).abs()),
+                        (b.x - a.x).abs() * (b.y - a.y).abs()
+                    )
+                    .replace('.', ","),
+                );
+            }
         }
     }
 }
@@ -141,17 +191,22 @@ fn paint_measure(painter: &Painter, position: Pos2, value: String) {
 }
 
 fn paint_grid(painter: &Painter, view: ViewTransform) {
+    let step = if view.scale < 8.0 {
+        5.0
+    } else if view.scale < 20.0 {
+        1.0
+    } else {
+        GRID_METERS
+    };
     let first = view.to_world(view.rect.left_top());
     let last = view.to_world(view.rect.right_bottom());
-    let start_x = (first.x / GRID_METERS).floor() as i32;
-    let end_x = (last.x / GRID_METERS).ceil() as i32;
-    let start_y = (first.y / GRID_METERS).floor() as i32;
-    let end_y = (last.y / GRID_METERS).ceil() as i32;
+    let start_x = (first.x / step).floor() as i32;
+    let end_x = (last.x / step).ceil() as i32;
+    let start_y = (first.y / step).floor() as i32;
+    let end_y = (last.y / step).ceil() as i32;
     for index in start_x..=end_x {
-        let x = view
-            .to_screen(Point::new(index as f32 * GRID_METERS, 0.0))
-            .x;
-        let major = index.rem_euclid(4) == 0;
+        let x = view.to_screen(Point::new(index as f32 * step, 0.0)).x;
+        let major = (index as f32 * step).rem_euclid(1.0) < 0.001;
         painter.line_segment(
             [
                 Pos2::new(x, view.rect.top()),
@@ -168,10 +223,8 @@ fn paint_grid(painter: &Painter, view: ViewTransform) {
         );
     }
     for index in start_y..=end_y {
-        let y = view
-            .to_screen(Point::new(0.0, index as f32 * GRID_METERS))
-            .y;
-        let major = index.rem_euclid(4) == 0;
+        let y = view.to_screen(Point::new(0.0, index as f32 * step)).y;
+        let major = (index as f32 * step).rem_euclid(1.0) < 0.001;
         painter.line_segment(
             [
                 Pos2::new(view.rect.left(), y),

@@ -6,6 +6,7 @@ use eframe::egui::{
 pub enum ToolIcon {
     Wall,
     Room,
+    Terrain,
     Move,
     Door,
     Window,
@@ -88,6 +89,14 @@ fn paint_icon(painter: &Painter, center: Pos2, icon: ToolIcon, color: Color32) {
             line((-11.0, 10.0), (2.0, 10.0), 2.5);
             line((8.0, 10.0), (11.0, 10.0), 2.5);
             line((2.0, 10.0), (2.0, 3.0), 1.5);
+        }
+        ToolIcon::Terrain => {
+            line((-12.0, -9.0), (12.0, -9.0), 2.0);
+            line((12.0, -9.0), (12.0, 9.0), 2.0);
+            line((12.0, 9.0), (-12.0, 9.0), 2.0);
+            line((-12.0, 9.0), (-12.0, -9.0), 2.0);
+            painter.circle_filled(p(-12.0, -9.0), 2.5, color);
+            painter.circle_filled(p(12.0, 9.0), 2.5, color);
         }
         ToolIcon::Move => {
             line((-11.0, 0.0), (11.0, 0.0), 2.0);

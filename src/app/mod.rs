@@ -1,10 +1,11 @@
 mod canvas;
-mod layout;
-mod toolbar;
+mod interaction;
+mod theme;
+mod ui;
 
 use std::path::PathBuf;
 
-use eframe::egui::{self, Color32, Key, PointerButton, Sense};
+use eframe::egui::{self, Key};
 
 use crate::{
     domain::{
@@ -15,12 +16,11 @@ use crate::{
     io::{export, project_file},
 };
 
-use canvas::{Preview, ViewTransform};
-
 #[derive(Clone, Copy, PartialEq)]
 enum Tool {
     Wall,
     Room,
+    Terrain,
     Move,
     Opening(OpeningKind),
 }
@@ -29,6 +29,7 @@ enum Tool {
 enum Selection {
     Wall(u64),
     Room(u64),
+    Terrain(u64),
 }
 
 #[derive(Clone, Copy)]
@@ -53,15 +54,15 @@ pub struct FloorPlanApp {
     opening_drag: Option<OpeningKind>,
     scale: f32,
     pan: egui::Vec2,
+    fit_pending: bool,
+    terrain_width_text: String,
+    terrain_height_text: String,
     message: String,
 }
 
 impl FloorPlanApp {
     pub fn new(context: &egui::Context) -> Self {
-        let mut visuals = egui::Visuals::light();
-        visuals.widgets.active.bg_fill = Color32::from_rgb(33, 164, 150);
-        visuals.selection.bg_fill = Color32::from_rgb(31, 177, 159);
-        context.set_visuals(visuals);
+        theme::apply(context);
         Self {
             project: Project::default(),
             history: History::new(),
@@ -77,6 +78,9 @@ impl FloorPlanApp {
             opening_drag: None,
             scale: 60.0,
             pan: egui::Vec2::ZERO,
+            fit_pending: false,
+            terrain_width_text: "5,00".to_owned(),
+            terrain_height_text: "10,00".to_owned(),
             message: "Clique em dois pontos para desenhar uma parede.".to_owned(),
         }
     }
@@ -89,9 +93,10 @@ impl FloorPlanApp {
         self.message = match tool {
             Tool::Wall => "Clique em dois pontos para desenhar uma parede.",
             Tool::Room => "Clique em dois cantos opostos e dê um nome ao cômodo.",
-            Tool::Move => {
-                "Clique para selecionar. Arraste uma parede ou o interior de um cômodo para mover."
+            Tool::Terrain => {
+                "Clique em dois cantos ou digite largura e comprimento para criar o terreno."
             }
+            Tool::Move => "Clique para selecionar. Arraste parede, cômodo ou terreno para mover.",
             Tool::Opening(OpeningKind::Door) => "Clique em uma parede para colocar uma porta.",
             Tool::Opening(OpeningKind::Window) => "Clique em uma parede para colocar uma janela.",
         }
@@ -108,6 +113,9 @@ impl FloorPlanApp {
         self.pending_room = None;
         self.pan = egui::Vec2::ZERO;
         self.scale = 60.0;
+        self.fit_pending = false;
+        self.terrain_width_text = "5,00".to_owned();
+        self.terrain_height_text = "10,00".to_owned();
         self.message = "Nova planta criada.".to_owned();
     }
 
@@ -127,6 +135,7 @@ impl FloorPlanApp {
                 self.draft_start = None;
                 self.selection = None;
                 self.pending_room = None;
+                self.sync_terrain_fields();
                 self.fit_view_requested();
                 self.message = "Projeto aberto com sucesso.".to_owned();
             }
@@ -188,6 +197,7 @@ impl FloorPlanApp {
         if self.history.undo(&mut self.project) {
             self.dirty = true;
             self.selection = None;
+            self.sync_terrain_fields();
             self.message = "Ação desfeita.".to_owned();
         }
     }
@@ -196,24 +206,107 @@ impl FloorPlanApp {
         if self.history.redo(&mut self.project) {
             self.dirty = true;
             self.selection = None;
+            self.sync_terrain_fields();
             self.message = "Ação refeita.".to_owned();
         }
     }
 
     fn fit_view_requested(&mut self) {
+        self.fit_pending = true;
+    }
+
+    fn fit_view(&mut self, rect: egui::Rect) {
+        self.fit_pending = false;
         if let Some((min, max)) = self.project.bounds() {
+            let width = (max.x - min.x).max(0.25);
+            let height = (max.y - min.y).max(0.25);
+            self.scale = ((rect.width() - 100.0).max(80.0) / width)
+                .min((rect.height() - 100.0).max(80.0) / height)
+                .clamp(3.0, 240.0);
             self.pan = egui::vec2(
                 -(min.x + max.x) * self.scale / 2.0,
                 -(min.y + max.y) * self.scale / 2.0,
             );
         } else {
             self.pan = egui::Vec2::ZERO;
+            self.scale = 60.0;
         }
+    }
+
+    fn create_terrain_from_dimensions(&mut self) {
+        let Some((width, height)) = self.terrain_dimensions() else {
+            self.message = "Informe medidas válidas de pelo menos 0,25 m.".to_owned();
+            return;
+        };
+        if !width.is_finite() || !height.is_finite() || width < 0.25 || height < 0.25 {
+            self.message = "Informe medidas de pelo menos 0,25 m.".to_owned();
+            return;
+        }
+        let previous = self.project.clone();
+        let existing = self.project.terrain.as_ref().map(|terrain| terrain.id);
+        let id = if let Some(id) = existing {
+            self.project.resize_terrain(width, height);
+            id
+        } else {
+            self.project
+                .set_terrain(Point::new(0.0, 0.0), Point::new(width, height))
+                .unwrap()
+        };
+        self.record_change(previous);
+        self.selection = Some(Selection::Terrain(id));
+        self.fit_view_requested();
+        self.message = format!(
+            "Terreno {}: {:.2} m².",
+            if existing.is_some() {
+                "atualizado"
+            } else {
+                "criado"
+            },
+            width * height
+        )
+        .replace('.', ",");
+    }
+
+    fn terrain_dimensions(&self) -> Option<(f32, f32)> {
+        let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
+        let (width, height) = (
+            parse(&self.terrain_width_text)?,
+            parse(&self.terrain_height_text)?,
+        );
+        (width.is_finite()
+            && height.is_finite()
+            && width >= 0.25
+            && height >= 0.25
+            && width <= 10000.0
+            && height <= 10000.0)
+            .then_some((width, height))
     }
 
     fn record_change(&mut self, previous: Project) {
         self.history.record(previous);
         self.dirty = true;
+    }
+
+    fn delete_selection(&mut self) {
+        if let Some(selection) = self.selection.take() {
+            let previous = self.project.clone();
+            match selection {
+                Selection::Wall(id) => self.project.delete_wall(id),
+                Selection::Room(id) => {
+                    self.project.delete_room(id);
+                }
+                Selection::Terrain(id) => {
+                    self.project.delete_terrain(id);
+                }
+            }
+            self.record_change(previous);
+            self.message = match selection {
+                Selection::Wall(_) => "Parede removida.",
+                Selection::Room(_) => "Cômodo removido.",
+                Selection::Terrain(_) => "Terreno removido.",
+            }
+            .to_owned();
+        }
     }
 
     fn add_opening_at(&mut self, point: Point, kind: OpeningKind) {
@@ -227,216 +320,6 @@ impl FloorPlanApp {
             }
         } else {
             self.message = "Solte o elemento sobre uma parede.".to_owned();
-        }
-    }
-
-    fn snap(&self, point: Point, start: Option<Point>) -> Point {
-        let mut result = point.snapped();
-        let mut closest = 0.18;
-        for wall in &self.project.walls {
-            for endpoint in [wall.start, wall.end] {
-                let distance = point.distance(endpoint);
-                if distance < closest {
-                    closest = distance;
-                    result = endpoint;
-                }
-            }
-        }
-        if let Some(start) = start {
-            if (result.x - start.x).abs() < 0.18 {
-                result.x = start.x;
-            }
-            if (result.y - start.y).abs() < 0.18 {
-                result.y = start.y;
-            }
-        }
-        result
-    }
-
-    fn canvas(&mut self, ui: &mut egui::Ui) {
-        let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
-        let rect = response.rect;
-        if response.hovered() {
-            let scroll = ui.input(|input| input.smooth_scroll_delta.y);
-            if scroll.abs() > 0.0 {
-                if let Some(position) = ui.input(|input| input.pointer.hover_pos()) {
-                    let before = ViewTransform {
-                        rect,
-                        scale: self.scale,
-                        pan: self.pan,
-                    }
-                    .to_world(position);
-                    self.scale = (self.scale * (scroll * 0.0015).exp()).clamp(25.0, 180.0);
-                    self.pan = position
-                        - rect.center()
-                        - egui::vec2(before.x * self.scale, before.y * self.scale);
-                }
-            }
-        }
-        let (middle_down, pointer_delta) =
-            ui.input(|input| (input.pointer.middle_down(), input.pointer.delta()));
-        if middle_down
-            && rect.contains(ui.input(|input| input.pointer.hover_pos().unwrap_or_default()))
-        {
-            self.pan += pointer_delta;
-        }
-        let view = ViewTransform {
-            rect,
-            scale: self.scale,
-            pan: self.pan,
-        };
-        let pointer = ui
-            .input(|input| input.pointer.hover_pos())
-            .filter(|position| rect.contains(*position));
-        let world = pointer.map(|position| view.to_world(position));
-        let snapped = world.map(|point| self.snap(point, self.draft_start));
-
-        if self.pending_room.is_some() {
-            canvas::paint(&painter, view, &self.project, self.selection, None);
-            return;
-        }
-
-        if self.tool == Tool::Move {
-            if let Some(point) = world {
-                if self
-                    .project
-                    .nearest_wall(point, 12.0 / self.scale)
-                    .is_some()
-                    || self.project.room_at(point).is_some()
-                {
-                    ui.ctx().set_cursor_icon(if self.item_drag.is_some() {
-                        egui::CursorIcon::Grabbing
-                    } else {
-                        egui::CursorIcon::Grab
-                    });
-                }
-            }
-        }
-
-        if self.tool == Tool::Move {
-            let pressed = ui.input(|input| {
-                input.events.iter().find_map(|event| match event {
-                    egui::Event::PointerButton {
-                        pos,
-                        button: PointerButton::Primary,
-                        pressed: true,
-                        ..
-                    } if rect.contains(*pos) => Some(*pos),
-                    _ => None,
-                })
-            });
-            if let Some(position) = pressed {
-                let point = view.to_world(position);
-                self.selection = self
-                    .project
-                    .nearest_wall(point, 12.0 / self.scale)
-                    .map(|(id, _)| Selection::Wall(id))
-                    .or_else(|| self.project.room_at(point).map(Selection::Room));
-                self.item_drag = self.selection.map(|selection| ItemDrag {
-                    selection,
-                    last: point.snapped(),
-                    moved: false,
-                });
-                self.message = match self.selection {
-                    Some(Selection::Wall(_)) => {
-                        "Parede selecionada. Arraste para mover ou clique em Excluir."
-                    }
-                    Some(Selection::Room(_)) => {
-                        "Cômodo selecionado. Arraste para mover ou clique em Excluir."
-                    }
-                    None => "Clique em uma parede ou dentro de um cômodo para selecionar.",
-                }
-                .to_owned();
-            }
-            let primary_down = ui.input(|input| input.pointer.primary_down());
-            if primary_down {
-                if let (Some(point), Some(drag)) = (world, self.item_drag) {
-                    let current = point.snapped();
-                    let delta = Point::new(current.x - drag.last.x, current.y - drag.last.y);
-                    if delta.x != 0.0 || delta.y != 0.0 {
-                        if !drag.moved {
-                            self.record_change(self.project.clone());
-                        }
-                        match drag.selection {
-                            Selection::Wall(id) => self.project.move_wall(id, delta),
-                            Selection::Room(id) => self.project.move_room(id, delta),
-                        }
-                        if let Some(drag) = &mut self.item_drag {
-                            drag.last = current;
-                            drag.moved = true;
-                        }
-                    }
-                }
-            }
-        }
-        if ui.input(|input| input.pointer.any_released()) {
-            self.item_drag = None;
-            if let Some(kind) = self.opening_drag.take() {
-                if let Some(point) = world {
-                    self.add_opening_at(point, kind);
-                }
-            }
-        }
-
-        if response.clicked_by(PointerButton::Primary) {
-            if let Some(point) = snapped {
-                match self.tool {
-                    Tool::Wall | Tool::Room => {
-                        if let Some(start) = self.draft_start.take() {
-                            if self.tool == Tool::Wall {
-                                let previous = self.project.clone();
-                                if self.project.add_wall(start, point).is_some() {
-                                    self.record_change(previous);
-                                    self.message = "Parede criada.".to_owned();
-                                } else {
-                                    self.message = "Escolha pontos mais distantes.".to_owned();
-                                }
-                            } else if (start.x - point.x).abs() >= 0.5
-                                && (start.y - point.y).abs() >= 0.5
-                            {
-                                self.pending_room = Some((start, point));
-                                self.room_name.clear();
-                                self.room_dialog_focus = true;
-                                self.message = "Digite o nome do cômodo para concluir.".to_owned();
-                            } else {
-                                self.message = "Escolha pontos mais distantes.".to_owned();
-                            }
-                        } else {
-                            self.draft_start = Some(point);
-                            self.message = "Agora clique no segundo ponto. Esc cancela.".to_owned();
-                        }
-                    }
-                    Tool::Opening(kind) => self.add_opening_at(point, kind),
-                    Tool::Move => {}
-                }
-            }
-        }
-
-        let preview = match (self.draft_start, snapped, self.tool) {
-            (Some(start), Some(end), Tool::Wall) => Some(Preview::Wall(start, end)),
-            (Some(start), Some(end), Tool::Room) => Some(Preview::Room(start, end)),
-            _ => None,
-        };
-        canvas::paint(&painter, view, &self.project, self.selection, preview);
-        if let Some(position) = pointer {
-            if self.tool == Tool::Wall || self.tool == Tool::Room {
-                if let Some(point) = snapped {
-                    painter.circle_filled(
-                        view.to_screen(point),
-                        4.5,
-                        Color32::from_rgb(28, 169, 151),
-                    );
-                }
-            }
-            if let Some(kind) = self.opening_drag {
-                painter.text(
-                    position + egui::vec2(15.0, -15.0),
-                    egui::Align2::LEFT_CENTER,
-                    kind.label(),
-                    egui::FontId::proportional(14.0),
-                    Color32::from_rgb(25, 121, 116),
-                );
-            }
         }
     }
 
@@ -483,5 +366,40 @@ impl FloorPlanApp {
 impl eframe::App for FloorPlanApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.show_layout(ui);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fit_view_shows_a_fifty_meter_plot() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        app.project
+            .set_terrain(Point::new(0.0, 0.0), Point::new(50.0, 50.0));
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(1000.0, 700.0));
+        app.fit_view(rect);
+        let view = canvas::ViewTransform {
+            rect,
+            scale: app.scale,
+            pan: app.pan,
+        };
+        let a = view.to_screen(Point::new(0.0, 0.0));
+        let b = view.to_screen(Point::new(50.0, 50.0));
+        assert!(rect.contains(a) && rect.contains(b));
+        assert!(app.scale > 3.0);
+    }
+
+    #[test]
+    fn terrain_dimension_input_accepts_portuguese_decimals() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        app.terrain_width_text = "5,5".to_owned();
+        app.terrain_height_text = "10".to_owned();
+        assert_eq!(app.terrain_dimensions(), Some((5.5, 10.0)));
+        app.terrain_width_text = "0".to_owned();
+        assert_eq!(app.terrain_dimensions(), None);
     }
 }

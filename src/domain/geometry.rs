@@ -17,10 +17,10 @@ impl Point {
         ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
     }
 
-    pub fn snapped(self) -> Self {
+    pub fn snapped_to(self, step: f32) -> Self {
         Self::new(
-            (self.x / GRID_METERS).round() * GRID_METERS,
-            (self.y / GRID_METERS).round() * GRID_METERS,
+            (self.x / step).round() * step,
+            (self.y / step).round() * step,
         )
     }
 

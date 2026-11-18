@@ -43,5 +43,15 @@ mod tests {
         let content = r#"{"version":1,"name":"Antiga","walls":[],"rooms":[{"id":1,"kind":"Bedroom","wall_ids":[2,3,4,5]}],"openings":[],"next_id":6}"#;
         let project: Project = serde_json::from_str(content).unwrap();
         assert_eq!(project.rooms[0].display_name(), "Quarto");
+        assert!(project.terrain.is_none());
+    }
+
+    #[test]
+    fn terrain_survives_project_round_trip() {
+        let mut project = Project::default();
+        project.set_terrain(Point::new(2.0, 3.0), Point::new(7.0, 13.0));
+        let json = serde_json::to_string(&project).unwrap();
+        let loaded: Project = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.terrain.unwrap().area(), 50.0);
     }
 }

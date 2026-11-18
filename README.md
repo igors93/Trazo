@@ -10,23 +10,25 @@ cargo run --release
 
 ## Main workflow
 
-1. Choose **Parede** on the ribbon and click two points on the canvas to create a wall.
-2. Choose **Cômodo**, click two opposite corners, and type any name in the dialog. A rectangular room with four connected walls is created.
-3. Drag **Porta** or **Janela** from the ribbon onto a wall. You can also select either tool and click a wall.
-4. Choose **Selecionar**. Click or drag a wall, or drag inside a room. Use the **Excluir** tile or Delete key to remove the selected wall or whole room. Undo and redo cover these edits.
-5. Use the **Arquivo** menu to save the editable project as JSON or export PNG/PDF for sharing.
+1. Choose **Terreno** and enter exact width and length in meters. For a 50 m² plot, use 5 m × 10 m and click **Criar terreno**. You can also click two opposite corners on the canvas.
+2. Choose **Parede** and click two points on the canvas to create a wall.
+3. Choose **Cômodo**, click two opposite corners, and type any name in the dialog. A rectangular room with four connected walls is created.
+4. Drag **Porta** or **Janela** from the ribbon onto a wall. You can also select either tool and click a wall.
+5. Choose **Selecionar**. Click or drag a wall, room, or terrain. Use **Excluir** or Delete to remove it. Terrain dimensions can be changed in the contextual inspector.
+6. Use the **Arquivo** menu to save the editable project as JSON or export PNG/PDF for sharing.
 
-The grid snaps to 0.25 m, with additional snapping to existing endpoints. Wall length and room width and height update in the live drawing preview. Use the slider at the bottom right or scroll to zoom, use the middle mouse button to pan, and press Esc to cancel drawing. Ctrl+S, Ctrl+O, Ctrl+Z, and Ctrl+Y are available. Older project files with preset room types still open with their original labels.
+The grid adapts to zoom (0.25 m, 1 m, or 5 m), with additional snapping to existing endpoints. Wall length, room dimensions, and terrain area update in the live drawing preview. Use **Enquadrar** to fit the whole project in the window. The bottom slider and mouse wheel control zoom; the middle mouse button pans. Press Esc to cancel drawing. Ctrl+S, Ctrl+O, Ctrl+Z, and Ctrl+Y are available. Older project files still open.
 
 ## Structure
 
 - `src/domain/geometry.rs`: points, distances, projections, and grid spacing.
-- `src/domain/model.rs`: walls, rooms, openings, and editing operations.
+- `src/domain/model.rs`: terrain, walls, rooms, openings, and editing operations.
 - `src/domain/history.rs`: undo and redo snapshots.
 - `src/app/canvas.rs`: drawing the grid, plan, openings, and live previews.
-- `src/app/layout.rs`: menu bar, ribbon, room naming dialog, and status bar.
-- `src/app/toolbar.rs`: lightweight vector tool icons.
-- `src/app/mod.rs`: interaction handling and application state.
+- `src/app/ui/`: menu bar, ribbon, contextual inspector, room naming dialog, status bar, and lightweight vector icons.
+- `src/app/interaction.rs`: canvas input, selection, dragging, and snapping.
+- `src/app/theme.rs`: egui visual theme.
+- `src/app/mod.rs`: application state, project commands, and viewport fitting.
 - `src/io/project_file.rs`: editable project persistence.
 - `src/io/export.rs`: SVG based PNG and vector PDF export.
 

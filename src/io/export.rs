@@ -27,22 +27,47 @@ fn document(project: &Project) -> SvgDocument {
     let (min, max) = project
         .bounds()
         .unwrap_or((Point::new(0.0, 0.0), Point::new(9.0, 6.0)));
-    let width = (((max.x - min.x).max(6.0) * PIXELS_PER_METER) + MARGIN * 2.0).ceil() as u32;
-    let height = (((max.y - min.y).max(4.0) * PIXELS_PER_METER) + MARGIN * 2.0).ceil() as u32;
+    let span_x = (max.x - min.x).max(6.0);
+    let span_y = (max.y - min.y).max(4.0);
+    let pixels_per_meter = PIXELS_PER_METER.min(5000.0 / span_x).min(5000.0 / span_y);
+    let width = (span_x * pixels_per_meter + MARGIN * 2.0).ceil() as u32;
+    let height = (span_y * pixels_per_meter + MARGIN * 2.0).ceil() as u32;
     let point = |p: Point| -> (f32, f32) {
         (
-            MARGIN + (p.x - min.x) * PIXELS_PER_METER,
-            MARGIN + (p.y - min.y) * PIXELS_PER_METER,
+            MARGIN + (p.x - min.x) * pixels_per_meter,
+            MARGIN + (p.y - min.y) * pixels_per_meter,
         )
     };
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\">\n<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>\n"
     );
+    if let Some(terrain) = &project.terrain {
+        let (x, y) = point(terrain.min);
+        let w = terrain.width() * pixels_per_meter;
+        let h = terrain.height() * pixels_per_meter;
+        let _ = writeln!(
+            svg,
+            "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" fill=\"#f0f7fc\" stroke=\"#4f7ca9\" stroke-width=\"3\"/>"
+        );
+        let label = format!(
+            "Terreno · {} × {} · {:.2} m²",
+            format_meters(terrain.width()),
+            format_meters(terrain.height()),
+            terrain.area()
+        )
+        .replace('.', ",");
+        let _ = writeln!(
+            svg,
+            "<text x=\"{x:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"15\" fill=\"#365a7b\">{}</text>",
+            y - 12.0,
+            escaped(&label)
+        );
+    }
     for room in &project.rooms {
         if let Some((a, b)) = project.room_bounds(room) {
             let (x, y) = point(a);
-            let w = (b.x - a.x) * PIXELS_PER_METER;
-            let h = (b.y - a.y) * PIXELS_PER_METER;
+            let w = (b.x - a.x) * pixels_per_meter;
+            let h = (b.y - a.y) * pixels_per_meter;
             let _ = writeln!(
                 svg,
                 "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" fill=\"#eff8f7\"/>"
@@ -71,7 +96,7 @@ fn document(project: &Project) -> SvgDocument {
     }
     for wall in &project.walls {
         let (x, y) = point(wall.start);
-        let length = wall.length() * PIXELS_PER_METER;
+        let length = wall.length() * pixels_per_meter;
         let angle = (wall.end.y - wall.start.y)
             .atan2(wall.end.x - wall.start.x)
             .to_degrees();
@@ -87,7 +112,7 @@ fn document(project: &Project) -> SvgDocument {
         openings.sort_by(|a, b| a.t.total_cmp(&b.t));
         let mut cursor = 0.0;
         for opening in openings {
-            let half = opening.kind.width() * PIXELS_PER_METER / 2.0;
+            let half = opening.kind.width() * pixels_per_meter / 2.0;
             let center = opening.t * length;
             let left = center - half;
             let right = center + half;
@@ -182,8 +207,17 @@ mod tests {
     use crate::domain::model::OpeningKind;
 
     #[test]
+    fn large_terrain_export_has_bounded_dimensions() {
+        let mut project = Project::default();
+        project.set_terrain(Point::new(0.0, 0.0), Point::new(500.0, 500.0));
+        let svg = document(&project);
+        assert!(svg.width <= 5260 && svg.height <= 5260);
+    }
+
+    #[test]
     fn exports_png_and_pdf() {
         let mut project = Project::default();
+        project.set_terrain(Point::new(0.0, 0.0), Point::new(5.0, 10.0));
         project
             .add_room(
                 Point::new(0.0, 0.0),
@@ -192,6 +226,7 @@ mod tests {
             )
             .unwrap();
         assert!(document(&project).markup.contains("Quarto personalizado"));
+        assert!(document(&project).markup.contains("50,00 m²"));
         let wall_id = project.walls[0].id;
         project
             .add_opening(wall_id, OpeningKind::Door, 0.5)
