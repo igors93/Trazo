@@ -1,9 +1,9 @@
-use eframe::egui::{self, Align, Color32, PointerButton, RichText, Ui};
+use eframe::egui::{self, Align, Color32, Key, PointerButton, RichText, Ui};
 
-use crate::domain::{geometry::format_meters, model::{OpeningKind, RoomKind}};
+use crate::domain::{geometry::format_meters, model::OpeningKind};
 
 use super::{
-    FloorPlanApp, Tool,
+    FloorPlanApp, Selection, Tool,
     toolbar::{self, ToolIcon},
 };
 
@@ -39,6 +39,7 @@ impl FloorPlanApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::new().fill(Color32::from_rgb(248, 250, 251)))
             .show(ui, |ui| self.canvas(ui));
+        self.room_name_dialog(ui);
     }
 
     fn menu_bar(&mut self, ui: &mut Ui) {
@@ -97,12 +98,12 @@ impl FloorPlanApp {
                 ui.separator();
                 if ui
                     .add_enabled(
-                        self.selected_wall.is_some(),
-                        egui::Button::new("Excluir parede     Delete"),
+                        self.selection.is_some(),
+                        egui::Button::new("Excluir seleção     Delete"),
                     )
                     .clicked()
                 {
-                    self.delete_selected_wall();
+                    self.delete_selection();
                     ui.close();
                 }
             });
@@ -124,7 +125,8 @@ impl FloorPlanApp {
                 ui.label("Parede e cômodo: clique em dois pontos.");
                 ui.label("Porta e janela: arraste ou clique na parede.");
                 ui.label("Roda do mouse: zoom. Botão do meio: mover a vista.");
-                ui.label("Esc: cancelar desenho.");
+                ui.label("Selecionar / mover: clique ou arraste a parede ou o interior do cômodo.");
+                ui.label("Delete: excluir seleção. Esc: cancelar desenho.");
             });
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.label(
@@ -175,28 +177,6 @@ impl FloorPlanApp {
                     {
                         self.set_tool(Tool::Room);
                     }
-                    ui.vertical(|ui| {
-                        ui.add_space(10.0);
-                        ui.label(
-                            RichText::new("Tipo de cômodo")
-                                .size(11.0)
-                                .color(Color32::from_rgb(91, 112, 121)),
-                        );
-                        let mut selected = false;
-                        egui::ComboBox::from_id_salt("room_kind")
-                            .width(112.0)
-                            .selected_text(self.room_kind.label())
-                            .show_ui(ui, |ui| {
-                                for kind in RoomKind::ALL {
-                                    if ui.selectable_value(&mut self.room_kind, kind, kind.label()).clicked() {
-                                        selected = true;
-                                    }
-                                }
-                            });
-                        if selected {
-                            self.set_tool(Tool::Room);
-                        }
-                    });
                 });
                 ui.label(
                     RichText::new("CRIAR")
@@ -224,7 +204,7 @@ impl FloorPlanApp {
             ui.vertical(|ui| {
                 if toolbar::tool_tile(
                     ui,
-                    "Mover",
+                    "Selecionar",
                     ToolIcon::Move,
                     self.tool == Tool::Move,
                     false,
@@ -239,24 +219,47 @@ impl FloorPlanApp {
                         .color(Color32::from_rgb(117, 136, 143)),
                 );
             });
-            if let Some(id) = self.selected_wall {
-                if let Some(wall) = self.project.walls.iter().find(|wall| wall.id == id) {
-                    let length = wall.length();
-                    ui.add_space(18.0);
-                    ui.separator();
-                    ui.add_space(16.0);
-                    ui.vertical(|ui| {
-                        ui.label(
-                            RichText::new("PAREDE SELECIONADA")
-                                .size(10.0)
-                                .color(Color32::from_rgb(117, 136, 143)),
-                        );
-                        ui.label(RichText::new(format_meters(length)).strong().size(14.0));
-                        if ui.small_button("Excluir").clicked() {
-                            self.delete_selected_wall();
+            if ui
+                .add_enabled_ui(self.selection.is_some(), |ui| {
+                    toolbar::tool_tile(ui, "Excluir", ToolIcon::Delete, false, false)
+                })
+                .inner
+                .on_hover_text("Excluir parede ou cômodo selecionado")
+                .clicked()
+            {
+                self.delete_selection();
+            }
+            if let Some(selection) = self.selection {
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(10.0);
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new("SELEÇÃO")
+                            .size(10.0)
+                            .color(Color32::from_rgb(117, 136, 143)),
+                    );
+                    match selection {
+                        Selection::Wall(id) => {
+                            if let Some(wall) = self.project.walls.iter().find(|wall| wall.id == id)
+                            {
+                                ui.label(
+                                    RichText::new(format!(
+                                        "Parede · {}",
+                                        format_meters(wall.length())
+                                    ))
+                                    .strong(),
+                                );
+                            }
                         }
-                    });
-                }
+                        Selection::Room(id) => {
+                            if let Some(room) = self.project.rooms.iter().find(|room| room.id == id)
+                            {
+                                ui.label(RichText::new(room.display_name()).strong());
+                            }
+                        }
+                    }
+                });
             }
         });
     }
@@ -281,11 +284,26 @@ impl FloorPlanApp {
         }
     }
 
-    fn status_bar(&self, ui: &mut Ui) {
+    fn status_bar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label(RichText::new(&self.message).color(Color32::from_rgb(64, 89, 99)));
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.label(format!("Zoom {:.0}%", self.scale / 60.0 * 100.0));
+                let mut zoom = self.scale / 60.0 * 100.0;
+                if ui
+                    .add_sized(
+                        [140.0, ui.spacing().interact_size.y],
+                        egui::Slider::new(&mut zoom, 42.0..=300.0)
+                            .show_value(false)
+                            .text("")
+                            .trailing_fill(true)
+                            .clamping(egui::SliderClamping::Always),
+                    )
+                    .on_hover_text("Ajustar zoom")
+                    .changed()
+                {
+                    self.scale = zoom / 100.0 * 60.0;
+                }
                 ui.separator();
                 ui.label(format!(
                     "{} paredes | {} cômodos | {} aberturas",
@@ -297,12 +315,78 @@ impl FloorPlanApp {
         });
     }
 
-    pub(super) fn delete_selected_wall(&mut self) {
-        if let Some(id) = self.selected_wall.take() {
+    pub(super) fn delete_selection(&mut self) {
+        if let Some(selection) = self.selection.take() {
             let previous = self.project.clone();
-            self.project.delete_wall(id);
+            match selection {
+                Selection::Wall(id) => self.project.delete_wall(id),
+                Selection::Room(id) => {
+                    self.project.delete_room(id);
+                }
+            }
             self.record_change(previous);
-            self.message = "Parede removida.".to_owned();
+            self.message = match selection {
+                Selection::Wall(_) => "Parede removida.",
+                Selection::Room(_) => "Cômodo removido.",
+            }
+            .to_owned();
+        }
+    }
+
+    fn room_name_dialog(&mut self, ui: &Ui) {
+        if self.pending_room.is_none() {
+            return;
+        }
+        let mut confirm = false;
+        let mut cancel = false;
+        egui::Modal::new(egui::Id::unique("room_name_dialog")).show(ui.ctx(), |ui| {
+            ui.heading("Nome do cômodo");
+            ui.add_space(5.0);
+            ui.label("Como deseja chamar este cômodo?");
+            let edit = ui.add(
+                egui::TextEdit::singleline(&mut self.room_name)
+                    .hint_text("Ex.: Suíte, escritório, sala de estar")
+                    .desired_width(280.0),
+            );
+            if self.room_dialog_focus {
+                edit.request_focus();
+                self.room_dialog_focus = false;
+            }
+            ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                if ui.button("Cancelar").clicked() {
+                    cancel = true;
+                }
+                if ui
+                    .add_enabled(
+                        !self.room_name.trim().is_empty(),
+                        egui::Button::new("Criar cômodo"),
+                    )
+                    .clicked()
+                {
+                    confirm = true;
+                }
+            });
+            if ui.input(|input| input.key_pressed(Key::Enter)) && !self.room_name.trim().is_empty()
+            {
+                confirm = true;
+            }
+        });
+        if cancel {
+            self.pending_room = None;
+            self.message = "Criação do cômodo cancelada.".to_owned();
+        } else if confirm {
+            if let Some((start, end)) = self.pending_room.take() {
+                let previous = self.project.clone();
+                if self
+                    .project
+                    .add_room(start, end, self.room_name.trim())
+                    .is_some()
+                {
+                    self.record_change(previous);
+                    self.message = format!("Cômodo {} criado.", self.room_name.trim());
+                }
+            }
         }
     }
 }

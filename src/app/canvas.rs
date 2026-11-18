@@ -5,6 +5,8 @@ use crate::domain::{
     model::{OpeningKind, Project, Wall},
 };
 
+use super::Selection;
+
 #[derive(Clone, Copy)]
 pub struct ViewTransform {
     pub rect: Rect,
@@ -33,7 +35,7 @@ pub fn paint(
     painter: &Painter,
     view: ViewTransform,
     project: &Project,
-    selected_wall: Option<u64>,
+    selection: Option<Selection>,
     preview: Option<Preview>,
 ) {
     painter.rect_filled(view.rect, 0.0, Color32::from_rgb(248, 250, 251));
@@ -42,12 +44,21 @@ pub fn paint(
     for room in &project.rooms {
         if let Some((min, max)) = project.room_bounds(room) {
             let rect = Rect::from_two_pos(view.to_screen(min), view.to_screen(max));
-            painter.rect_filled(rect, 0.0, Color32::from_rgb(234, 247, 244));
+            let selected = selection == Some(Selection::Room(room.id));
+            painter.rect_filled(
+                rect,
+                0.0,
+                if selected {
+                    Color32::from_rgb(212, 243, 237)
+                } else {
+                    Color32::from_rgb(234, 247, 244)
+                },
+            );
             let center = rect.center();
             painter.text(
                 center + egui::vec2(0.0, -10.0),
                 Align2::CENTER_CENTER,
-                room.kind.label(),
+                room.display_name(),
                 FontId::proportional(17.0),
                 Color32::from_rgb(39, 70, 79),
             );
@@ -66,7 +77,11 @@ pub fn paint(
     }
 
     for wall in &project.walls {
-        paint_wall(painter, view, wall, project, selected_wall == Some(wall.id));
+        let selected = selection == Some(Selection::Wall(wall.id))
+            || project.rooms.iter().any(|room| {
+                selection == Some(Selection::Room(room.id)) && room.wall_ids.contains(&wall.id)
+            });
+        paint_wall(painter, view, wall, project, selected);
     }
 
     if let Some(preview) = preview {
@@ -77,6 +92,12 @@ pub fn paint(
                     Stroke::new(6.0, Color32::from_rgb(40, 176, 158)),
                 );
                 painter.circle_filled(view.to_screen(b), 5.0, Color32::from_rgb(40, 176, 158));
+                let midpoint = view.to_screen(a).lerp(view.to_screen(b), 0.5);
+                paint_measure(
+                    painter,
+                    midpoint + egui::vec2(0.0, -22.0),
+                    format_meters(a.distance(b)),
+                );
             }
             Preview::Room(a, b) => {
                 let rect = Rect::from_two_pos(view.to_screen(a), view.to_screen(b));
@@ -93,9 +114,30 @@ pub fn paint(
                         Stroke::new(4.0, Color32::from_rgb(40, 176, 158)),
                     );
                 }
+                paint_measure(
+                    painter,
+                    rect.center() + egui::vec2(0.0, -15.0),
+                    format!(
+                        "{} × {}",
+                        format_meters((b.x - a.x).abs()),
+                        format_meters((b.y - a.y).abs())
+                    ),
+                );
             }
         }
     }
+}
+
+fn paint_measure(painter: &Painter, position: Pos2, value: String) {
+    let font = FontId::proportional(13.0);
+    let galley = painter.layout_no_wrap(value, font, Color32::from_rgb(24, 105, 98));
+    let rect = Rect::from_center_size(position, galley.size() + egui::vec2(16.0, 8.0));
+    painter.rect_filled(rect, 5.0, Color32::WHITE);
+    painter.galley(
+        rect.min + egui::vec2(8.0, 4.0),
+        galley,
+        Color32::from_rgb(24, 105, 98),
+    );
 }
 
 fn paint_grid(painter: &Painter, view: ViewTransform) {
@@ -191,7 +233,8 @@ fn paint_wall(
                 for step in 0..=16 {
                     let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 16.0;
                     arc.push(
-                        hinge + direction * (theta.sin() * half * 2.0)
+                        hinge
+                            + direction * (theta.sin() * half * 2.0)
                             + normal * (theta.cos() * half * 2.0),
                     );
                 }

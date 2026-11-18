@@ -9,6 +9,7 @@ pub enum ToolIcon {
     Move,
     Door,
     Window,
+    Delete,
 }
 
 pub fn tool_tile(
@@ -24,7 +25,9 @@ pub fn tool_tile(
         Sense::click()
     };
     let (rect, response) = ui.allocate_exact_size(egui::vec2(82.0, 68.0), sense);
-    let background = if selected {
+    let background = if !ui.is_enabled() {
+        Color32::from_rgb(243, 246, 247)
+    } else if selected {
         Color32::from_rgb(218, 245, 239)
     } else if response.hovered() {
         Color32::from_rgb(237, 246, 246)
@@ -43,7 +46,9 @@ pub fn tool_tile(
             Color32::from_rgb(27, 155, 140),
         );
     }
-    let color = if selected {
+    let color = if !ui.is_enabled() {
+        Color32::from_rgb(157, 170, 175)
+    } else if selected {
         Color32::from_rgb(20, 122, 112)
     } else {
         Color32::from_rgb(45, 66, 78)
@@ -57,7 +62,11 @@ pub fn tool_tile(
         FontId::proportional(12.0),
         color,
     );
-    response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    if ui.is_enabled() {
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        response
+    }
 }
 
 fn paint_icon(painter: &Painter, center: Pos2, icon: ToolIcon, color: Color32) {
@@ -115,6 +124,15 @@ fn paint_icon(painter: &Painter, center: Pos2, icon: ToolIcon, color: Color32) {
             line((10.0, -7.0), (10.0, 8.0), 2.0);
             line((-10.0, -5.0), (10.0, -5.0), 2.0);
             line((-10.0, 3.0), (10.0, 3.0), 2.0);
+        }
+        ToolIcon::Delete => {
+            line((-10.0, -8.0), (10.0, -8.0), 2.0);
+            line((-5.0, -12.0), (5.0, -12.0), 2.0);
+            line((-8.0, -5.0), (-7.0, 11.0), 2.0);
+            line((8.0, -5.0), (7.0, 11.0), 2.0);
+            line((-7.0, 11.0), (7.0, 11.0), 2.0);
+            line((-3.0, -3.0), (-3.0, 7.0), 1.5);
+            line((3.0, -3.0), (3.0, 7.0), 1.5);
         }
     }
 }

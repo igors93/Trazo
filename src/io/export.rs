@@ -53,7 +53,7 @@ fn document(project: &Project) -> SvgDocument {
                 "<text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"20\" font-weight=\"700\" fill=\"#1e3a4a\">{}</text>",
                 center.0,
                 center.1 - 4.0,
-                escaped(room.kind.label())
+                escaped(room.display_name())
             );
             let dimensions = format!(
                 "{} × {}",
@@ -179,7 +179,7 @@ pub fn pdf(project: &Project, path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::model::{OpeningKind, RoomKind};
+    use crate::domain::model::OpeningKind;
 
     #[test]
     fn exports_png_and_pdf() {
@@ -188,9 +188,10 @@ mod tests {
             .add_room(
                 Point::new(0.0, 0.0),
                 Point::new(4.0, 3.0),
-                RoomKind::Bedroom,
+                "Quarto personalizado",
             )
             .unwrap();
+        assert!(document(&project).markup.contains("Quarto personalizado"));
         let wall_id = project.walls[0].id;
         project
             .add_opening(wall_id, OpeningKind::Door, 0.5)

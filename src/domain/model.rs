@@ -57,16 +57,6 @@ pub enum RoomKind {
 }
 
 impl RoomKind {
-    pub const ALL: [Self; 7] = [
-        Self::Bedroom,
-        Self::LivingRoom,
-        Self::Kitchen,
-        Self::Bathroom,
-        Self::DiningRoom,
-        Self::Office,
-        Self::Other,
-    ];
-
     pub fn label(self) -> &'static str {
         match self {
             Self::Bedroom => "Quarto",
@@ -83,8 +73,22 @@ impl RoomKind {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Room {
     pub id: u64,
-    pub kind: RoomKind,
+    #[serde(default)]
+    pub name: String,
+    // Reads room types from older project files without assigning a preset to new rooms.
+    #[serde(default, rename = "kind", skip_serializing_if = "Option::is_none")]
+    pub legacy_kind: Option<RoomKind>,
     pub wall_ids: [u64; 4],
+}
+
+impl Room {
+    pub fn display_name(&self) -> &str {
+        if self.name.trim().is_empty() {
+            self.legacy_kind.map(RoomKind::label).unwrap_or("Cômodo")
+        } else {
+            &self.name
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -133,7 +137,16 @@ impl Project {
         Some(id)
     }
 
-    pub fn add_room(&mut self, first: Point, second: Point, kind: RoomKind) -> Option<u64> {
+    pub fn add_room(
+        &mut self,
+        first: Point,
+        second: Point,
+        name: impl Into<String>,
+    ) -> Option<u64> {
+        let name = name.into().trim().to_owned();
+        if name.is_empty() {
+            return None;
+        }
         let min = Point::new(first.x.min(second.x), first.y.min(second.y));
         let max = Point::new(first.x.max(second.x), first.y.max(second.y));
         if max.x - min.x < 0.5 || max.y - min.y < 0.5 {
@@ -147,7 +160,8 @@ impl Project {
         let id = self.id();
         self.rooms.push(Room {
             id,
-            kind,
+            name,
+            legacy_kind: None,
             wall_ids: ids,
         });
         Some(id)
@@ -227,6 +241,25 @@ impl Project {
         Some((min, max))
     }
 
+    pub fn room_at(&self, point: Point) -> Option<u64> {
+        self.rooms.iter().rev().find_map(|room| {
+            let (min, max) = self.room_bounds(room)?;
+            (point.x > min.x && point.x < max.x && point.y > min.y && point.y < max.y)
+                .then_some(room.id)
+        })
+    }
+
+    pub fn delete_room(&mut self, id: u64) -> bool {
+        let Some(index) = self.rooms.iter().position(|room| room.id == id) else {
+            return false;
+        };
+        let wall_ids = self.rooms.remove(index).wall_ids;
+        self.walls.retain(|wall| !wall_ids.contains(&wall.id));
+        self.openings
+            .retain(|opening| !wall_ids.contains(&opening.wall_id));
+        true
+    }
+
     pub fn delete_wall(&mut self, id: u64) {
         self.walls.retain(|wall| wall.id != id);
         self.openings.retain(|opening| opening.wall_id != id);
@@ -250,6 +283,19 @@ impl Project {
                 if wall.end.distance(old_start) < 0.01 || wall.end.distance(old_end) < 0.01 {
                     wall.end = wall.end.translated(delta);
                 }
+            }
+        }
+    }
+
+    pub fn move_room(&mut self, id: u64, delta: Point) {
+        let Some(room) = self.rooms.iter().find(|room| room.id == id) else {
+            return;
+        };
+        let wall_ids = room.wall_ids;
+        for wall in &mut self.walls {
+            if wall_ids.contains(&wall.id) {
+                wall.start = wall.start.translated(delta);
+                wall.end = wall.end.translated(delta);
             }
         }
     }
@@ -291,11 +337,7 @@ mod tests {
     fn room_creates_four_walls_and_connected_move() {
         let mut project = Project::default();
         let room_id = project
-            .add_room(
-                Point::new(0.0, 0.0),
-                Point::new(4.0, 3.0),
-                RoomKind::Bedroom,
-            )
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Quarto")
             .unwrap();
         let first_wall = project
             .rooms
@@ -321,5 +363,25 @@ mod tests {
                 .add_opening(wall, OpeningKind::Window, 0.5)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn moving_and_deleting_room_updates_its_walls_and_openings() {
+        let mut project = Project::default();
+        let room_id = project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Meu quarto")
+            .unwrap();
+        let wall_id = project.rooms[0].wall_ids[0];
+        project
+            .add_opening(wall_id, OpeningKind::Door, 0.5)
+            .unwrap();
+        assert_eq!(project.room_at(Point::new(2.0, 1.0)), Some(room_id));
+        project.move_room(room_id, Point::new(1.0, 0.5));
+        assert_eq!(project.room_at(Point::new(2.0, 1.0)), Some(room_id));
+        assert_eq!(project.walls[0].start, Point::new(1.0, 0.5));
+        assert!(project.delete_room(room_id));
+        assert!(project.rooms.is_empty());
+        assert!(project.walls.is_empty());
+        assert!(project.openings.is_empty());
     }
 }

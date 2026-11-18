@@ -10,7 +10,7 @@ use crate::{
     domain::{
         geometry::Point,
         history::History,
-        model::{OpeningKind, Project, RoomKind},
+        model::{OpeningKind, Project},
     },
     io::{export, project_file},
 };
@@ -25,9 +25,17 @@ enum Tool {
     Opening(OpeningKind),
 }
 
-struct WallDrag {
-    wall_id: u64,
+#[derive(Clone, Copy, PartialEq)]
+enum Selection {
+    Wall(u64),
+    Room(u64),
+}
+
+#[derive(Clone, Copy)]
+struct ItemDrag {
+    selection: Selection,
     last: Point,
+    moved: bool,
 }
 
 pub struct FloorPlanApp {
@@ -36,10 +44,12 @@ pub struct FloorPlanApp {
     file_path: Option<PathBuf>,
     dirty: bool,
     tool: Tool,
-    room_kind: RoomKind,
     draft_start: Option<Point>,
-    selected_wall: Option<u64>,
-    wall_drag: Option<WallDrag>,
+    selection: Option<Selection>,
+    item_drag: Option<ItemDrag>,
+    pending_room: Option<(Point, Point)>,
+    room_name: String,
+    room_dialog_focus: bool,
     opening_drag: Option<OpeningKind>,
     scale: f32,
     pan: egui::Vec2,
@@ -58,10 +68,12 @@ impl FloorPlanApp {
             file_path: None,
             dirty: false,
             tool: Tool::Wall,
-            room_kind: RoomKind::Bedroom,
             draft_start: None,
-            selected_wall: None,
-            wall_drag: None,
+            selection: None,
+            item_drag: None,
+            pending_room: None,
+            room_name: String::new(),
+            room_dialog_focus: false,
             opening_drag: None,
             scale: 60.0,
             pan: egui::Vec2::ZERO,
@@ -72,11 +84,14 @@ impl FloorPlanApp {
     fn set_tool(&mut self, tool: Tool) {
         self.tool = tool;
         self.draft_start = None;
-        self.wall_drag = None;
+        self.item_drag = None;
+        self.selection = None;
         self.message = match tool {
             Tool::Wall => "Clique em dois pontos para desenhar uma parede.",
-            Tool::Room => "Escolha o cômodo e clique em dois cantos opostos.",
-            Tool::Move => "Arraste uma parede para movê-la. As conexões acompanham.",
+            Tool::Room => "Clique em dois cantos opostos e dê um nome ao cômodo.",
+            Tool::Move => {
+                "Clique para selecionar. Arraste uma parede ou o interior de um cômodo para mover."
+            }
             Tool::Opening(OpeningKind::Door) => "Clique em uma parede para colocar uma porta.",
             Tool::Opening(OpeningKind::Window) => "Clique em uma parede para colocar uma janela.",
         }
@@ -89,7 +104,8 @@ impl FloorPlanApp {
         self.file_path = None;
         self.dirty = false;
         self.draft_start = None;
-        self.selected_wall = None;
+        self.selection = None;
+        self.pending_room = None;
         self.pan = egui::Vec2::ZERO;
         self.scale = 60.0;
         self.message = "Nova planta criada.".to_owned();
@@ -109,7 +125,8 @@ impl FloorPlanApp {
                 self.file_path = Some(path);
                 self.dirty = false;
                 self.draft_start = None;
-                self.selected_wall = None;
+                self.selection = None;
+                self.pending_room = None;
                 self.fit_view_requested();
                 self.message = "Projeto aberto com sucesso.".to_owned();
             }
@@ -170,7 +187,7 @@ impl FloorPlanApp {
     fn undo(&mut self) {
         if self.history.undo(&mut self.project) {
             self.dirty = true;
-            self.selected_wall = None;
+            self.selection = None;
             self.message = "Ação desfeita.".to_owned();
         }
     }
@@ -178,7 +195,7 @@ impl FloorPlanApp {
     fn redo(&mut self) {
         if self.history.redo(&mut self.project) {
             self.dirty = true;
-            self.selected_wall = None;
+            self.selection = None;
             self.message = "Ação refeita.".to_owned();
         }
     }
@@ -274,31 +291,86 @@ impl FloorPlanApp {
         let world = pointer.map(|position| view.to_world(position));
         let snapped = world.map(|point| self.snap(point, self.draft_start));
 
-        if self.tool == Tool::Move && response.drag_started_by(PointerButton::Primary) {
+        if self.pending_room.is_some() {
+            canvas::paint(&painter, view, &self.project, self.selection, None);
+            return;
+        }
+
+        if self.tool == Tool::Move {
             if let Some(point) = world {
-                if let Some((id, _)) = self.project.nearest_wall(point, 12.0 / self.scale) {
-                    self.record_change(self.project.clone());
-                    self.selected_wall = Some(id);
-                    self.wall_drag = Some(WallDrag {
-                        wall_id: id,
-                        last: point.snapped(),
+                if self
+                    .project
+                    .nearest_wall(point, 12.0 / self.scale)
+                    .is_some()
+                    || self.project.room_at(point).is_some()
+                {
+                    ui.ctx().set_cursor_icon(if self.item_drag.is_some() {
+                        egui::CursorIcon::Grabbing
+                    } else {
+                        egui::CursorIcon::Grab
                     });
                 }
             }
         }
-        if let (Some(drag), Some(point)) = (&mut self.wall_drag, world) {
-            if ui.input(|input| input.pointer.primary_down()) {
-                let current = point.snapped();
-                let delta = Point::new(current.x - drag.last.x, current.y - drag.last.y);
-                if delta.x != 0.0 || delta.y != 0.0 {
-                    self.project.move_wall(drag.wall_id, delta);
-                    self.dirty = true;
-                    drag.last = current;
+
+        if self.tool == Tool::Move {
+            let pressed = ui.input(|input| {
+                input.events.iter().find_map(|event| match event {
+                    egui::Event::PointerButton {
+                        pos,
+                        button: PointerButton::Primary,
+                        pressed: true,
+                        ..
+                    } if rect.contains(*pos) => Some(*pos),
+                    _ => None,
+                })
+            });
+            if let Some(position) = pressed {
+                let point = view.to_world(position);
+                self.selection = self
+                    .project
+                    .nearest_wall(point, 12.0 / self.scale)
+                    .map(|(id, _)| Selection::Wall(id))
+                    .or_else(|| self.project.room_at(point).map(Selection::Room));
+                self.item_drag = self.selection.map(|selection| ItemDrag {
+                    selection,
+                    last: point.snapped(),
+                    moved: false,
+                });
+                self.message = match self.selection {
+                    Some(Selection::Wall(_)) => {
+                        "Parede selecionada. Arraste para mover ou clique em Excluir."
+                    }
+                    Some(Selection::Room(_)) => {
+                        "Cômodo selecionado. Arraste para mover ou clique em Excluir."
+                    }
+                    None => "Clique em uma parede ou dentro de um cômodo para selecionar.",
+                }
+                .to_owned();
+            }
+            let primary_down = ui.input(|input| input.pointer.primary_down());
+            if primary_down {
+                if let (Some(point), Some(drag)) = (world, self.item_drag) {
+                    let current = point.snapped();
+                    let delta = Point::new(current.x - drag.last.x, current.y - drag.last.y);
+                    if delta.x != 0.0 || delta.y != 0.0 {
+                        if !drag.moved {
+                            self.record_change(self.project.clone());
+                        }
+                        match drag.selection {
+                            Selection::Wall(id) => self.project.move_wall(id, delta),
+                            Selection::Room(id) => self.project.move_room(id, delta),
+                        }
+                        if let Some(drag) = &mut self.item_drag {
+                            drag.last = current;
+                            drag.moved = true;
+                        }
+                    }
                 }
             }
         }
         if ui.input(|input| input.pointer.any_released()) {
-            self.wall_drag = None;
+            self.item_drag = None;
             if let Some(kind) = self.opening_drag.take() {
                 if let Some(point) = world {
                     self.add_opening_at(point, kind);
@@ -311,20 +383,21 @@ impl FloorPlanApp {
                 match self.tool {
                     Tool::Wall | Tool::Room => {
                         if let Some(start) = self.draft_start.take() {
-                            let previous = self.project.clone();
-                            let created = if self.tool == Tool::Wall {
-                                self.project.add_wall(start, point)
-                            } else {
-                                self.project.add_room(start, point, self.room_kind)
-                            };
-                            if created.is_some() {
-                                self.record_change(previous);
-                                self.message = if self.tool == Tool::Wall {
-                                    "Parede criada."
+                            if self.tool == Tool::Wall {
+                                let previous = self.project.clone();
+                                if self.project.add_wall(start, point).is_some() {
+                                    self.record_change(previous);
+                                    self.message = "Parede criada.".to_owned();
                                 } else {
-                                    "Cômodo criado."
+                                    self.message = "Escolha pontos mais distantes.".to_owned();
                                 }
-                                .to_owned();
+                            } else if (start.x - point.x).abs() >= 0.5
+                                && (start.y - point.y).abs() >= 0.5
+                            {
+                                self.pending_room = Some((start, point));
+                                self.room_name.clear();
+                                self.room_dialog_focus = true;
+                                self.message = "Digite o nome do cômodo para concluir.".to_owned();
                             } else {
                                 self.message = "Escolha pontos mais distantes.".to_owned();
                             }
@@ -334,12 +407,7 @@ impl FloorPlanApp {
                         }
                     }
                     Tool::Opening(kind) => self.add_opening_at(point, kind),
-                    Tool::Move => {
-                        self.selected_wall = self
-                            .project
-                            .nearest_wall(point, 12.0 / self.scale)
-                            .map(|(id, _)| id);
-                    }
+                    Tool::Move => {}
                 }
             }
         }
@@ -349,7 +417,7 @@ impl FloorPlanApp {
             (Some(start), Some(end), Tool::Room) => Some(Preview::Room(start, end)),
             _ => None,
         };
-        canvas::paint(&painter, view, &self.project, self.selected_wall, preview);
+        canvas::paint(&painter, view, &self.project, self.selection, preview);
         if let Some(position) = pointer {
             if self.tool == Tool::Wall || self.tool == Tool::Room {
                 if let Some(point) = snapped {
@@ -377,12 +445,16 @@ impl FloorPlanApp {
             (
                 input.modifiers.command && input.key_pressed(Key::S),
                 input.modifiers.command && input.key_pressed(Key::O),
-                input.modifiers.command && input.key_pressed(Key::Z) && !input.modifiers.shift,
+                input.modifiers.command
+                    && input.key_pressed(Key::Z)
+                    && !input.modifiers.shift
+                    && !context.egui_wants_keyboard_input(),
                 input.modifiers.command
                     && (input.key_pressed(Key::Y)
-                        || (input.modifiers.shift && input.key_pressed(Key::Z))),
+                        || (input.modifiers.shift && input.key_pressed(Key::Z)))
+                    && !context.egui_wants_keyboard_input(),
                 input.key_pressed(Key::Escape),
-                input.key_pressed(Key::Delete),
+                input.key_pressed(Key::Delete) && !context.egui_wants_keyboard_input(),
             )
         });
         if actions.0 {
@@ -399,10 +471,11 @@ impl FloorPlanApp {
         }
         if actions.4 {
             self.draft_start = None;
+            self.pending_room = None;
             self.message = "Ação cancelada.".to_owned();
         }
         if actions.5 {
-            self.delete_selected_wall();
+            self.delete_selection();
         }
     }
 }
