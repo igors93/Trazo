@@ -1,7 +1,7 @@
 use eframe::egui::{self, Align2, Color32, FontId, Painter, Pos2, Rect, Stroke, Vec2};
 
 use crate::domain::{
-    geometry::{GRID_METERS, Point, format_meters},
+    geometry::{GRID_METERS, Point, WALL_THICKNESS_METERS, format_meters},
     model::{OpeningKind, Project, Wall},
 };
 
@@ -118,7 +118,10 @@ pub fn paint(
             Preview::Wall(a, b) => {
                 painter.line_segment(
                     [view.to_screen(a), view.to_screen(b)],
-                    Stroke::new(6.0, Color32::from_rgb(40, 176, 158)),
+                    Stroke::new(
+                        wall_stroke_width(view.scale),
+                        Color32::from_rgb(40, 176, 158),
+                    ),
                 );
                 painter.circle_filled(view.to_screen(b), 5.0, Color32::from_rgb(40, 176, 158));
                 let midpoint = view.to_screen(a).lerp(view.to_screen(b), 0.5);
@@ -140,7 +143,10 @@ pub fn paint(
                 for index in 0..4 {
                     painter.line_segment(
                         [corners[index], corners[(index + 1) % 4]],
-                        Stroke::new(4.0, Color32::from_rgb(40, 176, 158)),
+                        Stroke::new(
+                            wall_stroke_width(view.scale),
+                            Color32::from_rgb(40, 176, 158),
+                        ),
                     );
                 }
                 paint_measure(
@@ -254,6 +260,7 @@ fn paint_wall(
     let direction = (b - a).normalized();
     let normal = egui::vec2(-direction.y, direction.x);
     let screen_length = a.distance(b);
+    let wall_width = wall_stroke_width(view.scale);
     let color = if selected {
         Color32::from_rgb(36, 160, 147)
     } else {
@@ -273,7 +280,7 @@ fn paint_wall(
         let right = center + half;
         painter.line_segment(
             [a + direction * cursor, a + direction * left],
-            Stroke::new(8.0, color),
+            Stroke::new(wall_width, color),
         );
         match opening.kind {
             OpeningKind::Door => {
@@ -312,8 +319,8 @@ fn paint_wall(
         }
         cursor = right;
     }
-    painter.line_segment([a + direction * cursor, b], Stroke::new(8.0, color));
-    let midpoint = a.lerp(b, 0.5) + normal * 19.0;
+    painter.line_segment([a + direction * cursor, b], Stroke::new(wall_width, color));
+    let midpoint = a.lerp(b, 0.5) + normal * (wall_width / 2.0 + 11.0);
     painter.text(
         midpoint,
         Align2::CENTER_CENTER,
@@ -321,4 +328,19 @@ fn paint_wall(
         FontId::proportional(11.0),
         Color32::from_rgb(88, 108, 121),
     );
+}
+
+fn wall_stroke_width(scale: f32) -> f32 {
+    (scale * WALL_THICKNESS_METERS).clamp(1.5, 10.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wall_stroke_width;
+
+    #[test]
+    fn wall_lines_get_thinner_when_zoomed_out() {
+        assert!(wall_stroke_width(18.0) < 3.0);
+        assert!(wall_stroke_width(60.0) > 6.0);
+    }
 }

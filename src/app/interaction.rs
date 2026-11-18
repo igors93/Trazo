@@ -42,9 +42,7 @@ impl FloorPlanApp {
     pub(super) fn canvas(&mut self, ui: &mut egui::Ui) {
         let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
         let rect = response.rect;
-        if self.fit_pending {
-            self.fit_view(rect);
-        }
+        self.prepare_canvas_view(rect);
         if response.hovered() {
             let scroll = ui.input(|input| input.smooth_scroll_delta.y);
             if scroll.abs() > 0.0 {
@@ -78,7 +76,18 @@ impl FloorPlanApp {
             .input(|input| input.pointer.hover_pos())
             .filter(|position| rect.contains(*position));
         let world = pointer.map(|position| view.to_world(position));
-        let snapped = world.map(|point| self.snap(point, self.draft_start));
+        let snapped = world.map(|point| {
+            let point = self.snap(point, self.draft_start);
+            if matches!(self.tool, Tool::Room | Tool::Wall) {
+                if let Some(terrain) = &self.project.terrain {
+                    return Point::new(
+                        point.x.clamp(terrain.min.x, terrain.max.x),
+                        point.y.clamp(terrain.min.y, terrain.max.y),
+                    );
+                }
+            }
+            point
+        });
 
         if self.pending_room.is_some() {
             canvas::paint(&painter, view, &self.project, self.selection, None);
@@ -214,7 +223,7 @@ impl FloorPlanApp {
                                     self.record_change(previous);
                                     self.message = "Parede criada.".to_owned();
                                 } else {
-                                    self.message = "Escolha pontos mais distantes.".to_owned();
+                                    self.message = "A parede deve caber dentro do terreno e ter pelo menos 0,25 m.".to_owned();
                                 }
                             } else if (start.x - point.x).abs() >= 0.5
                                 && (start.y - point.y).abs() >= 0.5

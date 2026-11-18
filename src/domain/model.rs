@@ -150,6 +150,56 @@ pub struct Opening {
 }
 
 impl Project {
+    pub fn content_bounds(&self) -> Option<(Point, Point)> {
+        if self.walls.is_empty() {
+            return None;
+        }
+        let mut min = Point::new(f32::INFINITY, f32::INFINITY);
+        let mut max = Point::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
+        for wall in &self.walls {
+            min.x = min.x.min(wall.start.x.min(wall.end.x));
+            min.y = min.y.min(wall.start.y.min(wall.end.y));
+            max.x = max.x.max(wall.start.x.max(wall.end.x));
+            max.y = max.y.max(wall.start.y.max(wall.end.y));
+        }
+        Some((min, max))
+    }
+
+    pub fn content_fits_terrain(&self) -> bool {
+        let (Some(terrain), Some((min, max))) = (&self.terrain, self.content_bounds()) else {
+            return false;
+        };
+        max.x - min.x <= terrain.width() + 0.001 && max.y - min.y <= terrain.height() + 0.001
+    }
+
+    pub fn content_inside_terrain(&self) -> bool {
+        let (Some(terrain), Some((min, max))) = (&self.terrain, self.content_bounds()) else {
+            return true;
+        };
+        min.x >= terrain.min.x - 0.001
+            && min.y >= terrain.min.y - 0.001
+            && max.x <= terrain.max.x + 0.001
+            && max.y <= terrain.max.y + 0.001
+    }
+
+    pub fn center_content_on_terrain(&mut self) -> bool {
+        let (Some(terrain), Some((min, max))) = (&self.terrain, self.content_bounds()) else {
+            return false;
+        };
+        if !self.content_fits_terrain() {
+            return false;
+        }
+        let delta = Point::new(
+            (terrain.min.x + terrain.max.x - min.x - max.x) / 2.0,
+            (terrain.min.y + terrain.max.y - min.y - max.y) / 2.0,
+        );
+        for wall in &mut self.walls {
+            wall.start = wall.start.translated(delta);
+            wall.end = wall.end.translated(delta);
+        }
+        true
+    }
+
     pub fn set_terrain(&mut self, first: Point, second: Point) -> Option<u64> {
         let min = Point::new(first.x.min(second.x), first.y.min(second.y));
         let max = Point::new(first.x.max(second.x), first.y.max(second.y));
@@ -181,6 +231,10 @@ impl Project {
             if terrain.id == id {
                 terrain.min = terrain.min.translated(delta);
                 terrain.max = terrain.max.translated(delta);
+                for wall in &mut self.walls {
+                    wall.start = wall.start.translated(delta);
+                    wall.end = wall.end.translated(delta);
+                }
             }
         }
     }
@@ -208,6 +262,13 @@ impl Project {
         if start.distance(end) < 0.24 {
             return None;
         }
+        if self
+            .terrain
+            .as_ref()
+            .is_some_and(|terrain| !terrain.contains(start) || !terrain.contains(end))
+        {
+            return None;
+        }
         let id = self.id();
         self.walls.push(Wall { id, start, end });
         Some(id)
@@ -226,6 +287,13 @@ impl Project {
         let min = Point::new(first.x.min(second.x), first.y.min(second.y));
         let max = Point::new(first.x.max(second.x), first.y.max(second.y));
         if max.x - min.x < 0.5 || max.y - min.y < 0.5 {
+            return None;
+        }
+        if self
+            .terrain
+            .as_ref()
+            .is_some_and(|terrain| !terrain.contains(min) || !terrain.contains(max))
+        {
             return None;
         }
         let corners = [min, Point::new(max.x, min.y), max, Point::new(min.x, max.y)];
@@ -348,6 +416,7 @@ impl Project {
         };
         let old_start = self.walls[index].start;
         let old_end = self.walls[index].end;
+        let delta = self.clamp_delta_to_terrain(old_start, old_end, delta);
         for (other_index, wall) in self.walls.iter_mut().enumerate() {
             if other_index == index {
                 wall.start = wall.start.translated(delta);
@@ -368,12 +437,35 @@ impl Project {
             return;
         };
         let wall_ids = room.wall_ids;
+        let delta = self
+            .room_bounds(room)
+            .map(|(min, max)| self.clamp_delta_to_terrain(min, max, delta))
+            .unwrap_or(delta);
         for wall in &mut self.walls {
             if wall_ids.contains(&wall.id) {
                 wall.start = wall.start.translated(delta);
                 wall.end = wall.end.translated(delta);
             }
         }
+    }
+
+    fn clamp_delta_to_terrain(&self, min: Point, max: Point, delta: Point) -> Point {
+        let Some(terrain) = &self.terrain else {
+            return delta;
+        };
+        let (min, max) = (
+            Point::new(min.x.min(max.x), min.y.min(max.y)),
+            Point::new(min.x.max(max.x), min.y.max(max.y)),
+        );
+        if max.x - min.x > terrain.width() + 0.001 || max.y - min.y > terrain.height() + 0.001 {
+            return delta;
+        }
+        let max_origin_x = (terrain.max.x - (max.x - min.x)).max(terrain.min.x);
+        let max_origin_y = (terrain.max.y - (max.y - min.y)).max(terrain.min.y);
+        Point::new(
+            (min.x + delta.x).clamp(terrain.min.x, max_origin_x) - min.x,
+            (min.y + delta.y).clamp(terrain.min.y, max_origin_y) - min.y,
+        )
     }
 
     pub fn bounds(&self) -> Option<(Point, Point)> {
@@ -390,11 +482,11 @@ impl Project {
             .as_ref()
             .map(|t| t.max)
             .unwrap_or(Point::new(f32::NEG_INFINITY, f32::NEG_INFINITY));
-        for wall in &self.walls {
-            min.x = min.x.min(wall.start.x.min(wall.end.x));
-            min.y = min.y.min(wall.start.y.min(wall.end.y));
-            max.x = max.x.max(wall.start.x.max(wall.end.x));
-            max.y = max.y.max(wall.start.y.max(wall.end.y));
+        if let Some((content_min, content_max)) = self.content_bounds() {
+            min.x = min.x.min(content_min.x);
+            min.y = min.y.min(content_min.y);
+            max.x = max.x.max(content_max.x);
+            max.y = max.y.max(content_max.y);
         }
         Some((min, max))
     }
@@ -424,6 +516,48 @@ mod tests {
         );
         assert!(project.delete_terrain(id));
         assert_eq!(project.bounds(), None);
+    }
+
+    #[test]
+    fn existing_room_can_be_centered_inside_terrain() {
+        let mut project = Project::default();
+        project.add_room(Point::new(-20.0, 2.0), Point::new(-10.0, 10.0), "Garagem");
+        project.set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 50.0));
+        assert!(!project.content_inside_terrain());
+        assert!(project.content_fits_terrain());
+        assert!(project.center_content_on_terrain());
+        assert_eq!(
+            project.content_bounds(),
+            Some((Point::new(0.0, 21.0), Point::new(10.0, 29.0)))
+        );
+        assert!(project.content_inside_terrain());
+    }
+
+    #[test]
+    fn new_rooms_and_moves_stay_within_terrain() {
+        let mut project = Project::default();
+        let terrain_id = project
+            .set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 50.0))
+            .unwrap();
+        assert!(
+            project
+                .add_room(Point::new(11.0, 1.0), Point::new(15.0, 5.0), "Fora")
+                .is_none()
+        );
+        let room_id = project
+            .add_room(Point::new(1.0, 1.0), Point::new(5.0, 5.0), "Dentro")
+            .unwrap();
+        project.move_room(room_id, Point::new(20.0, 0.0));
+        assert_eq!(
+            project.content_bounds(),
+            Some((Point::new(6.0, 1.0), Point::new(10.0, 5.0)))
+        );
+        project.move_terrain(terrain_id, Point::new(3.0, 2.0));
+        assert_eq!(
+            project.content_bounds(),
+            Some((Point::new(9.0, 3.0), Point::new(13.0, 7.0)))
+        );
+        assert!(project.content_inside_terrain());
     }
 
     #[test]

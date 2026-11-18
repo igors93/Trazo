@@ -40,6 +40,24 @@ impl FloorPlanApp {
         {
             self.create_terrain_from_dimensions();
         }
+        if self.project.terrain.is_some() && !self.project.walls.is_empty() {
+            ui.add_space(8.0);
+            if !self.project.content_inside_terrain() {
+                ui.label(
+                    RichText::new("Há paredes ou cômodos fora do terreno.")
+                        .color(Color32::from_rgb(167, 76, 56)),
+                );
+            }
+            if ui
+                .add_enabled(
+                    self.project.content_fits_terrain(),
+                    egui::Button::new("Centralizar planta no terreno"),
+                )
+                .clicked()
+            {
+                self.center_content_on_terrain();
+            }
+        }
         ui.add_space(12.0);
         ui.separator();
         ui.add(

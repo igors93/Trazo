@@ -54,6 +54,7 @@ pub struct FloorPlanApp {
     opening_drag: Option<OpeningKind>,
     scale: f32,
     pan: egui::Vec2,
+    last_canvas_center: Option<egui::Pos2>,
     fit_pending: bool,
     terrain_width_text: String,
     terrain_height_text: String,
@@ -78,6 +79,7 @@ impl FloorPlanApp {
             opening_drag: None,
             scale: 60.0,
             pan: egui::Vec2::ZERO,
+            last_canvas_center: None,
             fit_pending: false,
             terrain_width_text: "5,00".to_owned(),
             terrain_height_text: "10,00".to_owned(),
@@ -112,6 +114,7 @@ impl FloorPlanApp {
         self.selection = None;
         self.pending_room = None;
         self.pan = egui::Vec2::ZERO;
+        self.last_canvas_center = None;
         self.scale = 60.0;
         self.fit_pending = false;
         self.terrain_width_text = "5,00".to_owned();
@@ -233,6 +236,15 @@ impl FloorPlanApp {
         }
     }
 
+    fn prepare_canvas_view(&mut self, rect: egui::Rect) {
+        if self.fit_pending {
+            self.fit_view(rect);
+        } else if let Some(previous_center) = self.last_canvas_center {
+            self.pan += previous_center - rect.center();
+        }
+        self.last_canvas_center = Some(rect.center());
+    }
+
     fn create_terrain_from_dimensions(&mut self) {
         let Some((width, height)) = self.terrain_dimensions() else {
             self.message = "Informe medidas válidas de pelo menos 0,25 m.".to_owned();
@@ -248,8 +260,18 @@ impl FloorPlanApp {
             self.project.resize_terrain(width, height);
             id
         } else {
+            let origin = self
+                .project
+                .content_bounds()
+                .map(|(min, max)| {
+                    Point::new(
+                        (min.x + max.x - width) / 2.0,
+                        (min.y + max.y - height) / 2.0,
+                    )
+                })
+                .unwrap_or(Point::new(0.0, 0.0));
             self.project
-                .set_terrain(Point::new(0.0, 0.0), Point::new(width, height))
+                .set_terrain(origin, Point::new(origin.x + width, origin.y + height))
                 .unwrap()
         };
         self.record_change(previous);
@@ -265,6 +287,21 @@ impl FloorPlanApp {
             width * height
         )
         .replace('.', ",");
+        if !self.project.content_inside_terrain() {
+            self.message
+                .push_str(" Há paredes fora do terreno; use Centralizar planta.");
+        }
+    }
+
+    fn center_content_on_terrain(&mut self) {
+        let previous = self.project.clone();
+        if self.project.center_content_on_terrain() {
+            self.record_change(previous);
+            self.fit_view_requested();
+            self.message = "Planta centralizada no terreno.".to_owned();
+        } else {
+            self.message = "A planta precisa caber no terreno para ser centralizada.".to_owned();
+        }
     }
 
     fn terrain_dimensions(&self) -> Option<(f32, f32)> {
@@ -401,5 +438,40 @@ mod tests {
         assert_eq!(app.terrain_dimensions(), Some((5.5, 10.0)));
         app.terrain_width_text = "0".to_owned();
         assert_eq!(app.terrain_dimensions(), None);
+    }
+
+    #[test]
+    fn terrain_created_after_room_contains_the_room() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        app.project
+            .add_room(Point::new(-20.0, 2.0), Point::new(-10.0, 10.0), "Garagem");
+        app.terrain_width_text = "10".to_owned();
+        app.terrain_height_text = "50".to_owned();
+        app.create_terrain_from_dimensions();
+        assert!(app.project.content_inside_terrain());
+    }
+
+    #[test]
+    fn opening_inspector_does_not_shift_the_plan_on_screen() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let wide = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1000.0, 700.0));
+        let narrow = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(740.0, 700.0));
+        app.prepare_canvas_view(wide);
+        let before = canvas::ViewTransform {
+            rect: wide,
+            scale: app.scale,
+            pan: app.pan,
+        }
+        .to_screen(Point::new(5.0, 10.0));
+        app.prepare_canvas_view(narrow);
+        let after = canvas::ViewTransform {
+            rect: narrow,
+            scale: app.scale,
+            pan: app.pan,
+        }
+        .to_screen(Point::new(5.0, 10.0));
+        assert_eq!(before, after);
     }
 }

@@ -1,7 +1,7 @@
 use std::{fmt::Write as _, fs, path::Path};
 
 use crate::domain::{
-    geometry::{Point, format_meters},
+    geometry::{Point, WALL_THICKNESS_METERS, format_meters},
     model::{OpeningKind, Project},
 };
 
@@ -30,6 +30,7 @@ fn document(project: &Project) -> SvgDocument {
     let span_x = (max.x - min.x).max(6.0);
     let span_y = (max.y - min.y).max(4.0);
     let pixels_per_meter = PIXELS_PER_METER.min(5000.0 / span_x).min(5000.0 / span_y);
+    let wall_width = (pixels_per_meter * WALL_THICKNESS_METERS).clamp(1.0, 12.0);
     let width = (span_x * pixels_per_meter + MARGIN * 2.0).ceil() as u32;
     let height = (span_y * pixels_per_meter + MARGIN * 2.0).ceil() as u32;
     let point = |p: Point| -> (f32, f32) {
@@ -118,7 +119,7 @@ fn document(project: &Project) -> SvgDocument {
             let right = center + half;
             let _ = writeln!(
                 svg,
-                "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{left:.1}\" y2=\"0\" stroke=\"#24354b\" stroke-width=\"11\" stroke-linecap=\"square\"/>"
+                "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{left:.1}\" y2=\"0\" stroke=\"#24354b\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/>"
             );
             match opening.kind {
                 OpeningKind::Door => {
@@ -142,7 +143,7 @@ fn document(project: &Project) -> SvgDocument {
         }
         let _ = writeln!(
             svg,
-            "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{length:.1}\" y2=\"0\" stroke=\"#24354b\" stroke-width=\"11\" stroke-linecap=\"square\"/></g>"
+            "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{length:.1}\" y2=\"0\" stroke=\"#24354b\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/></g>"
         );
         let center = point(wall.point_at(0.5));
         let dx = wall.end.x - wall.start.x;

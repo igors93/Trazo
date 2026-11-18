@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 pub const GRID_METERS: f32 = 0.25;
+pub const WALL_THICKNESS_METERS: f32 = 0.12;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Point {
