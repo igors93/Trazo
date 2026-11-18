@@ -1,4 +1,7 @@
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use crate::domain::model::Project;
 
@@ -25,9 +28,9 @@ pub fn load() -> Option<Project> {
 }
 
 fn load_from(path: &Path) -> Option<Project> {
-    project_file::load(path)
+    project_file::load_project(path)
         .ok()
-        .or_else(|| project_file::load(&backup_path(path)).ok())
+        .or_else(|| project_file::load_project(&backup_path(path)).ok())
 }
 
 pub fn save(project: &Project) -> Result<(), String> {
@@ -52,10 +55,10 @@ fn save_to(project: &Project, path: &Path) -> Result<(), String> {
 pub fn clear() {
     let path = recovery_path();
     for file in [&path, &backup_path(&path), &temporary_path(&path)] {
-        if let Err(error) = fs::remove_file(file) {
-            if error.kind() != std::io::ErrorKind::NotFound {
-                eprintln!("Could not clear Trazo recovery file: {error}");
-            }
+        if let Err(error) = fs::remove_file(file)
+            && error.kind() != std::io::ErrorKind::NotFound
+        {
+            eprintln!("Could not clear Trazo recovery file: {error}");
         }
     }
 }

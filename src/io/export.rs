@@ -77,14 +77,6 @@ fn document(project: &Project) -> SvgDocument {
                 .collect::<Vec<_>>()
                 .join(" ");
             let _ = writeln!(svg, "<polygon points=\"{}\" fill=\"#eff8f7\"/>", points_str);
-        } else if let Some((a, b)) = project.room_bounds(room) {
-            let (x, y) = point(a);
-            let w = (b.x - a.x) * pixels_per_meter;
-            let h = (b.y - a.y) * pixels_per_meter;
-            let _ = writeln!(
-                svg,
-                "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" fill=\"#eff8f7\"/>"
-            );
         }
     }
     for wall in &project.walls {

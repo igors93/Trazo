@@ -115,22 +115,50 @@ fn triangle_contains_point(a: Point, b: Point, c: Point, p: Point) -> bool {
     !(has_neg && has_pos)
 }
 
+fn segments_cross(p1: Point, p2: Point, p3: Point, p4: Point) -> bool {
+    let ccw = |a: Point, b: Point, c: Point| -> f32 {
+        (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+    };
+    let d1 = ccw(p1, p2, p3);
+    let d2 = ccw(p1, p2, p4);
+    let d3 = ccw(p3, p4, p1);
+    let d4 = ccw(p3, p4, p2);
+
+    ((d1 > 1e-4 && d2 < -1e-4) || (d1 < -1e-4 && d2 > 1e-4))
+        && ((d3 > 1e-4 && d4 < -1e-4) || (d3 < -1e-4 && d4 > 1e-4))
+}
+
 pub fn triangulate_polygon(vertices: &[Point]) -> Vec<[Point; 3]> {
     let n = vertices.len();
     if n < 3 {
         return Vec::new();
     }
+    let total_area = polygon_area(vertices);
+    if total_area < 1e-4 {
+        return Vec::new();
+    }
+
+    // Check for self-intersection between non-adjacent edges
+    for i in 0..n {
+        let p1 = vertices[i];
+        let p2 = vertices[(i + 1) % n];
+        for j in (i + 2)..n {
+            if i == 0 && j == n - 1 {
+                continue;
+            }
+            let p3 = vertices[j];
+            let p4 = vertices[(j + 1) % n];
+            if segments_cross(p1, p2, p3, p4) {
+                return Vec::new();
+            }
+        }
+    }
+
     if n == 3 {
         return vec![[vertices[0], vertices[1], vertices[2]]];
     }
-    if n == 4 {
-        return vec![
-            [vertices[0], vertices[1], vertices[2]],
-            [vertices[0], vertices[2], vertices[3]],
-        ];
-    }
 
-    // Ear clipping triangulation
+    // Ear clipping triangulation for simple polygons
     let mut indices: Vec<usize> = (0..n).collect();
     let mut triangles = Vec::with_capacity(n - 2);
 
@@ -143,7 +171,8 @@ pub fn triangulate_polygon(vertices: &[Point]) -> Vec<[Point; 3]> {
     let ccw = signed_area >= 0.0;
 
     let mut iterations = 0;
-    while indices.len() > 3 && iterations < n * 4 {
+    let max_iterations = n * n;
+    while indices.len() > 3 && iterations < max_iterations {
         iterations += 1;
         let mut ear_found = false;
         let count = indices.len();
@@ -161,7 +190,7 @@ pub fn triangulate_polygon(vertices: &[Point]) -> Vec<[Point; 3]> {
                 continue;
             }
 
-            // Check if any other vertex lies inside the triangle
+            // Check if any other vertex lies inside the candidate ear
             let mut has_inside = false;
             for &idx in &indices {
                 if idx != prev
@@ -181,8 +210,7 @@ pub fn triangulate_polygon(vertices: &[Point]) -> Vec<[Point; 3]> {
             }
         }
         if !ear_found {
-            // Fallback triangle fan
-            break;
+            return Vec::new();
         }
     }
 
@@ -192,12 +220,21 @@ pub fn triangulate_polygon(vertices: &[Point]) -> Vec<[Point; 3]> {
             vertices[indices[1]],
             vertices[indices[2]],
         ]);
-    } else if triangles.len() < n - 2 {
-        // Fallback fan from vertex 0 if ear clipping got stuck
-        triangles.clear();
-        for i in 1..n - 1 {
-            triangles.push([vertices[0], vertices[i], vertices[i + 1]]);
-        }
+    }
+
+    if triangles.len() != n - 2 {
+        return Vec::new();
+    }
+
+    let tri_sum: f32 = triangles
+        .iter()
+        .map(|t| {
+            ((t[1].x - t[0].x) * (t[2].y - t[0].y) - (t[1].y - t[0].y) * (t[2].x - t[0].x)).abs()
+                / 2.0
+        })
+        .sum();
+    if (tri_sum - total_area).abs() > 0.05 {
+        return Vec::new();
     }
 
     triangles
@@ -233,5 +270,65 @@ mod tests {
 
         let tris = triangulate_polygon(&poly);
         assert_eq!(tris.len(), 2);
+    }
+
+    #[test]
+    fn triangulate_concave_quad_and_complex_polygons() {
+        // Concave quad (dart)
+        let dart = vec![
+            Point::new(0.0, 0.0),
+            Point::new(4.0, 0.0),
+            Point::new(2.0, 1.0),
+            Point::new(4.0, 2.0),
+        ];
+        let tris = triangulate_polygon(&dart);
+        assert_eq!(tris.len(), 2);
+        let area: f32 = tris
+            .iter()
+            .map(|t| {
+                ((t[1].x - t[0].x) * (t[2].y - t[0].y) - (t[1].y - t[0].y) * (t[2].x - t[0].x))
+                    .abs()
+                    / 2.0
+            })
+            .sum();
+        assert!((area - polygon_area(&dart)).abs() < 1e-3);
+
+        // L-shaped concave 6-vertex polygon
+        let l_shape = vec![
+            Point::new(0.0, 0.0),
+            Point::new(4.0, 0.0),
+            Point::new(4.0, 2.0),
+            Point::new(2.0, 2.0),
+            Point::new(2.0, 4.0),
+            Point::new(0.0, 4.0),
+        ];
+        let l_tris = triangulate_polygon(&l_shape);
+        assert_eq!(l_tris.len(), 4);
+        let l_area: f32 = l_tris
+            .iter()
+            .map(|t| {
+                ((t[1].x - t[0].x) * (t[2].y - t[0].y) - (t[1].y - t[0].y) * (t[2].x - t[0].x))
+                    .abs()
+                    / 2.0
+            })
+            .sum();
+        assert!((l_area - 12.0).abs() < 1e-3);
+
+        // Degenerate collinear polygon (area ≈ 0)
+        let degen = vec![
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 0.0),
+            Point::new(2.0, 0.0),
+        ];
+        assert!(triangulate_polygon(&degen).is_empty());
+
+        // Self-intersecting polygon (hourglass/bowtie)
+        let bowtie = vec![
+            Point::new(0.0, 0.0),
+            Point::new(4.0, 4.0),
+            Point::new(4.0, 0.0),
+            Point::new(0.0, 4.0),
+        ];
+        assert!(triangulate_polygon(&bowtie).is_empty());
     }
 }

@@ -10,26 +10,30 @@ cargo run --release
 
 ## Main workflow
 
-1. Choose **Terreno** and enter exact width and length in meters. For a 50 m² plot, use 5 m × 10 m and click **Criar terreno**. You can also click two opposite corners on the canvas. A new numeric terrain is centered on existing walls and rooms when they fit.
-2. Choose **Parede** and click two points on the canvas to create a wall.
-3. Choose **Cômodo**, click two opposite corners, and type any name in the dialog. A rectangular room with four connected walls is created.
-4. Drag **Porta** or **Janela** from the ribbon onto a wall. You can also select either tool and click a wall.
-5. Choose **Selecionar**. Click or drag a wall, room, or terrain. Use **Excluir** or Delete to remove it. Terrain dimensions can be changed in the contextual inspector. If an older plan is outside the terrain, use **Centralizar planta no terreno** in the inspector.
-6. Use the **Arquivo** menu to save the editable project as JSON or export PNG/PDF for sharing.
+1. Choose **Terreno** and enter exact width and length in meters (e.g. 5 m × 10 m) and click **Criar terreno**, or draw it directly on the canvas using click-and-drag or two opposite corner clicks. Existing walls and rooms are preserved and centered when appropriate.
+2. Choose **Parede** to draw a wall using either click-and-drag or two sequential clicks. Snapping to the 0.25 m grid, vertices, and orthogonal lines assists precise alignment.
+3. Choose **Cômodo** to create a rectangular room by dragging or clicking two corners, then name the room in the modal dialog. Four connected boundary walls are generated, sharing existing collinear walls automatically without duplication.
+4. Add openings by either dragging **Porta** or **Janela** from the ribbon onto a wall, or by selecting the tool and clicking a wall. Openings respect minimum distances from wall ends and cannot overlap other openings.
+5. Choose **Selecionar** to inspect and edit elements:
+   - **Walls**: adjust length numerically with instant preview.
+   - **Rooms**: rename rooms or update width and length numerically. Connected openings, wall IDs, and shared walls are preserved transactionally.
+   - **Openings**: drag along the wall or set custom widths within certified limits (doors: 0.60 m to 2.00 m; windows: 0.40 m to 4.00 m).
+   - **Terrain**: resize or use **Centralizar planta no terreno**.
+   - Use **Excluir** or the `Delete` key to remove selected items.
+6. Use the **Arquivo** menu to save projects (`.json`), export high-resolution PNG or vector PDF, open existing files, or create new plans. Safe atomic file replacement with automatic `.trazo.bak` backup and background crash recovery (`.trazo_recovery.json`) ensures zero data loss.
 
-The grid adapts to zoom (0.25 m, 1 m, or 5 m), with additional snapping to existing endpoints. Walls and rooms stay within the terrain when one exists, and wall strokes become thinner when zoomed out. Wall length, room dimensions, and terrain area update in the live drawing preview. Use **Enquadrar** to fit the whole project in the window. The bottom slider and mouse wheel control zoom; the middle mouse button pans. Press Esc to cancel drawing. Ctrl+S, Ctrl+O, Ctrl+Z, and Ctrl+Y are available. Older project files still open.
+Drawing creation can be cancelled at any time by pressing `Esc` or switching tools. Standard shortcuts (`Ctrl+S`, `Ctrl+O`, `Ctrl+Z`, `Ctrl+Y`) and Portuguese decimal comma input are fully supported. Older project file schemas remain fully backward-compatible.
 
 ## Structure
 
-- `src/domain/geometry.rs`: points, distances, projections, and grid spacing.
-- `src/domain/model.rs`: terrain, walls, rooms, openings, and editing operations.
-- `src/domain/history.rs`: undo and redo snapshots.
-- `src/app/canvas.rs`: drawing the grid, plan, openings, and live previews.
-- `src/app/ui/`: menu bar, ribbon, contextual inspector, room naming dialog, status bar, and lightweight vector icons.
-- `src/app/interaction.rs`: canvas input, selection, dragging, and snapping.
-- `src/app/theme.rs`: egui visual theme.
-- `src/app/mod.rs`: application state, project commands, and viewport fitting.
-- `src/io/project_file.rs`: editable project persistence.
-- `src/io/export.rs`: SVG based PNG and vector PDF export.
-
-This is an initial drafting tool. Rooms are rectangular and wall thickness, opening dimensions, and door swing are fixed defaults. Wall length and room dimensions are shown in meters.
+- `src/domain/geometry.rs`: points, distances, projections, and robust polygon ear-clipping triangulation.
+- `src/domain/model.rs`: terrain, walls, rooms, openings, validation rules, and geometric operations.
+- `src/domain/history.rs`: undo and redo stack with duplicate-state suppression.
+- `src/app/canvas.rs`: rendering grid, walls, rooms, openings, labels, and live previews.
+- `src/app/ui/`: header menu, ribbon toolbar, contextual inspector, room dialog, status bar, and icons.
+- `src/app/interaction.rs`: canvas mouse interactions, creation state machine, dragging, and snapping.
+- `src/app/theme.rs`: custom egui visual theme.
+- `src/app/mod.rs`: application state, data protection flows, commands, and shortcuts.
+- `src/io/project_file.rs`: atomic project persistence with backup and backward-compatible deserialization.
+- `src/io/recovery.rs`: auto-save and draft recovery mechanism.
+- `src/io/export.rs`: high-resolution PNG and vector PDF export via SVG rendering.

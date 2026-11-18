@@ -164,11 +164,31 @@ impl OpeningKind {
         }
     }
 
-    pub fn width(self) -> f32 {
+    pub fn default_width(self) -> f32 {
         match self {
             Self::Door => 0.9,
 
             Self::Window => 1.2,
+        }
+    }
+
+    pub fn width(self) -> f32 {
+        self.default_width()
+    }
+
+    pub fn min_width(self) -> f32 {
+        match self {
+            Self::Door => 0.60,
+
+            Self::Window => 0.40,
+        }
+    }
+
+    pub fn max_width(self) -> f32 {
+        match self {
+            Self::Door => 2.00,
+
+            Self::Window => 4.00,
         }
     }
 }
@@ -388,18 +408,27 @@ impl Project {
         let wall_idx = self.walls.iter().position(|w| w.id == wall_id)?;
 
         let old_start = self.walls[wall_idx].start;
-
         let old_end = self.walls[wall_idx].end;
-
         let total_len = old_start.distance(old_end);
-
         let split_dist = old_start.distance(split_point);
 
         if split_dist < 0.15 || (total_len - split_dist) < 0.15 {
             return None;
         }
 
-        let split_t = split_dist / total_len;
+        // Verify that the split point does not cut through any opening on this wall
+        for opening in &self.openings {
+            if opening.wall_id == wall_id {
+                let center_dist = opening.t * total_len;
+                let half_w = opening.width() / 2.0;
+                let op_start = center_dist - half_w;
+                let op_end = center_dist + half_w;
+                // If split point falls within the opening's footprint (with 0.04m safety margin), reject split!
+                if split_dist > (op_start - 0.04) && split_dist < (op_end + 0.04) {
+                    return None;
+                }
+            }
+        }
 
         self.walls[wall_idx].end = split_point;
 
@@ -407,9 +436,7 @@ impl Project {
 
         self.walls.push(Wall {
             id: new_id,
-
             start: split_point,
-
             end: old_end,
         });
 
@@ -419,14 +446,20 @@ impl Project {
             }
         }
 
+        let seg2_len = total_len - split_dist;
         for opening in &mut self.openings {
             if opening.wall_id == wall_id {
-                if opening.t >= split_t {
+                let center_dist = opening.t * total_len;
+                if center_dist >= split_dist {
+                    // Belongs to the second segment
                     opening.wall_id = new_id;
-
-                    opening.t = ((opening.t - split_t) / (1.0 - split_t)).clamp(0.01, 0.99);
+                    let rel_center = center_dist - split_dist;
+                    let margin_t = (opening.width() / 2.0 + 0.04) / seg2_len;
+                    opening.t = (rel_center / seg2_len).clamp(margin_t, 1.0 - margin_t);
                 } else {
-                    opening.t = (opening.t / split_t).clamp(0.01, 0.99);
+                    // Belongs to the first segment
+                    let margin_t = (opening.width() / 2.0 + 0.04) / split_dist;
+                    opening.t = (center_dist / split_dist).clamp(margin_t, 1.0 - margin_t);
                 }
             }
         }
@@ -543,13 +576,13 @@ impl Project {
 
                 let w2 = &self.walls[j];
 
-                let duplicate = (w1.start.distance(w2.start) < 0.02
-                    && w1.end.distance(w2.end) < 0.02)
-                    || (w1.start.distance(w2.end) < 0.02 && w1.end.distance(w2.start) < 0.02);
+                let same_dir = w1.start.distance(w2.start) < 0.02 && w1.end.distance(w2.end) < 0.02;
+                let opposite_dir =
+                    w1.start.distance(w2.end) < 0.02 && w1.end.distance(w2.start) < 0.02;
+                let duplicate = same_dir || opposite_dir;
 
                 if duplicate {
                     let keep_id = w1.id;
-
                     let remove_id = w2.id;
 
                     for room in &mut self.rooms {
@@ -563,7 +596,30 @@ impl Project {
                     for opening in &mut self.openings {
                         if opening.wall_id == remove_id {
                             opening.wall_id = keep_id;
+                            if opposite_dir {
+                                opening.t = (1.0 - opening.t).clamp(0.01, 0.99);
+                            }
                         }
+                    }
+
+                    // Remove overlapping or exact duplicate openings on keep_id
+                    let mut op_idx = 0;
+                    while op_idx < self.openings.len() {
+                        if self.openings[op_idx].wall_id == keep_id {
+                            let op1_kind = self.openings[op_idx].kind;
+                            let op1_t = self.openings[op_idx].t;
+                            let is_dup = self.openings.iter().enumerate().any(|(k, op2)| {
+                                k != op_idx
+                                    && op2.wall_id == keep_id
+                                    && op2.kind == op1_kind
+                                    && (op2.t - op1_t).abs() < 0.04
+                            });
+                            if is_dup {
+                                self.openings.remove(op_idx);
+                                continue;
+                            }
+                        }
+                        op_idx += 1;
                     }
 
                     self.walls.remove(j);
@@ -669,7 +725,14 @@ impl Project {
         }
 
         // 4. Deduplicate shared walls
+        let orig_walls = self.walls.len();
         self.deduplicate_walls();
+        if self.walls.len() < orig_walls {
+            warnings.push(format!(
+                "{} paredes duplicadas foram unificadas.",
+                orig_walls - self.walls.len()
+            ));
+        }
 
         Ok(warnings)
     }
@@ -707,27 +770,26 @@ impl Project {
 
         let corners = [min, Point::new(max.x, min.y), max, Point::new(min.x, max.y)];
 
+        let mut tx = self.clone();
         let mut all_wall_ids = Vec::new();
 
         for index in 0..4 {
             let edge_walls =
-                self.find_or_create_edge_walls(corners[index], corners[(index + 1) % 4])?;
+                tx.find_or_create_edge_walls(corners[index], corners[(index + 1) % 4])?;
 
             all_wall_ids.extend(edge_walls);
         }
 
-        let id = self.id();
+        let id = tx.id();
 
-        self.rooms.push(Room {
+        tx.rooms.push(Room {
             id,
-
             name,
-
             legacy_kind: None,
-
             wall_ids: all_wall_ids,
         });
 
+        *self = tx;
         Some(id)
     }
 
@@ -850,45 +912,63 @@ impl Project {
         self.openings.len() < len_before
     }
 
-    pub fn update_opening_width(&mut self, id: u64, new_width: f32) -> Result<(), String> {
-        if !new_width.is_finite() || new_width < 0.25 || new_width > 10.0 {
-            return Err("A largura deve estar entre 0,25 m e 10,00 m.".to_owned());
-        }
-        let op_idx = self
+    pub fn validate_opening_width(&self, id: u64, new_width: f32) -> Result<(), String> {
+        let op = self
             .openings
             .iter()
-            .position(|o| o.id == id)
-            .ok_or("Abertura não encontrada.")?;
-        let wall_id = self.openings[op_idx].wall_id;
+            .find(|o| o.id == id)
+            .ok_or_else(|| "Abertura não encontrada.".to_owned())?;
+        let kind = op.kind;
+        if !new_width.is_finite() || new_width < kind.min_width() || new_width > kind.max_width() {
+            return Err(format!(
+                "Valor fora dos limites permitidos: a largura para {} deve estar entre {:.2} m e {:.2} m.",
+                kind.label().to_lowercase(),
+                kind.min_width(),
+                kind.max_width()
+            )
+            .replace('.', ","));
+        }
         let wall = self
             .walls
             .iter()
-            .find(|w| w.id == wall_id)
-            .ok_or("Parede associada não encontrada.")?;
+            .find(|w| w.id == op.wall_id)
+            .ok_or_else(|| "Parede associada não encontrada.".to_owned())?;
         let wall_len = wall.length();
 
         if wall_len < new_width + 0.16 {
-            return Err("A parede é curta demais para esta largura de abertura.".to_owned());
+            return Err("Abertura maior que a parede disponível.".to_owned());
         }
 
         let half_t = new_width / (2.0 * wall_len);
         let min_t = half_t + 0.08 / wall_len;
         let max_t = 1.0 - half_t - 0.08 / wall_len;
-
-        let cur_t = self.openings[op_idx].t.clamp(min_t, max_t);
+        let cur_t = op.t.clamp(min_t, max_t);
 
         for other in &self.openings {
-            if other.id != id && other.wall_id == wall_id {
+            if other.id != id && other.wall_id == op.wall_id {
                 let dist_along_wall = (other.t - cur_t).abs() * wall_len;
                 let min_dist = (other.width() + new_width) / 2.0 + 0.10;
                 if dist_along_wall < min_dist {
                     return Err(
-                        "A nova largura faria a abertura sobrepor outra na mesma parede."
-                            .to_owned(),
+                        "A nova largura sobrepõe outra abertura na mesma parede.".to_owned()
                     );
                 }
             }
         }
+        Ok(())
+    }
+
+    pub fn update_opening_width(&mut self, id: u64, new_width: f32) -> Result<(), String> {
+        self.validate_opening_width(id, new_width)?;
+        let op_idx = self.openings.iter().position(|o| o.id == id).unwrap();
+        let wall_id = self.openings[op_idx].wall_id;
+        let wall = self.walls.iter().find(|w| w.id == wall_id).unwrap();
+        let wall_len = wall.length();
+
+        let half_t = new_width / (2.0 * wall_len);
+        let min_t = half_t + 0.08 / wall_len;
+        let max_t = 1.0 - half_t - 0.08 / wall_len;
+        let cur_t = self.openings[op_idx].t.clamp(min_t, max_t);
 
         self.openings[op_idx].width = Some(new_width);
         self.openings[op_idx].t = cur_t;
@@ -975,10 +1055,24 @@ impl Project {
         Ok(())
     }
 
+    pub fn rename_room(&mut self, id: u64, name: &str) -> Result<bool, String> {
+        let room_idx = self
+            .rooms
+            .iter()
+            .position(|r| r.id == id)
+            .ok_or("Cômodo não encontrado.")?;
+        let trimmed = name.trim();
+        if self.rooms[room_idx].name != trimmed {
+            self.rooms[room_idx].name = trimmed.to_owned();
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
     pub fn resize_room_dimensions(
         &mut self,
         id: u64,
-        name: &str,
         new_width: f32,
         new_height: f32,
     ) -> Result<(), String> {
@@ -992,8 +1086,23 @@ impl Project {
             .position(|r| r.id == id)
             .ok_or("Cômodo não encontrado.")?;
 
-        if !name.trim().is_empty() {
-            self.rooms[room_idx].name = name.trim().to_owned();
+        let old_wall_ids = self.rooms[room_idx].wall_ids.clone();
+        if old_wall_ids.len() != 4 {
+            return Err(
+                "Cômodo não possui formato retangular padrão de 4 paredes para redimensionamento."
+                    .to_owned(),
+            );
+        }
+
+        let is_shared = self
+            .rooms
+            .iter()
+            .any(|r| r.id != id && r.wall_ids.iter().any(|w| old_wall_ids.contains(w)));
+        if is_shared {
+            return Err(
+                "Cômodo possui parede compartilhada. Ajuste as paredes individualmente para preservar a junção."
+                    .to_owned(),
+            );
         }
 
         let bounds = self
@@ -1008,32 +1117,133 @@ impl Project {
             return Err("As novas dimensões ultrapassam os limites do terreno.".to_owned());
         }
 
-        let old_wall_ids = self.rooms[room_idx].wall_ids.clone();
-        let is_shared = self
-            .rooms
-            .iter()
-            .any(|r| r.id != id && r.wall_ids.iter().any(|w| old_wall_ids.contains(w)));
-        if is_shared {
-            return Err("Cômodo possui parede compartilhada. Ajuste as paredes individualmente para preservar a junção.".to_owned());
+        let mut bottom_wall = None;
+        let mut right_wall = None;
+        let mut top_wall = None;
+        let mut left_wall = None;
+
+        for &wid in &old_wall_ids {
+            let wall = self
+                .walls
+                .iter()
+                .find(|w| w.id == wid)
+                .ok_or("Parede do cômodo não encontrada.")?;
+            let is_horizontal = (wall.start.y - wall.end.y).abs() < 0.05;
+            let is_vertical = (wall.start.x - wall.end.x).abs() < 0.05;
+            if is_horizontal {
+                let mid_y = (wall.start.y + wall.end.y) / 2.0;
+                if (mid_y - bounds.0.y).abs() < (mid_y - bounds.1.y).abs() {
+                    bottom_wall = Some(wid);
+                } else {
+                    top_wall = Some(wid);
+                }
+            } else if is_vertical {
+                let mid_x = (wall.start.x + wall.end.x) / 2.0;
+                if (mid_x - bounds.0.x).abs() < (mid_x - bounds.1.x).abs() {
+                    left_wall = Some(wid);
+                } else {
+                    right_wall = Some(wid);
+                }
+            }
         }
 
-        self.walls.retain(|w| !old_wall_ids.contains(&w.id));
-        self.openings.retain(|o| !old_wall_ids.contains(&o.wall_id));
+        let (Some(b_id), Some(r_id), Some(t_id), Some(l_id)) =
+            (bottom_wall, right_wall, top_wall, left_wall)
+        else {
+            return Err(
+                "Não foi possível mapear as paredes retangulares do cômodo para redimensionar."
+                    .to_owned(),
+            );
+        };
 
-        let corners = [
-            anchor,
-            Point::new(new_max.x, anchor.y),
-            new_max,
-            Point::new(anchor.x, new_max.y),
-        ];
-        let mut new_ids = Vec::with_capacity(4);
-        for i in 0..4 {
-            let wid = self
-                .add_wall(corners[i], corners[(i + 1) % 4])
-                .ok_or("Erro ao criar parede do cômodo.")?;
-            new_ids.push(wid);
+        // Check if openings fit on the resized walls
+        for (wid, new_len) in [
+            (b_id, new_width),
+            (t_id, new_width),
+            (l_id, new_height),
+            (r_id, new_height),
+        ] {
+            let openings_on_wall: Vec<_> =
+                self.openings.iter().filter(|o| o.wall_id == wid).collect();
+            for op in &openings_on_wall {
+                let op_w = op.width();
+                if new_len < op_w + 0.10 {
+                    return Err(format!(
+                        "A nova dimensão ({:.2} m) é pequena demais para a {} ({:.2} m).",
+                        new_len,
+                        op.kind.label(),
+                        op_w
+                    )
+                    .replace('.', ","));
+                }
+            }
+            if openings_on_wall.len() > 1 {
+                let total_op_w: f32 = openings_on_wall.iter().map(|o| o.width() + 0.10).sum();
+                if new_len < total_op_w {
+                    return Err(format!(
+                        "A nova dimensão ({:.2} m) não comporta todas as aberturas da parede.",
+                        new_len
+                    )
+                    .replace('.', ","));
+                }
+            }
         }
-        self.rooms[room_idx].wall_ids = new_ids;
+
+        // Apply new wall geometry
+        if let Some(w) = self.walls.iter_mut().find(|w| w.id == b_id) {
+            let reversed = w.start.x > w.end.x;
+            if reversed {
+                w.start = Point::new(new_max.x, anchor.y);
+                w.end = Point::new(anchor.x, anchor.y);
+            } else {
+                w.start = Point::new(anchor.x, anchor.y);
+                w.end = Point::new(new_max.x, anchor.y);
+            }
+        }
+        if let Some(w) = self.walls.iter_mut().find(|w| w.id == t_id) {
+            let reversed = w.start.x > w.end.x;
+            if reversed {
+                w.start = Point::new(new_max.x, new_max.y);
+                w.end = Point::new(anchor.x, new_max.y);
+            } else {
+                w.start = Point::new(anchor.x, new_max.y);
+                w.end = Point::new(new_max.x, new_max.y);
+            }
+        }
+        if let Some(w) = self.walls.iter_mut().find(|w| w.id == l_id) {
+            let reversed = w.start.y > w.end.y;
+            if reversed {
+                w.start = Point::new(anchor.x, new_max.y);
+                w.end = Point::new(anchor.x, anchor.y);
+            } else {
+                w.start = Point::new(anchor.x, anchor.y);
+                w.end = Point::new(anchor.x, new_max.y);
+            }
+        }
+        if let Some(w) = self.walls.iter_mut().find(|w| w.id == r_id) {
+            let reversed = w.start.y > w.end.y;
+            if reversed {
+                w.start = Point::new(new_max.x, new_max.y);
+                w.end = Point::new(new_max.x, anchor.y);
+            } else {
+                w.start = Point::new(new_max.x, anchor.y);
+                w.end = Point::new(new_max.x, new_max.y);
+            }
+        }
+
+        // Clamp openings so they stay within wall bounds
+        for (wid, new_len) in [
+            (b_id, new_width),
+            (t_id, new_width),
+            (l_id, new_height),
+            (r_id, new_height),
+        ] {
+            for op in self.openings.iter_mut().filter(|o| o.wall_id == wid) {
+                let margin_t = (op.width() / 2.0 + 0.05) / new_len;
+                op.t = op.t.clamp(margin_t, 1.0 - margin_t);
+            }
+        }
+
         Ok(())
     }
 
@@ -1566,5 +1776,127 @@ mod tests {
         let poly = project.room_polygon(room).unwrap();
         assert_eq!(poly.len(), 4);
         assert!((project.room_area(room).unwrap() - 16.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn split_wall_rejects_cutting_through_door_and_preserves_intact() {
+        let mut project = Project::default();
+        let wall_id = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(5.0, 0.0))
+            .unwrap();
+        let _door = project
+            .add_opening(wall_id, OpeningKind::Door, 0.5)
+            .unwrap();
+
+        // Attempting to split at x = 2.5m (cuts through the door!)
+        let split_res = project.split_wall_at(wall_id, Point::new(2.5, 0.0));
+        assert!(split_res.is_none());
+        assert_eq!(project.walls.len(), 1);
+
+        // Splitting safely away from the door at x = 0.5m
+        let safe_split = project.split_wall_at(wall_id, Point::new(0.5, 0.0));
+        assert!(safe_split.is_some());
+        assert_eq!(project.walls.len(), 2);
+    }
+
+    #[test]
+    fn deduplicate_walls_inverts_t_when_directions_are_opposite() {
+        let mut project = Project::default();
+        let w1 = project.id();
+        project.walls.push(Wall {
+            id: w1,
+            start: Point::new(0.0, 0.0),
+            end: Point::new(10.0, 0.0),
+        });
+        let w2 = project.id();
+        project.walls.push(Wall {
+            id: w2,
+            start: Point::new(10.0, 0.0),
+            end: Point::new(0.0, 0.0),
+        });
+
+        // Opening on w2 at t = 0.20 (physically at x = 8.0m)
+        let op_id = project.id();
+        project.openings.push(Opening {
+            id: op_id,
+            wall_id: w2,
+            kind: OpeningKind::Door,
+            t: 0.20,
+            width: None,
+        });
+
+        project.deduplicate_walls();
+        assert_eq!(project.walls.len(), 1);
+        assert_eq!(project.openings.len(), 1);
+        assert_eq!(project.openings[0].wall_id, w1);
+        // t must now be 1.0 - 0.20 = 0.80, keeping physical x = 8.0m!
+        assert!((project.openings[0].t - 0.80).abs() < 1e-3);
+    }
+
+    #[test]
+    fn opening_kind_limits_and_validation() {
+        let mut project = Project::default();
+        let w_id = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(3.0, 0.0))
+            .unwrap();
+        let door_id = project.add_opening(w_id, OpeningKind::Door, 0.3).unwrap();
+
+        // 1. Kind limits
+        assert_eq!(OpeningKind::Door.min_width(), 0.60);
+        assert_eq!(OpeningKind::Door.max_width(), 2.00);
+        assert_eq!(OpeningKind::Window.min_width(), 0.40);
+        assert_eq!(OpeningKind::Window.max_width(), 4.00);
+
+        // 2. Reject smaller than min_width
+        let err_too_small = project.update_opening_width(door_id, 0.50);
+        assert!(err_too_small.is_err());
+        assert!(
+            err_too_small
+                .unwrap_err()
+                .contains("Valor fora dos limites")
+        );
+
+        // 3. Reject larger than max_width
+        let err_too_large = project.update_opening_width(door_id, 2.50);
+        assert!(err_too_large.is_err());
+        assert!(
+            err_too_large
+                .unwrap_err()
+                .contains("Valor fora dos limites")
+        );
+
+        // 4. Reject larger than wall length (minus margins)
+        // Wall is 3.0m, wall_len < 2.90 + 0.16 => 3.0 < 3.06
+        let err_wall_too_short = project.update_opening_width(door_id, 1.95);
+        // Door max is 2.00. 1.95 is <= max_width, but 1.95 + 0.16 = 2.11 <= 3.0, so 1.95 fits!
+        assert!(err_wall_too_short.is_ok());
+
+        // Now test on a short wall of 1.0m:
+        let short_w = project
+            .add_wall(Point::new(10.0, 0.0), Point::new(11.0, 0.0))
+            .unwrap();
+        let short_door = project.id();
+        project.openings.push(Opening {
+            id: short_door,
+            wall_id: short_w,
+            kind: OpeningKind::Door,
+            t: 0.5,
+            width: Some(0.70),
+        });
+        // 0.90 + 0.16 = 1.06 > 1.00 => should fail with wall too short / abertura maior que a parede
+        let err_short = project.update_opening_width(short_door, 0.90);
+        assert!(err_short.is_err());
+        assert!(
+            err_short
+                .unwrap_err()
+                .contains("Abertura maior que a parede")
+        );
+
+        // 5. Reject collision / overlap with another opening on same wall
+        let _op2_id = project.add_opening(w_id, OpeningKind::Window, 0.8).unwrap();
+        // Expanding door to collide with op2
+        let err_overlap = project.update_opening_width(door_id, 1.80);
+        assert!(err_overlap.is_err());
+        assert!(err_overlap.unwrap_err().contains("sobrepõe outra abertura"));
     }
 }

@@ -1,17 +1,18 @@
 use super::{
-    FloorPlanApp, ItemDrag, Selection, Tool,
+    CreationState, FloorPlanApp, ItemDrag, Selection, Tool,
     canvas::{self, Preview, ViewTransform},
 };
 use crate::domain::geometry::Point;
-use eframe::egui::{self, Color32, PointerButton, Sense};
+use eframe::egui::{self, Color32, Key, PointerButton, Sense};
 
 impl FloorPlanApp {
     fn snap(&self, point: Point, start: Option<Point>) -> Point {
         if !self.snap_enabled {
             return point;
         }
-        let mut result = point.snapped_to(self.snap_step());
-        let mut closest = (10.0 / self.scale).clamp(0.18, 2.0);
+        let mut result = point.snapped_to(0.25);
+        let snap_threshold = (12.0 / self.scale).clamp(0.12, 0.40);
+        let mut closest = snap_threshold;
         for wall in &self.project.walls {
             for endpoint in [wall.start, wall.end] {
                 let distance = point.distance(endpoint);
@@ -22,24 +23,14 @@ impl FloorPlanApp {
             }
         }
         if let Some(start) = start {
-            if (result.x - start.x).abs() < 0.18 {
+            if (result.x - start.x).abs() < snap_threshold {
                 result.x = start.x;
             }
-            if (result.y - start.y).abs() < 0.18 {
+            if (result.y - start.y).abs() < snap_threshold {
                 result.y = start.y;
             }
         }
         result
-    }
-
-    fn snap_step(&self) -> f32 {
-        if self.scale < 8.0 {
-            5.0
-        } else if self.scale < 20.0 {
-            1.0
-        } else {
-            0.25
-        }
     }
 
     pub(super) fn canvas(&mut self, ui: &mut egui::Ui) {
@@ -80,7 +71,7 @@ impl FloorPlanApp {
             .filter(|position| rect.contains(*position));
         let world = pointer.map(|position| view.to_world(position));
         let snapped = world.map(|point| {
-            let point = self.snap(point, self.draft_start);
+            let point = self.snap(point, self.draft_start());
             if matches!(self.tool, Tool::Room | Tool::Wall)
                 && let Some(terrain) = &self.project.terrain
             {
@@ -154,7 +145,11 @@ impl FloorPlanApp {
                     });
                 self.item_drag = self.selection.map(|selection| ItemDrag {
                     selection,
-                    last: point.snapped_to(0.25),
+                    last: if self.snap_enabled {
+                        point.snapped_to(0.25)
+                    } else {
+                        point
+                    },
                     moved: false,
                 });
                 self.drag_initial_project = self.item_drag.as_ref().map(|_| self.project.clone());
@@ -178,7 +173,11 @@ impl FloorPlanApp {
             }
             let primary_down = ui.input(|input| input.pointer.primary_down());
             if primary_down && let (Some(point), Some(drag)) = (world, self.item_drag) {
-                let current = point.snapped_to(0.25);
+                let current = if self.snap_enabled {
+                    point.snapped_to(0.25)
+                } else {
+                    point
+                };
                 let delta = Point::new(current.x - drag.last.x, current.y - drag.last.y);
                 if delta.x != 0.0
                     || delta.y != 0.0
@@ -205,27 +204,15 @@ impl FloorPlanApp {
         }
 
         let creation_tool = matches!(self.tool, Tool::Wall | Tool::Room | Tool::Terrain);
-        if creation_tool {
-            let primary_pressed = response.drag_started_by(PointerButton::Primary)
-                || ui.input(|input| {
-                    input.events.iter().any(|event| match event {
-                        egui::Event::PointerButton {
-                            pos,
-                            button: PointerButton::Primary,
-                            pressed: true,
-                            ..
-                        } => rect.contains(*pos),
-                        _ => false,
-                    })
-                });
-            if primary_pressed
-                && self.draft_start.is_none()
-                && let Some(point) = snapped
-            {
-                self.draft_start = Some(point);
-                self.creation_is_drag = true;
-            }
+        if creation_tool
+            && response.drag_started_by(PointerButton::Primary)
+            && self.creation_state == CreationState::Idle
+            && let Some(point) = snapped
+        {
+            self.creation_state = CreationState::Dragging { start: point };
         }
+
+        let mut drag_finished_this_frame = false;
 
         if ui.input(|input| input.pointer.any_released()) {
             if let Some(initial) = self.drag_initial_project.take() {
@@ -243,9 +230,9 @@ impl FloorPlanApp {
             {
                 self.add_opening_at(point, kind);
             }
-            if self.creation_is_drag {
-                self.creation_is_drag = false;
-                if let (Some(start), Some(point)) = (self.draft_start, snapped) {
+            if let CreationState::Dragging { start } = self.creation_state {
+                drag_finished_this_frame = true;
+                if let Some(point) = snapped {
                     let has_dragged = match self.tool {
                         Tool::Wall => start.distance(point) >= 0.25,
                         Tool::Room => {
@@ -258,37 +245,45 @@ impl FloorPlanApp {
                     };
                     if has_dragged {
                         self.complete_creation(start, point);
-                        self.draft_start = None;
+                        self.creation_state = CreationState::Idle;
                     } else {
+                        self.creation_state = CreationState::WaitingSecondPoint { start };
                         self.message =
                             "Agora clique no segundo ponto para concluir. Esc cancela.".to_owned();
                     }
+                } else {
+                    self.creation_state = CreationState::Idle;
                 }
             }
         }
 
-        if response.clicked_by(PointerButton::Primary)
+        if !drag_finished_this_frame
+            && response.clicked_by(PointerButton::Primary)
             && let Some(point) = snapped
         {
             match self.tool {
-                Tool::Wall | Tool::Room | Tool::Terrain => {
-                    if !self.creation_is_drag {
-                        if let Some(start) = self.draft_start.take() {
-                            self.complete_creation(start, point);
-                        } else {
-                            self.draft_start = Some(point);
-                            self.message =
-                                "Agora clique no segundo ponto para concluir. Esc cancela."
-                                    .to_owned();
-                        }
+                Tool::Wall | Tool::Room | Tool::Terrain => match self.creation_state {
+                    CreationState::Idle => {
+                        self.creation_state = CreationState::WaitingSecondPoint { start: point };
+                        self.message =
+                            "Agora clique no segundo ponto para concluir. Esc cancela.".to_owned();
                     }
-                }
+                    CreationState::WaitingSecondPoint { start } => {
+                        self.complete_creation(start, point);
+                        self.creation_state = CreationState::Idle;
+                    }
+                    CreationState::Dragging { .. } => {}
+                },
                 Tool::Opening(kind) => self.add_opening_at(point, kind),
                 Tool::Move => {}
             }
         }
 
-        let preview = match (self.draft_start, snapped, self.tool) {
+        if ui.input(|input| input.key_pressed(Key::Escape)) {
+            self.cancel_creation();
+        }
+
+        let preview = match (self.draft_start(), snapped, self.tool) {
             (Some(start), Some(end), Tool::Wall) => Some(Preview::Wall(start, end)),
             (Some(start), Some(end), Tool::Room) => Some(Preview::Room(start, end)),
             (Some(start), Some(end), Tool::Terrain) => Some(Preview::Terrain(start, end)),

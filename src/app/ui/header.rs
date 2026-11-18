@@ -35,7 +35,7 @@ impl FloorPlanApp {
                 }
                 ui.separator();
                 if ui.button("Sair").clicked() {
-                    self.request_close();
+                    self.request_close(ui.ctx());
                     ui.close();
                 }
             });

@@ -184,10 +184,13 @@ impl FloorPlanApp {
         }
 
         ui.add_space(8.0);
-        let limits_tip = match opening.kind {
-            OpeningKind::Door => "Portas suportam larguras de 0,60 m a 2,00 m.",
-            OpeningKind::Window => "Janelas suportam larguras de 0,40 m a 4,00 m.",
-        };
+        let limits_tip = format!(
+            "{}s suportam larguras de {:.2} m a {:.2} m.",
+            opening.kind.label(),
+            opening.kind.min_width(),
+            opening.kind.max_width(),
+        )
+        .replace('.', ",");
         ui.add(egui::Label::new(limits_tip).wrap());
 
         ui.add_space(8.0);
