@@ -12,6 +12,12 @@ use super::FloorPlanApp;
 impl FloorPlanApp {
     pub(super) fn show_layout(&mut self, ui: &mut Ui) {
         let context = ui.ctx().clone();
+
+        if context.input(|i| i.viewport().close_requested()) && self.dirty {
+            context.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            self.pending_action = Some(super::PendingAction::CloseApp);
+        }
+
         self.handle_shortcuts(&context);
 
         egui::Panel::top("menu_bar")
@@ -54,5 +60,6 @@ impl FloorPlanApp {
             .frame(egui::Frame::new().fill(Color32::from_rgb(248, 250, 251)))
             .show(ui, |ui| self.canvas(ui));
         self.room_name_dialog(ui);
+        self.unsaved_changes_dialog(&context);
     }
 }

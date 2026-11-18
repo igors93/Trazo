@@ -46,6 +46,163 @@ pub fn format_meters(value: f32) -> String {
     format!("{value:.2} m").replace('.', ",")
 }
 
+pub fn polygon_area(vertices: &[Point]) -> f32 {
+    if vertices.len() < 3 {
+        return 0.0;
+    }
+    let mut area = 0.0;
+    let n = vertices.len();
+    for i in 0..n {
+        let j = (i + 1) % n;
+        area += vertices[i].x * vertices[j].y - vertices[j].x * vertices[i].y;
+    }
+    (area / 2.0).abs()
+}
+
+pub fn polygon_centroid(vertices: &[Point]) -> Point {
+    if vertices.len() < 3 {
+        return Point::new(0.0, 0.0);
+    }
+    let mut signed_area = 0.0;
+    let mut cx = 0.0;
+    let mut cy = 0.0;
+    let n = vertices.len();
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let factor = vertices[i].x * vertices[j].y - vertices[j].x * vertices[i].y;
+        signed_area += factor;
+        cx += (vertices[i].x + vertices[j].x) * factor;
+        cy += (vertices[i].y + vertices[j].y) * factor;
+    }
+    signed_area *= 0.5;
+    if signed_area.abs() < 1e-4 {
+        let sum_x: f32 = vertices.iter().map(|p| p.x).sum();
+        let sum_y: f32 = vertices.iter().map(|p| p.y).sum();
+        return Point::new(sum_x / n as f32, sum_y / n as f32);
+    }
+    Point::new(cx / (6.0 * signed_area), cy / (6.0 * signed_area))
+}
+
+pub fn polygon_contains_point(vertices: &[Point], point: Point) -> bool {
+    if vertices.len() < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let n = vertices.len();
+    let mut j = n - 1;
+    for i in 0..n {
+        let pi = vertices[i];
+        let pj = vertices[j];
+        if ((pi.y > point.y) != (pj.y > point.y))
+            && (point.x < (pj.x - pi.x) * (point.y - pi.y) / (pj.y - pi.y) + pi.x)
+        {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
+fn triangle_contains_point(a: Point, b: Point, c: Point, p: Point) -> bool {
+    let sign = |p1: Point, p2: Point, p3: Point| -> f32 {
+        (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
+    };
+    let d1 = sign(p, a, b);
+    let d2 = sign(p, b, c);
+    let d3 = sign(p, c, a);
+    let has_neg = (d1 < -1e-5) || (d2 < -1e-5) || (d3 < -1e-5);
+    let has_pos = (d1 > 1e-5) || (d2 > 1e-5) || (d3 > 1e-5);
+    !(has_neg && has_pos)
+}
+
+pub fn triangulate_polygon(vertices: &[Point]) -> Vec<[Point; 3]> {
+    let n = vertices.len();
+    if n < 3 {
+        return Vec::new();
+    }
+    if n == 3 {
+        return vec![[vertices[0], vertices[1], vertices[2]]];
+    }
+    if n == 4 {
+        return vec![
+            [vertices[0], vertices[1], vertices[2]],
+            [vertices[0], vertices[2], vertices[3]],
+        ];
+    }
+
+    // Ear clipping triangulation
+    let mut indices: Vec<usize> = (0..n).collect();
+    let mut triangles = Vec::with_capacity(n - 2);
+
+    // Determine winding orientation
+    let mut signed_area = 0.0;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        signed_area += vertices[i].x * vertices[j].y - vertices[j].x * vertices[i].y;
+    }
+    let ccw = signed_area >= 0.0;
+
+    let mut iterations = 0;
+    while indices.len() > 3 && iterations < n * 4 {
+        iterations += 1;
+        let mut ear_found = false;
+        let count = indices.len();
+        for i in 0..count {
+            let prev = indices[(i + count - 1) % count];
+            let curr = indices[i];
+            let next = indices[(i + 1) % count];
+            let a = vertices[prev];
+            let b = vertices[curr];
+            let c = vertices[next];
+
+            let cross = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+            let convex = if ccw { cross > 1e-5 } else { cross < -1e-5 };
+            if !convex {
+                continue;
+            }
+
+            // Check if any other vertex lies inside the triangle
+            let mut has_inside = false;
+            for &idx in &indices {
+                if idx != prev
+                    && idx != curr
+                    && idx != next
+                    && triangle_contains_point(a, b, c, vertices[idx])
+                {
+                    has_inside = true;
+                    break;
+                }
+            }
+            if !has_inside {
+                triangles.push([a, b, c]);
+                indices.remove(i);
+                ear_found = true;
+                break;
+            }
+        }
+        if !ear_found {
+            // Fallback triangle fan
+            break;
+        }
+    }
+
+    if indices.len() == 3 {
+        triangles.push([
+            vertices[indices[0]],
+            vertices[indices[1]],
+            vertices[indices[2]],
+        ]);
+    } else if triangles.len() < n - 2 {
+        // Fallback fan from vertex 0 if ear clipping got stuck
+        triangles.clear();
+        for i in 1..n - 1 {
+            triangles.push([vertices[0], vertices[i], vertices[i + 1]]);
+        }
+    }
+
+    triangles
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -59,5 +216,22 @@ mod tests {
         );
         assert_eq!(point, Point::new(4.0, 0.0));
         assert_eq!(t, 1.0);
+    }
+
+    #[test]
+    fn polygon_area_and_point_in_polygon() {
+        let poly = vec![
+            Point::new(0.0, 0.0),
+            Point::new(4.0, 0.0),
+            Point::new(4.0, 3.0),
+            Point::new(0.0, 3.0),
+        ];
+        assert_eq!(polygon_area(&poly), 12.0);
+        assert_eq!(polygon_centroid(&poly), Point::new(2.0, 1.5));
+        assert!(polygon_contains_point(&poly, Point::new(2.0, 1.5)));
+        assert!(!polygon_contains_point(&poly, Point::new(5.0, 1.5)));
+
+        let tris = triangulate_polygon(&poly);
+        assert_eq!(tris.len(), 2);
     }
 }

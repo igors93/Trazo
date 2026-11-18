@@ -25,26 +25,46 @@ pub fn tool_tile(
     } else {
         Sense::click()
     };
-    let (rect, response) = ui.allocate_exact_size(egui::vec2(82.0, 68.0), sense);
+    let (rect, response) = ui.allocate_exact_size(egui::vec2(70.0, 46.0), sense);
     let background = if !ui.is_enabled() {
         Color32::from_rgb(243, 246, 247)
     } else if selected {
         Color32::from_rgb(218, 245, 239)
     } else if response.hovered() {
-        Color32::from_rgb(237, 246, 246)
+        Color32::from_rgb(235, 246, 245)
     } else {
         Color32::from_rgb(255, 255, 255)
     };
     let painter = ui.painter();
-    painter.rect_filled(rect, 7.0, background);
+    painter.rect_filled(rect, 6.0, background);
     if selected {
+        painter.rect_stroke(
+            rect,
+            6.0,
+            Stroke::new(1.5, Color32::from_rgb(27, 155, 140)),
+            egui::StrokeKind::Inside,
+        );
         painter.rect_filled(
             Rect::from_min_max(
-                Pos2::new(rect.left() + 8.0, rect.bottom() - 3.0),
+                Pos2::new(rect.left() + 8.0, rect.bottom() - 2.5),
                 Pos2::new(rect.right() - 8.0, rect.bottom()),
             ),
-            2.0,
+            1.5,
             Color32::from_rgb(27, 155, 140),
+        );
+    } else if response.hovered() && ui.is_enabled() {
+        painter.rect_stroke(
+            rect,
+            6.0,
+            Stroke::new(1.0, Color32::from_rgb(180, 210, 210)),
+            egui::StrokeKind::Inside,
+        );
+    } else {
+        painter.rect_stroke(
+            rect,
+            6.0,
+            Stroke::new(0.8, Color32::from_rgb(222, 230, 233)),
+            egui::StrokeKind::Inside,
         );
     }
     let color = if !ui.is_enabled() {
@@ -54,13 +74,13 @@ pub fn tool_tile(
     } else {
         Color32::from_rgb(45, 66, 78)
     };
-    let center = Pos2::new(rect.center().x, rect.top() + 25.0);
+    let center = Pos2::new(rect.center().x, rect.top() + 16.0);
     paint_icon(painter, center, icon, color);
     painter.text(
-        Pos2::new(rect.center().x, rect.bottom() - 15.0),
+        Pos2::new(rect.center().x, rect.bottom() - 9.0),
         Align2::CENTER_CENTER,
         label,
-        FontId::proportional(12.0),
+        FontId::proportional(11.0),
         color,
     );
     if ui.is_enabled() {

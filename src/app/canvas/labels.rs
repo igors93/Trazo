@@ -109,14 +109,18 @@ pub(super) fn paint_room_labels(
             .size()
             .x
             .max(measure.as_ref().map_or(0.0, |galley| galley.size().x));
-        let block = Rect::from_center_size(inner.center(), egui::vec2(block_width, block_height));
+        let center_pos = project
+            .room_centroid(room)
+            .map(|c| view.to_screen(c))
+            .unwrap_or_else(|| inner.center());
+        let block = Rect::from_center_size(center_pos, egui::vec2(block_width, block_height));
         if occupied
             .iter()
             .any(|other| other.expand(4.0).intersects(block))
         {
             continue;
         }
-        let name_center = Pos2::new(inner.center().x, block.top() + name.size().y / 2.0);
+        let name_center = Pos2::new(center_pos.x, block.top() + name.size().y / 2.0);
         paint_centered_galley(painter, name_center, name, name_color);
         if let Some(measure) = measure {
             let center = Pos2::new(inner.center().x, block.bottom() - measure.size().y / 2.0);

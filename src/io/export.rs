@@ -67,7 +67,17 @@ fn document(project: &Project) -> SvgDocument {
         );
     }
     for room in &project.rooms {
-        if let Some((a, b)) = project.room_bounds(room) {
+        if let Some(poly) = project.room_polygon(room) {
+            let points_str: String = poly
+                .iter()
+                .map(|p| {
+                    let (x, y) = point(*p);
+                    format!("{:.1},{:.1}", x, y)
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = writeln!(svg, "<polygon points=\"{}\" fill=\"#eff8f7\"/>", points_str);
+        } else if let Some((a, b)) = project.room_bounds(room) {
             let (x, y) = point(a);
             let w = (b.x - a.x) * pixels_per_meter;
             let h = (b.y - a.y) * pixels_per_meter;
@@ -95,7 +105,7 @@ fn document(project: &Project) -> SvgDocument {
         openings.sort_by(|a, b| a.t.total_cmp(&b.t));
         let mut cursor = 0.0;
         for opening in openings {
-            let half = opening.kind.width() * pixels_per_meter / 2.0;
+            let half = opening.width() * pixels_per_meter / 2.0;
             let center = opening.t * length;
             let left = center - half;
             let right = center + half;
