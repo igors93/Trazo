@@ -200,6 +200,9 @@ impl FloorPlanApp {
         if self.history.undo(&mut self.project) {
             self.dirty = true;
             self.selection = None;
+            self.item_drag = None;
+            self.draft_start = None;
+            self.pending_room = None;
             self.sync_terrain_fields();
             self.message = "Ação desfeita.".to_owned();
         }
@@ -209,6 +212,9 @@ impl FloorPlanApp {
         if self.history.redo(&mut self.project) {
             self.dirty = true;
             self.selection = None;
+            self.item_drag = None;
+            self.draft_start = None;
+            self.pending_room = None;
             self.sync_terrain_fields();
             self.message = "Ação refeita.".to_owned();
         }
@@ -361,20 +367,27 @@ impl FloorPlanApp {
     }
 
     fn handle_shortcuts(&mut self, context: &egui::Context) {
+        // Canvas and toolbar widgets can hold focus without editing text.
+        let editing_text = context.text_edit_focused();
         let actions = context.input(|input| {
+            let pressed = |key: Key| {
+                input.events.iter().any(|event| {
+                    matches!(event, egui::Event::Key { key: event_key, pressed: true, repeat: false, .. } if *event_key == key)
+                })
+            };
+            let shortcut = |key: Key, shift: bool| {
+                input.events.iter().any(|event| {
+                    matches!(event, egui::Event::Key { key: event_key, pressed: true, repeat: false, modifiers, .. }
+                        if *event_key == key && (modifiers.command || modifiers.ctrl) && modifiers.shift == shift)
+                })
+            };
             (
-                input.modifiers.command && input.key_pressed(Key::S),
-                input.modifiers.command && input.key_pressed(Key::O),
-                input.modifiers.command
-                    && input.key_pressed(Key::Z)
-                    && !input.modifiers.shift
-                    && !context.egui_wants_keyboard_input(),
-                input.modifiers.command
-                    && (input.key_pressed(Key::Y)
-                        || (input.modifiers.shift && input.key_pressed(Key::Z)))
-                    && !context.egui_wants_keyboard_input(),
-                input.key_pressed(Key::Escape),
-                input.key_pressed(Key::Delete) && !context.egui_wants_keyboard_input(),
+                shortcut(Key::S, false),
+                shortcut(Key::O, false),
+                shortcut(Key::Z, false) && !editing_text,
+                (shortcut(Key::Y, false) || shortcut(Key::Z, true)) && !editing_text,
+                pressed(Key::Escape),
+                pressed(Key::Delete) && !editing_text,
             )
         });
         if actions.0 {
@@ -409,6 +422,36 @@ impl eframe::App for FloorPlanApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ctrl_z_undoes_and_ctrl_y_restores_the_project() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let previous = app.project.clone();
+        app.project
+            .add_wall(Point::new(0.0, 0.0), Point::new(2.0, 0.0));
+        app.record_change(previous);
+        let modifiers = egui::Modifiers {
+            ctrl: true,
+            command: true,
+            ..Default::default()
+        };
+        for (key, expected_walls) in [(Key::Z, 0), (Key::Y, 1)] {
+            context.begin_pass(egui::RawInput {
+                events: vec![egui::Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers,
+                }],
+                ..Default::default()
+            });
+            app.handle_shortcuts(&context);
+            assert_eq!(app.project.walls.len(), expected_walls);
+            context.end_pass().textures_delta.clear();
+        }
+    }
 
     #[test]
     fn fit_view_shows_a_fifty_meter_plot() {
