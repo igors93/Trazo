@@ -198,7 +198,7 @@ O objetivo declarado é usar o Trazo no dia a dia da obra. Estes itens vêm do t
 | --- | --- | --- | --- |
 | 58 | CI no GitHub: `cargo fmt --check`, `clippy` e testes a cada push | P0 | paralelo — **Feito** |
 | 59 | Licença explícita no repositório | P0 | paralelo |
-| 60 | Testes de propriedade da geometria (interseções, polígonos, tolerâncias) | P1 | paralelo |
+| 60 | Testes de propriedade da geometria (interseções, polígonos, tolerâncias) | P1 | paralelo — **Feito** |
 | 61 | Testes de regressão visual da exportação PDF/PNG | P1 | paralelo |
 | 62 | Desempenho com plantas grandes (centenas de paredes, histórico longo) | P1 | paralelo |
 | 63 | Instalador para Windows, associação de arquivos e atualização automática | P1 | paralelo |

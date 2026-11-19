@@ -17,6 +17,9 @@ resvg = "0.50"
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
 svg2pdf = "0.13"
 
+[dev-dependencies]
+proptest = "1"
+
 [profile.release]
 strip = true
 lto = "thin"
