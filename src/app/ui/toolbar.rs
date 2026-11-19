@@ -635,6 +635,20 @@ impl FloorPlanApp {
             {
                 self.active_doc_dialog = super::super::DocDialog::Views;
             }
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::Plan,
+                    "Pranchas",
+                    self.active_doc_dialog == super::super::DocDialog::SheetSet,
+                    false,
+                ),
+                "Gerenciar conjunto de pranchas, paginação, revisões e lista mestra",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::SheetSet;
+            }
         });
     }
 

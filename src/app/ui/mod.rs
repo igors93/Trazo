@@ -13,6 +13,7 @@ mod notes;
 mod options_bar;
 mod schedules;
 mod sheet;
+mod sheet_set;
 mod status_bar;
 mod templates;
 mod toolbar;
@@ -100,5 +101,6 @@ impl FloorPlanApp {
         self.schedules_dialog(&context);
         self.templates_dialog(&context);
         self.views_dialog(&context);
+        self.sheet_set_dialog(&context);
     }
 }

@@ -88,6 +88,10 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "super::views::ProjectViews::is_empty")]
     pub views: super::views::ProjectViews,
 
+    /// Multi-sheet documentation set with revision history and control.
+    #[serde(default, skip_serializing_if = "super::sheet_set::SheetSet::is_empty")]
+    pub sheet_set: super::sheet_set::SheetSet,
+
     next_id: u64,
 }
 
@@ -137,6 +141,8 @@ impl Default for Project {
             doc_style: super::doc_style::DocStyle::default(),
 
             views: super::views::ProjectViews::default(),
+
+            sheet_set: super::sheet_set::SheetSet::default(),
 
             next_id: 1,
         }

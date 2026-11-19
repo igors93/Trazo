@@ -287,6 +287,17 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::Views;
             ui.close();
         }
+        if menu_item(
+            ui,
+            Some(Icon::ExportPdf),
+            "Conjunto de pranchas e revisões...",
+            "",
+        )
+        .clicked()
+        {
+            self.active_doc_dialog = super::super::DocDialog::SheetSet;
+            ui.close();
+        }
     }
 
     pub(super) fn osnap_menu(&mut self, ui: &mut Ui) {

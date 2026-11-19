@@ -1003,6 +1003,141 @@ pub fn export_scaled_pdf(project: &Project, path: &Path) -> Result<(), String> {
     fs::write(path, pdf).map_err(|error| error.to_string())
 }
 
+/// Renders a specific sheet from a `SheetSet`, applying its own layout,
+/// pagination (`01/03`), latest revision code, status badge and revision table
+/// positioned directly above the title block.
+pub fn scaled_sheet_item_svg(
+    project: &Project,
+    item: &crate::domain::sheet_set::SheetItem,
+) -> String {
+    let mut themed = project.clone();
+    themed.sheet = item.layout.clone();
+    themed.sheet.title_block.sheet_number = item.number.clone();
+    themed.sheet.title_block.revision = item.latest_revision_code().to_owned();
+    if !item.title.trim().is_empty() {
+        themed.sheet.title_block.drawing_title = format!(
+            "{} · {} ({})",
+            item.code,
+            item.title.trim(),
+            item.status.label()
+        );
+    }
+    let mut svg = scaled_sheet_svg(&themed);
+    if !item.revisions.is_empty()
+        && let Some(end_idx) = svg.rfind("</svg>")
+    {
+        let (frame_x, frame_y, frame_w, frame_h) = themed.sheet.printable_rect_mm();
+        let mut rev_block = String::new();
+        write_revision_table(&mut rev_block, item, frame_x, frame_y, frame_w, frame_h);
+        svg.insert_str(end_idx, &rev_block);
+    }
+    svg
+}
+
+fn write_revision_table(
+    svg: &mut String,
+    item: &crate::domain::sheet_set::SheetItem,
+    frame_x: f64,
+    frame_y: f64,
+    frame_w: f64,
+    frame_h: f64,
+) {
+    let w = 175.0_f64.min(frame_w);
+    let tb_h = if item.layout.title_block.show_title_block {
+        44.0_f64.min(frame_h * 0.35)
+    } else {
+        8.0
+    };
+    let row_h = 3.6;
+    let visible_revs: Vec<_> = item.revisions.iter().rev().take(4).collect();
+    let table_h = (visible_revs.len() + 2) as f64 * row_h + 1.0;
+    let x = frame_x + frame_w - w;
+    let y = (frame_y + frame_h - tb_h - table_h - 1.5).max(frame_y + 2.0);
+
+    let _ = writeln!(svg, "<g id=\"quadro-revisoes\">");
+    let _ = writeln!(
+        svg,
+        "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{table_h:.2}\" fill=\"#ffffff\" stroke=\"#1d2836\" stroke-width=\"0.24\"/>\n\
+         <rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{row_h:.2}\" fill=\"#edf2f7\" stroke=\"#1d2836\" stroke-width=\"0.20\"/>\n\
+         <text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"2.0\" font-weight=\"700\" fill=\"#1d2836\">CONTROLE DE REVISÕES — {} ({})</text>",
+        x + 2.0,
+        y + 2.6,
+        escaped(&item.code),
+        escaped(item.status.label())
+    );
+    let mut cy = y + row_h;
+    let _ = writeln!(
+        svg,
+        "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.7\" font-weight=\"700\" fill=\"#3b4e63\">REV</text>\n\
+         <text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.7\" font-weight=\"700\" fill=\"#3b4e63\">DATA</text>\n\
+         <text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.7\" font-weight=\"700\" fill=\"#3b4e63\">RESP.</text>\n\
+         <text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.7\" font-weight=\"700\" fill=\"#3b4e63\">DESCRIÇÃO</text>",
+        x + 2.0,
+        cy + 2.5,
+        x + 16.0,
+        cy + 2.5,
+        x + 40.0,
+        cy + 2.5,
+        x + 76.0,
+        cy + 2.5
+    );
+    cy += row_h;
+    for rev in visible_revs {
+        let _ = writeln!(
+            svg,
+            "<line x1=\"{x:.2}\" y1=\"{cy:.2}\" x2=\"{:.2}\" y2=\"{cy:.2}\" stroke=\"#cbd5e1\" stroke-width=\"0.14\"/>\n\
+             <text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.7\" font-weight=\"700\" fill=\"#1d2836\">{}</text>\n\
+             <text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.7\" fill=\"#1d2836\">{}</text>\n\
+             <text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.7\" fill=\"#1d2836\">{}</text>\n\
+             <text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.7\" fill=\"#1d2836\">{}</text>",
+            x + w,
+            x + 2.0,
+            cy + 2.5,
+            escaped(&rev.code),
+            x + 16.0,
+            cy + 2.5,
+            escaped(&rev.date),
+            x + 40.0,
+            cy + 2.5,
+            escaped(&rev.author),
+            x + 76.0,
+            cy + 2.5,
+            escaped(&rev.description)
+        );
+        cy += row_h;
+    }
+    svg.push_str("</g>\n");
+}
+
+pub fn export_sheet_item_svg(
+    project: &Project,
+    item: &crate::domain::sheet_set::SheetItem,
+    path: &Path,
+) -> Result<(), String> {
+    item.layout.validate()?;
+    fs::write(path, scaled_sheet_item_svg(project, item)).map_err(|error| error.to_string())
+}
+
+pub fn export_sheet_item_pdf(
+    project: &Project,
+    item: &crate::domain::sheet_set::SheetItem,
+    path: &Path,
+) -> Result<(), String> {
+    item.layout.validate()?;
+    let markup = scaled_sheet_item_svg(project, item);
+    let mut options = svg2pdf::usvg::Options::default();
+    options.fontdb_mut().load_system_fonts();
+    let tree =
+        svg2pdf::usvg::Tree::from_str(&markup, &options).map_err(|error| error.to_string())?;
+    let pdf = svg2pdf::to_pdf(
+        &tree,
+        svg2pdf::ConversionOptions::default(),
+        svg2pdf::PageOptions::default(),
+    )
+    .map_err(|error| error.to_string())?;
+    fs::write(path, pdf).map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1047,5 +1182,33 @@ mod tests {
         assert!(markup.contains("fill=\"#ffffff\""));
         assert!(markup.contains("4,00 m"));
         assert!(markup.contains("<circle "));
+    }
+
+    #[test]
+    fn sheet_set_item_renders_revision_control_table_and_pagination() {
+        use crate::domain::sheet_set::SheetContent;
+
+        let mut project = Project::default();
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Sala")
+            .unwrap();
+        let base = project.sheet.clone();
+        let s1 = project
+            .sheet_set
+            .add_sheet("Planta Baixa", SheetContent::FloorPlan, &base);
+        let _s2 = project
+            .sheet_set
+            .add_sheet("Corte AA", SheetContent::Section { id: 1 }, &base);
+        project
+            .sheet_set
+            .add_revision(s1, "19/11/2026", "Arq. Ana", "Revisão de cotas")
+            .unwrap();
+
+        let item = project.sheet_set.sheets[0].clone();
+        let markup = scaled_sheet_item_svg(&project, &item);
+        assert!(markup.contains("id=\"quadro-revisoes\""));
+        assert!(markup.contains("01/02"));
+        assert!(markup.contains("R01"));
+        assert!(markup.contains("Revisão de cotas"));
     }
 }

@@ -146,7 +146,7 @@ O #12 é o mais importante deste grupo. Dois quartos separados por uma parede: o
 | 33 | Modelos de planta baixa, implantação e detalhamento | P1 | 3 | Feito |
 | 34 | Quadros de áreas, esquadrias, ambientes e materiais configuráveis | P1 | 2 | Feito |
 | 35 | Cortes, fachadas, detalhes e referências entre desenhos | P2 | 4 | Feito |
-| 36 | Conjunto de pranchas com revisões e controle de documentação | P2 | 4 | — |
+| 36 | Conjunto de pranchas com revisões e controle de documentação | P2 | 4 | Feito |
 | 37 | Estilos de documentação baseados nas normas brasileiras | P1 | 2 | Feito |
 
 As cotas automáticas e os quadros de áreas e de esquadrias já existem: a proposta é ampliá-los, não recriá-los. Para o #37, a referência é a **ABNT NBR 6492:2021** (documentação técnica de projetos arquitetônicos e urbanísticos). O Trazo pode trazer padrões prontos, mas deve deixar claro que conferir as exigências aplicáveis continua sendo responsabilidade de quem projeta.

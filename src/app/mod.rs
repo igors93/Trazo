@@ -44,6 +44,7 @@ enum DocDialog {
     Schedules,
     Templates,
     Views,
+    SheetSet,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -174,6 +175,7 @@ pub struct FloorPlanApp {
     active_doc_dialog: DocDialog,
     new_layer_name: String,
     new_note_text: String,
+    new_revision_text: String,
     browser_filter: String,
     browser_hover: Option<Selection>,
     cursor_world: Option<Point>,
@@ -286,6 +288,7 @@ impl FloorPlanApp {
             active_doc_dialog: DocDialog::None,
             new_layer_name: String::new(),
             new_note_text: String::new(),
+            new_revision_text: String::new(),
             browser_filter: String::new(),
             browser_hover: None,
             cursor_world: None,

@@ -15,6 +15,7 @@ pub mod notes;
 pub mod schedules;
 pub mod setbacks;
 pub mod sheet;
+pub mod sheet_set;
 pub mod snap;
 pub mod templates;
 pub mod views;
