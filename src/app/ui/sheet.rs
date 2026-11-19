@@ -6,7 +6,7 @@ use eframe::egui::{self, Margin, RichText, Stroke};
 use super::super::{DocDialog, FloorPlanApp, theme::*};
 use super::icons::Icon;
 use super::widgets::{primary_button, secondary_button, toggle_pill};
-use crate::domain::sheet::{Orientation, PaperSize, SheetMargins};
+use crate::domain::sheet::{DrawingScale, Orientation, PaperSize, SheetMargins};
 
 impl FloorPlanApp {
     pub(super) fn sheet_dialog(&mut self, ctx: &egui::Context) {
@@ -133,11 +133,100 @@ impl FloorPlanApp {
                         );
                     });
 
+                ui.add_space(10.0);
+                egui::Frame::new()
+                    .fill(PANEL_ALT)
+                    .stroke(Stroke::new(1.0, BORDER))
+                    .corner_radius(8)
+                    .inner_margin(Margin::same(12))
+                    .show(ui, |ui| {
+                        ui.label(
+                            RichText::new("Escala exata de impressão")
+                                .font(strong(13.0))
+                                .color(TEXT),
+                        );
+                        ui.add_space(6.0);
+                        ui.horizontal_wrapped(|ui| {
+                            for scale in DrawingScale::STANDARD {
+                                if toggle_pill(
+                                    ui,
+                                    &scale.label(),
+                                    self.project.sheet.scale == scale,
+                                    &format!(
+                                        "1,00 m real = {:.1} mm no papel",
+                                        scale.mm_per_meter()
+                                    ),
+                                )
+                                .clicked()
+                                {
+                                    let prev = self.project.clone();
+                                    self.project.sheet.scale = scale;
+                                    self.record_change(prev);
+                                }
+                            }
+                            if let Some((min, max)) = self.project.bounds() {
+                                let (_, _, pw, ph) = self.project.sheet.printable_rect_mm();
+                                let plan_w = (max.x - min.x).max(0.5);
+                                let plan_h = (max.y - min.y).max(0.5);
+                                if secondary_button(ui, "Melhor escala").clicked() {
+                                    let best =
+                                        DrawingScale::best_fit(plan_w, plan_h, pw, (ph - 16.0).max(20.0));
+                                    let prev = self.project.clone();
+                                    self.project.sheet.scale = best;
+                                    self.record_change(prev);
+                                }
+                            }
+                        });
+                        if let Some((min, max)) = self.project.bounds() {
+                            let (_, _, pw, ph) = self.project.sheet.printable_rect_mm();
+                            let plan_w = (max.x - min.x).max(0.5);
+                            let plan_h = (max.y - min.y).max(0.5);
+                            let fits = self.project.sheet.scale.fits(
+                                plan_w,
+                                plan_h,
+                                pw,
+                                (ph - 16.0).max(20.0),
+                            );
+                            ui.add_space(4.0);
+                            let (status, color) = if fits {
+                                (
+                                    format!(
+                                        "A planta ({:.1} × {:.1} m) cabe na folha {} em escala {}.",
+                                        plan_w,
+                                        plan_h,
+                                        self.project.sheet.size.short_name(),
+                                        self.project.sheet.scale.label()
+                                    )
+                                    .replace('.', ","),
+                                    SUCCESS,
+                                )
+                            } else {
+                                (
+                                    format!(
+                                        "Atenção: a planta excede a folha {} em {}. Use uma folha maior ou clique em Melhor escala.",
+                                        self.project.sheet.size.short_name(),
+                                        self.project.sheet.scale.label()
+                                    ),
+                                    WARNING,
+                                )
+                            };
+                            ui.label(RichText::new(status).size(12.0).color(color));
+                        }
+                    });
+
                 ui.add_space(12.0);
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if primary_button(ui, "Fechar").clicked() {
-                        close = true;
+                ui.horizontal(|ui| {
+                    if primary_button(ui, "Exportar prancha PDF (escala exata)").clicked() {
+                        self.export_sheet_pdf();
                     }
+                    if secondary_button(ui, "Exportar prancha SVG").clicked() {
+                        self.export_sheet_svg();
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if secondary_button(ui, "Fechar").clicked() {
+                            close = true;
+                        }
+                    });
                 });
             });
         if close || response.should_close() {

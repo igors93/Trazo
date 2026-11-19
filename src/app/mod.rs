@@ -722,6 +722,52 @@ impl FloorPlanApp {
         }
     }
 
+    fn export_sheet_pdf(&mut self) {
+        let default_name = format!(
+            "prancha-{}-{}.pdf",
+            self.project.sheet.size.short_name().to_lowercase(),
+            self.project.sheet.scale.label().replace(':', "-")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Prancha PDF em escala", &["pdf"])
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            return;
+        };
+        self.message = match export::export_scaled_pdf(&self.project, &path) {
+            Ok(()) => format!(
+                "Prancha {} em escala {} exportada em PDF.",
+                self.project.sheet.size.short_name(),
+                self.project.sheet.scale.label()
+            ),
+            Err(error) => format!("Não foi possível exportar a prancha PDF: {error}"),
+        };
+    }
+
+    fn export_sheet_svg(&mut self) {
+        let default_name = format!(
+            "prancha-{}-{}.svg",
+            self.project.sheet.size.short_name().to_lowercase(),
+            self.project.sheet.scale.label().replace(':', "-")
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Prancha SVG em escala", &["svg"])
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            return;
+        };
+        self.message = match export::export_scaled_svg(&self.project, &path) {
+            Ok(()) => format!(
+                "Prancha {} em escala {} exportada em SVG.",
+                self.project.sheet.size.short_name(),
+                self.project.sheet.scale.label()
+            ),
+            Err(error) => format!("Não foi possível exportar a prancha SVG: {error}"),
+        };
+    }
+
     fn export_png(&mut self) {
         let Some(path) = rfd::FileDialog::new()
             .add_filter("Imagem PNG", &["png"])

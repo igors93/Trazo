@@ -120,12 +120,76 @@ impl SheetMargins {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "scale", rename_all = "snake_case")]
+pub enum DrawingScale {
+    S1_25,
+    #[default]
+    S1_50,
+    S1_75,
+    S1_100,
+    S1_200,
+    Custom {
+        denominator: f64,
+    },
+}
+
+impl DrawingScale {
+    pub const STANDARD: [DrawingScale; 5] = [
+        DrawingScale::S1_25,
+        DrawingScale::S1_50,
+        DrawingScale::S1_75,
+        DrawingScale::S1_100,
+        DrawingScale::S1_200,
+    ];
+
+    pub fn denominator(self) -> f64 {
+        match self {
+            DrawingScale::S1_25 => 25.0,
+            DrawingScale::S1_50 => 50.0,
+            DrawingScale::S1_75 => 75.0,
+            DrawingScale::S1_100 => 100.0,
+            DrawingScale::S1_200 => 200.0,
+            DrawingScale::Custom { denominator } => denominator.clamp(1.0, 10_000.0),
+        }
+    }
+
+    /// Paper millimetres representing 1.00 real metre (e.g. 20 mm/m at 1:50).
+    pub fn mm_per_meter(self) -> f64 {
+        1000.0 / self.denominator()
+    }
+
+    pub fn label(self) -> String {
+        let d = self.denominator();
+        if (d - d.round()).abs() < 1e-3 {
+            format!("1:{:.0}", d.round())
+        } else {
+            format!("1:{d:.1}").replace('.', ",")
+        }
+    }
+
+    pub fn fits(self, plan_w_m: f64, plan_h_m: f64, area_w_mm: f64, area_h_mm: f64) -> bool {
+        let s = self.mm_per_meter();
+        plan_w_m * s <= area_w_mm + 1e-6 && plan_h_m * s <= area_h_mm + 1e-6
+    }
+
+    /// Picks the most detailed standard scale that fits `plan_w_m × plan_h_m`
+    /// inside `area_w_mm × area_h_mm` (falling back to 1:200).
+    pub fn best_fit(plan_w_m: f64, plan_h_m: f64, area_w_mm: f64, area_h_mm: f64) -> Self {
+        Self::STANDARD
+            .into_iter()
+            .find(|scale| scale.fits(plan_w_m, plan_h_m, area_w_mm, area_h_mm))
+            .unwrap_or(DrawingScale::S1_200)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SheetLayout {
     pub size: PaperSize,
     pub orientation: Orientation,
     pub margins: SheetMargins,
+    pub scale: DrawingScale,
 }
 
 impl Default for SheetLayout {
@@ -140,6 +204,7 @@ impl SheetLayout {
             size,
             orientation,
             margins: SheetMargins::abnt_for(size),
+            scale: DrawingScale::S1_50,
         }
     }
 
@@ -208,5 +273,29 @@ mod tests {
         );
         assert_eq!(custom.sheet_mm(), (600.0, 400.0));
         assert!(custom.validate().is_ok());
+    }
+
+    #[test]
+    fn exact_drawing_scales_compute_physical_mm_and_best_fit() {
+        assert!((DrawingScale::S1_25.mm_per_meter() - 40.0).abs() < 1e-6);
+        assert!((DrawingScale::S1_50.mm_per_meter() - 20.0).abs() < 1e-6);
+        assert!((DrawingScale::S1_75.mm_per_meter() - 1000.0 / 75.0).abs() < 1e-6);
+        assert!((DrawingScale::S1_100.mm_per_meter() - 10.0).abs() < 1e-6);
+        assert!((DrawingScale::S1_200.mm_per_meter() - 5.0).abs() < 1e-6);
+        assert_eq!(DrawingScale::S1_50.label(), "1:50");
+
+        // 12 m × 8 m plan in A3 printable area (388 × 283 mm):
+        // 1:25 needs 480 × 320 mm (doesn't fit); 1:50 needs 240 × 160 mm (fits!).
+        assert!(!DrawingScale::S1_25.fits(12.0, 8.0, 388.0, 283.0));
+        assert!(DrawingScale::S1_50.fits(12.0, 8.0, 388.0, 283.0));
+        assert_eq!(
+            DrawingScale::best_fit(12.0, 8.0, 388.0, 283.0),
+            DrawingScale::S1_50
+        );
+        // 25 m × 18 m plan in A3 needs 1:100 (250 × 180 mm).
+        assert_eq!(
+            DrawingScale::best_fit(25.0, 18.0, 388.0, 283.0),
+            DrawingScale::S1_100
+        );
     }
 }
