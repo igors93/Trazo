@@ -243,6 +243,7 @@ impl FloorPlanApp {
         if menu_check(ui, "Encaixe magnético", "F3", self.snap_enabled).clicked() {
             self.toggle_snap();
         }
+        ui.menu_button("Encaixes avançados (OSNAP)", |ui| self.osnap_menu(ui));
         if menu_check(ui, "Modo orto", "F8", self.ortho_enabled).clicked() {
             self.toggle_ortho();
         }
@@ -252,6 +253,59 @@ impl FloorPlanApp {
         }
         if menu_check(ui, "Propriedades", "", self.show_properties).clicked() {
             self.show_properties = !self.show_properties;
+        }
+    }
+
+    pub(super) fn osnap_menu(&mut self, ui: &mut Ui) {
+        ui.set_width(MENU_WIDTH);
+        if menu_check(ui, "Extremidade (ponta)", "", self.osnap.endpoint).clicked() {
+            self.osnap.endpoint = !self.osnap.endpoint;
+        }
+        if menu_check(ui, "Ponto médio", "", self.osnap.midpoint).clicked() {
+            self.osnap.midpoint = !self.osnap.midpoint;
+        }
+        if menu_check(ui, "Interseção", "", self.osnap.intersection).clicked() {
+            self.osnap.intersection = !self.osnap.intersection;
+        }
+        if menu_check(ui, "Centro", "", self.osnap.center).clicked() {
+            self.osnap.center = !self.osnap.center;
+        }
+        if menu_check(ui, "Perpendicular", "", self.osnap.perpendicular).clicked() {
+            self.osnap.perpendicular = !self.osnap.perpendicular;
+        }
+        if menu_check(ui, "Tangente", "", self.osnap.tangent).clicked() {
+            self.osnap.tangent = !self.osnap.tangent;
+        }
+        if menu_check(ui, "Prolongamento", "", self.osnap.extension).clicked() {
+            self.osnap.extension = !self.osnap.extension;
+        }
+        menu_separator(ui);
+        let all_on = self.osnap == crate::domain::snap::OsnapSettings::default();
+        if menu_item(
+            ui,
+            None,
+            if all_on {
+                "Desativar todos"
+            } else {
+                "Ativar todos"
+            },
+            "",
+        )
+        .clicked()
+        {
+            self.osnap = if all_on {
+                crate::domain::snap::OsnapSettings {
+                    endpoint: false,
+                    midpoint: false,
+                    intersection: false,
+                    center: false,
+                    perpendicular: false,
+                    tangent: false,
+                    extension: false,
+                }
+            } else {
+                crate::domain::snap::OsnapSettings::default()
+            };
         }
     }
 

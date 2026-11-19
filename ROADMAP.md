@@ -99,7 +99,7 @@ IA para analisar, propor e revisar, com as decisões sempre nas mãos de quem pr
 | --- | --- | --- | --- | --- |
 | 01 | Coordenadas e cálculos em `f64`, com tolerâncias controladas | P0 | 1 | — |
 | 02 | Cômodos poligonais (L, U, irregulares), desenhados clicando nos cantos | P0 | 1 | — |
-| 03 | Encaixe avançado: ponto médio, interseção, perpendicular, tangente, centro, prolongamento | P0 | 1 | Parcial |
+| 03 | Encaixe avançado: ponto médio, interseção, perpendicular, tangente, centro, prolongamento | P0 | 1 | Feito |
 | 04 | Digitar distância, ângulo, coordenadas e medidas durante o desenho | P0 | 1 | Parcial |
 | 05 | Copiar, colar, espelhar, girar, deslocar (offset), aparar e estender | P0 | 1 | — |
 | 06 | Dividir, unir, alinhar, distribuir, agrupar e repetir objetos | P1 | 3 | — |

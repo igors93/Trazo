@@ -8,33 +8,90 @@ use super::{
 use crate::domain::{
     fixtures::{Fixture, FixtureKind},
     geometry::{POINT_TOLERANCE, Point},
+    snap::{SnapResult, find_snap},
 };
 use eframe::egui::{self, Key, PointerButton, Sense};
 
 impl FloorPlanApp {
     fn snap(&self, point: Point, start: Option<Point>) -> Point {
-        let mut result = if self.snap_enabled {
-            self.magnetic_snap(point, start)
+        self.snap_detail(point, start)
+            .map(|hit| hit.point)
+            .unwrap_or(point)
+    }
+
+    pub(super) fn snap_detail(&self, point: Point, start: Option<Point>) -> Option<SnapResult> {
+        let mut hit = if self.snap_enabled {
+            let draft_points: &[Point] = match self.tool {
+                Tool::RoomPolygon => &self.polygon_draft,
+                Tool::Draw(_) => &self.draw_points,
+                _ => &[],
+            };
+            let threshold = self.screen_metres(12.0).clamp(0.12, 0.40);
+            Some(find_snap(
+                &self.project,
+                draft_points,
+                point,
+                start,
+                threshold,
+                self.osnap,
+            ))
         } else {
-            point
+            None
         };
+
+        let mut result = hit.map(|h| h.point).unwrap_or(point);
         if self.ortho_enabled
             && matches!(self.tool, Tool::Wall | Tool::RoomPolygon | Tool::Draw(_))
             && let Some(start) = start
         {
+            let before = result;
             if (result.x - start.x).abs() >= (result.y - start.y).abs() {
                 result.y = start.y;
             } else {
                 result.x = start.x;
             }
+            if !result.near(before, POINT_TOLERANCE)
+                && let Some(h) = &mut hit
+            {
+                h.point = result;
+                h.kind = SnapKind::Extension;
+                h.guide = Some((start, result));
+            }
         }
+        let exact_object_snap = hit.is_some_and(|h| {
+            matches!(
+                h.kind,
+                SnapKind::Endpoint
+                    | SnapKind::Midpoint
+                    | SnapKind::Intersection
+                    | SnapKind::Center
+                    | SnapKind::Perpendicular
+                    | SnapKind::Tangent
+            )
+        });
         if self.modulation_enabled
             && let Some(start) = start
+            && !exact_object_snap
             && !self.is_wall_end(result)
         {
-            result = self.modular_point(start, result);
+            let modular = self.modular_point(start, result);
+            if !modular.near(result, POINT_TOLERANCE) {
+                result = modular;
+                if let Some(h) = &mut hit {
+                    h.point = result;
+                    if h.kind == SnapKind::Extension {
+                        h.guide = Some((start, result));
+                    }
+                }
+            }
         }
-        result
+        hit.or_else(|| {
+            (!result.near(point, POINT_TOLERANCE)).then_some(SnapResult {
+                point: result,
+                kind: SnapKind::Extension,
+                guide: start.map(|from| (from, result)),
+            })
+        })
     }
 
     fn is_wall_end(&self, point: Point) -> bool {
@@ -70,44 +127,21 @@ impl FloorPlanApp {
         }
     }
 
-    fn magnetic_snap(&self, point: Point, start: Option<Point>) -> Point {
-        let mut result = point.snapped_to(0.25);
-        let snap_threshold = self.screen_metres(12.0).clamp(0.12, 0.40);
-        let mut closest = snap_threshold;
-        // Wall ends, and the corners of the room being drawn (to close it).
-        let corners = self
-            .project
-            .walls
-            .iter()
-            .flat_map(|wall| [wall.start, wall.end])
-            .chain(self.polygon_draft.iter().copied());
-        for endpoint in corners {
-            let distance = point.distance(endpoint);
-            if distance < closest {
-                closest = distance;
-                result = endpoint;
-            }
-        }
-        if let Some(start) = start {
-            if (result.x - start.x).abs() < snap_threshold {
-                result.x = start.x;
-            }
-            if (result.y - start.y).abs() < snap_threshold {
-                result.y = start.y;
-            }
-        }
-        result
-    }
-
+    #[allow(dead_code)]
     fn snap_kind(&self, point: Point) -> Option<SnapKind> {
         if !self.snap_enabled {
             return None;
         }
-        let on_endpoint = self.project.walls.iter().any(|wall| {
-            wall.start.near(point, POINT_TOLERANCE) || wall.end.near(point, POINT_TOLERANCE)
-        });
-        Some(if on_endpoint {
-            SnapKind::Endpoint
+        let hit = find_snap(
+            &self.project,
+            &self.polygon_draft,
+            point,
+            self.draft_start(),
+            POINT_TOLERANCE * 2.0,
+            self.osnap,
+        );
+        Some(if hit.point.near(point, POINT_TOLERANCE * 2.0) {
+            hit.kind
         } else {
             SnapKind::Grid
         })
@@ -190,20 +224,30 @@ impl FloorPlanApp {
             .filter(|position| on_canvas(*position));
         let world = pointer.map(|position| view.to_world(position));
         self.cursor_world = world;
+        let mut snap_hit: Option<SnapResult> = None;
         let snapped = world.map(|point| {
             if self.tool == Tool::Measure {
                 return self.measure_snap(point, self.draft_start()).0;
             }
-            let point = self.snap(point, self.draft_start());
+            let detail = self.snap_detail(point, self.draft_start());
+            let mut result = detail.map(|h| h.point).unwrap_or(point);
             if matches!(self.tool, Tool::Room | Tool::RoomPolygon | Tool::Wall)
                 && let Some(terrain) = &self.project.terrain
             {
-                return Point::new(
-                    point.x.clamp(terrain.min.x, terrain.max.x),
-                    point.y.clamp(terrain.min.y, terrain.max.y),
+                let clamped = Point::new(
+                    result.x.clamp(terrain.min.x, terrain.max.x),
+                    result.y.clamp(terrain.min.y, terrain.max.y),
                 );
+                result = clamped;
             }
-            point
+            snap_hit = detail.map(|mut h| {
+                if !h.point.near(result, POINT_TOLERANCE) {
+                    h.point = result;
+                    h.guide = None;
+                }
+                h
+            });
+            result
         });
 
         if let Some(corners) = &self.pending_room {
@@ -432,10 +476,12 @@ impl FloorPlanApp {
             if matches!(
                 self.tool,
                 Tool::Wall | Tool::Room | Tool::RoomPolygon | Tool::Terrain | Tool::Draw(_)
-            ) && let Some(point) = snapped
-                && let Some(kind) = self.snap_kind(point)
+            ) && let Some(hit) = snap_hit
             {
-                overlay::paint_snap_marker(&painter, view.to_screen(point), kind);
+                if let Some((from, to)) = hit.guide {
+                    overlay::paint_snap_guide(&painter, view.to_screen(from), view.to_screen(to));
+                }
+                overlay::paint_snap_marker(&painter, view.to_screen(hit.point), hit.kind);
             }
             if self.tool == Tool::Measure
                 && let Some(raw) = world

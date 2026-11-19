@@ -5,3 +5,4 @@ pub mod geometry;
 pub mod history;
 pub mod masonry;
 pub mod model;
+pub mod snap;

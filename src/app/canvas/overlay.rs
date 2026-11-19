@@ -172,29 +172,80 @@ pub fn paint_crosshair(painter: &Painter, position: Pos2) {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SnapKind {
-    /// The end of an existing wall.
-    Endpoint,
-    /// A grid intersection.
-    Grid,
-    /// A point on the face of a wall.
-    Face,
+pub use crate::domain::snap::SnapKind;
+
+/// Thin dashed guide line for extension, perpendicular and tangent snaps.
+pub fn paint_snap_guide(painter: &Painter, from: Pos2, to: Pos2) {
+    let delta = to - from;
+    let total = delta.length();
+    if total < 2.0 {
+        return;
+    }
+    let dir = delta / total;
+    let stroke = Stroke::new(1.1, theme::ACCENT.gamma_multiply(0.7));
+    let dash = 6.0;
+    let gap = 4.0;
+    let mut cursor = 0.0;
+    while cursor < total {
+        let end = (cursor + dash).min(total);
+        painter.line_segment([from + dir * cursor, from + dir * end], stroke);
+        cursor += dash + gap;
+    }
 }
 
-/// The marker of the point a click will use: a square on wall ends, as in
-/// CAD object snaps, and a dot on the grid.
+/// The marker of the point a click will use, using standard CAD glyphs for
+/// each object snap kind (square for endpoint, triangle for midpoint, X for
+/// intersection, circle for centre, right-angle for perpendicular, etc.).
 pub fn paint_snap_marker(painter: &Painter, position: Pos2, kind: SnapKind) {
+    let stroke = Stroke::new(1.8, theme::ACCENT);
+    let fill = theme::ACCENT.gamma_multiply(0.15);
     match kind {
         SnapKind::Endpoint => {
             let square = Rect::from_center_size(position, vec2(11.0, 11.0));
-            painter.rect_filled(square, 1.0, theme::ACCENT.gamma_multiply(0.15));
+            painter.rect_filled(square, 1.0, fill);
+            painter.rect_stroke(square, 1.0, stroke, StrokeKind::Middle);
+        }
+        SnapKind::Midpoint => {
+            let triangle = vec![
+                position + vec2(0.0, -7.0),
+                position + vec2(6.5, 5.0),
+                position + vec2(-6.5, 5.0),
+            ];
+            painter.add(Shape::convex_polygon(triangle, fill, stroke));
+        }
+        SnapKind::Intersection => {
+            let r = 6.0;
+            painter.line_segment([position + vec2(-r, -r), position + vec2(r, r)], stroke);
+            painter.line_segment([position + vec2(-r, r), position + vec2(r, -r)], stroke);
+        }
+        SnapKind::Center => {
+            painter.circle(position, 6.5, fill, stroke);
+            painter.circle_filled(position, 1.8, theme::ACCENT);
+        }
+        SnapKind::Perpendicular => {
+            let base = position + vec2(-6.0, 6.0);
+            painter.line_segment([base + vec2(0.0, -12.0), base], stroke);
+            painter.line_segment([base, base + vec2(12.0, 0.0)], stroke);
+            let corner = Rect::from_min_max(base + vec2(0.0, -6.0), base + vec2(6.0, 0.0));
+            painter.rect_filled(corner, 0.0, fill);
             painter.rect_stroke(
-                square,
-                1.0,
-                Stroke::new(1.8, theme::ACCENT),
+                corner,
+                0.0,
+                Stroke::new(1.2, theme::ACCENT),
                 StrokeKind::Middle,
             );
+        }
+        SnapKind::Tangent => {
+            painter.circle(position, 5.5, fill, stroke);
+            painter.line_segment(
+                [position + vec2(-7.5, -5.5), position + vec2(7.5, -5.5)],
+                stroke,
+            );
+        }
+        SnapKind::Extension => {
+            let r = 6.0;
+            painter.line_segment([position + vec2(-r, 0.0), position + vec2(r, 0.0)], stroke);
+            painter.line_segment([position + vec2(0.0, -r), position + vec2(0.0, r)], stroke);
         }
         SnapKind::Grid => {
             painter.circle(
@@ -211,12 +262,28 @@ pub fn paint_snap_marker(painter: &Painter, position: Pos2, kind: SnapKind) {
                 position + vec2(0.0, 6.5),
                 position + vec2(-6.5, 0.0),
             ];
-            painter.add(Shape::convex_polygon(
-                diamond,
-                theme::ACCENT.gamma_multiply(0.15),
-                Stroke::new(1.8, theme::ACCENT),
-            ));
+            painter.add(Shape::convex_polygon(diamond, fill, stroke));
         }
+    }
+
+    if !matches!(kind, SnapKind::Grid | SnapKind::Endpoint | SnapKind::Face) {
+        let galley = painter.layout_no_wrap(
+            kind.label().to_owned(),
+            theme::regular(11.0),
+            theme::ACCENT_TEXT,
+        );
+        let badge = Rect::from_min_size(
+            position + vec2(10.0, -22.0),
+            galley.size() + vec2(10.0, 4.0),
+        );
+        painter.rect(
+            badge,
+            4.0,
+            Color32::from_rgba_unmultiplied(255, 255, 255, 232),
+            Stroke::new(1.0, theme::ACCENT_RING),
+            StrokeKind::Inside,
+        );
+        painter.galley(badge.min + vec2(5.0, 2.0), galley, theme::ACCENT_TEXT);
     }
 }
 

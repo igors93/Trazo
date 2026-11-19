@@ -213,11 +213,20 @@ impl FloorPlanApp {
                     {
                         self.toggle_ortho();
                     }
+                    if self.snap_enabled {
+                        let osnap_btn = toggle_pill(
+                            ui,
+                            "OSNAP ▾",
+                            self.osnap.any_enabled(),
+                            "Configurar encaixes avançados (ponta, meio, interseção, centro, perpendicular, tangente e prolongamento)",
+                        );
+                        egui::Popup::menu(&osnap_btn).show(|ui| self.osnap_menu(ui));
+                    }
                     if toggle_pill(
                         ui,
                         "Encaixe",
                         self.snap_enabled,
-                        "Encaixe na grade de 0,25 m e nas extremidades das paredes (F3)",
+                        "Encaixe magnético: grade e encaixes geométricos OSNAP (F3)",
                     )
                     .clicked()
                     {

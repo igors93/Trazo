@@ -123,6 +123,7 @@ pub struct FloorPlanApp {
     last_canvas_center: Option<egui::Pos2>,
     fit_pending: bool,
     snap_enabled: bool,
+    osnap: crate::domain::snap::OsnapSettings,
     terrain_width_text: String,
     terrain_height_text: String,
     wall_length_text: String,
@@ -223,6 +224,7 @@ impl FloorPlanApp {
             last_canvas_center: None,
             fit_pending: restored,
             snap_enabled: preferences.snap_enabled,
+            osnap: preferences.osnap,
             terrain_width_text: "5,00".to_owned(),
             terrain_height_text: "10,00".to_owned(),
             wall_length_text: String::new(),
@@ -320,6 +322,7 @@ impl FloorPlanApp {
         Settings {
             show_grid: self.show_grid,
             snap_enabled: self.snap_enabled,
+            osnap: self.osnap,
             ortho_enabled: self.ortho_enabled,
             show_browser: self.show_browser,
             show_properties: self.show_properties,
