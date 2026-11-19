@@ -23,12 +23,25 @@ pub struct ViewTransform {
 
 impl ViewTransform {
     pub fn to_screen(self, point: Point) -> Pos2 {
-        self.rect.center() + self.pan + egui::vec2(point.x * self.scale, point.y * self.scale)
+        let scale = f64::from(self.scale);
+        self.rect.center()
+            + self.pan
+            + egui::vec2((point.x * scale) as f32, (point.y * scale) as f32)
     }
 
     pub fn to_world(self, position: Pos2) -> Point {
         let offset = position - self.rect.center() - self.pan;
-        Point::new(offset.x / self.scale, offset.y / self.scale)
+        Point::new(self.metres(offset.x), self.metres(offset.y))
+    }
+
+    /// A length on the plan, in screen pixels.
+    pub fn pixels(self, metres: f64) -> f32 {
+        (metres * f64::from(self.scale)) as f32
+    }
+
+    /// A length on screen, in metres on the plan.
+    pub fn metres(self, pixels: f32) -> f64 {
+        f64::from(pixels) / f64::from(self.scale)
     }
 }
 
@@ -89,11 +102,13 @@ fn paint_frame_tags(
         let galley = painter.layout_no_wrap(frame.tag(), theme::strong(10.0), theme::ACCENT_TEXT);
         let size = galley.size() + egui::vec2(8.0, 2.0);
         let across = |direction: Point| {
-            (direction.x.abs() * size.x / 2.0 + direction.y.abs() * size.y / 2.0) / view.scale
+            view.metres(
+                direction.x.abs() as f32 * size.x / 2.0 + direction.y.abs() as f32 * size.y / 2.0,
+            )
         };
-        let slide = opening.width() / 2.0 + across(along) + 4.0 / view.scale;
-        let rect_at = |side: f32, beyond: f32, shift: f32| {
-            let offset = wall.thickness() / 2.0 + beyond + 4.0 / view.scale + across(normal);
+        let slide = opening.width() / 2.0 + across(along) + view.metres(4.0);
+        let rect_at = |side: f64, beyond: f64, shift: f64| {
+            let offset = wall.thickness() / 2.0 + beyond + view.metres(4.0) + across(normal);
             Rect::from_center_size(
                 view.to_screen(Point::new(
                     center.x + normal.x * offset * side + along.x * shift,
@@ -299,7 +314,7 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
                     Weight::Outline => Stroke::new(1.4, ink),
                     Weight::Detail => Stroke::new(0.9, detail),
                 };
-                painter.circle_stroke(screen(center), radius * view.scale, stroke);
+                painter.circle_stroke(screen(center), view.pixels(radius), stroke);
             }
         }
     }
@@ -307,7 +322,7 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
         let (x, y) = fixture.extent();
         let galley =
             painter.layout_no_wrap(fixture.kind.label().to_owned(), theme::regular(10.5), ink);
-        let room = egui::vec2(x * view.scale - 6.0, y * view.scale - 4.0);
+        let room = egui::vec2(view.pixels(x) - 6.0, view.pixels(y) - 4.0);
         if galley.size().x <= room.x && galley.size().y <= room.y {
             let center = view.to_screen(fixture.center);
             let backing = Rect::from_center_size(center, galley.size() + egui::vec2(6.0, 2.0));
@@ -713,7 +728,7 @@ fn paint_grid(painter: &Painter, view: ViewTransform) {
     let end_x = (last.x / step).ceil() as i32;
     let start_y = (first.y / step).floor() as i32;
     let end_y = (last.y / step).ceil() as i32;
-    let color = |value: f32| {
+    let color = |value: f64| {
         if (value / major_every).fract().abs() < 0.001
             || (value / major_every).fract().abs() > 0.999
         {
@@ -723,7 +738,7 @@ fn paint_grid(painter: &Painter, view: ViewTransform) {
         }
     };
     for index in start_x..=end_x {
-        let value = index as f32 * step;
+        let value = f64::from(index) * step;
         let x = view.to_screen(Point::new(value, 0.0)).x;
         painter.line_segment(
             [
@@ -734,7 +749,7 @@ fn paint_grid(painter: &Painter, view: ViewTransform) {
         );
     }
     for index in start_y..=end_y {
-        let value = index as f32 * step;
+        let value = f64::from(index) * step;
         let y = view.to_screen(Point::new(0.0, value)).y;
         painter.line_segment(
             [
@@ -801,8 +816,8 @@ fn paint_wall(
     for opening in openings {
         let op_selected = selection == Some(Selection::Opening(opening.id));
         let op_hovered = hover == Some(Selection::Opening(opening.id));
-        let half = opening.width() * view.scale / 2.0;
-        let center = opening.t * screen_length;
+        let half = view.pixels(opening.width()) / 2.0;
+        let center = opening.t as f32 * screen_length;
         let left = center - half;
         let right = center + half;
         if left > cursor {
@@ -1027,12 +1042,12 @@ fn outline_opening(
 }
 
 fn wall_stroke_width(scale: f32) -> f32 {
-    (scale * WALL_THICKNESS_METERS).clamp(1.5, 10.0)
+    (scale * WALL_THICKNESS_METERS as f32).clamp(1.5, 10.0)
 }
 
 /// A wall drawn at its real thickness, never thinner than a hairline.
-fn wall_screen_width(scale: f32, thickness: f32) -> f32 {
-    (scale * thickness).max(1.5)
+fn wall_screen_width(scale: f32, thickness: f64) -> f32 {
+    (scale * thickness as f32).max(1.5)
 }
 
 #[cfg(test)]

@@ -1,24 +1,55 @@
+//! Points, segments and polygons in metres, computed in double precision.
+//!
+//! Every comparison goes through a named tolerance, so "the same point" or
+//! "on the wall" means the same thing everywhere in the editor.
+
 use serde::{Deserialize, Serialize};
 
-pub const GRID_METERS: f32 = 0.25;
-pub const WALL_THICKNESS_METERS: f32 = 0.12;
+pub const GRID_METERS: f64 = 0.25;
+pub const WALL_THICKNESS_METERS: f64 = 0.12;
+
+/// Below this two values are numerically equal (a nanometre).
+pub const EPSILON: f64 = 1e-9;
+/// Stored coordinates are kept to a hundredth of a millimetre, which also
+/// wipes out the noise of older single-precision files.
+const STEPS_PER_METRE: f64 = 100_000.0;
+/// Points closer than this are the same point on a drawing (half a millimetre).
+pub const POINT_TOLERANCE: f64 = 5e-4;
+/// Wall ends closer than this are joined (a centimetre).
+pub const JOIN_TOLERANCE: f64 = 0.01;
+
+/// `value` rounded to the stored resolution.
+pub fn round_to_resolution(value: f64) -> f64 {
+    // Dividing by a whole number gives the double nearest the decimal value
+    // (4.12 and not 4.120000000000001).
+    let rounded = (value * STEPS_PER_METRE).round() / STEPS_PER_METRE;
+    // Avoid "-0" in files and on screen.
+    if rounded == 0.0 { 0.0 } else { rounded }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Point {
-    pub x: f32,
-    pub y: f32,
+    pub x: f64,
+    pub y: f64,
 }
 
 impl Point {
-    pub fn new(x: f32, y: f32) -> Self {
+    pub const ORIGIN: Self = Self { x: 0.0, y: 0.0 };
+
+    pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
 
-    pub fn distance(self, other: Self) -> f32 {
-        ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
+    pub fn distance(self, other: Self) -> f64 {
+        (self.x - other.x).hypot(self.y - other.y)
     }
 
-    pub fn snapped_to(self, step: f32) -> Self {
+    /// Whether `other` is within `tolerance` metres.
+    pub fn near(self, other: Self, tolerance: f64) -> bool {
+        self.distance(other) <= tolerance
+    }
+
+    pub fn snapped_to(self, step: f64) -> Self {
         Self::new(
             (self.x / step).round() * step,
             (self.y / step).round() * step,
@@ -28,13 +59,84 @@ impl Point {
     pub fn translated(self, delta: Self) -> Self {
         Self::new(self.x + delta.x, self.y + delta.y)
     }
+
+    pub fn minus(self, other: Self) -> Self {
+        Self::new(self.x - other.x, self.y - other.y)
+    }
+
+    pub fn scaled(self, factor: f64) -> Self {
+        Self::new(self.x * factor, self.y * factor)
+    }
+
+    pub fn dot(self, other: Self) -> f64 {
+        self.x * other.x + self.y * other.y
+    }
+
+    /// The z component of the cross product of the two vectors.
+    pub fn cross(self, other: Self) -> f64 {
+        self.x * other.y - self.y * other.x
+    }
+
+    pub fn length(self) -> f64 {
+        self.x.hypot(self.y)
+    }
+
+    /// The unit vector in this direction, or `None` for a null vector.
+    pub fn normalized(self) -> Option<Self> {
+        let length = self.length();
+        (length > EPSILON).then(|| self.scaled(1.0 / length))
+    }
+
+    /// The point a fraction `t` of the way to `other`.
+    pub fn lerp(self, other: Self, t: f64) -> Self {
+        Self::new(
+            self.x + (other.x - self.x) * t,
+            self.y + (other.y - self.y) * t,
+        )
+    }
+
+    pub fn midpoint(self, other: Self) -> Self {
+        self.lerp(other, 0.5)
+    }
+
+    /// Rounded to the stored resolution.
+    pub fn rounded(self) -> Self {
+        Self::new(round_to_resolution(self.x), round_to_resolution(self.y))
+    }
+
+    pub fn is_finite(self) -> bool {
+        self.x.is_finite() && self.y.is_finite()
+    }
 }
 
-pub fn nearest_point_on_segment(point: Point, start: Point, end: Point) -> (Point, f32) {
+/// Where the lines through `a`-`b` and `c`-`d` cross, with the parameters
+/// along each (`a + t(b - a)`, `c + u(d - c)`); `None` when parallel.
+pub fn line_intersection(a: Point, b: Point, c: Point, d: Point) -> Option<(Point, f64, f64)> {
+    let r = b.minus(a);
+    let s = d.minus(c);
+    let denominator = r.cross(s);
+    // Parallel within a micro-radian.
+    if denominator.abs() <= 1e-6 * r.length() * s.length() {
+        return None;
+    }
+    let offset = c.minus(a);
+    let t = offset.cross(s) / denominator;
+    let u = offset.cross(r) / denominator;
+    Some((a.lerp(b, t), t, u))
+}
+
+/// Distance from `point` to the segment `start`-`end`.
+pub fn distance_to_segment(point: Point, start: Point, end: Point) -> f64 {
+    nearest_point_on_segment(point, start, end)
+        .0
+        .distance(point)
+}
+
+pub fn nearest_point_on_segment(point: Point, start: Point, end: Point) -> (Point, f64) {
     let dx = end.x - start.x;
     let dy = end.y - start.y;
     let length_squared = dx * dx + dy * dy;
-    if length_squared <= f32::EPSILON {
+    if length_squared <= EPSILON * EPSILON {
         return (start, 0.0);
     }
     let t =
@@ -42,11 +144,11 @@ pub fn nearest_point_on_segment(point: Point, start: Point, end: Point) -> (Poin
     (Point::new(start.x + t * dx, start.y + t * dy), t)
 }
 
-pub fn format_meters(value: f32) -> String {
+pub fn format_meters(value: f64) -> String {
     format!("{value:.2} m").replace('.', ",")
 }
 
-pub fn polygon_area(vertices: &[Point]) -> f32 {
+pub fn polygon_area(vertices: &[Point]) -> f64 {
     if vertices.len() < 3 {
         return 0.0;
     }
@@ -61,7 +163,7 @@ pub fn polygon_area(vertices: &[Point]) -> f32 {
 
 pub fn polygon_centroid(vertices: &[Point]) -> Point {
     if vertices.len() < 3 {
-        return Point::new(0.0, 0.0);
+        return Point::ORIGIN;
     }
     let mut signed_area = 0.0;
     let mut cx = 0.0;
@@ -76,9 +178,9 @@ pub fn polygon_centroid(vertices: &[Point]) -> Point {
     }
     signed_area *= 0.5;
     if signed_area.abs() < 1e-4 {
-        let sum_x: f32 = vertices.iter().map(|p| p.x).sum();
-        let sum_y: f32 = vertices.iter().map(|p| p.y).sum();
-        return Point::new(sum_x / n as f32, sum_y / n as f32);
+        let sum_x: f64 = vertices.iter().map(|p| p.x).sum();
+        let sum_y: f64 = vertices.iter().map(|p| p.y).sum();
+        return Point::new(sum_x / n as f64, sum_y / n as f64);
     }
     Point::new(cx / (6.0 * signed_area), cy / (6.0 * signed_area))
 }
@@ -104,7 +206,7 @@ pub fn polygon_contains_point(vertices: &[Point], point: Point) -> bool {
 }
 
 fn triangle_contains_point(a: Point, b: Point, c: Point, p: Point) -> bool {
-    let sign = |p1: Point, p2: Point, p3: Point| -> f32 {
+    let sign = |p1: Point, p2: Point, p3: Point| -> f64 {
         (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y)
     };
     let d1 = sign(p, a, b);
@@ -115,17 +217,17 @@ fn triangle_contains_point(a: Point, b: Point, c: Point, p: Point) -> bool {
     !(has_neg && has_pos)
 }
 
+/// Whether the segments cross at a point inside both (touching ends do
+/// not count).
 fn segments_cross(p1: Point, p2: Point, p3: Point, p4: Point) -> bool {
-    let ccw = |a: Point, b: Point, c: Point| -> f32 {
-        (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+    let Some((_, t, u)) = line_intersection(p1, p2, p3, p4) else {
+        return false;
     };
-    let d1 = ccw(p1, p2, p3);
-    let d2 = ccw(p1, p2, p4);
-    let d3 = ccw(p3, p4, p1);
-    let d4 = ccw(p3, p4, p2);
-
-    ((d1 > 1e-4 && d2 < -1e-4) || (d1 < -1e-4 && d2 > 1e-4))
-        && ((d3 > 1e-4 && d4 < -1e-4) || (d3 < -1e-4 && d4 > 1e-4))
+    let inner = |value: f64, length: f64| {
+        let margin = POINT_TOLERANCE / length.max(EPSILON);
+        value > margin && value < 1.0 - margin
+    };
+    inner(t, p1.distance(p2)) && inner(u, p3.distance(p4))
 }
 
 pub fn triangulate_polygon(vertices: &[Point]) -> Vec<[Point; 3]> {
@@ -226,7 +328,7 @@ pub fn triangulate_polygon(vertices: &[Point]) -> Vec<[Point; 3]> {
         return Vec::new();
     }
 
-    let tri_sum: f32 = triangles
+    let tri_sum: f64 = triangles
         .iter()
         .map(|t| {
             ((t[1].x - t[0].x) * (t[2].y - t[0].y) - (t[1].y - t[0].y) * (t[2].x - t[0].x)).abs()
@@ -243,6 +345,59 @@ pub fn triangulate_polygon(vertices: &[Point]) -> Vec<[Point; 3]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn double_precision_keeps_fractions_of_a_millimetre() {
+        // 2 km from the origin a tenth of a millimetre still shows.
+        let far = Point::new(2000.0001, 0.0);
+        assert!((far.x - 2000.0).abs() > 5e-5);
+        assert_eq!(
+            Point::new(4.1200004, -0.0000001).rounded(),
+            Point::new(4.12, 0.0)
+        );
+        assert!(Point::new(1.0, 1.0).near(Point::new(1.0004, 1.0), POINT_TOLERANCE));
+    }
+
+    #[test]
+    fn lines_cross_where_expected_and_parallels_never() {
+        assert!(segments_cross(
+            Point::new(0.0, 0.0),
+            Point::new(4.0, 0.0),
+            Point::new(1.0, -1.0),
+            Point::new(1.0, 1.0),
+        ));
+        // Sharing an end is not crossing.
+        assert!(!segments_cross(
+            Point::new(0.0, 0.0),
+            Point::new(4.0, 0.0),
+            Point::new(4.0, 0.0),
+            Point::new(4.0, 3.0),
+        ));
+        let (beyond, t, _) = line_intersection(
+            Point::new(0.0, 0.0),
+            Point::new(4.0, 0.0),
+            Point::new(5.0, -1.0),
+            Point::new(5.0, 1.0),
+        )
+        .unwrap();
+        assert!(beyond.near(Point::new(5.0, 0.0), 1e-12) && (t - 1.25).abs() < 1e-12);
+        assert!(
+            line_intersection(
+                Point::new(0.0, 0.0),
+                Point::new(1.0, 0.0),
+                Point::new(0.0, 1.0),
+                Point::new(1.0, 1.0),
+            )
+            .is_none()
+        );
+
+        let gap = distance_to_segment(
+            Point::new(2.0, 3.0),
+            Point::new(0.0, 0.0),
+            Point::new(4.0, 0.0),
+        );
+        assert!((gap - 3.0).abs() < 1e-12);
+    }
 
     #[test]
     fn projection_stays_on_segment() {
@@ -283,7 +438,7 @@ mod tests {
         ];
         let tris = triangulate_polygon(&dart);
         assert_eq!(tris.len(), 2);
-        let area: f32 = tris
+        let area: f64 = tris
             .iter()
             .map(|t| {
                 ((t[1].x - t[0].x) * (t[2].y - t[0].y) - (t[1].y - t[0].y) * (t[2].x - t[0].x))
@@ -304,7 +459,7 @@ mod tests {
         ];
         let l_tris = triangulate_polygon(&l_shape);
         assert_eq!(l_tris.len(), 4);
-        let l_area: f32 = l_tris
+        let l_area: f64 = l_tris
             .iter()
             .map(|t| {
                 ((t[1].x - t[0].x) * (t[2].y - t[0].y) - (t[1].y - t[0].y) * (t[2].x - t[0].x))

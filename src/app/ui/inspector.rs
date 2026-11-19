@@ -16,7 +16,7 @@ pub(super) fn format_point(point: Point) -> String {
     format!("X {:.2}  Y {:.2}", point.x + 0.0, -point.y + 0.0).replace('.', ",")
 }
 
-fn area(value: f32) -> String {
+fn area(value: f64) -> String {
     format!("{value:.2} m²").replace('.', ",")
 }
 
@@ -575,7 +575,7 @@ impl FloorPlanApp {
         }
     }
 
-    fn built_area(&self) -> f32 {
+    fn built_area(&self) -> f64 {
         self.project
             .rooms
             .iter()
@@ -751,7 +751,7 @@ impl FloorPlanApp {
         });
 
         let built = self.built_area();
-        let rooms: Vec<(String, f32)> = self
+        let rooms: Vec<(String, f64)> = self
             .project
             .rooms
             .iter()

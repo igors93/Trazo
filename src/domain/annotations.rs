@@ -13,13 +13,13 @@ pub struct BuildingDimensions {
     pub min: Point,
     pub max: Point,
     /// Sorted X positions of vertical wall faces (and the outer bounds).
-    pub xs: Vec<f32>,
+    pub xs: Vec<f64>,
     /// Sorted Y positions of horizontal wall faces (and the outer bounds).
-    pub ys: Vec<f32>,
+    pub ys: Vec<f64>,
 }
 
-fn sorted_unique(mut values: Vec<f32>) -> Vec<f32> {
-    values.sort_by(f32::total_cmp);
+fn sorted_unique(mut values: Vec<f64>) -> Vec<f64> {
+    values.sort_by(f64::total_cmp);
     values.dedup_by(|a, b| (*a - *b).abs() < 0.005);
     values
 }
@@ -29,8 +29,8 @@ pub fn building_dimensions(project: &Project) -> Option<BuildingDimensions> {
     if project.walls.is_empty() {
         return None;
     }
-    let mut min = Point::new(f32::INFINITY, f32::INFINITY);
-    let mut max = Point::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
+    let mut min = Point::new(f64::INFINITY, f64::INFINITY);
+    let mut max = Point::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
     let mut xs = Vec::new();
     let mut ys = Vec::new();
     for wall in &project.walls {
@@ -57,7 +57,7 @@ pub fn building_dimensions(project: &Project) -> Option<BuildingDimensions> {
 }
 
 /// A length in centimetres, as dimension chains write it: "240", "12,5".
-pub fn centimetres(metres: f32) -> String {
+pub fn centimetres(metres: f64) -> String {
     let value = metres * 100.0;
     if (value - value.round()).abs() < 0.05 {
         format!("{:.0}", value.round())
@@ -72,9 +72,9 @@ pub fn centimetres(metres: f32) -> String {
 pub struct FrameType {
     pub code: String,
     pub kind: OpeningKind,
-    pub width: f32,
-    pub height: Option<f32>,
-    pub sill: f32,
+    pub width: f64,
+    pub height: Option<f64>,
+    pub sill: f64,
     pub ids: Vec<u64>,
 }
 
@@ -115,7 +115,7 @@ fn kind_order(kind: OpeningKind) -> u8 {
 /// spans, each numbered from the smallest to the largest.
 pub fn frame_types(project: &Project) -> Vec<FrameType> {
     let mut types: Vec<FrameType> = Vec::new();
-    let same = |a: f32, b: f32| (a - b).abs() < 0.005;
+    let same = |a: f64, b: f64| (a - b).abs() < 0.005;
     for opening in &project.openings {
         let fits = |frame: &FrameType| {
             frame.kind == opening.kind

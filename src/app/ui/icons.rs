@@ -67,8 +67,8 @@ fn paint_fixture_icon(
     } else {
         depth
     };
-    let scale = (rect.width() * 0.86 / width).min(rect.height() * 0.86 / reach_y);
-    let at = |x: f32, y: f32| rect.center() + vec2(x * scale, y * scale);
+    let scale = (rect.width() * 0.86 / width as f32).min(rect.height() * 0.86 / reach_y as f32);
+    let at = |x: f64, y: f64| rect.center() + vec2(x as f32 * scale, y as f32 * scale);
     for shape in fixtures::symbol(kind, width, depth) {
         match shape {
             SymbolShape::Polyline {
@@ -102,7 +102,11 @@ fn paint_fixture_icon(
                     Weight::Outline => Stroke::new(1.4, ink),
                     Weight::Detail => Stroke::new(1.0, accent),
                 };
-                painter.circle_stroke(at(center.x, center.y), (radius * scale).max(1.0), stroke);
+                painter.circle_stroke(
+                    at(center.x, center.y),
+                    (radius as f32 * scale).max(1.0),
+                    stroke,
+                );
             }
         }
     }

@@ -78,7 +78,7 @@ impl FixtureKind {
     }
 
     /// Usual width (along the wall) and depth, in metres.
-    pub fn default_size(self) -> (f32, f32) {
+    pub fn default_size(self) -> (f64, f64) {
         match self {
             Self::Counter => (1.5, 0.6),
             Self::KitchenSink => (1.2, 0.6),
@@ -104,8 +104,8 @@ impl FixtureKind {
     }
 }
 
-pub const MIN_SIZE: f32 = 0.2;
-pub const MAX_SIZE: f32 = 8.0;
+pub const MIN_SIZE: f64 = 0.2;
+pub const MAX_SIZE: f64 = 8.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Fixture {
@@ -113,16 +113,16 @@ pub struct Fixture {
     pub kind: FixtureKind,
     pub center: Point,
     /// Along the fixture's back (the wall it stands against).
-    pub width: f32,
+    pub width: f64,
     /// From the back to the front.
-    pub depth: f32,
+    pub depth: f64,
     /// Clockwise quarter turns as seen on screen: 0 has its back up, 1 to
     /// the right, 2 down and 3 to the left.
     #[serde(default)]
     pub quarter_turns: u8,
 }
 
-pub fn valid_size(width: f32, depth: f32) -> bool {
+pub fn valid_size(width: f64, depth: f64) -> bool {
     width.is_finite()
         && depth.is_finite()
         && (MIN_SIZE..=MAX_SIZE).contains(&width)
@@ -153,7 +153,7 @@ impl Fixture {
     }
 
     /// Width and depth as laid on the plan's X and Y axes.
-    pub fn extent(&self) -> (f32, f32) {
+    pub fn extent(&self) -> (f64, f64) {
         if self.quarter_turns.is_multiple_of(2) {
             (self.width, self.depth)
         } else {
@@ -198,12 +198,12 @@ pub enum SymbolShape {
     },
     Circle {
         center: Point,
-        radius: f32,
+        radius: f64,
         weight: Weight,
     },
 }
 
-fn rect(x0: f32, y0: f32, x1: f32, y1: f32, weight: Weight) -> SymbolShape {
+fn rect(x0: f64, y0: f64, x1: f64, y1: f64, weight: Weight) -> SymbolShape {
     SymbolShape::Polyline {
         points: vec![
             Point::new(x0, y0),
@@ -217,7 +217,7 @@ fn rect(x0: f32, y0: f32, x1: f32, y1: f32, weight: Weight) -> SymbolShape {
     }
 }
 
-fn line(points: &[(f32, f32)], dashed: bool, weight: Weight) -> SymbolShape {
+fn line(points: &[(f64, f64)], dashed: bool, weight: Weight) -> SymbolShape {
     SymbolShape::Polyline {
         points: points.iter().map(|(x, y)| Point::new(*x, *y)).collect(),
         closed: false,
@@ -226,7 +226,7 @@ fn line(points: &[(f32, f32)], dashed: bool, weight: Weight) -> SymbolShape {
     }
 }
 
-fn circle(x: f32, y: f32, radius: f32, weight: Weight) -> SymbolShape {
+fn circle(x: f64, y: f64, radius: f64, weight: Weight) -> SymbolShape {
     SymbolShape::Circle {
         center: Point::new(x, y),
         radius,
@@ -234,11 +234,11 @@ fn circle(x: f32, y: f32, radius: f32, weight: Weight) -> SymbolShape {
     }
 }
 
-fn ellipse(x: f32, y: f32, rx: f32, ry: f32, weight: Weight) -> SymbolShape {
+fn ellipse(x: f64, y: f64, rx: f64, ry: f64, weight: Weight) -> SymbolShape {
     SymbolShape::Polyline {
         points: (0..24)
             .map(|i| {
-                let a = std::f32::consts::TAU * i as f32 / 24.0;
+                let a = std::f64::consts::TAU * i as f64 / 24.0;
                 Point::new(x + rx * a.cos(), y + ry * a.sin())
             })
             .collect(),
@@ -250,7 +250,7 @@ fn ellipse(x: f32, y: f32, rx: f32, ry: f32, weight: Weight) -> SymbolShape {
 
 /// The plan symbol of a fixture of `kind` measuring `width` × `depth`. The
 /// back (against the wall) is at y = -depth/2.
-pub fn symbol(kind: FixtureKind, width: f32, depth: f32) -> Vec<SymbolShape> {
+pub fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolShape> {
     use Weight::{Detail, Outline};
     let (hw, hd) = (width / 2.0, depth / 2.0);
     let outline = rect(-hw, -hd, hw, hd, Outline);
@@ -294,7 +294,7 @@ pub fn symbol(kind: FixtureKind, width: f32, depth: f32) -> Vec<SymbolShape> {
             let mut shapes = vec![outline, rect(x0, y0, x1, y1, Detail)];
             let bars = ((x1 - x0) / 0.08).floor().max(1.0) as usize;
             for i in 1..bars {
-                let x = x0 + (x1 - x0) * i as f32 / bars as f32;
+                let x = x0 + (x1 - x0) * i as f64 / bars as f64;
                 shapes.push(line(&[(x, y0), (x, y1)], false, Detail));
             }
             shapes
@@ -310,10 +310,10 @@ pub fn symbol(kind: FixtureKind, width: f32, depth: f32) -> Vec<SymbolShape> {
         ],
         FixtureKind::Washbasin => {
             let basins = if width >= 0.9 { 2 } else { 1 };
-            let slot = width / basins as f32;
+            let slot = width / basins as f64;
             let mut shapes = vec![outline];
             for i in 0..basins {
-                let x = -hw + slot * (i as f32 + 0.5);
+                let x = -hw + slot * (i as f64 + 0.5);
                 shapes.push(ellipse(
                     x,
                     0.03,
@@ -348,7 +348,7 @@ pub fn symbol(kind: FixtureKind, width: f32, depth: f32) -> Vec<SymbolShape> {
             let mut shapes = vec![outline];
             let chairs = (width / 0.6).floor().max(1.0) as usize;
             for i in 0..chairs {
-                let x = -hw + width * (i as f32 + 0.5) / chairs as f32;
+                let x = -hw + width * (i as f64 + 0.5) / chairs as f64;
                 shapes.push(rect(x - 0.2, -hd - 0.45, x + 0.2, -hd - 0.08, Detail));
                 shapes.push(rect(x - 0.2, hd + 0.08, x + 0.2, hd + 0.45, Detail));
             }

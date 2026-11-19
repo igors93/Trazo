@@ -23,19 +23,19 @@ use crate::{
 };
 
 /// Largest coordinate or length accepted, in metres.
-const LIMIT: f32 = 10_000.0;
+const LIMIT: f64 = 10_000.0;
 
-fn to_model(x: f32, y: f32) -> Point {
+fn to_model(x: f64, y: f64) -> Point {
     Point::new(x, -y)
 }
 
-fn from_model(point: Point) -> (f32, f32) {
+fn from_model(point: Point) -> (f64, f64) {
     // Adding 0.0 turns -0.0 into 0.0.
     (point.x + 0.0, -point.y + 0.0)
 }
 
-fn round(value: f32) -> f64 {
-    (value as f64 * 1000.0).round() / 1000.0 + 0.0
+fn round(value: f64) -> f64 {
+    (value * 1000.0).round() / 1000.0 + 0.0
 }
 
 fn xy(point: Point) -> Value {
@@ -43,16 +43,16 @@ fn xy(point: Point) -> Value {
     json!({ "x": round(x), "y": round(y) })
 }
 
-fn square_metres(value: f32) -> String {
+fn square_metres(value: f64) -> String {
     format!("{value:.2} m²").replace('.', ",")
 }
 
 /// An optional number argument; strings such as "3,5" are accepted too.
-fn number(args: &Value, key: &str) -> Result<Option<f32>, String> {
+fn number(args: &Value, key: &str) -> Result<Option<f64>, String> {
     let value = match args.get(key) {
         None | Some(Value::Null) => return Ok(None),
-        Some(Value::Number(number)) => number.as_f64().map(|value| value as f32),
-        Some(Value::String(text)) => text.trim().replace(',', ".").parse::<f32>().ok(),
+        Some(Value::Number(number)) => number.as_f64(),
+        Some(Value::String(text)) => text.trim().replace(',', ".").parse::<f64>().ok(),
         Some(_) => None,
     };
     match value {
@@ -63,7 +63,7 @@ fn number(args: &Value, key: &str) -> Result<Option<f32>, String> {
     }
 }
 
-fn required_number(args: &Value, key: &str) -> Result<f32, String> {
+fn required_number(args: &Value, key: &str) -> Result<f64, String> {
     number(args, key)?.ok_or_else(|| format!("Informe '{key}' (número, em metros)."))
 }
 
@@ -1086,7 +1086,7 @@ impl FloorPlanApp {
                 })
             })
             .collect();
-        let built: f32 = project
+        let built: f64 = project
             .rooms
             .iter()
             .filter_map(|room| project.room_area(room))

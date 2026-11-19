@@ -7,7 +7,9 @@ use std::{
 use crate::domain::model::Project;
 
 pub fn save(project: &Project, path: &Path) -> Result<(), String> {
-    let content = serde_json::to_string_pretty(project)
+    let mut stored = project.clone();
+    stored.normalize_precision();
+    let content = serde_json::to_string_pretty(&stored)
         .map_err(|error| format!("Falha na serialização do projeto: {}", error))?;
 
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
@@ -135,6 +137,24 @@ mod tests {
         assert_eq!(loaded.walls.len(), 5);
         assert_eq!(loaded.walls[0].length(), 2.0);
         assert_eq!(loaded.rooms[0].display_name(), "Ateliê");
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn files_keep_lengths_without_float_noise() {
+        // An older single-precision file stored 4,12 m as 4.1200004.
+        let content = r#"{"version":1,"name":"Antiga","walls":[{"id":1,"start":{"x":0.0,"y":0.0},"end":{"x":4.1200004,"y":-0.0000001}}],"rooms":[],"openings":[],"next_id":2}"#;
+        let path =
+            std::env::temp_dir().join(format!("trazo-precision-{}.json", std::process::id()));
+        fs::write(&path, content).unwrap();
+        let (mut loaded, _) = load(&path).unwrap();
+        assert_eq!(loaded.walls[0].end, Point::new(4.12, 0.0));
+
+        // Arithmetic noise (0,1 + 0,2) is not written to disk either.
+        loaded.walls[0].end.x = 0.1 + 0.2;
+        save(&loaded, &path).unwrap();
+        let written = fs::read_to_string(&path).unwrap();
+        assert!(written.contains("0.3") && !written.contains("0.30000000000000004"));
         let _ = fs::remove_file(path);
     }
 

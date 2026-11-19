@@ -40,7 +40,7 @@ pub enum PendingAction {
 }
 
 /// How far an arrow key moves the selection: one grid step.
-const NUDGE_STEP: f32 = 0.25;
+const NUDGE_STEP: f64 = 0.25;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RibbonTab {
@@ -693,15 +693,21 @@ impl FloorPlanApp {
     /// Centres the box `min`–`max` in `rect` at the largest scale that shows
     /// it whole, never above `max_scale`.
     fn fit_bounds(&mut self, rect: egui::Rect, min: Point, max: Point, max_scale: f32) {
-        let width = (max.x - min.x).max(0.25);
-        let height = (max.y - min.y).max(0.25);
+        let width = (max.x - min.x).max(0.25) as f32;
+        let height = (max.y - min.y).max(0.25) as f32;
         self.scale = ((rect.width() - 100.0).max(80.0) / width)
             .min((rect.height() - 100.0).max(80.0) / height)
             .clamp(3.0, max_scale);
+        let scale = f64::from(self.scale);
         self.pan = egui::vec2(
-            -(min.x + max.x) * self.scale / 2.0,
-            -(min.y + max.y) * self.scale / 2.0,
+            (-(min.x + max.x) * scale / 2.0) as f32,
+            (-(min.y + max.y) * scale / 2.0) as f32,
         );
+    }
+
+    /// A distance on screen, in metres at the current zoom.
+    fn screen_metres(&self, pixels: f32) -> f64 {
+        f64::from(pixels) / f64::from(self.scale)
     }
 
     fn prepare_canvas_view(&mut self, rect: egui::Rect) {
@@ -922,7 +928,7 @@ impl FloorPlanApp {
 
     /// The material fields show the active brick or block, in centimetres.
     fn sync_masonry_fields(&mut self) {
-        let cm = |value: f32| {
+        let cm = |value: f64| {
             let value = value * 100.0;
             if (value - value.round()).abs() < 0.05 {
                 format!("{value:.0}")
@@ -967,7 +973,7 @@ impl FloorPlanApp {
             value
                 .trim()
                 .replace(',', ".")
-                .parse::<f32>()
+                .parse::<f64>()
                 .ok()
                 .map(|cm| cm / 100.0)
         };
@@ -1020,7 +1026,7 @@ impl FloorPlanApp {
             .wall_height_text
             .trim()
             .replace(',', ".")
-            .parse::<f32>()
+            .parse::<f64>()
             .ok()
             .filter(|height| (1.5..=10.0).contains(height))
         else {
@@ -1037,7 +1043,7 @@ impl FloorPlanApp {
 
     /// Applies the height and sill typed in the properties panel.
     fn apply_opening_heights(&mut self, id: u64) {
-        let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
+        let parse = |value: &str| value.trim().replace(',', ".").parse::<f64>().ok();
         let Some(opening) = self.project.openings.iter().find(|o| o.id == id).cloned() else {
             return;
         };
@@ -1066,7 +1072,7 @@ impl FloorPlanApp {
 
     /// Applies the width and depth typed in the properties panel.
     fn apply_fixture_size(&mut self, id: u64) {
-        let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
+        let parse = |value: &str| value.trim().replace(',', ".").parse::<f64>().ok();
         let (Some(width), Some(depth)) = (
             parse(&self.fixture_width_text),
             parse(&self.fixture_depth_text),
@@ -1185,8 +1191,8 @@ impl FloorPlanApp {
         }
     }
 
-    fn terrain_dimensions(&self) -> Option<(f32, f32)> {
-        let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
+    fn terrain_dimensions(&self) -> Option<(f64, f64)> {
+        let parse = |value: &str| value.trim().replace(',', ".").parse::<f64>().ok();
         let (width, height) = (
             parse(&self.terrain_width_text)?,
             parse(&self.terrain_height_text)?,
@@ -1286,7 +1292,7 @@ impl FloorPlanApp {
     }
 
     pub fn apply_wall_length(&mut self, id: u64) {
-        let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
+        let parse = |value: &str| value.trim().replace(',', ".").parse::<f64>().ok();
         let Some(new_length) = parse(&self.wall_length_text) else {
             self.message = "Informe uma medida válida em metros (ex: 3,50).".to_owned();
             return;
@@ -1313,7 +1319,7 @@ impl FloorPlanApp {
     }
 
     pub fn apply_room_dimensions(&mut self, id: u64) {
-        let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
+        let parse = |value: &str| value.trim().replace(',', ".").parse::<f64>().ok();
         let (Some(new_w), Some(new_h)) =
             (parse(&self.room_width_text), parse(&self.room_height_text))
         else {
@@ -1374,7 +1380,7 @@ impl FloorPlanApp {
     }
 
     pub fn apply_opening_width(&mut self, id: u64) {
-        let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
+        let parse = |value: &str| value.trim().replace(',', ".").parse::<f64>().ok();
         let Some(new_w) = parse(&self.opening_width_text) else {
             self.message = "Informe uma largura válida em metros.".to_owned();
             return;

@@ -10,14 +10,14 @@ use super::escaped;
 
 #[derive(Clone, Copy)]
 pub(super) struct LabelBox {
-    x: f32,
-    y: f32,
-    width: f32,
-    height: f32,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
 }
 
 impl LabelBox {
-    fn centered(x: f32, y: f32, width: f32, height: f32) -> Self {
+    fn centered(x: f64, y: f64, width: f64, height: f64) -> Self {
         Self {
             x: x - width / 2.0,
             y: y - height / 2.0,
@@ -26,7 +26,7 @@ impl LabelBox {
         }
     }
 
-    fn intersects(self, other: Self, gap: f32) -> bool {
+    fn intersects(self, other: Self, gap: f64) -> bool {
         self.x < other.x + other.width + gap
             && self.x + self.width + gap > other.x
             && self.y < other.y + other.height + gap
@@ -34,7 +34,7 @@ impl LabelBox {
     }
 }
 
-fn estimated_text_width(value: &str, font_size: f32) -> f32 {
+fn estimated_text_width(value: &str, font_size: f64) -> f64 {
     value
         .chars()
         .map(|ch| {
@@ -51,20 +51,20 @@ fn estimated_text_width(value: &str, font_size: f32) -> f32 {
             };
             ratio * font_size
         })
-        .sum::<f32>()
+        .sum::<f64>()
         + 2.0
 }
 
 pub(super) fn fit_export_text(
     value: &str,
-    max_width: f32,
+    max_width: f64,
     preferred: u32,
     minimum: u32,
     truncate: bool,
-) -> Option<(String, f32)> {
+) -> Option<(String, f64)> {
     for size in (minimum..=preferred).rev() {
-        if estimated_text_width(value, size as f32) <= max_width {
-            return Some((value.to_owned(), size as f32));
+        if estimated_text_width(value, size as f64) <= max_width {
+            return Some((value.to_owned(), size as f64));
         }
     }
     if !truncate {
@@ -73,8 +73,8 @@ pub(super) fn fit_export_text(
     let chars: Vec<char> = value.chars().collect();
     for count in (0..chars.len()).rev() {
         let candidate = format!("{}…", chars[..count].iter().collect::<String>().trim_end());
-        if estimated_text_width(&candidate, minimum as f32) <= max_width {
-            return Some((candidate, minimum as f32));
+        if estimated_text_width(&candidate, minimum as f64) <= max_width {
+            return Some((candidate, minimum as f64));
         }
     }
     None
@@ -83,8 +83,8 @@ pub(super) fn fit_export_text(
 pub(super) fn write_room_labels(
     svg: &mut String,
     project: &Project,
-    point: &impl Fn(Point) -> (f32, f32),
-    wall_width: f32,
+    point: &impl Fn(Point) -> (f64, f64),
+    wall_width: f64,
 ) -> Vec<LabelBox> {
     let mut occupied = Vec::new();
     for room in &project.rooms {
@@ -172,8 +172,8 @@ pub(super) fn write_room_labels(
 pub(super) fn write_frame_tags(
     svg: &mut String,
     project: &Project,
-    point: &impl Fn(Point) -> (f32, f32),
-    pixels_per_meter: f32,
+    point: &impl Fn(Point) -> (f64, f64),
+    pixels_per_meter: f64,
     occupied: &mut Vec<LabelBox>,
 ) {
     let types = frame_types(project);
@@ -206,7 +206,7 @@ pub(super) fn write_frame_tags(
         let across = normal.0.abs() * width / 2.0 + normal.1.abs() * height / 2.0;
         let lengthwise = along.0.abs() * width / 2.0 + along.1.abs() * height / 2.0;
         let slide = opening.width() * pixels_per_meter / 2.0 + lengthwise + 4.0;
-        let candidate = |side: f32, beyond: f32, shift: f32| {
+        let candidate = |side: f64, beyond: f64, shift: f64| {
             let offset = wall.thickness() * pixels_per_meter / 2.0 + beyond + 5.0 + across;
             LabelBox::centered(
                 center.0 + normal.0 * offset * side + along.0 * shift,
@@ -245,9 +245,9 @@ pub(super) fn write_frame_tags(
 pub(super) fn write_wall_labels(
     svg: &mut String,
     project: &Project,
-    point: &impl Fn(Point) -> (f32, f32),
-    pixels_per_meter: f32,
-    wall_width: f32,
+    point: &impl Fn(Point) -> (f64, f64),
+    pixels_per_meter: f64,
+    wall_width: f64,
     occupied: &mut Vec<LabelBox>,
 ) {
     let room_boxes: Vec<_> = project

@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use super::fixtures::{self, Fixture, FixtureKind};
-use super::geometry::{Point, nearest_point_on_segment};
+use super::geometry::{
+    JOIN_TOLERANCE, Point, distance_to_segment, nearest_point_on_segment, round_to_resolution,
+};
 use super::masonry::{self, Masonry};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -29,12 +31,12 @@ pub struct Project {
 
     /// Height of the walls (pé-direito), for quantity estimates.
     #[serde(default = "default_wall_height")]
-    pub wall_height: f32,
+    pub wall_height: f64,
 
     next_id: u64,
 }
 
-fn default_wall_height() -> f32 {
+fn default_wall_height() -> f64 {
     2.8
 }
 
@@ -88,15 +90,15 @@ pub struct Terrain {
 }
 
 impl Terrain {
-    pub fn width(&self) -> f32 {
+    pub fn width(&self) -> f64 {
         self.max.x - self.min.x
     }
 
-    pub fn height(&self) -> f32 {
+    pub fn height(&self) -> f64 {
         self.max.y - self.min.y
     }
 
-    pub fn area(&self) -> f32 {
+    pub fn area(&self) -> f64 {
         self.width() * self.height()
     }
 
@@ -110,14 +112,14 @@ impl Terrain {
 
 impl Wall {
     /// The finished thickness: block plus plaster.
-    pub fn thickness(&self) -> f32 {
+    pub fn thickness(&self) -> f64 {
         self.masonry
             .as_ref()
             .map(Masonry::thickness)
             .unwrap_or(masonry::LEGACY_THICKNESS)
     }
 
-    pub fn length(&self) -> f32 {
+    pub fn length(&self) -> f64 {
         self.start.distance(self.end)
     }
 }
@@ -213,7 +215,7 @@ impl OpeningKind {
 
     /// Usual height of the opening; `None` for open spans, which reach the
     /// top of the wall.
-    pub fn default_height(self) -> Option<f32> {
+    pub fn default_height(self) -> Option<f64> {
         match self {
             Self::Door | Self::SaloonDoor => Some(2.10),
             Self::Window => Some(1.00),
@@ -225,7 +227,7 @@ impl OpeningKind {
         matches!(self, Self::Door | Self::SaloonDoor)
     }
 
-    pub fn default_width(self) -> f32 {
+    pub fn default_width(self) -> f64 {
         match self {
             Self::Door => 0.9,
 
@@ -237,11 +239,11 @@ impl OpeningKind {
         }
     }
 
-    pub fn width(self) -> f32 {
+    pub fn width(self) -> f64 {
         self.default_width()
     }
 
-    pub fn min_width(self) -> f32 {
+    pub fn min_width(self) -> f64 {
         match self {
             Self::Door => 0.60,
 
@@ -253,7 +255,7 @@ impl OpeningKind {
         }
     }
 
-    pub fn max_width(self) -> f32 {
+    pub fn max_width(self) -> f64 {
         match self {
             Self::Door => 2.00,
 
@@ -271,9 +273,9 @@ pub struct Opening {
     pub id: u64,
     pub wall_id: u64,
     pub kind: OpeningKind,
-    pub t: f32,
+    pub t: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub width: Option<f32>,
+    pub width: Option<f64>,
     /// The leaf swings to the other side of the wall.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub flip_side: bool,
@@ -282,24 +284,24 @@ pub struct Opening {
     pub flip_hinge: bool,
     /// Height of the opening; the kind's usual one when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub height: Option<f32>,
+    pub height: Option<f64>,
     /// Sill height (peitoril) of a window; 1,10 m when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub sill: Option<f32>,
+    pub sill: Option<f64>,
 }
 
 impl Opening {
-    pub fn width(&self) -> f32 {
+    pub fn width(&self) -> f64 {
         self.width.unwrap_or_else(|| self.kind.width())
     }
 
     /// Height of the opening; `None` for open spans up to the ceiling.
-    pub fn height(&self) -> Option<f32> {
+    pub fn height(&self) -> Option<f64> {
         self.height.or(self.kind.default_height())
     }
 
     /// Height of the window sill above the floor; 0 for doors.
-    pub fn sill(&self) -> f32 {
+    pub fn sill(&self) -> f64 {
         match self.kind {
             OpeningKind::Window => self.sill.unwrap_or(1.10),
             _ => 0.0,
@@ -307,42 +309,19 @@ impl Opening {
     }
 }
 
-fn is_collinear_and_overlapping(a: Point, b: Point, p1: Point, p2: Point) -> Option<(f32, f32)> {
+/// Where segment `p1`-`p2` lies along `a`-`b` (distances from `a`), when it
+/// runs on the same line (within 2 cm) and overlaps it by more than 4 cm.
+fn is_collinear_and_overlapping(a: Point, b: Point, p1: Point, p2: Point) -> Option<(f64, f64)> {
     let len = a.distance(b);
-
-    if len < 1e-4 {
-        return None;
-    }
-
-    let u = Point::new((b.x - a.x) / len, (b.y - a.y) / len);
-
+    let u = b.minus(a).normalized()?;
     let n = Point::new(-u.y, u.x);
-
-    let dist1 = ((p1.x - a.x) * n.x + (p1.y - a.y) * n.y).abs();
-
-    let dist2 = ((p2.x - a.x) * n.x + (p2.y - a.y) * n.y).abs();
-
-    if dist1 > 0.02 || dist2 > 0.02 {
+    if p1.minus(a).dot(n).abs() > 0.02 || p2.minus(a).dot(n).abs() > 0.02 {
         return None;
     }
-
-    let t1 = (p1.x - a.x) * u.x + (p1.y - a.y) * u.y;
-
-    let t2 = (p2.x - a.x) * u.x + (p2.y - a.y) * u.y;
-
-    let w_min = t1.min(t2);
-
-    let w_max = t1.max(t2);
-
-    let overlap_start = w_min.max(0.0);
-
-    let overlap_end = w_max.min(len);
-
-    if overlap_end - overlap_start > 0.04 {
-        Some((w_min, w_max))
-    } else {
-        None
-    }
+    let t1 = p1.minus(a).dot(u);
+    let t2 = p2.minus(a).dot(u);
+    let (w_min, w_max) = (t1.min(t2), t1.max(t2));
+    (w_max.min(len) - w_min.max(0.0) > 0.04).then_some((w_min, w_max))
 }
 
 impl Project {
@@ -351,9 +330,9 @@ impl Project {
             return None;
         }
 
-        let mut min = Point::new(f32::INFINITY, f32::INFINITY);
+        let mut min = Point::new(f64::INFINITY, f64::INFINITY);
 
-        let mut max = Point::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
+        let mut max = Point::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
 
         for wall in &self.walls {
             min.x = min.x.min(wall.start.x.min(wall.end.x));
@@ -440,7 +419,7 @@ impl Project {
         Some(id)
     }
 
-    pub fn resize_terrain(&mut self, width: f32, height: f32) -> bool {
+    pub fn resize_terrain(&mut self, width: f64, height: f64) -> bool {
         if !width.is_finite() || !height.is_finite() || width < 0.25 || height < 0.25 {
             return false;
         }
@@ -492,12 +471,12 @@ impl Project {
 
     /// Wall face area (lengths × wall height, less door and window areas)
     /// and the blocks it takes, each wall with its own material.
-    pub fn masonry_estimate(&self) -> (f32, f32) {
+    pub fn masonry_estimate(&self) -> (f64, f64) {
         let mut area = 0.0;
         let mut blocks = 0.0;
         for wall in &self.walls {
             let material = wall.masonry.as_ref().unwrap_or(&self.masonry);
-            let openings: f32 = self
+            let openings: f64 = self
                 .openings
                 .iter()
                 .filter(|opening| opening.wall_id == wall.id)
@@ -529,8 +508,8 @@ impl Project {
         &mut self,
         kind: FixtureKind,
         center: Point,
-        width: f32,
-        depth: f32,
+        width: f64,
+        depth: f64,
         quarter_turns: u8,
     ) -> Option<u64> {
         if !fixtures::valid_size(width, depth) || !center.x.is_finite() || !center.y.is_finite() {
@@ -558,7 +537,7 @@ impl Project {
         &mut self,
         id: u64,
         center: Option<Point>,
-        size: Option<(f32, f32)>,
+        size: Option<(f64, f64)>,
         quarter_turns: Option<u8>,
     ) -> Result<(), String> {
         let index = self
@@ -785,9 +764,9 @@ impl Project {
             }
         }
 
-        let dir = Point::new((end.x - start.x) / len, (end.y - start.y) / len);
+        let dir = end.minus(start).scaled(1.0 / len);
 
-        let mut sub_walls: Vec<(f32, f32, u64)> = Vec::new();
+        let mut sub_walls: Vec<(f64, f64, u64)> = Vec::new();
 
         for wall in &self.walls {
             if let Some((w_min, w_max)) =
@@ -913,22 +892,17 @@ impl Project {
         let mut warnings = Vec::new();
 
         // 1. Validate coordinates
-        for wall in &self.walls {
-            if !wall.start.x.is_finite()
-                || !wall.start.y.is_finite()
-                || !wall.end.x.is_finite()
-                || !wall.end.y.is_finite()
-            {
-                return Err("O projeto contém coordenadas inválidas em paredes.".to_owned());
-            }
+        if self
+            .walls
+            .iter()
+            .any(|wall| !wall.start.is_finite() || !wall.end.is_finite())
+        {
+            return Err("O projeto contém coordenadas inválidas em paredes.".to_owned());
         }
+        self.normalize_precision();
 
         if let Some(terrain) = &mut self.terrain {
-            if !terrain.min.x.is_finite()
-                || !terrain.min.y.is_finite()
-                || !terrain.max.x.is_finite()
-                || !terrain.max.y.is_finite()
-            {
+            if !terrain.min.is_finite() || !terrain.max.is_finite() {
                 return Err("O projeto contém coordenadas inválidas no terreno.".to_owned());
             }
             if terrain.min.x >= terrain.max.x || terrain.min.y >= terrain.max.y {
@@ -1028,6 +1002,34 @@ impl Project {
         }
 
         Ok(warnings)
+    }
+
+    /// Keeps every stored length to the resolution of `geometry`, so files
+    /// hold "3.47" rather than the noise of float arithmetic (or of the
+    /// single-precision files of older versions).
+    pub fn normalize_precision(&mut self) {
+        for wall in &mut self.walls {
+            wall.start = wall.start.rounded();
+            wall.end = wall.end.rounded();
+        }
+        if let Some(terrain) = &mut self.terrain {
+            terrain.min = terrain.min.rounded();
+            terrain.max = terrain.max.rounded();
+        }
+        for opening in &mut self.openings {
+            // Positions along a wall are fractions: a micro-unit is a
+            // micrometre per metre of wall.
+            opening.t = (opening.t * 1e6).round() / 1e6;
+            opening.width = opening.width.map(round_to_resolution);
+            opening.height = opening.height.map(round_to_resolution);
+            opening.sill = opening.sill.map(round_to_resolution);
+        }
+        for fixture in &mut self.fixtures {
+            fixture.center = fixture.center.rounded();
+            fixture.width = round_to_resolution(fixture.width);
+            fixture.depth = round_to_resolution(fixture.depth);
+        }
+        self.wall_height = round_to_resolution(self.wall_height);
     }
 
     pub fn add_room(
@@ -1137,7 +1139,7 @@ impl Project {
         }
     }
 
-    pub fn room_area(&self, room: &Room) -> Option<f32> {
+    pub fn room_area(&self, room: &Room) -> Option<f64> {
         if let Some(poly) = self.room_polygon(room) {
             let area = super::geometry::polygon_area(&poly);
 
@@ -1149,7 +1151,7 @@ impl Project {
         None
     }
 
-    pub fn add_opening(&mut self, wall_id: u64, kind: OpeningKind, t: f32) -> Option<u64> {
+    pub fn add_opening(&mut self, wall_id: u64, kind: OpeningKind, t: f64) -> Option<u64> {
         self.add_opening_sized(wall_id, kind, t, None)
     }
 
@@ -1162,8 +1164,8 @@ impl Project {
         &mut self,
         wall_id: u64,
         kind: OpeningKind,
-        t: f32,
-        width: Option<f32>,
+        t: f64,
+        width: Option<f64>,
     ) -> Option<u64> {
         let size = width.unwrap_or_else(|| kind.width());
         if !size.is_finite() || size < kind.min_width() - 1e-4 || size > kind.max_width() + 1e-4 {
@@ -1206,8 +1208,8 @@ impl Project {
     pub fn set_opening_heights(
         &mut self,
         id: u64,
-        height: Option<f32>,
-        sill: Option<f32>,
+        height: Option<f64>,
+        sill: Option<f64>,
     ) -> Result<(), String> {
         let opening = self
             .openings
@@ -1272,7 +1274,7 @@ impl Project {
         }
     }
 
-    pub fn nearest_opening(&self, point: Point, max_distance: f32) -> Option<u64> {
+    pub fn nearest_opening(&self, point: Point, max_distance: f64) -> Option<u64> {
         self.openings
             .iter()
             .filter_map(|op| {
@@ -1285,7 +1287,7 @@ impl Project {
                 // span is picked near it rather than metres away.
                 let half = op.width() / 2.0 / wall.length().max(1e-4);
                 let (from, to) = (op.t - half, op.t + half);
-                let along = |t: f32| {
+                let along = |t: f64| {
                     Point::new(
                         wall.start.x + (wall.end.x - wall.start.x) * t,
                         wall.start.y + (wall.end.y - wall.start.y) * t,
@@ -1307,7 +1309,7 @@ impl Project {
         self.openings.len() < len_before
     }
 
-    pub fn validate_opening_width(&self, id: u64, new_width: f32) -> Result<(), String> {
+    pub fn validate_opening_width(&self, id: u64, new_width: f64) -> Result<(), String> {
         let op = self
             .openings
             .iter()
@@ -1353,7 +1355,7 @@ impl Project {
         Ok(())
     }
 
-    pub fn update_opening_width(&mut self, id: u64, new_width: f32) -> Result<(), String> {
+    pub fn update_opening_width(&mut self, id: u64, new_width: f64) -> Result<(), String> {
         self.validate_opening_width(id, new_width)?;
         let op_idx = self.openings.iter().position(|o| o.id == id).unwrap();
         let wall_id = self.openings[op_idx].wall_id;
@@ -1404,7 +1406,7 @@ impl Project {
         true
     }
 
-    pub fn resize_wall_length(&mut self, id: u64, new_length: f32) -> Result<(), String> {
+    pub fn resize_wall_length(&mut self, id: u64, new_length: f64) -> Result<(), String> {
         if !new_length.is_finite() || new_length < 0.25 || new_length > 1000.0 {
             return Err("O comprimento deve estar entre 0,25 m e 1.000 m.".to_owned());
         }
@@ -1439,10 +1441,10 @@ impl Project {
         self.walls[wall_idx].end = new_end;
         for other in &mut self.walls {
             if other.id != id {
-                if other.start.distance(old_end) < 0.01 {
+                if other.start.near(old_end, JOIN_TOLERANCE) {
                     other.start = new_end;
                 }
-                if other.end.distance(old_end) < 0.01 {
+                if other.end.near(old_end, JOIN_TOLERANCE) {
                     other.end = new_end;
                 }
             }
@@ -1468,8 +1470,8 @@ impl Project {
     pub fn resize_room_dimensions(
         &mut self,
         id: u64,
-        new_width: f32,
-        new_height: f32,
+        new_width: f64,
+        new_height: f64,
     ) -> Result<(), String> {
         if !new_width.is_finite() || !new_height.is_finite() || new_width < 0.5 || new_height < 0.5
         {
@@ -1573,7 +1575,7 @@ impl Project {
                 }
             }
             if openings_on_wall.len() > 1 {
-                let total_op_w: f32 = openings_on_wall.iter().map(|o| o.width() + 0.10).sum();
+                let total_op_w: f64 = openings_on_wall.iter().map(|o| o.width() + 0.10).sum();
                 if new_len < total_op_w {
                     return Err(format!(
                         "A nova dimensão ({:.2} m) não comporta todas as aberturas da parede.",
@@ -1642,17 +1644,14 @@ impl Project {
         Ok(())
     }
 
-    pub fn nearest_wall(&self, point: Point, max_distance: f32) -> Option<(u64, f32)> {
+    pub fn nearest_wall(&self, point: Point, max_distance: f64) -> Option<(u64, f64)> {
         self.walls
             .iter()
             .filter_map(|wall| {
-                let (nearest, t) = nearest_point_on_segment(point, wall.start, wall.end);
+                let (_, t) = nearest_point_on_segment(point, wall.start, wall.end);
+                let distance = distance_to_segment(point, wall.start, wall.end);
 
-                (nearest.distance(point) <= max_distance).then_some((
-                    wall.id,
-                    t,
-                    nearest.distance(point),
-                ))
+                (distance <= max_distance).then_some((wall.id, t, distance))
             })
             .min_by(|a, b| a.2.total_cmp(&b.2))
             .map(|(id, t, _)| (id, t))
@@ -1673,22 +1672,22 @@ impl Project {
             walls
                 .iter()
                 .map(|wall| wall.start.x.min(wall.end.x))
-                .fold(f32::INFINITY, f32::min),
+                .fold(f64::INFINITY, f64::min),
             walls
                 .iter()
                 .map(|wall| wall.start.y.min(wall.end.y))
-                .fold(f32::INFINITY, f32::min),
+                .fold(f64::INFINITY, f64::min),
         );
 
         let max = Point::new(
             walls
                 .iter()
                 .map(|wall| wall.start.x.max(wall.end.x))
-                .fold(f32::NEG_INFINITY, f32::max),
+                .fold(f64::NEG_INFINITY, f64::max),
             walls
                 .iter()
                 .map(|wall| wall.start.y.max(wall.end.y))
-                .fold(f32::NEG_INFINITY, f32::max),
+                .fold(f64::NEG_INFINITY, f64::max),
         );
 
         Some((min, max))
@@ -1698,7 +1697,7 @@ impl Project {
         if let Some(poly) = self.room_polygon(room) {
             Some(crate::domain::geometry::polygon_centroid(&poly))
         } else if let Some((min, max)) = self.room_bounds(room) {
-            Some(Point::new((min.x + max.x) / 2.0, (min.y + max.y) / 2.0))
+            Some(min.midpoint(max))
         } else {
             None
         }
@@ -1772,11 +1771,15 @@ impl Project {
 
         for wall in &self.walls {
             if wall.id != id {
-                if wall.start.distance(old_start) < 0.01 || wall.start.distance(old_end) < 0.01 {
+                if wall.start.near(old_start, JOIN_TOLERANCE)
+                    || wall.start.near(old_end, JOIN_TOLERANCE)
+                {
                     moving_points.push(wall.start);
                 }
 
-                if wall.end.distance(old_start) < 0.01 || wall.end.distance(old_end) < 0.01 {
+                if wall.end.near(old_start, JOIN_TOLERANCE)
+                    || wall.end.near(old_end, JOIN_TOLERANCE)
+                {
                     moving_points.push(wall.end);
                 }
             }
@@ -1785,22 +1788,22 @@ impl Project {
         let min_x = moving_points
             .iter()
             .map(|p| p.x)
-            .fold(f32::INFINITY, f32::min);
+            .fold(f64::INFINITY, f64::min);
 
         let max_x = moving_points
             .iter()
             .map(|p| p.x)
-            .fold(f32::NEG_INFINITY, f32::max);
+            .fold(f64::NEG_INFINITY, f64::max);
 
         let min_y = moving_points
             .iter()
             .map(|p| p.y)
-            .fold(f32::INFINITY, f32::min);
+            .fold(f64::INFINITY, f64::min);
 
         let max_y = moving_points
             .iter()
             .map(|p| p.y)
-            .fold(f32::NEG_INFINITY, f32::max);
+            .fold(f64::NEG_INFINITY, f64::max);
 
         let delta =
             self.clamp_delta_to_terrain(Point::new(min_x, min_y), Point::new(max_x, max_y), delta);
@@ -1811,11 +1814,15 @@ impl Project {
 
                 wall.end = wall.end.translated(delta);
             } else {
-                if wall.start.distance(old_start) < 0.01 || wall.start.distance(old_end) < 0.01 {
+                if wall.start.near(old_start, JOIN_TOLERANCE)
+                    || wall.start.near(old_end, JOIN_TOLERANCE)
+                {
                     wall.start = wall.start.translated(delta);
                 }
 
-                if wall.end.distance(old_start) < 0.01 || wall.end.distance(old_end) < 0.01 {
+                if wall.end.near(old_start, JOIN_TOLERANCE)
+                    || wall.end.near(old_end, JOIN_TOLERANCE)
+                {
                     wall.end = wall.end.translated(delta);
                 }
             }
@@ -1887,13 +1894,13 @@ impl Project {
             .terrain
             .as_ref()
             .map(|t| t.min)
-            .unwrap_or(Point::new(f32::INFINITY, f32::INFINITY));
+            .unwrap_or(Point::new(f64::INFINITY, f64::INFINITY));
 
         let mut max = self
             .terrain
             .as_ref()
             .map(|t| t.max)
-            .unwrap_or(Point::new(f32::NEG_INFINITY, f32::NEG_INFINITY));
+            .unwrap_or(Point::new(f64::NEG_INFINITY, f64::NEG_INFINITY));
 
         if let Some((content_min, content_max)) = self.content_bounds() {
             min.x = min.x.min(content_min.x);

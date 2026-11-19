@@ -7,7 +7,7 @@ use super::{
 };
 use crate::domain::{
     fixtures::{Fixture, FixtureKind},
-    geometry::Point,
+    geometry::{POINT_TOLERANCE, Point},
 };
 use eframe::egui::{self, Key, PointerButton, Sense};
 
@@ -38,10 +38,9 @@ impl FloorPlanApp {
     }
 
     fn is_wall_end(&self, point: Point) -> bool {
-        self.project
-            .walls
-            .iter()
-            .any(|wall| wall.start.distance(point) < 1e-4 || wall.end.distance(point) < 1e-4)
+        self.project.walls.iter().any(|wall| {
+            wall.start.near(point, POINT_TOLERANCE) || wall.end.near(point, POINT_TOLERANCE)
+        })
     }
 
     /// Rounds what is being drawn to whole half blocks of the active
@@ -61,7 +60,7 @@ impl FloorPlanApp {
                 )
             }
             Tool::Room => {
-                let side = |from: f32, to: f32| {
+                let side = |from: f64, to: f64| {
                     let span = to - from;
                     from + span.signum() * material.modular_length(span.abs())
                 };
@@ -73,7 +72,7 @@ impl FloorPlanApp {
 
     fn magnetic_snap(&self, point: Point, start: Option<Point>) -> Point {
         let mut result = point.snapped_to(0.25);
-        let snap_threshold = (12.0 / self.scale).clamp(0.12, 0.40);
+        let snap_threshold = self.screen_metres(12.0).clamp(0.12, 0.40);
         let mut closest = snap_threshold;
         for wall in &self.project.walls {
             for endpoint in [wall.start, wall.end] {
@@ -99,11 +98,9 @@ impl FloorPlanApp {
         if !self.snap_enabled {
             return None;
         }
-        let on_endpoint = self
-            .project
-            .walls
-            .iter()
-            .any(|wall| wall.start.distance(point) < 1e-4 || wall.end.distance(point) < 1e-4);
+        let on_endpoint = self.project.walls.iter().any(|wall| {
+            wall.start.near(point, POINT_TOLERANCE) || wall.end.near(point, POINT_TOLERANCE)
+        });
         Some(if on_endpoint {
             SnapKind::Endpoint
         } else {
@@ -115,12 +112,12 @@ impl FloorPlanApp {
     /// rooms and the terrain.
     fn pick(&self, point: Point) -> Option<Selection> {
         self.project
-            .nearest_opening(point, 14.0 / self.scale)
+            .nearest_opening(point, self.screen_metres(14.0))
             .map(Selection::Opening)
             .or_else(|| self.project.fixture_at(point).map(Selection::Fixture))
             .or_else(|| {
                 self.project
-                    .nearest_wall(point, 12.0 / self.scale)
+                    .nearest_wall(point, self.screen_metres(12.0))
                     .map(|(id, _)| Selection::Wall(id))
             })
             .or_else(|| self.project.room_at(point).map(Selection::Room))
@@ -159,7 +156,10 @@ impl FloorPlanApp {
                 self.scale = (self.scale * (scroll * 0.0015).exp()).clamp(3.0, 240.0);
                 self.pan = position
                     - rect.center()
-                    - egui::vec2(before.x * self.scale, before.y * self.scale);
+                    - egui::vec2(
+                        (before.x * f64::from(self.scale)) as f32,
+                        (before.y * f64::from(self.scale)) as f32,
+                    );
             }
         }
         let (middle_down, pointer_delta) =
@@ -506,11 +506,11 @@ impl FloorPlanApp {
         &self,
         kind: FixtureKind,
         point: Point,
-        width: f32,
-        depth: f32,
+        width: f64,
+        depth: f64,
         turns: u8,
     ) -> Fixture {
-        let step = |value: f32| {
+        let step = |value: f64| {
             if self.snap_enabled {
                 (value / 0.05).round() * 0.05
             } else {
@@ -623,15 +623,15 @@ impl FloorPlanApp {
         point: Point,
         start: Option<Point>,
     ) -> (Point, Option<SnapKind>) {
-        let threshold = (12.0 / self.scale).clamp(0.03, 0.4);
-        let mut best: Option<(Point, f32)> = None;
+        let threshold = self.screen_metres(12.0).clamp(0.03, 0.4);
+        let mut best: Option<(Point, f64)> = None;
         let mut consider = |candidate: Point| {
             let distance = candidate.distance(point);
             if distance < threshold && best.is_none_or(|(_, closest)| distance < closest) {
                 best = Some((candidate, distance));
             }
         };
-        let offset = |p: Point, a: (f32, f32), ka: f32, b: (f32, f32), kb: f32| {
+        let offset = |p: Point, a: (f64, f64), ka: f64, b: (f64, f64), kb: f64| {
             Point::new(p.x + a.0 * ka + b.0 * kb, p.y + a.1 * ka + b.1 * kb)
         };
         let mut faces = Vec::new();

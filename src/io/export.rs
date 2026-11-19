@@ -9,8 +9,8 @@ use crate::domain::{
 
 mod labels;
 
-const PIXELS_PER_METER: f32 = 100.0;
-const MARGIN: f32 = 130.0;
+const PIXELS_PER_METER: f64 = 100.0;
+const MARGIN: f64 = 130.0;
 
 struct SvgDocument {
     markup: String,
@@ -37,7 +37,7 @@ fn document(project: &Project) -> SvgDocument {
     let wall_width = (pixels_per_meter * WALL_THICKNESS_METERS).clamp(1.0, 12.0);
     let width = (span_x * pixels_per_meter + MARGIN * 2.0).ceil() as u32;
     let height = (span_y * pixels_per_meter + MARGIN * 2.0).ceil() as u32;
-    let point = |p: Point| -> (f32, f32) {
+    let point = |p: Point| -> (f64, f64) {
         (
             MARGIN + (p.x - min.x) * pixels_per_meter,
             MARGIN + (p.y - min.y) * pixels_per_meter,
@@ -121,7 +121,7 @@ fn document(project: &Project) -> SvgDocument {
                     };
                     let arc = (0..=20)
                         .map(|step| {
-                            let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 20.0;
+                            let theta = std::f64::consts::FRAC_PI_2 * step as f64 / 20.0;
                             format!(
                                 "{:.1},{:.1}",
                                 hinge + along * theta.sin() * leaf,
@@ -138,10 +138,10 @@ fn document(project: &Project) -> SvgDocument {
                 }
                 OpeningKind::SaloonDoor => {
                     // Two half leaves swinging both ways (dashed on the far side).
-                    let quarter = |hinge: f32, toward: f32, side: f32| {
+                    let quarter = |hinge: f64, toward: f64, side: f64| {
                         (0..=12)
                             .map(|step| {
-                                let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 12.0;
+                                let theta = std::f64::consts::FRAC_PI_2 * step as f64 / 12.0;
                                 format!(
                                     "{:.1},{:.1}",
                                     hinge + toward * theta.sin() * half,
@@ -183,7 +183,7 @@ fn document(project: &Project) -> SvgDocument {
         );
     }
     for fixture in &project.fixtures {
-        let corner = |x: f32, y: f32| {
+        let corner = |x: f64, y: f64| {
             let (px, py) = point(fixture.to_world(Point::new(x, y)));
             format!("{px:.1},{py:.1}")
         };
@@ -243,15 +243,15 @@ fn document(project: &Project) -> SvgDocument {
     // Dimension chains in centimetres above and left of the building.
     if let Some(dims) = building_dimensions(project) {
         let (left, top) = point(dims.min);
-        let x_of = |x: f32| point(Point::new(x, dims.min.y)).0;
-        let y_of = |y: f32| point(Point::new(dims.min.x, y)).1;
+        let x_of = |x: f64| point(Point::new(x, dims.min.y)).0;
+        let y_of = |y: f64| point(Point::new(dims.min.x, y)).1;
         let style = "stroke=\"#627489\" stroke-width=\"1\"";
         let text = "font-family=\"Arial, sans-serif\" font-size=\"12\" fill=\"#3b4e63\" text-anchor=\"middle\"";
         for (row, stations) in [
             (top - 30.0, dims.xs.clone()),
             (top - 58.0, vec![dims.min.x, dims.max.x]),
         ] {
-            let xs: Vec<f32> = stations.iter().map(|x| x_of(*x)).collect();
+            let xs: Vec<f64> = stations.iter().map(|x| x_of(*x)).collect();
             let _ = writeln!(
                 svg,
                 "<line x1=\"{:.1}\" y1=\"{row:.1}\" x2=\"{:.1}\" y2=\"{row:.1}\" {style}/>",
@@ -272,7 +272,7 @@ fn document(project: &Project) -> SvgDocument {
             }
             for (pair, span) in stations.windows(2).zip(xs.windows(2)) {
                 let value = centimetres(pair[1] - pair[0]);
-                if value.len() as f32 * 7.0 + 4.0 <= span[1] - span[0] {
+                if value.len() as f64 * 7.0 + 4.0 <= span[1] - span[0] {
                     let _ = writeln!(
                         svg,
                         "<text x=\"{:.1}\" y=\"{:.1}\" {text}>{value}</text>",
@@ -286,7 +286,7 @@ fn document(project: &Project) -> SvgDocument {
             (left - 30.0, dims.ys.clone()),
             (left - 58.0, vec![dims.min.y, dims.max.y]),
         ] {
-            let ys: Vec<f32> = stations.iter().map(|y| y_of(*y)).collect();
+            let ys: Vec<f64> = stations.iter().map(|y| y_of(*y)).collect();
             let _ = writeln!(
                 svg,
                 "<line x1=\"{column:.1}\" y1=\"{:.1}\" x2=\"{column:.1}\" y2=\"{:.1}\" {style}/>",
@@ -307,7 +307,7 @@ fn document(project: &Project) -> SvgDocument {
             }
             for (pair, span) in stations.windows(2).zip(ys.windows(2)) {
                 let value = centimetres(pair[1] - pair[0]);
-                if value.len() as f32 * 7.0 + 4.0 <= span[1] - span[0] {
+                if value.len() as f64 * 7.0 + 4.0 <= span[1] - span[0] {
                     let (x, y) = (column - 4.0, (span[0] + span[1]) / 2.0);
                     let _ = writeln!(
                         svg,
