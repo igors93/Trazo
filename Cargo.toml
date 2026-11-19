@@ -10,6 +10,8 @@ rfd = "0.18"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 resvg = "0.50"
+# The font parser egui uses, to check a system font before handing it over.
+skrifa = { version = "0.44", default-features = false, features = ["std"] }
 svg2pdf = "0.13"
 
 [profile.release]

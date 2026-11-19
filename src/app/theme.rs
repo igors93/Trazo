@@ -90,7 +90,7 @@ fn install_fonts(context: &egui::Context) {
     let mut fonts = FontDefinitions::default();
     let mut load = |name: &str, candidates: &[&str]| -> bool {
         for path in candidates {
-            if let Ok(bytes) = std::fs::read(path) {
+            if let Some(bytes) = std::fs::read(path).ok().filter(|bytes| is_usable_font(bytes)) {
                 fonts
                     .font_data
                     .insert(name.to_owned(), Arc::new(FontData::from_owned(bytes)));
@@ -145,6 +145,21 @@ fn install_fonts(context: &egui::Context) {
             .insert(0, "ui-mono".to_owned());
     }
     context.set_fonts(fonts);
+}
+
+/// Whether `bytes` hold a font egui can use. A damaged system font would
+/// otherwise make egui panic (and the app not start), and a truncated one
+/// would draw nothing; either is skipped for the bundled fonts.
+fn is_usable_font(bytes: &[u8]) -> bool {
+    use skrifa::raw::TableProvider;
+    let Ok(font) = skrifa::FontRef::from_index(bytes, 0) else {
+        return false;
+    };
+    font.head().is_ok()
+        && font.cmap().is_ok()
+        && font.maxp().is_ok()
+        && font.hhea().is_ok()
+        && font.hmtx().is_ok()
 }
 
 fn widget(
@@ -267,6 +282,17 @@ mod tests {
             assert!(contrast(TEXT_2, surface) >= 4.5);
             assert!(contrast(ACCENT_TEXT, surface) >= 4.5);
             assert!(contrast(MUTED, surface) >= 3.5);
+        }
+    }
+
+    #[test]
+    fn damaged_font_files_are_rejected() {
+        assert!(!is_usable_font(b""));
+        assert!(!is_usable_font(b"not a font at all"));
+        assert!(!is_usable_font(&[0x00, 0x01, 0x00, 0x00, 0x00]));
+        if let Ok(bytes) = std::fs::read(r"C:\Windows\Fonts\segoeui.ttf") {
+            assert!(is_usable_font(&bytes));
+            assert!(!is_usable_font(&bytes[..bytes.len().min(64)]));
         }
     }
 

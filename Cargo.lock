@@ -2741,6 +2741,7 @@ dependencies = [
  "rfd",
  "serde",
  "serde_json",
+ "skrifa 0.44.0",
  "svg2pdf",
 ]
 
