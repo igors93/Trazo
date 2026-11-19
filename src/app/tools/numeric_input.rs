@@ -381,7 +381,7 @@ mod tests {
         });
         context.begin_pass(raw);
         app.handle_shortcuts(&context);
-        let _ = context.end_pass();
+        context.end_pass().textures_delta.clear();
         assert_eq!(app.draft_input, "2,");
         assert_eq!(app.polygon_draft.len(), 2);
 
