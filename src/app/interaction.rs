@@ -257,16 +257,7 @@ impl FloorPlanApp {
         let mut drag_finished_this_frame = false;
 
         if ui.input(|input| input.pointer.any_released()) {
-            if let Some(initial) = self.drag_initial_project.take() {
-                if let Some(drag) = self.item_drag.take()
-                    && drag.moved
-                    && initial != self.project
-                {
-                    self.record_change(initial);
-                }
-            } else {
-                self.item_drag = None;
-            }
+            self.commit_item_drag();
             if let Some(kind) = self.opening_drag.take()
                 && let Some(point) = world
             {

@@ -181,10 +181,22 @@ impl FloorPlanApp {
         self.creation_state = CreationState::Idle;
     }
 
+    /// Ends an element drag in progress, keeping what it moved as one undo
+    /// step. Whatever interrupts a drag (a tool key, Delete) goes through
+    /// here, so a move is never left outside the history and unsaved.
+    fn commit_item_drag(&mut self) {
+        let drag = self.item_drag.take();
+        if let Some(initial) = self.drag_initial_project.take()
+            && drag.is_some_and(|drag| drag.moved)
+        {
+            self.record_change(initial);
+        }
+    }
+
     fn set_tool(&mut self, tool: Tool) {
+        self.commit_item_drag();
         self.tool = tool;
         self.creation_state = CreationState::Idle;
-        self.item_drag = None;
         self.selection = None;
         self.message = match tool {
             Tool::Wall => "Clique em dois pontos para desenhar uma parede.",
@@ -740,6 +752,7 @@ impl FloorPlanApp {
     }
 
     fn delete_selection(&mut self) {
+        self.commit_item_drag();
         if let Some(selection) = self.selection.take() {
             let previous = self.project.clone();
             match selection {
@@ -1154,6 +1167,52 @@ mod tests {
         assert!(app.dirty);
         assert!(app.recovery_pending);
         assert!(!app.history.can_undo());
+    }
+
+    /// Starts dragging wall `id` and moves it 2 m to the right.
+    fn drag_wall(app: &mut FloorPlanApp, id: u64) {
+        app.selection = Some(Selection::Wall(id));
+        app.drag_initial_project = Some(app.project.clone());
+        app.item_drag = Some(ItemDrag {
+            selection: Selection::Wall(id),
+            last: Point::new(2.0, 0.0),
+            moved: true,
+        });
+        app.project.move_wall(id, Point::new(2.0, 0.0));
+    }
+
+    #[test]
+    fn switching_tools_mid_drag_keeps_the_move_undoable_and_unsaved() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let id = app
+            .project
+            .add_wall(Point::new(0.0, 0.0), Point::new(3.0, 0.0))
+            .unwrap();
+        drag_wall(&mut app, id);
+        press(&mut app, &context, Key::P, egui::Modifiers::NONE);
+        assert_eq!(app.tool, Tool::Wall);
+        assert!(app.dirty && app.recovery_pending);
+        assert!(app.drag_initial_project.is_none() && app.item_drag.is_none());
+        app.undo();
+        assert_eq!(app.project.walls[0].start, Point::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn deleting_mid_drag_undoes_the_delete_before_the_move() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let id = app
+            .project
+            .add_wall(Point::new(0.0, 0.0), Point::new(3.0, 0.0))
+            .unwrap();
+        drag_wall(&mut app, id);
+        app.delete_selection();
+        assert!(app.project.walls.is_empty());
+        app.undo();
+        assert_eq!(app.project.walls[0].start, Point::new(2.0, 0.0));
+        app.undo();
+        assert_eq!(app.project.walls[0].start, Point::new(0.0, 0.0));
     }
 
     #[test]
