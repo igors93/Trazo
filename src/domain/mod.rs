@@ -4,6 +4,7 @@ pub mod fixtures;
 pub mod geometry;
 pub mod history;
 pub mod junctions;
+pub mod layers;
 pub mod masonry;
 pub mod model;
 pub mod snap;

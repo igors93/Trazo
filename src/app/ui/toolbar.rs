@@ -290,6 +290,14 @@ impl FloorPlanApp {
                 self.center_content_on_terrain();
             }
             if tip(
+                ribbon_button(ui, Icon::Room, "Detectar", false, false),
+                "Criar ambientes automaticamente a partir de paredes fechadas",
+            )
+            .clicked()
+            {
+                self.detect_enclosed_rooms();
+            }
+            if tip(
                 ribbon_button(ui, Icon::ZoomFit, "Enquadrar", false, false),
                 "Ajustar toda a planta na janela (F)",
             )
@@ -442,6 +450,20 @@ impl FloorPlanApp {
             .clicked()
             {
                 self.show_dimensions = !self.show_dimensions;
+            }
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::Plan,
+                    "Camadas",
+                    self.active_doc_dialog == super::super::DocDialog::Layers,
+                    false,
+                ),
+                "Gerenciar camadas (cor, espessura, tipo de linha, visibilidade e bloqueio)",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Layers;
             }
         });
         vertical_divider(ui, 72.0);

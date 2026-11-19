@@ -21,6 +21,8 @@ const ARC_STEPS_PER_QUARTER: f64 = 16.0;
 pub struct Drawing {
     pub id: u64,
     pub shape: Shape,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

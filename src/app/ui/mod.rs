@@ -7,6 +7,7 @@ mod header;
 pub(super) mod icons;
 pub(in crate::app) use icons::Glyph;
 mod inspector;
+mod layers;
 mod options_bar;
 mod status_bar;
 mod toolbar;
@@ -86,5 +87,6 @@ impl FloorPlanApp {
         self.unsaved_changes_dialog(&context);
         self.help_dialog(&context);
         self.connect_dialog(&context);
+        self.layers_dialog(&context);
     }
 }

@@ -33,6 +33,13 @@ pub enum McpStatus {
     Failed(String),
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum DocDialog {
+    #[default]
+    None,
+    Layers,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PendingAction {
     NewProject,
@@ -158,6 +165,8 @@ pub struct FloorPlanApp {
     show_browser: bool,
     show_properties: bool,
     show_help: bool,
+    active_doc_dialog: DocDialog,
+    new_layer_name: String,
     browser_filter: String,
     browser_hover: Option<Selection>,
     cursor_world: Option<Point>,
@@ -267,6 +276,8 @@ impl FloorPlanApp {
             show_browser: preferences.show_browser,
             show_properties: preferences.show_properties,
             show_help: false,
+            active_doc_dialog: DocDialog::None,
+            new_layer_name: String::new(),
             browser_filter: String::new(),
             browser_hover: None,
             cursor_world: None,
@@ -969,10 +980,34 @@ impl FloorPlanApp {
     /// Moves the selected element by `delta` metres as one undo step,
     /// within the terrain like a drag. Doors and windows slide along their
     /// wall, so only the part of `delta` along the wall counts.
+    fn selection_is_locked(&self, selection: Selection) -> bool {
+        use crate::domain::layers::LayerCategory;
+        match selection {
+            Selection::Terrain(_) => self.project.category_locked(LayerCategory::Terrain),
+            Selection::Room(_) => self.project.category_locked(LayerCategory::Rooms),
+            Selection::Opening(_) => self.project.category_locked(LayerCategory::Openings),
+            Selection::Fixture(_) => self.project.category_locked(LayerCategory::Fixtures),
+            Selection::Wall(id) => self
+                .project
+                .walls
+                .iter()
+                .find(|w| w.id == id)
+                .is_some_and(|w| self.project.is_wall_locked(w)),
+            Selection::Drawing(id) => self
+                .project
+                .drawing(id)
+                .is_some_and(|d| self.project.is_drawing_locked(d)),
+        }
+    }
+
     fn nudge_selection(&mut self, delta: Point) {
         let Some(selection) = self.selection else {
             return;
         };
+        if self.selection_is_locked(selection) {
+            self.message = "A camada deste elemento está bloqueada.".to_owned();
+            return;
+        }
         if self.item_drag.is_some() || self.draft_start().is_some() {
             return;
         }
@@ -1333,6 +1368,22 @@ impl FloorPlanApp {
         }
     }
 
+    fn detect_enclosed_rooms(&mut self) {
+        let previous = self.project.clone();
+        let count = self.project.create_rooms_from_enclosed_walls();
+        if count > 0 {
+            self.record_change(previous);
+            self.message = format!(
+                "{} {} detectado{} automaticamente.",
+                count,
+                if count == 1 { "ambiente" } else { "ambientes" },
+                if count == 1 { "" } else { "s" }
+            );
+        } else {
+            self.message = "Nenhum novo ambiente fechado foi encontrado.".to_owned();
+        }
+    }
+
     fn terrain_dimensions(&self) -> Option<(f64, f64)> {
         let parse = |value: &str| value.trim().replace(',', ".").parse::<f64>().ok();
         let (width, height) = (
@@ -1365,6 +1416,12 @@ impl FloorPlanApp {
 
     fn delete_selection(&mut self) {
         self.commit_item_drag();
+        if let Some(selection) = self.selection
+            && self.selection_is_locked(selection)
+        {
+            self.message = "A camada deste elemento está bloqueada.".to_owned();
+            return;
+        }
         if let Some(selection) = self.selection.take() {
             let previous = self.project.clone();
             match selection {
@@ -1639,7 +1696,8 @@ impl FloorPlanApp {
         let modal_open = self.pending_room.is_some()
             || self.pending_action.is_some()
             || self.show_help
-            || self.show_mcp_dialog;
+            || self.show_mcp_dialog
+            || self.active_doc_dialog != DocDialog::None;
         let blocking_dialog = self.pending_room.is_some() || self.pending_action.is_some();
 
         // Capture direct CAD numeric input typed while a drawing tool is active.
@@ -1794,9 +1852,10 @@ impl FloorPlanApp {
             self.redo();
         }
         if actions.escape {
-            if self.show_help || self.show_mcp_dialog {
+            if self.show_help || self.show_mcp_dialog || self.active_doc_dialog != DocDialog::None {
                 self.show_help = false;
                 self.show_mcp_dialog = false;
+                self.active_doc_dialog = DocDialog::None;
                 self.mcp_feedback = None;
             } else if !self.draft_input.is_empty() {
                 self.draft_input.clear();

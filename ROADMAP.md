@@ -117,7 +117,7 @@ O #10 foi antecipado para a Fase 1 porque cômodos poligonais (#02) só ficam ú
 | 11 | Encontros automáticos de paredes em L, T e X, em qualquer ângulo | P0 | 1 | Feito |
 | 12 | Mover paredes compartilhadas atualizando os cômodos, aberturas e cotas ligados | P0 | 1 | Feito |
 | 13 | Paredes referenciadas pela face interna, externa ou pelo eixo | P0 | 1 | Feito |
-| 14 | Ambientes detectados automaticamente pelo fechamento das paredes | P1 | 3 | — |
+| 14 | Ambientes detectados automaticamente pelo fechamento das paredes | P1 | 3 | Feito |
 | 15 | Terrenos irregulares, divisas inclinadas e desmembramento de lotes | P1 | 3 | — |
 | 16 | Recuos, afastamentos e limites de implantação configuráveis | P1 | 3 | — |
 | 17 | Área útil, construída, de projeção e do terreno calculadas separadamente | P1 | 3 | Parcial |
@@ -137,7 +137,7 @@ O #12 é o mais importante deste grupo. Dois quartos separados por uma parede: o
 | # | Funcionalidade | Prioridade | Fase | Hoje |
 | --- | --- | --- | --- | --- |
 | 26 | Cotas associativas: internas, externas, alinhadas, angulares, editáveis | P0 | 2 | Parcial |
-| 27 | Camadas com cor, espessura, tipo de linha, visibilidade e bloqueio | P0 | 2 | — |
+| 27 | Camadas com cor, espessura, tipo de linha, visibilidade e bloqueio | P0 | 2 | Feito |
 | 28 | Pranchas A4, A3, A2, A1, A0 e tamanhos personalizados | P0 | 2 | — |
 | 29 | Impressão em escala exata: 1:25, 1:50, 1:75, 1:100, 1:200 | P0 | 2 | — |
 | 30 | Carimbo editável, legenda, identificação do projeto e paginação | P1 | 2 | — |

@@ -12,6 +12,9 @@ pub(super) fn write_drawings(
     point: &impl Fn(Point) -> (f64, f64),
 ) {
     for drawing in &project.drawings {
+        if !project.is_drawing_visible(drawing) {
+            continue;
+        }
         let outline = drawing.shape.outline();
         let Some((first, rest)) = outline.split_first() else {
             continue;
@@ -22,9 +25,20 @@ pub(super) fn write_drawings(
             let (x, y) = point(*corner);
             let _ = write!(path, " L{x:.2} {y:.2}");
         }
+        let layer = project.effective_drawing_layer(drawing);
+        let stroke_color = layer
+            .map(|l| l.hex_color())
+            .unwrap_or_else(|| "#1d2836".to_owned());
+        let stroke_width = layer
+            .map(|l| (l.line_weight_mm * 7.0).clamp(0.8, 5.0))
+            .unwrap_or(1.4);
+        let dash_attr = layer
+            .and_then(|l| l.line_type.svg_dasharray())
+            .map(|dash| format!(" stroke-dasharray=\"{dash}\""))
+            .unwrap_or_default();
         let _ = writeln!(
             svg,
-            "<path d=\"{path}\" fill=\"none\" stroke=\"#1d2836\" stroke-width=\"1.4\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>"
+            "<path d=\"{path}\" fill=\"none\" stroke=\"{stroke_color}\" stroke-width=\"{stroke_width:.1}\" stroke-linejoin=\"round\" stroke-linecap=\"round\"{dash_attr}/>"
         );
     }
 }

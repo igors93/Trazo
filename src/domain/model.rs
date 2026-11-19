@@ -6,6 +6,7 @@ use super::geometry::{
     JOIN_TOLERANCE, Point, distance_to_segment, nearest_point_on_segment, round_to_resolution,
 };
 
+mod auto_rooms;
 mod drawings;
 mod rooms;
 mod shared_walls;
@@ -46,6 +47,14 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub drawings: Vec<Drawing>,
 
+    /// CAD layers with colour, pen weight, line type, visibility and lock.
+    #[serde(default = "super::layers::default_layers")]
+    pub layers: Vec<super::layers::Layer>,
+
+    /// Optional active custom layer assigned to newly created entities.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_layer_id: Option<u64>,
+
     next_id: u64,
 }
 
@@ -76,6 +85,10 @@ impl Default for Project {
 
             drawings: Vec::new(),
 
+            layers: super::layers::default_layers(),
+
+            active_layer_id: None,
+
             next_id: 1,
         }
     }
@@ -93,6 +106,9 @@ pub struct Wall {
     /// the old 12 cm thickness.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub masonry: Option<Masonry>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -675,6 +691,7 @@ impl Project {
             start,
             end,
             masonry: Some(self.masonry.clone()),
+            layer_id: self.active_layer_id,
         });
 
         Some(id)
@@ -710,12 +727,14 @@ impl Project {
 
         let new_id = self.id();
         let built_with = self.walls[wall_idx].masonry.clone();
+        let layer_id = self.walls[wall_idx].layer_id;
 
         self.walls.push(Wall {
             id: new_id,
             start: split_point,
             end: old_end,
             masonry: built_with,
+            layer_id,
         });
 
         for room in &mut self.rooms {
@@ -922,6 +941,7 @@ impl Project {
             return Err("O projeto contém coordenadas inválidas em paredes.".to_owned());
         }
         self.normalize_precision();
+        self.ensure_default_layers();
 
         if let Some(terrain) = &mut self.terrain {
             if !terrain.min.is_finite() || !terrain.max.is_finite() {
@@ -2003,6 +2023,7 @@ mod tests {
             start: Point::new(0.0, 0.0),
             end: Point::new(10.0, 0.0),
             masonry: None,
+            layer_id: None,
         });
         let w2 = project.id();
         project.walls.push(Wall {
@@ -2010,6 +2031,7 @@ mod tests {
             start: Point::new(10.0, 0.0),
             end: Point::new(0.0, 0.0),
             masonry: None,
+            layer_id: None,
         });
 
         // Opening on w2 at t = 0.20 (physically at x = 8.0m)

@@ -262,6 +262,11 @@ impl FloorPlanApp {
         if menu_check(ui, "Propriedades", "", self.show_properties).clicked() {
             self.show_properties = !self.show_properties;
         }
+        menu_separator(ui);
+        if menu_item(ui, Some(Icon::Plan), "Camadas...", "").clicked() {
+            self.active_doc_dialog = super::super::DocDialog::Layers;
+            ui.close();
+        }
     }
 
     pub(super) fn osnap_menu(&mut self, ui: &mut Ui) {

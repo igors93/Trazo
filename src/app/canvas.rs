@@ -406,7 +406,9 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         paint_grid(painter, view);
     }
 
-    if let Some(terrain) = &project.terrain {
+    if project.category_visible(crate::domain::layers::LayerCategory::Terrain)
+        && let Some(terrain) = &project.terrain
+    {
         let rect = Rect::from_two_pos(view.to_screen(terrain.min), view.to_screen(terrain.max));
         let selected = selection == Some(Selection::Terrain(terrain.id));
         let hovered = hover == Some(Selection::Terrain(terrain.id));
@@ -447,55 +449,62 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         }
     }
 
-    for room in &project.rooms {
-        let selected = selection == Some(Selection::Room(room.id));
-        let hovered = hover == Some(Selection::Room(room.id));
-        let fill_color = if selected {
-            theme::ROOM_FILL_SELECTED
-        } else if hovered {
-            theme::ROOM_FILL_HOVER
-        } else {
-            theme::ROOM_FILL
-        };
+    if project.category_visible(crate::domain::layers::LayerCategory::Rooms) {
+        for room in &project.rooms {
+            let selected = selection == Some(Selection::Room(room.id));
+            let hovered = hover == Some(Selection::Room(room.id));
+            let fill_color = if selected {
+                theme::ROOM_FILL_SELECTED
+            } else if hovered {
+                theme::ROOM_FILL_HOVER
+            } else {
+                theme::ROOM_FILL
+            };
 
-        if let Some(poly) = project.room_polygon(room) {
-            let triangles = crate::domain::geometry::triangulate_polygon(&poly);
-            for tri in triangles {
-                let p0 = view.to_screen(tri[0]);
-                let p1 = view.to_screen(tri[1]);
-                let p2 = view.to_screen(tri[2]);
-                painter.add(egui::Shape::convex_polygon(
-                    vec![p0, p1, p2],
-                    fill_color,
-                    Stroke::NONE,
-                ));
+            if let Some(poly) = project.room_polygon(room) {
+                let triangles = crate::domain::geometry::triangulate_polygon(&poly);
+                for tri in triangles {
+                    let p0 = view.to_screen(tri[0]);
+                    let p1 = view.to_screen(tri[1]);
+                    let p2 = view.to_screen(tri[2]);
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![p0, p1, p2],
+                        fill_color,
+                        Stroke::NONE,
+                    ));
+                }
+            } else if let Some((min, max)) = project.room_bounds(room) {
+                let rect = Rect::from_two_pos(view.to_screen(min), view.to_screen(max));
+                painter.rect_stroke(
+                    rect,
+                    0.0,
+                    Stroke::new(1.0, Color32::from_rgba_unmultiplied(204, 63, 51, 120)),
+                    egui::StrokeKind::Inside,
+                );
             }
-        } else if let Some((min, max)) = project.room_bounds(room) {
-            let rect = Rect::from_two_pos(view.to_screen(min), view.to_screen(max));
-            painter.rect_stroke(
-                rect,
-                0.0,
-                Stroke::new(1.0, Color32::from_rgba_unmultiplied(204, 63, 51, 120)),
-                egui::StrokeKind::Inside,
-            );
         }
     }
 
     // Fill the calculated mitre patches before drawing the wall runs. This
     // closes L/T/X meetings even when angles and wall thicknesses differ.
-    for junction in project.wall_junctions() {
-        painter.add(Shape::convex_polygon(
-            junction
-                .outline
-                .into_iter()
-                .map(|point| view.to_screen(point))
-                .collect(),
-            theme::WALL,
-            Stroke::NONE,
-        ));
+    if project.category_visible(crate::domain::layers::LayerCategory::Walls) {
+        for junction in project.wall_junctions() {
+            painter.add(Shape::convex_polygon(
+                junction
+                    .outline
+                    .into_iter()
+                    .map(|point| view.to_screen(point))
+                    .collect(),
+                theme::WALL,
+                Stroke::NONE,
+            ));
+        }
     }
 
     for wall in &project.walls {
+        if !project.is_wall_visible(wall) {
+            continue;
+        }
         let in_room = |target: Option<Selection>| {
             project.rooms.iter().any(|room| {
                 target == Some(Selection::Room(room.id)) && room.wall_ids.contains(&wall.id)
@@ -511,28 +520,36 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         paint_wall(painter, view, wall, project, tone, selection, hover);
     }
 
-    for fixture in &project.fixtures {
-        let tone = if selection == Some(Selection::Fixture(fixture.id)) {
-            FixtureTone::Selected
-        } else if hover == Some(Selection::Fixture(fixture.id)) {
-            FixtureTone::Hovered
-        } else {
-            FixtureTone::Normal
-        };
-        paint_fixture(painter, view, fixture, tone);
+    if project.category_visible(crate::domain::layers::LayerCategory::Fixtures) {
+        for fixture in &project.fixtures {
+            let tone = if selection == Some(Selection::Fixture(fixture.id)) {
+                FixtureTone::Selected
+            } else if hover == Some(Selection::Fixture(fixture.id)) {
+                FixtureTone::Hovered
+            } else {
+                FixtureTone::Normal
+            };
+            paint_fixture(painter, view, fixture, tone);
+        }
     }
     drawings::paint_drawings(painter, view, project, selection, hover);
 
     let mut occupied = Vec::new();
-    if dimensions {
+    let show_dims =
+        dimensions && project.category_visible(crate::domain::layers::LayerCategory::Dimensions);
+    if show_dims {
         occupied.extend(paint_dimensions(painter, view, project));
     }
 
-    paint_room_labels(painter, view, project, &mut occupied);
-    if dimensions {
+    if project.category_visible(crate::domain::layers::LayerCategory::Rooms) {
+        paint_room_labels(painter, view, project, &mut occupied);
+    }
+    if show_dims && project.category_visible(crate::domain::layers::LayerCategory::Openings) {
         paint_frame_tags(painter, view, project, &mut occupied);
     }
-    paint_wall_labels(painter, view, project, selection, &mut occupied);
+    if project.category_visible(crate::domain::layers::LayerCategory::Walls) {
+        paint_wall_labels(painter, view, project, selection, &mut occupied);
+    }
     paint_terrain_label(painter, view, project, &mut occupied);
 
     if project.walls.is_empty()

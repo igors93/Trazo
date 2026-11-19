@@ -1,28 +1,44 @@
 //! Lines, arcs, circles and other drawing entities on the plan, and the
 //! shape being drawn.
 
-use eframe::egui::{Painter, Pos2, Rect, Shape as EguiShape, Stroke, vec2};
+use eframe::egui::{Color32, Painter, Pos2, Rect, Shape as EguiShape, Stroke, vec2};
 
 use super::ViewTransform;
 use crate::app::{Selection, theme};
 use crate::domain::drawing::Shape;
 use crate::domain::geometry::Point;
+use crate::domain::layers::LineType;
 use crate::domain::model::Project;
 
-/// Paints `shape` as a line on screen.
+/// Paints `shape` as a solid or styled line on screen.
 pub fn paint_shape(painter: &Painter, view: ViewTransform, shape: &Shape, stroke: Stroke) {
+    paint_shape_styled(painter, view, shape, stroke, LineType::Solid);
+}
+
+pub fn paint_shape_styled(
+    painter: &Painter,
+    view: ViewTransform,
+    shape: &Shape,
+    stroke: Stroke,
+    line_type: LineType,
+) {
     let points: Vec<Pos2> = shape
         .outline()
         .into_iter()
         .map(|point| view.to_screen(point))
         .collect();
-    if points.len() >= 2 {
+    if points.len() < 2 {
+        return;
+    }
+    if let Some((dash, gap)) = line_type.screen_dash_gap() {
+        painter.extend(EguiShape::dashed_line(&points, stroke, dash, gap));
+    } else {
         painter.add(EguiShape::line(points, stroke));
     }
 }
 
-/// The project's drawing entities, with the selected and hovered ones
-/// highlighted.
+/// The project's drawing entities, with layer visibility, colour, weight and
+/// line type applied.
 pub fn paint_drawings(
     painter: &Painter,
     view: ViewTransform,
@@ -31,14 +47,22 @@ pub fn paint_drawings(
     hover: Option<Selection>,
 ) {
     for drawing in &project.drawings {
+        if !project.is_drawing_visible(drawing) {
+            continue;
+        }
+        let layer = project.effective_drawing_layer(drawing);
+        let line_type = layer.map(|l| l.line_type).unwrap_or(LineType::Solid);
         let stroke = if selection == Some(Selection::Drawing(drawing.id)) {
             Stroke::new(2.4, theme::SELECTION)
         } else if hover == Some(Selection::Drawing(drawing.id)) {
             Stroke::new(2.0, theme::HOVER)
+        } else if let Some(layer) = layer {
+            let [r, g, b] = layer.color;
+            Stroke::new(layer.screen_stroke_width(), Color32::from_rgb(r, g, b))
         } else {
             Stroke::new(1.3, theme::TEXT)
         };
-        paint_shape(painter, view, &drawing.shape, stroke);
+        paint_shape_styled(painter, view, &drawing.shape, stroke, line_type);
     }
 }
 

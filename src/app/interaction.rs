@@ -674,6 +674,16 @@ impl FloorPlanApp {
                 moved: false,
             }
         });
+        if self
+            .selection
+            .is_some_and(|sel| self.selection_is_locked(sel))
+        {
+            self.item_drag = None;
+            self.drag_initial_project = None;
+            self.message = "A camada deste elemento está bloqueada.".to_owned();
+            self.sync_inspector_fields();
+            return;
+        }
         self.drag_initial_project = self.item_drag.as_ref().map(|_| self.project.clone());
         self.message = Self::selection_message(self.selection).to_owned();
         self.sync_inspector_fields();

@@ -11,7 +11,11 @@ impl Project {
     pub fn add_drawing(&mut self, shape: Shape) -> Result<u64, String> {
         shape.validate()?;
         let id = self.id();
-        self.drawings.push(Drawing { id, shape });
+        self.drawings.push(Drawing {
+            id,
+            shape,
+            layer_id: self.active_layer_id,
+        });
         Ok(id)
     }
 

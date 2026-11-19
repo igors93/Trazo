@@ -48,7 +48,9 @@ fn document(project: &Project) -> SvgDocument {
     let mut svg = format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{width}\" height=\"{height}\" viewBox=\"0 0 {width} {height}\">\n<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\"/>\n"
     );
-    if let Some(terrain) = &project.terrain {
+    if project.category_visible(crate::domain::layers::LayerCategory::Terrain)
+        && let Some(terrain) = &project.terrain
+    {
         let (x, y) = point(terrain.min);
         let w = terrain.width() * pixels_per_meter;
         let h = terrain.height() * pixels_per_meter;
