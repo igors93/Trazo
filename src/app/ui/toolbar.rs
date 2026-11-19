@@ -358,6 +358,17 @@ impl FloorPlanApp {
     }
 
     fn output_tab(&mut self, ui: &mut Ui) {
+        ribbon_panel(ui, "Inteligência artificial", |ui| {
+            if tip(
+                ribbon_button(ui, Icon::Ai, "Conectar IA", self.show_mcp_dialog, false),
+                "Usar o Trazo pelo ChatGPT, Claude ou outro assistente (MCP)",
+            )
+            .clicked()
+            {
+                self.show_mcp_dialog = true;
+            }
+        });
+        vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Projeto", |ui| {
             if tip(
                 ribbon_button(ui, Icon::New, "Novo", false, false),

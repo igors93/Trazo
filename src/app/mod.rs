@@ -129,6 +129,9 @@ pub struct FloorPlanApp {
     /// Tool calls from the MCP server, run on the UI thread.
     mcp_calls: Option<mpsc::Receiver<ToolCall>>,
     mcp_status: McpStatus,
+    show_mcp_dialog: bool,
+    /// The outcome of the last action in the "Conectar uma IA" window.
+    mcp_feedback: Option<(bool, String)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -202,6 +205,8 @@ impl FloorPlanApp {
             mcp_actions: 0,
             mcp_calls,
             mcp_status,
+            show_mcp_dialog: false,
+            mcp_feedback: None,
         }
     }
 
@@ -1102,8 +1107,10 @@ impl FloorPlanApp {
         let editing_text = context.text_edit_focused();
         // While a dialog is open, editing commands must not act on the
         // project behind it; the dialog handles its own keys.
-        let modal_open =
-            self.pending_room.is_some() || self.pending_action.is_some() || self.show_help;
+        let modal_open = self.pending_room.is_some()
+            || self.pending_action.is_some()
+            || self.show_help
+            || self.show_mcp_dialog;
         let blocking_dialog = self.pending_room.is_some() || self.pending_action.is_some();
         let actions = context.input(|input| {
             let pressed = |key: Key| {
@@ -1198,8 +1205,10 @@ impl FloorPlanApp {
             self.redo();
         }
         if actions.escape {
-            if self.show_help {
+            if self.show_help || self.show_mcp_dialog {
                 self.show_help = false;
+                self.show_mcp_dialog = false;
+                self.mcp_feedback = None;
             } else if self.draft_start().is_none()
                 && self.pending_room.is_none()
                 && self.selection.is_some()

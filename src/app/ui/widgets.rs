@@ -558,6 +558,45 @@ pub fn property_value(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).color(TEXT));
 }
 
+/// A block of code or configuration with a "Copiar" button; returns
+/// whether the button was clicked.
+pub fn code_block(ui: &mut Ui, code: &str) -> bool {
+    let mut copy = false;
+    egui::Frame::new()
+        .fill(PANEL_ALT)
+        .stroke(Stroke::new(1.0, BORDER))
+        .corner_radius(6)
+        .inner_margin(Margin::symmetric(10, 7))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal_top(|ui| {
+                let text_width = (ui.available_width() - 76.0).max(80.0);
+                ui.allocate_ui_with_layout(
+                    vec2(text_width, 0.0),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        ui.add(
+                            egui::Label::new(RichText::new(code).font(mono(12.0)).color(TEXT))
+                                .wrap()
+                                .selectable(true),
+                        );
+                    },
+                );
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                    copy = ui
+                        .add(
+                            egui::Button::new(RichText::new("Copiar").size(12.0).color(ACCENT_TEXT))
+                                .corner_radius(5)
+                                .min_size(vec2(64.0, 24.0)),
+                        )
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .clicked();
+                });
+            });
+        });
+    copy
+}
+
 /// A boxed hint line with an icon, for guidance under a form.
 pub fn hint(ui: &mut Ui, icon: Icon, text: &str, tone: Color32) {
     egui::Frame::new()

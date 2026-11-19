@@ -42,6 +42,7 @@ pub enum Icon {
     Info,
     Check,
     Warning,
+    Ai,
 }
 
 struct Pen<'a> {
@@ -347,6 +348,28 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
             pen.dot(12.0, 7.8, 1.2, accent);
         }
         Icon::Check => pen.accent_line(&[(5.0, 12.5), (9.8, 17.0), (19.0, 7.0)]),
+        Icon::Ai => {
+            // A four-pointed spark with a small one beside it.
+            let vertical = [(10.5, 3.5), (12.6, 12.0), (10.5, 20.5), (8.4, 12.0)];
+            let horizontal = [(2.5, 12.0), (10.5, 9.9), (18.5, 12.0), (10.5, 14.1)];
+            pen.fill(&vertical, soft);
+            pen.fill(&horizontal, soft);
+            pen.closed(
+                &[
+                    (10.5, 3.5),
+                    (12.6, 9.9),
+                    (18.5, 12.0),
+                    (12.6, 14.1),
+                    (10.5, 20.5),
+                    (8.4, 14.1),
+                    (2.5, 12.0),
+                    (8.4, 9.9),
+                ],
+                ink_s,
+            );
+            pen.accent_line(&[(18.5, 2.5), (18.5, 7.5)]);
+            pen.accent_line(&[(16.0, 5.0), (21.0, 5.0)]);
+        }
         Icon::Warning => {
             pen.fill(&[(12.0, 3.5), (21.5, 20.0), (2.5, 20.0)], soft);
             pen.closed(&[(12.0, 3.5), (21.5, 20.0), (2.5, 20.0)], ink_s);

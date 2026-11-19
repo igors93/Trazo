@@ -3,7 +3,7 @@ use super::icons::{self, Icon};
 use super::widgets::{icon_button_sized, key_cap, primary_button, secondary_button};
 use eframe::egui::{self, Key, Margin, RichText, Sense, Stroke, Ui, vec2};
 
-fn dialog_frame() -> egui::Frame {
+pub(super) fn dialog_frame() -> egui::Frame {
     egui::Frame::new()
         .fill(PANEL)
         .stroke(Stroke::new(1.0, BORDER_STRONG))
@@ -17,12 +17,12 @@ fn dialog_frame() -> egui::Frame {
         })
 }
 
-fn backdrop() -> egui::Color32 {
+pub(super) fn backdrop() -> egui::Color32 {
     egui::Color32::from_rgba_unmultiplied(24, 46, 78, 70)
 }
 
 /// A dialog's title row: an icon tile, a title and a line under it.
-fn dialog_title(ui: &mut Ui, icon: Icon, title: &str, subtitle: &str) {
+pub(super) fn dialog_title(ui: &mut Ui, icon: Icon, title: &str, subtitle: &str) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         let (tile, _) = ui.allocate_exact_size(vec2(40.0, 40.0), Sense::hover());

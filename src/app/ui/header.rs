@@ -36,6 +36,10 @@ impl FloorPlanApp {
                     self.show_help = true;
                     ui.close();
                 }
+                if menu_item(ui, Some(Icon::Ai), "Conectar uma IA (MCP)...", "").clicked() {
+                    self.show_mcp_dialog = true;
+                    ui.close();
+                }
             });
 
             ui.add_space(6.0);

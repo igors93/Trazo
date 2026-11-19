@@ -25,20 +25,20 @@ impl FloorPlanApp {
                 format!(
                     "Servidor MCP ativo em {}
 {} ação(ões) da IA nesta sessão.
-Clique para copiar o endereço.",
+Clique para conectar o ChatGPT ou o Claude.",
                     mcp::local_url(*port),
                     self.mcp_actions
                 ),
             ),
-            McpStatus::Failed(error) => (false, format!("Servidor MCP desligado: {error}.")),
+            McpStatus::Failed(error) => (
+                false,
+                format!("Servidor MCP desligado: {error}.
+Clique para ver como conectar uma IA."),
+            ),
             McpStatus::Off => (false, "Servidor MCP desligado.".to_owned()),
         };
-        if toggle_pill(ui, "IA", on, &tooltip).clicked()
-            && let McpStatus::Listening(port) = self.mcp_status
-        {
-            let url = mcp::local_url(port);
-            ui.ctx().copy_text(url.clone());
-            self.message = format!("Endereço MCP copiado: {url}");
+        if toggle_pill(ui, "IA", on, &tooltip).clicked() {
+            self.show_mcp_dialog = true;
         }
     }
 

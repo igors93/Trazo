@@ -1,6 +1,7 @@
 use eframe::egui::{self, Margin, Ui};
 
 mod browser;
+mod connect;
 mod dialogs;
 mod header;
 pub(super) mod icons;
@@ -83,5 +84,6 @@ impl FloorPlanApp {
         self.room_name_dialog(ui);
         self.unsaved_changes_dialog(&context);
         self.help_dialog(&context);
+        self.connect_dialog(&context);
     }
 }

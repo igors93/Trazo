@@ -1,0 +1,274 @@
+//! "Conectar uma IA": everything needed to use Trazo from ChatGPT, Claude or
+//! another MCP client, ready to copy or set up with one click.
+
+use super::super::{FloorPlanApp, McpStatus, theme::*};
+use super::icons::{self, Icon};
+use super::widgets::{code_block, hint, icon_button_sized, primary_button};
+use crate::mcp::{self, clients};
+use eframe::egui::{self, Margin, Pos2, Rect, RichText, Sense, Stroke, Ui, vec2};
+
+fn step_title(ui: &mut Ui, number: usize, title: &str, subtitle: &str) {
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 10.0;
+        let (badge, _) = ui.allocate_exact_size(vec2(24.0, 24.0), Sense::hover());
+        ui.painter().circle_filled(badge.center(), 12.0, ACCENT_SOFT);
+        ui.painter().text(
+            badge.center(),
+            egui::Align2::CENTER_CENTER,
+            number.to_string(),
+            strong(12.5),
+            ACCENT_TEXT,
+        );
+        ui.vertical(|ui| {
+            ui.spacing_mut().item_spacing.y = 1.0;
+            ui.label(RichText::new(title).font(strong(14.0)).color(TEXT));
+            ui.label(RichText::new(subtitle).size(12.0).color(MUTED));
+        });
+    });
+    ui.add_space(6.0);
+}
+
+impl FloorPlanApp {
+    fn copy(&mut self, ui: &Ui, text: &str, what: &str) {
+        ui.ctx().copy_text(text.to_owned());
+        self.message = format!("{what} copiado para a área de transferência.");
+        self.mcp_feedback = Some((true, format!("{what} copiado.")));
+    }
+
+    /// The window that explains how to connect an AI assistant.
+    pub(super) fn connect_dialog(&mut self, ctx: &egui::Context) {
+        if !self.show_mcp_dialog {
+            return;
+        }
+        let mut close = false;
+        let max_height = (ctx.content_rect().height() - 120.0).max(320.0);
+        let response = egui::Modal::new(egui::Id::unique("connect_ai_dialog"))
+            .frame(super::dialogs::dialog_frame())
+            .backdrop_color(super::dialogs::backdrop())
+            .show(ctx, |ui| {
+                ui.set_width(600.0);
+                let close_rect = Rect::from_min_size(
+                    Pos2::new(ui.max_rect().right() - 26.0, ui.max_rect().top()),
+                    vec2(26.0, 26.0),
+                );
+                if ui
+                    .put(close_rect, |ui: &mut Ui| {
+                        icon_button_sized(ui, Icon::Close, "Fechar (Esc)", false, 26.0, 14.0)
+                    })
+                    .clicked()
+                {
+                    close = true;
+                }
+                super::dialogs::dialog_title(
+                    ui,
+                    Icon::Ai,
+                    "Conectar uma IA",
+                    "Use o Trazo pelo ChatGPT, Claude ou outro assistente compatível com MCP.",
+                );
+                egui::ScrollArea::vertical()
+                    .max_height(max_height - 140.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| self.connect_dialog_body(ui));
+                ui.add_space(12.0);
+                ui.horizontal(|ui| {
+                    if let Some((ok, text)) = &self.mcp_feedback {
+                        let (rect, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
+                        let tone = if *ok { SUCCESS } else { DANGER };
+                        icons::paint(
+                            ui.painter(),
+                            rect,
+                            if *ok { Icon::Check } else { Icon::Warning },
+                            tone,
+                            tone,
+                        );
+                        ui.label(RichText::new(text).size(12.0).color(TEXT_2));
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if primary_button(ui, "Fechar").clicked() {
+                            close = true;
+                        }
+                    });
+                });
+            });
+        if close || response.should_close() {
+            self.show_mcp_dialog = false;
+            self.mcp_feedback = None;
+        }
+    }
+
+    fn connect_dialog_body(&mut self, ui: &mut Ui) {
+        let port = match &self.mcp_status {
+            McpStatus::Listening(port) => Some(*port),
+            _ => None,
+        };
+        let url = mcp::local_url(port.unwrap_or_else(mcp::port));
+
+        // Server state.
+        egui::Frame::new()
+            .fill(if port.is_some() { ACCENT_SOFTER } else { PANEL_ALT })
+            .stroke(Stroke::new(1.0, if port.is_some() { ACCENT_RING } else { BORDER }))
+            .corner_radius(8)
+            .inner_margin(Margin::same(12))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    let (dot, _) = ui.allocate_exact_size(vec2(10.0, 10.0), Sense::hover());
+                    ui.painter().circle_filled(
+                        dot.center(),
+                        5.0,
+                        if port.is_some() { SUCCESS } else { DANGER },
+                    );
+                    match &self.mcp_status {
+                        McpStatus::Listening(_) => {
+                            ui.label(RichText::new("Servidor ativo").font(strong(13.0)).color(TEXT));
+                            ui.label(
+                                RichText::new(format!(
+                                    "· {} ação(ões) da IA nesta sessão",
+                                    self.mcp_actions
+                                ))
+                                .size(12.0)
+                                .color(MUTED),
+                            );
+                        }
+                        McpStatus::Failed(error) => {
+                            ui.label(
+                                RichText::new(format!("Servidor desligado: {error}."))
+                                    .color(DANGER),
+                            );
+                        }
+                        McpStatus::Off => {
+                            ui.label(RichText::new("Servidor desligado.").color(DANGER));
+                        }
+                    }
+                });
+                ui.add_space(6.0);
+                if code_block(ui, &url) {
+                    self.copy(ui, &url, "Endereço");
+                }
+                if port.is_none() {
+                    ui.add_space(4.0);
+                    hint(
+                        ui,
+                        Icon::Warning,
+                        "Feche outras janelas do Trazo (só uma pode atender a IA) e abra o Trazo de novo. Para usar outra porta, defina a variável TRAZO_MCP_PORT.",
+                        WARNING,
+                    );
+                }
+            });
+        ui.add_space(16.0);
+
+        // Claude Desktop.
+        step_title(
+            ui,
+            1,
+            "Claude Desktop",
+            "Um clique adiciona o Trazo às configurações; depois feche e abra o Claude Desktop.",
+        );
+        let executable = std::env::current_exe().unwrap_or_default();
+        ui.horizontal(|ui| {
+            ui.add_space(34.0);
+            if primary_button(ui, "Configurar Claude Desktop").clicked() {
+                self.mcp_feedback = Some(match clients::install_claude_desktop(&executable) {
+                    Ok(path) => (
+                        true,
+                        format!(
+                            "Claude Desktop configurado ({}). Reinicie o Claude Desktop.",
+                            path.display()
+                        ),
+                    ),
+                    Err(error) => (false, error),
+                });
+            }
+        });
+        ui.add_space(6.0);
+        egui::Frame::new()
+            .inner_margin(Margin {
+                left: 34,
+                right: 0,
+                top: 0,
+                bottom: 0,
+            })
+            .show(ui, |ui| {
+                ui.label(
+                    RichText::new(
+                        "Ou cole em Configurações › Desenvolvedor › Editar configuração (claude_desktop_config.json):",
+                    )
+                    .size(12.0)
+                    .color(TEXT_2),
+                );
+                ui.add_space(4.0);
+                let snippet = clients::claude_desktop_snippet(&executable);
+                if code_block(ui, &snippet) {
+                    self.copy(ui, &snippet, "Configuração");
+                }
+            });
+        ui.add_space(16.0);
+
+        // Claude Code.
+        step_title(
+            ui,
+            2,
+            "Claude Code",
+            "Rode este comando no terminal uma vez.",
+        );
+        egui::Frame::new()
+            .inner_margin(Margin {
+                left: 34,
+                right: 0,
+                top: 0,
+                bottom: 0,
+            })
+            .show(ui, |ui| {
+                let command = clients::claude_code_command(&url);
+                if code_block(ui, &command) {
+                    self.copy(ui, &command, "Comando");
+                }
+            });
+        ui.add_space(16.0);
+
+        // ChatGPT and other web assistants.
+        step_title(
+            ui,
+            3,
+            "ChatGPT e Claude na web",
+            "Eles rodam na nuvem e precisam de um endereço público https até o seu computador.",
+        );
+        egui::Frame::new()
+            .inner_margin(Margin {
+                left: 34,
+                right: 0,
+                top: 0,
+                bottom: 0,
+            })
+            .show(ui, |ui| {
+                ui.label(
+                    RichText::new("Abra um túnel gratuito do Cloudflare (instale com: winget install Cloudflare.cloudflared):")
+                        .size(12.0)
+                        .color(TEXT_2),
+                );
+                ui.add_space(4.0);
+                let command = clients::tunnel_command(port.unwrap_or_else(mcp::port));
+                if code_block(ui, &command) {
+                    self.copy(ui, &command, "Comando do túnel");
+                }
+                ui.add_space(6.0);
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(
+                            "Copie o endereço https://…trycloudflare.com que aparecer, acrescente /mcp no fim e crie um conector com ele no ChatGPT (modo desenvolvedor) ou no Claude na web, sem autenticação.",
+                        )
+                        .size(12.0)
+                        .color(TEXT_2),
+                    )
+                    .wrap(),
+                );
+            });
+        ui.add_space(14.0);
+        hint(
+            ui,
+            Icon::Info,
+            "Deixe o Trazo aberto enquanto usa a IA. Tudo o que ela faz aparece ao vivo na planta e pode ser desfeito com Ctrl+Z.",
+            ACCENT,
+        );
+    }
+}
