@@ -547,7 +547,7 @@ impl FloorPlanApp {
                     )
                     .changed()
                 {
-                    self.dirty = true;
+                    self.mark_edited_outside_history();
                 }
                 ui.end_row();
                 property_label(ui, "Arquivo");

@@ -729,6 +729,12 @@ impl FloorPlanApp {
             return;
         }
         self.history.record(previous);
+        self.mark_edited_outside_history();
+    }
+
+    /// Marks the project as changed and due for the crash-recovery draft,
+    /// for edits that are not undo steps (such as typing the project name).
+    fn mark_edited_outside_history(&mut self) {
         self.dirty = true;
         self.recovery_pending = true;
     }
@@ -1136,6 +1142,18 @@ mod tests {
         assert!(app.project.walls.is_empty());
         press(&mut app, &context, Key::Z, ctrl);
         assert_eq!(app.project.walls.len(), 1);
+    }
+
+    #[test]
+    fn renaming_the_project_is_protected_by_the_recovery_draft() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        assert!(!app.dirty && !app.recovery_pending);
+        app.project.name = "Casa de praia".to_owned();
+        app.mark_edited_outside_history();
+        assert!(app.dirty);
+        assert!(app.recovery_pending);
+        assert!(!app.history.can_undo());
     }
 
     #[test]
