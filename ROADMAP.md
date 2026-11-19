@@ -116,7 +116,7 @@ O #10 foi antecipado para a Fase 1 porque cômodos poligonais (#02) só ficam ú
 | --- | --- | --- | --- | --- |
 | 11 | Encontros automáticos de paredes em L, T e X, em qualquer ângulo | P0 | 1 | Parcial |
 | 12 | Mover paredes compartilhadas atualizando os cômodos, aberturas e cotas ligados | P0 | 1 | — |
-| 13 | Paredes referenciadas pela face interna, externa ou pelo eixo | P0 | 1 | — |
+| 13 | Paredes referenciadas pela face interna, externa ou pelo eixo | P0 | 1 | Feito |
 | 14 | Ambientes detectados automaticamente pelo fechamento das paredes | P1 | 3 | — |
 | 15 | Terrenos irregulares, divisas inclinadas e desmembramento de lotes | P1 | 3 | — |
 | 16 | Recuos, afastamentos e limites de implantação configuráveis | P1 | 3 | — |

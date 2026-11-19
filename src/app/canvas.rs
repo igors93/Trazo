@@ -6,6 +6,7 @@ use crate::domain::{
     fixtures::{Fixture, SymbolShape, Weight},
     geometry::{GRID_METERS, Point, WALL_THICKNESS_METERS, format_meters},
     model::{OpeningKind, Project, Wall},
+    wall_reference::WallReference,
 };
 
 use super::Selection;
@@ -68,6 +69,8 @@ pub struct PaintOptions {
     pub ghost: Option<Fixture>,
     /// Dimension chains around the building.
     pub dimensions: bool,
+    /// Active reference line when previewing walls or rooms.
+    pub wall_reference: WallReference,
 }
 
 /// Door and window type tags ("P1 80/210") beside each opening: on the side
@@ -396,6 +399,7 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         show_grid,
         ghost,
         dimensions,
+        wall_reference,
     } = options;
     painter.rect_filled(view.rect, 0.0, theme::CANVAS);
     if show_grid {
@@ -526,7 +530,7 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
     }
 
     if let Some(preview) = preview {
-        paint_preview(painter, view, project, preview, &occupied);
+        paint_preview(painter, view, project, preview, wall_reference, &occupied);
     }
     if let Some(ghost) = &ghost {
         paint_fixture(painter, view, ghost, FixtureTone::Ghost);
@@ -600,12 +604,15 @@ fn paint_preview(
     view: ViewTransform,
     project: &Project,
     preview: Preview,
+    reference: WallReference,
     occupied: &[Rect],
 ) {
     let valid_color = theme::ACCENT;
     let invalid_color = theme::DANGER;
+    let thickness = project.masonry.thickness();
     match preview {
-        Preview::Wall(a, b) => {
+        Preview::Wall(ref_a, ref_b) => {
+            let (a, b) = reference.offset_segment(ref_a, ref_b, thickness);
             let valid = a.distance(b) >= 0.24
                 && project
                     .terrain
@@ -615,36 +622,50 @@ fn paint_preview(
             painter.line_segment(
                 [view.to_screen(a), view.to_screen(b)],
                 Stroke::new(
-                    wall_screen_width(view.scale, project.masonry.thickness()),
+                    wall_screen_width(view.scale, thickness),
                     color.gamma_multiply(0.85),
                 ),
             );
-            painter.circle_filled(view.to_screen(a), 3.5, color);
-            painter.circle_filled(view.to_screen(b), 4.5, color);
-            let midpoint = view.to_screen(a).lerp(view.to_screen(b), 0.5);
+            if reference != WallReference::Center {
+                overlay::paint_snap_guide(painter, view.to_screen(ref_a), view.to_screen(ref_b));
+            }
+            painter.circle_filled(view.to_screen(ref_a), 3.5, color);
+            painter.circle_filled(view.to_screen(ref_b), 4.5, color);
+            let midpoint = view.to_screen(ref_a).lerp(view.to_screen(ref_b), 0.5);
+            let label = if reference == WallReference::Center {
+                format_meters(ref_a.distance(ref_b))
+            } else {
+                format!(
+                    "{} ({})",
+                    format_meters(ref_a.distance(ref_b)),
+                    reference.short_label()
+                )
+            };
             paint_preview_measure(
                 painter,
                 midpoint + egui::vec2(0.0, -22.0),
                 view.rect,
-                view.to_screen(b),
-                &format_meters(a.distance(b)),
+                view.to_screen(ref_b),
+                &label,
                 view.rect,
                 occupied,
             );
         }
-        Preview::Room(a, b) => {
-            let w = (b.x - a.x).abs();
-            let h = (b.y - a.y).abs();
-            let min = Point::new(a.x.min(b.x), a.y.min(b.y));
-            let max = Point::new(a.x.max(b.x), a.y.max(b.y));
+        Preview::Room(ref_a, ref_b) => {
+            let w = (ref_b.x - ref_a.x).abs();
+            let h = (ref_b.y - ref_a.y).abs();
+            let shifted = reference.offset_rect(ref_a, ref_b, thickness);
             let valid = w >= 0.5
                 && h >= 0.5
-                && project
-                    .terrain
-                    .as_ref()
-                    .is_none_or(|t| t.contains(min) && t.contains(max));
+                && shifted.is_some_and(|(min, max)| {
+                    project
+                        .terrain
+                        .as_ref()
+                        .is_none_or(|t| t.contains(min) && t.contains(max))
+                });
             let color = if valid { valid_color } else { invalid_color };
-            let rect = Rect::from_two_pos(view.to_screen(a), view.to_screen(b));
+            let (draw_a, draw_b) = shifted.unwrap_or((ref_a, ref_b));
+            let rect = Rect::from_two_pos(view.to_screen(draw_a), view.to_screen(draw_b));
             painter.rect_filled(rect, 0.0, color.gamma_multiply(0.10));
             let corners = [
                 rect.left_top(),
@@ -656,23 +677,50 @@ fn paint_preview(
                 painter.line_segment(
                     [corners[index], corners[(index + 1) % 4]],
                     Stroke::new(
-                        wall_screen_width(view.scale, project.masonry.thickness()),
+                        wall_screen_width(view.scale, thickness),
                         color.gamma_multiply(0.85),
                     ),
                 );
             }
-            paint_preview_measure(
-                painter,
-                rect.center(),
-                rect.shrink(wall_stroke_width(view.scale) / 2.0 + 4.0),
-                view.to_screen(b),
-                &format!(
+            if reference != WallReference::Center {
+                let ref_rect = Rect::from_two_pos(view.to_screen(ref_a), view.to_screen(ref_b));
+                let ref_corners = [
+                    ref_rect.left_top(),
+                    ref_rect.right_top(),
+                    ref_rect.right_bottom(),
+                    ref_rect.left_bottom(),
+                ];
+                for index in 0..4 {
+                    overlay::paint_snap_guide(
+                        painter,
+                        ref_corners[index],
+                        ref_corners[(index + 1) % 4],
+                    );
+                }
+            }
+            let room_label = if reference == WallReference::Center {
+                format!(
                     "{} × {} · {:.2} m²",
                     format_meters(w),
                     format_meters(h),
                     w * h
                 )
-                .replace('.', ","),
+            } else {
+                format!(
+                    "{} × {} ({}) · {:.2} m²",
+                    format_meters(w),
+                    format_meters(h),
+                    reference.short_label(),
+                    w * h
+                )
+            }
+            .replace('.', ",");
+            paint_preview_measure(
+                painter,
+                rect.center(),
+                rect.shrink(wall_stroke_width(view.scale) / 2.0 + 4.0),
+                view.to_screen(ref_b),
+                &room_label,
                 view.rect,
                 occupied,
             );

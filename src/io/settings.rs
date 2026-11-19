@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::snap::OsnapSettings;
+use crate::domain::{snap::OsnapSettings, wall_reference::WallReference};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -16,6 +16,7 @@ pub struct Settings {
     pub show_grid: bool,
     pub snap_enabled: bool,
     pub osnap: OsnapSettings,
+    pub wall_reference: WallReference,
     pub ortho_enabled: bool,
     pub show_browser: bool,
     pub show_properties: bool,
@@ -32,6 +33,7 @@ impl Default for Settings {
             show_grid: true,
             snap_enabled: true,
             osnap: OsnapSettings::default(),
+            wall_reference: WallReference::default(),
             ortho_enabled: false,
             show_browser: true,
             show_properties: true,

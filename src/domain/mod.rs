@@ -6,3 +6,4 @@ pub mod history;
 pub mod masonry;
 pub mod model;
 pub mod snap;
+pub mod wall_reference;

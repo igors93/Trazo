@@ -45,8 +45,16 @@ impl FloorPlanApp {
         } else if polygon_area(&corners) < 0.25 {
             self.message = "O cômodo precisa de pelo menos 0,25 m².".to_owned();
         } else {
+            let thickness = self.project.masonry.thickness();
+            let Some(center_corners) = self.wall_reference.offset_polygon(&corners, thickness)
+            else {
+                self.message =
+                    "O cômodo ficou pequeno demais para a referência de parede escolhida."
+                        .to_owned();
+                return;
+            };
             self.polygon_draft.clear();
-            self.pending_room = Some(corners);
+            self.pending_room = Some(center_corners);
             self.room_name.clear();
             self.room_dialog_focus = true;
             self.message = "Digite o nome do cômodo para concluir.".to_owned();

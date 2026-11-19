@@ -299,6 +299,25 @@ impl FloorPlanApp {
                 .replace('.', ","),
         )
         .on_hover_text("Espessura acabada: bloco + reboco nas duas faces");
+        divider(ui);
+        caption(ui, "Referência");
+        egui::ComboBox::from_id_salt("wall_reference")
+            .width(104.0)
+            .selected_text(RichText::new(self.wall_reference.label()).size(12.0))
+            .show_ui(ui, |ui| {
+                for reference in crate::domain::wall_reference::WallReference::ALL {
+                    let selected = self.wall_reference == reference;
+                    if ui.selectable_label(selected, reference.label()).clicked() {
+                        self.wall_reference = reference;
+                        self.message =
+                            format!("Referência da parede: {} (Tab alterna).", reference.label());
+                    }
+                }
+            })
+            .response
+            .on_hover_text(
+                "Alinha a parede pelo eixo, pela face externa ou pela face interna (Tab alterna)",
+            );
     }
 
     fn terrain_options(&mut self, ui: &mut Ui) {

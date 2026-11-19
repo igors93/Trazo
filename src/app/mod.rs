@@ -128,6 +128,7 @@ pub struct FloorPlanApp {
     fit_pending: bool,
     snap_enabled: bool,
     osnap: crate::domain::snap::OsnapSettings,
+    wall_reference: crate::domain::wall_reference::WallReference,
     terrain_width_text: String,
     terrain_height_text: String,
     wall_length_text: String,
@@ -231,6 +232,7 @@ impl FloorPlanApp {
             fit_pending: restored,
             snap_enabled: preferences.snap_enabled,
             osnap: preferences.osnap,
+            wall_reference: preferences.wall_reference,
             terrain_width_text: "5,00".to_owned(),
             terrain_height_text: "10,00".to_owned(),
             wall_length_text: String::new(),
@@ -329,6 +331,7 @@ impl FloorPlanApp {
             show_grid: self.show_grid,
             snap_enabled: self.snap_enabled,
             osnap: self.osnap,
+            wall_reference: self.wall_reference,
             ortho_enabled: self.ortho_enabled,
             show_browser: self.show_browser,
             show_properties: self.show_properties,
@@ -620,10 +623,24 @@ impl FloorPlanApp {
                 }
             }
             Tool::Wall => {
+                let (wall_start, wall_end) = self.wall_reference.offset_segment(
+                    start,
+                    end,
+                    self.project.masonry.thickness(),
+                );
                 let previous = self.project.clone();
-                if self.project.add_wall(start, end).is_some() {
+                if self.project.add_wall(wall_start, wall_end).is_some() {
                     self.record_change(previous);
-                    self.message = "Parede criada.".to_owned();
+                    self.message = if self.wall_reference
+                        == crate::domain::wall_reference::WallReference::Center
+                    {
+                        "Parede criada.".to_owned()
+                    } else {
+                        format!(
+                            "Parede criada ({}).",
+                            self.wall_reference.label().to_lowercase()
+                        )
+                    };
                 } else {
                     self.message =
                         "A parede deve caber dentro do terreno e ter pelo menos 0,25 m.".to_owned();
@@ -631,10 +648,16 @@ impl FloorPlanApp {
             }
             Tool::Room => {
                 if (start.x - end.x).abs() >= 0.5 && (start.y - end.y).abs() >= 0.5 {
-                    let (min, max) = (
-                        Point::new(start.x.min(end.x), start.y.min(end.y)),
-                        Point::new(start.x.max(end.x), start.y.max(end.y)),
-                    );
+                    let Some((min, max)) = self.wall_reference.offset_rect(
+                        start,
+                        end,
+                        self.project.masonry.thickness(),
+                    ) else {
+                        self.message =
+                            "Dimensões do cômodo muito pequenas para a referência escolhida."
+                                .to_owned();
+                        return;
+                    };
                     self.pending_room = Some(vec![
                         min,
                         Point::new(max.x, min.y),
@@ -1722,6 +1745,10 @@ impl FloorPlanApp {
                 undo_point: plain(Key::Backspace),
                 numeric_commit: typing_numeric && key_unmodified(Key::Enter, false),
                 numeric_backspace: typing_numeric && key_unmodified(Key::Backspace, true),
+                cycle_wall_reference: matches!(
+                    self.tool,
+                    Tool::Wall | Tool::Room | Tool::RoomPolygon
+                ) && key_unmodified(Key::Tab, false),
                 snap: pressed(Key::F3) && free,
                 grid: pressed(Key::F7) && free,
                 ortho: pressed(Key::F8) && free,
@@ -1774,6 +1801,13 @@ impl FloorPlanApp {
         }
         if actions.numeric_commit {
             self.commit_numeric_input();
+        }
+        if actions.cycle_wall_reference {
+            self.wall_reference = self.wall_reference.next();
+            self.message = format!(
+                "Referência da parede: {} (Tab alterna).",
+                self.wall_reference.label()
+            );
         }
         if actions.delete {
             self.delete_selection();
@@ -1845,6 +1879,7 @@ struct ShortcutActions {
     undo_point: bool,
     numeric_commit: bool,
     numeric_backspace: bool,
+    cycle_wall_reference: bool,
     snap: bool,
     grid: bool,
     ortho: bool,
@@ -2621,5 +2656,37 @@ mod tests {
         press(&mut app, &context, Key::Escape, egui::Modifiers::NONE);
         assert!(app.draft_input.is_empty());
         assert_eq!(app.draft_start(), Some(Point::new(0.0, 0.0)));
+    }
+
+    #[test]
+    fn wall_reference_shifts_walls_and_rooms_and_tab_cycles_it() {
+        use crate::domain::wall_reference::WallReference;
+
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let half = app.project.masonry.thickness() * 0.5;
+        app.set_tool(Tool::Wall);
+        assert_eq!(app.wall_reference, WallReference::Center);
+
+        // Tab cycles Center -> External -> Internal -> Center.
+        press(&mut app, &context, Key::Tab, egui::Modifiers::NONE);
+        assert_eq!(app.wall_reference, WallReference::External);
+
+        app.complete_creation(Point::new(0.0, 0.0), Point::new(4.0, 0.0));
+        assert_eq!(app.project.walls.len(), 1);
+        assert!((app.project.walls[0].start.y - half).abs() < 1e-4);
+        assert!((app.project.walls[0].end.y - half).abs() < 1e-4);
+
+        press(&mut app, &context, Key::Tab, egui::Modifiers::NONE);
+        assert_eq!(app.wall_reference, WallReference::Internal);
+
+        // Room referenced by Internal expands centreline by half thickness on each side.
+        app.set_tool(Tool::Room);
+        app.complete_creation(Point::new(1.0, 1.0), Point::new(4.0, 5.0));
+        let corners = app.pending_room.as_ref().expect("pending room corners");
+        assert!((corners[0].x - (1.0 - half)).abs() < 1e-4);
+        assert!((corners[2].x - (4.0 + half)).abs() < 1e-4);
+        assert!((corners[0].y - (1.0 - half)).abs() < 1e-4);
+        assert!((corners[2].y - (5.0 + half)).abs() < 1e-4);
     }
 }

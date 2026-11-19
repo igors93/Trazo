@@ -432,6 +432,7 @@ impl FloorPlanApp {
                 show_grid: self.show_grid,
                 ghost,
                 dimensions: self.show_dimensions,
+                wall_reference: self.wall_reference,
             },
         );
         self.paint_view_aids(&painter, view);
