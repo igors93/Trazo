@@ -202,7 +202,7 @@ O objetivo declarado é usar o Trazo no dia a dia da obra. Estes itens vêm do t
 | 61 | Testes de regressão visual da exportação PDF/PNG | P1 | paralelo |
 | 62 | Desempenho com plantas grandes (centenas de paredes, histórico longo) | P1 | paralelo |
 | 63 | Instalador para Windows, associação de arquivos e atualização automática | P1 | paralelo |
-| 64 | Versão do formato de arquivo com migrações testadas | P1 | paralelo |
+| 64 | Versão do formato de arquivo com migrações testadas | P1 | paralelo — **Feito** |
 
 ### H. Experiência progressiva (novo)
 

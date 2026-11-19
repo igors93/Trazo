@@ -10,6 +10,9 @@ mod drawings;
 mod rooms;
 use super::masonry::{self, Masonry};
 
+/// Versão mais recente do formato `.trazo` gravado em disco.
+pub const CURRENT_PROJECT_VERSION: u32 = 2;
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Project {
     pub version: u32,
@@ -51,7 +54,7 @@ fn default_wall_height() -> f64 {
 impl Default for Project {
     fn default() -> Self {
         Self {
-            version: 1,
+            version: CURRENT_PROJECT_VERSION,
 
             name: "Minha planta".to_owned(),
 

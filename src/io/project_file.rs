@@ -4,10 +4,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::domain::model::Project;
+use crate::domain::model::{CURRENT_PROJECT_VERSION, Project};
 
 pub fn save(project: &Project, path: &Path) -> Result<(), String> {
     let mut stored = project.clone();
+    stored.version = CURRENT_PROJECT_VERSION;
     stored.normalize_precision();
     let content = serde_json::to_string_pretty(&stored)
         .map_err(|error| format!("Falha na serialização do projeto: {}", error))?;
@@ -102,18 +103,43 @@ pub fn load(path: &Path) -> Result<(Project, Vec<String>), String> {
         return Err("Arquivo não encontrado.".to_owned());
     };
 
-    let mut project: Project = serde_json::from_str(&content)
+    let project: Project = serde_json::from_str(&content)
         .map_err(|error| format!("Formato de arquivo inválido: {}", error))?;
-    if project.version != 1 {
-        return Err(format!(
-            "Versão de projeto não suportada: {}",
-            project.version
-        ));
-    }
+    let (mut project, migration_warnings) = migrate_to_current(project)?;
+    warnings.extend(migration_warnings);
     let repair_warnings = project
         .validate_and_repair()
         .map_err(|error| format!("Erro de validação: {}", error))?;
     warnings.extend(repair_warnings);
+    Ok((project, warnings))
+}
+
+fn migrate_to_current(mut project: Project) -> Result<(Project, Vec<String>), String> {
+    if project.version > CURRENT_PROJECT_VERSION {
+        return Err(format!(
+            "Este projeto usa a versão {} do formato, mas esta instalação do Trazo suporta até a versão {}. Atualize o aplicativo para abrir o arquivo.",
+            project.version, CURRENT_PROJECT_VERSION
+        ));
+    }
+
+    let mut warnings = Vec::new();
+    while project.version < CURRENT_PROJECT_VERSION {
+        match project.version {
+            1 => {
+                // A versão 2 formaliza os campos opcionais que já possuíam
+                // valores padrão: terreno, mobiliário, alvenaria e desenhos CAD.
+                project.version = 2;
+                warnings.push(
+                    "Projeto atualizado do formato 1 para o formato 2; ele será gravado na versão nova no próximo salvamento."
+                        .to_owned(),
+                );
+            }
+            version => {
+                return Err(format!("Versão de projeto não suportada: {}", version));
+            }
+        }
+    }
+
     Ok((project, warnings))
 }
 
@@ -210,11 +236,47 @@ mod tests {
         let path = std::env::temp_dir().join(format!("trazo-legacy-{}.json", std::process::id()));
         fs::write(&path, legacy_json).unwrap();
         let (project, warnings) = load(&path).unwrap();
+        assert_eq!(project.version, CURRENT_PROJECT_VERSION);
         assert_eq!(project.rooms[0].display_name(), "Cozinha");
         assert_eq!(project.openings[0].width(), 0.90);
         assert!(project.terrain.is_none());
         assert_eq!(project.walls.len(), 4);
-        assert!(warnings.is_empty());
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("formato 1"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn saving_a_migrated_project_writes_only_the_current_version() {
+        let content =
+            r#"{"version":1,"name":"Legado","walls":[],"rooms":[],"openings":[],"next_id":1}"#;
+        let path =
+            std::env::temp_dir().join(format!("trazo-migration-{}.json", std::process::id()));
+        fs::write(&path, content).unwrap();
+
+        let (project, warnings) = load(&path).unwrap();
+        assert_eq!(project.version, CURRENT_PROJECT_VERSION);
+        assert_eq!(warnings.len(), 1);
+        save(&project, &path).unwrap();
+
+        let written: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(written["version"], CURRENT_PROJECT_VERSION);
+        let (_, warnings_after_save) = load(&path).unwrap();
+        assert!(warnings_after_save.is_empty());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn a_future_project_version_explains_that_the_app_must_be_updated() {
+        let content =
+            r#"{"version":999,"name":"Futuro","walls":[],"rooms":[],"openings":[],"next_id":1}"#;
+        let path = std::env::temp_dir().join(format!("trazo-future-{}.json", std::process::id()));
+        fs::write(&path, content).unwrap();
+
+        let error = load(&path).unwrap_err();
+        assert!(error.contains("Atualize o aplicativo"));
+        assert!(error.contains("999"));
         let _ = fs::remove_file(path);
     }
 
