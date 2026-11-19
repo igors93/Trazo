@@ -5,6 +5,7 @@ mod connect;
 mod dialogs;
 mod header;
 pub(super) mod icons;
+pub(in crate::app) use icons::Glyph;
 mod inspector;
 mod options_bar;
 mod status_bar;

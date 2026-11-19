@@ -4,6 +4,8 @@ use super::widgets::{danger_button, primary_button, secondary_button, tip, toggl
 use crate::domain::{geometry::format_meters, model::OpeningKind};
 use eframe::egui::{self, Key, Pos2, Rect, RichText, Sense, Stroke, Ui, vec2};
 
+mod drafting;
+
 pub(super) fn tool_icon(tool: Tool) -> Icon {
     match tool {
         Tool::Move => Icon::Select,
@@ -17,6 +19,7 @@ pub(super) fn tool_icon(tool: Tool) -> Icon {
         Tool::Opening(OpeningKind::Gap) => Icon::Gap,
         Tool::Fixture(kind) => Icon::Fixture(kind),
         Tool::Measure => Icon::Ruler,
+        Tool::Draw(kind) => Icon::Glyph(kind.glyph()),
     }
 }
 
@@ -33,6 +36,7 @@ pub(super) fn tool_name(tool: Tool) -> &'static str {
         Tool::Opening(OpeningKind::Gap) => "Vão livre",
         Tool::Fixture(kind) => kind.label(),
         Tool::Measure => "Medir",
+        Tool::Draw(kind) => kind.label(),
     }
 }
 
@@ -96,6 +100,7 @@ impl FloorPlanApp {
             match tool {
                 Tool::Terrain => self.terrain_options(ui),
                 Tool::Wall | Tool::Room => self.masonry_options(ui),
+                Tool::Draw(kind) => self.draw_options(ui, kind),
                 Tool::RoomPolygon => {
                     self.masonry_options(ui);
                     divider(ui);
@@ -176,7 +181,12 @@ impl FloorPlanApp {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 if matches!(
                     tool,
-                    Tool::Wall | Tool::Room | Tool::RoomPolygon | Tool::Terrain | Tool::Measure
+                    Tool::Wall
+                        | Tool::Room
+                        | Tool::RoomPolygon
+                        | Tool::Terrain
+                        | Tool::Measure
+                        | Tool::Draw(_)
                 ) {
                     if matches!(tool, Tool::Wall | Tool::Room | Tool::RoomPolygon)
                         && toggle_pill(
@@ -189,7 +199,10 @@ impl FloorPlanApp {
                     {
                         self.modulation_enabled = !self.modulation_enabled;
                     }
-                    if matches!(tool, Tool::Wall | Tool::RoomPolygon | Tool::Measure)
+                    if matches!(
+                        tool,
+                        Tool::Wall | Tool::RoomPolygon | Tool::Measure | Tool::Draw(_)
+                    )
                         && toggle_pill(
                             ui,
                             "Orto",
@@ -372,6 +385,15 @@ impl FloorPlanApp {
                     })
                     .unwrap_or_default(),
             ),
+            Selection::Drawing(id) => {
+                let shape = self.project.drawing(id).map(|drawing| &drawing.shape);
+                (
+                    shape.map(|shape| shape.label()).unwrap_or("Desenho"),
+                    shape
+                        .map(|shape| format_meters(shape.length()))
+                        .unwrap_or_default(),
+                )
+            }
             Selection::Fixture(id) => {
                 let fixture = self.project.fixtures.iter().find(|f| f.id == id);
                 (

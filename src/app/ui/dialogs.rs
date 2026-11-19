@@ -227,6 +227,20 @@ impl FloorPlanApp {
                     );
                     shortcut_group(
                         &mut columns[0],
+                        "Desenho 2D",
+                        &[
+                            (&["Shift", "L"], "Linha"),
+                            (&["Shift", "P"], "Polilinha"),
+                            (&["Shift", "R"], "Retângulo"),
+                            (&["Shift", "A"], "Arco (3 pontos)"),
+                            (&["Shift", "C"], "Círculo"),
+                            (&["Shift", "S"], "Spline"),
+                            (&["Enter"], "Terminar polilinha ou spline"),
+                            (&["Backspace"], "Desfazer o último ponto"),
+                        ],
+                    );
+                    shortcut_group(
+                        &mut columns[0],
                         "Arquivo",
                         &[
                             (&["Ctrl", "N"], "Nova planta"),

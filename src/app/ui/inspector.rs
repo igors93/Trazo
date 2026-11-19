@@ -2,6 +2,7 @@ use eframe::egui::{self, Key, Margin, Pos2, Rect, Response, RichText, Sense, Str
 
 use super::super::{FloorPlanApp, Selection, Tool, theme::*};
 
+mod drawing;
 mod room_shape;
 use super::icons::{self, Icon};
 use super::widgets::{
@@ -134,6 +135,7 @@ impl FloorPlanApp {
                 ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
                 match self.selection {
                     Some(Selection::Fixture(id)) => self.fixture_inspector(ui, id),
+                    Some(Selection::Drawing(id)) => self.drawing_inspector(ui, id),
                     Some(Selection::Wall(id)) => self.wall_inspector(ui, id),
                     Some(Selection::Room(id)) => self.room_inspector(ui, id),
                     Some(Selection::Opening(id)) => self.opening_inspector(ui, id),

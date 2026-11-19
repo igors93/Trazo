@@ -19,7 +19,7 @@ impl FloorPlanApp {
             point
         };
         if self.ortho_enabled
-            && matches!(self.tool, Tool::Wall | Tool::RoomPolygon)
+            && matches!(self.tool, Tool::Wall | Tool::RoomPolygon | Tool::Draw(_))
             && let Some(start) = start
         {
             if (result.x - start.x).abs() >= (result.y - start.y).abs() {
@@ -120,6 +120,11 @@ impl FloorPlanApp {
             .nearest_opening(point, self.screen_metres(14.0))
             .map(Selection::Opening)
             .or_else(|| self.project.fixture_at(point).map(Selection::Fixture))
+            .or_else(|| {
+                self.project
+                    .drawing_at(point, self.screen_metres(8.0))
+                    .map(Selection::Drawing)
+            })
             .or_else(|| {
                 self.project
                     .nearest_wall(point, self.screen_metres(12.0))
@@ -332,6 +337,7 @@ impl FloorPlanApp {
                     }
                 }
                 Tool::RoomPolygon => self.add_polygon_point(point),
+                Tool::Draw(kind) => self.add_draw_point(kind, point),
                 Tool::Opening(kind) => self.add_opening_at(point, kind),
                 Tool::Fixture(kind) => {
                     if let Some(raw) = world {
@@ -344,6 +350,11 @@ impl FloorPlanApp {
 
         if self.tool == Tool::RoomPolygon && response.double_clicked() {
             self.close_polygon_draft();
+        }
+        if let Tool::Draw(kind) = self.tool
+            && response.double_clicked()
+        {
+            self.finish_drawing(kind, false);
         }
 
         if ui.input(|input| input.key_pressed(Key::Escape)) {
@@ -390,6 +401,11 @@ impl FloorPlanApp {
         if self.tool == Tool::RoomPolygon && !self.polygon_draft.is_empty() {
             canvas::paint_polygon_draft(&painter, view, &self.polygon_draft, snapped, false);
         }
+        if let Tool::Draw(kind) = self.tool {
+            let draft = Self::shape_from(kind, &self.draw_points, snapped, false)
+                .filter(|_| !self.draw_points.is_empty());
+            canvas::paint_draw_draft(&painter, view, draft.as_ref(), &self.draw_points);
+        }
         if self.tool == Tool::Measure
             && let (Some(start), Some(end)) = (self.draft_start(), snapped)
         {
@@ -407,6 +423,7 @@ impl FloorPlanApp {
                     | Tool::Terrain
                     | Tool::Fixture(_)
                     | Tool::Measure
+                    | Tool::Draw(_)
             ) || opening_target;
             if drawing {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::None);
@@ -414,7 +431,7 @@ impl FloorPlanApp {
             }
             if matches!(
                 self.tool,
-                Tool::Wall | Tool::Room | Tool::RoomPolygon | Tool::Terrain
+                Tool::Wall | Tool::Room | Tool::RoomPolygon | Tool::Terrain | Tool::Draw(_)
             ) && let Some(point) = snapped
                 && let Some(kind) = self.snap_kind(point)
             {
@@ -507,7 +524,7 @@ impl FloorPlanApp {
         match selection {
             _ if !self.snap_enabled => point,
             Selection::Opening(_) => point,
-            Selection::Fixture(_) => point.snapped_to(0.05),
+            Selection::Fixture(_) | Selection::Drawing(_) => point.snapped_to(0.05),
             _ => point.snapped_to(0.25),
         }
     }
@@ -612,6 +629,7 @@ impl FloorPlanApp {
             }
             Selection::Terrain(id) => self.project.move_terrain(id, delta),
             Selection::Fixture(id) => self.project.move_fixture(id, delta),
+            Selection::Drawing(id) => self.project.move_drawing(id, delta),
             Selection::Opening(id) => {
                 let target = Point::new(point.x - drag.grab_offset.x, point.y - drag.grab_offset.y);
                 self.project.move_opening_along_wall(id, target);

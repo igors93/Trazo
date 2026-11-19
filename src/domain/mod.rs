@@ -1,4 +1,5 @@
 pub mod annotations;
+pub mod drawing;
 pub mod fixtures;
 pub mod geometry;
 pub mod history;

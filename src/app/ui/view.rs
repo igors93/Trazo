@@ -96,6 +96,17 @@ impl FloorPlanApp {
                 })
                 .unwrap_or_else(|| "Abertura".to_owned()),
             Selection::Terrain(_) => "Terreno".to_owned(),
+            Selection::Drawing(id) => self
+                .project
+                .drawing(id)
+                .map(|drawing| {
+                    format!(
+                        "{} · {}",
+                        drawing.shape.label(),
+                        format_meters(drawing.shape.length())
+                    )
+                })
+                .unwrap_or_else(|| "Desenho".to_owned()),
             Selection::Fixture(id) => self
                 .project
                 .fixtures

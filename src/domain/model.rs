@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
 
+use super::drawing::Drawing;
 use super::fixtures::{self, Fixture, FixtureKind};
 use super::geometry::{
     JOIN_TOLERANCE, Point, distance_to_segment, nearest_point_on_segment, round_to_resolution,
 };
 
+mod drawings;
 mod rooms;
 use super::masonry::{self, Masonry};
 
@@ -35,6 +37,10 @@ pub struct Project {
     #[serde(default = "default_wall_height")]
     pub wall_height: f64,
 
+    /// Lines, arcs, circles and other plain drawing entities.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub drawings: Vec<Drawing>,
+
     next_id: u64,
 }
 
@@ -62,6 +68,8 @@ impl Default for Project {
             masonry: Masonry::default(),
 
             wall_height: default_wall_height(),
+
+            drawings: Vec::new(),
 
             next_id: 1,
         }
@@ -329,7 +337,7 @@ fn is_collinear_and_overlapping(a: Point, b: Point, p1: Point, p2: Point) -> Opt
 impl Project {
     pub fn content_bounds(&self) -> Option<(Point, Point)> {
         if self.walls.is_empty() && self.fixtures.is_empty() {
-            return None;
+            return self.drawings_bounds();
         }
 
         let mut min = Point::new(f64::INFINITY, f64::INFINITY);
@@ -348,6 +356,11 @@ impl Project {
 
         for fixture in &self.fixtures {
             let (low, high) = fixture.bounds();
+            min = Point::new(min.x.min(low.x), min.y.min(low.y));
+            max = Point::new(max.x.max(high.x), max.y.max(high.y));
+        }
+
+        if let Some((low, high)) = self.drawings_bounds() {
             min = Point::new(min.x.min(low.x), min.y.min(low.y));
             max = Point::new(max.x.max(high.x), max.y.max(high.y));
         }
@@ -397,6 +410,7 @@ impl Project {
         for fixture in &mut self.fixtures {
             fixture.center = fixture.center.translated(delta);
         }
+        self.translate_drawings(delta);
 
         true
     }
@@ -452,6 +466,7 @@ impl Project {
             for fixture in &mut self.fixtures {
                 fixture.center = fixture.center.translated(delta);
             }
+            self.translate_drawings(delta);
         }
     }
 
@@ -989,6 +1004,11 @@ impl Project {
             fixture.quarter_turns %= 4;
             max_id = max_id.max(fixture.id);
         }
+        let (dropped, highest) = self.repair_drawings();
+        if dropped > 0 {
+            warnings.push(format!("{dropped} desenhos inválidos foram removidos."));
+        }
+        max_id = max_id.max(highest);
         if self.next_id <= max_id {
             self.next_id = max_id + 1;
         }
@@ -1032,6 +1052,11 @@ impl Project {
             fixture.depth = round_to_resolution(fixture.depth);
         }
         self.wall_height = round_to_resolution(self.wall_height);
+        for drawing in &mut self.drawings {
+            drawing
+                .shape
+                .for_each_point(|point| *point = point.rounded());
+        }
     }
 
     pub fn add_room(
@@ -1864,7 +1889,11 @@ impl Project {
     }
 
     pub fn bounds(&self) -> Option<(Point, Point)> {
-        if self.walls.is_empty() && self.fixtures.is_empty() && self.terrain.is_none() {
+        if self.walls.is_empty()
+            && self.fixtures.is_empty()
+            && self.drawings.is_empty()
+            && self.terrain.is_none()
+        {
             return None;
         }
 

@@ -11,9 +11,11 @@ use crate::domain::{
 use super::Selection;
 
 mod drafts;
+mod drawings;
 mod labels;
 pub mod overlay;
 pub use drafts::paint_polygon_draft;
+pub use drawings::paint_draw_draft;
 use labels::{paint_preview_measure, paint_room_labels, paint_terrain_label, paint_wall_labels};
 
 #[derive(Clone, Copy)]
@@ -501,6 +503,7 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         };
         paint_fixture(painter, view, fixture, tone);
     }
+    drawings::paint_drawings(painter, view, project, selection, hover);
 
     let mut occupied = Vec::new();
     if dimensions {

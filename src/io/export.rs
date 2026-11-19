@@ -7,6 +7,7 @@ use crate::domain::{
     model::{OpeningKind, Project},
 };
 
+mod drawings;
 mod labels;
 
 const PIXELS_PER_METER: f64 = 100.0;
@@ -317,6 +318,8 @@ fn document(project: &Project) -> SvgDocument {
             }
         }
     }
+
+    drawings::write_drawings(&mut svg, project, &point);
 
     let wall_width = base_wall_width;
     let mut occupied = labels::write_room_labels(&mut svg, project, &point, wall_width);

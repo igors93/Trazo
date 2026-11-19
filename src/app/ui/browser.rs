@@ -117,6 +117,20 @@ impl FloorPlanApp {
                 icon: Icon::Fixture(crate::domain::fixtures::FixtureKind::Counter),
                 rows: fixtures,
             },
+            Group {
+                key: "drawings",
+                title: "Desenho 2D",
+                icon: Icon::Glyph(super::Glyph::Polyline),
+                rows: project
+                    .drawings
+                    .iter()
+                    .map(|drawing| Row {
+                        selection: Selection::Drawing(drawing.id),
+                        label: drawing.shape.label().to_owned(),
+                        value: format_meters(drawing.shape.length()),
+                    })
+                    .collect(),
+            },
         ]
     }
 

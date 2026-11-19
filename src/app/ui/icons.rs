@@ -52,7 +52,12 @@ pub enum Icon {
     Ruler,
     /// The plan symbol of a fixture, as the ribbon shows it.
     Fixture(FixtureKind),
+    /// An icon of the drafting and editing tools (see `glyphs`).
+    Glyph(Glyph),
 }
+
+mod glyphs;
+pub use glyphs::Glyph;
 
 /// Draws a fixture's plan symbol fitted in `rect`.
 fn paint_fixture_icon(
@@ -544,6 +549,7 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
             }
         }
         Icon::Fixture(_) => {}
+        Icon::Glyph(glyph) => glyphs::paint(&pen, glyph, soft, thin),
         Icon::Ai => {
             // A four-pointed spark with a small one beside it.
             let vertical = [(10.5, 3.5), (12.6, 12.0), (10.5, 20.5), (8.4, 12.0)];

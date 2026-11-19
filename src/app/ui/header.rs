@@ -279,8 +279,21 @@ impl FloorPlanApp {
             (Icon::Gap, "Vão livre", "", Tool::Opening(OpeningKind::Gap)),
             (Icon::Ruler, "Medir distâncias", "M", Tool::Measure),
         ];
-        for (index, (icon, label, key, tool)) in entries.into_iter().enumerate() {
-            if index == 1 || index == 4 {
+        let drafting = crate::app::tools::DrawKind::ALL.map(|kind| {
+            (
+                Icon::Glyph(kind.glyph()),
+                kind.label(),
+                kind.key().1,
+                Tool::Draw(kind),
+            )
+        });
+        let openings = entries
+            .iter()
+            .position(|entry| matches!(entry.3, Tool::Opening(_)))
+            .unwrap_or(entries.len());
+        let count = entries.len();
+        for (index, (icon, label, key, tool)) in entries.into_iter().chain(drafting).enumerate() {
+            if index == 1 || index == openings || index == count {
                 menu_separator(ui);
             }
             if menu_item(ui, Some(icon), label, key).clicked() {
@@ -288,7 +301,11 @@ impl FloorPlanApp {
                 if tool == Tool::Terrain {
                     self.sync_terrain_fields();
                 }
-                self.ribbon_tab = RibbonTab::Architecture;
+                self.ribbon_tab = if matches!(tool, Tool::Draw(_)) {
+                    RibbonTab::Drafting
+                } else {
+                    RibbonTab::Architecture
+                };
                 ui.close();
             }
         }

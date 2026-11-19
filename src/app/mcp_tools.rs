@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 
 use super::{FloorPlanApp, OpenResult, Selection};
 
+mod drawings;
 mod shapes;
 use crate::{
     domain::{
@@ -301,6 +302,7 @@ impl FloorPlanApp {
             }
             "editar_abertura" => self.tool_edit_opening(args),
             "inserir_objeto" => self.tool_insert_fixture(args),
+            "desenhar" => self.tool_draw(args),
             "definir_alvenaria" => self.tool_masonry(args),
             "editar_objeto" => self.tool_edit_fixture(args),
             "mover_elemento" => self.tool_move(args),
@@ -322,6 +324,9 @@ impl FloorPlanApp {
                         }
                         Selection::Fixture(id) => {
                             project.delete_fixture(id);
+                        }
+                        Selection::Drawing(id) => {
+                            project.delete_drawing(id);
                         }
                     }
                     Ok(Change::new(format!("{label} {id} excluído(a).")))
@@ -505,6 +510,8 @@ impl FloorPlanApp {
             Ok(Selection::Opening(id))
         } else if project.fixtures.iter().any(|fixture| fixture.id == id) {
             Ok(Selection::Fixture(id))
+        } else if project.drawing(id).is_some() {
+            Ok(Selection::Drawing(id))
         } else if project
             .terrain
             .as_ref()
@@ -542,6 +549,7 @@ impl FloorPlanApp {
             Selection::Opening(_) => "Abertura",
             Selection::Terrain(_) => "Terreno",
             Selection::Fixture(_) => "Objeto",
+            Selection::Drawing(_) => "Desenho",
         }
     }
 
@@ -977,6 +985,7 @@ impl FloorPlanApp {
                     }
                     Selection::Terrain(id) => project.move_terrain(id, delta),
                     Selection::Fixture(id) => project.move_fixture(id, delta),
+                    Selection::Drawing(id) => project.move_drawing(id, delta),
                     Selection::Opening(id) => {
                         if let Some(target) = opening_target {
                             project.move_opening_along_wall(id, target);
@@ -1119,6 +1128,7 @@ impl FloorPlanApp {
                 "pe_direito_m": round(self.project.wall_height),
             },
             "objetos": fixtures,
+            "desenhos": drawings::drawings_summary(project),
             "projeto": {
                 "nome": project.name,
                 "arquivo": self.file_path.as_ref().map(|path| path.display().to_string()),

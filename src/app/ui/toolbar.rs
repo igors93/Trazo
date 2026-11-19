@@ -8,9 +8,12 @@ use crate::domain::fixtures::FixtureKind;
 use crate::domain::model::OpeningKind;
 use eframe::egui::{self, Margin, PointerButton, Pos2, Sense, Stroke, Ui, vec2};
 
-const TABS: [(RibbonTab, &str); 4] = [
+mod drafting;
+
+const TABS: [(RibbonTab, &str); 5] = [
     (RibbonTab::Architecture, "Arquitetura"),
     (RibbonTab::Interiors, "Interiores"),
+    (RibbonTab::Drafting, "Desenho"),
     (RibbonTab::View, "Vista"),
     (RibbonTab::Output, "Saída"),
 ];
@@ -42,6 +45,7 @@ impl FloorPlanApp {
                     match self.ribbon_tab {
                         RibbonTab::Architecture => self.architecture_tab(ui),
                         RibbonTab::Interiors => self.interiors_tab(ui),
+                        RibbonTab::Drafting => self.drafting_tab(ui),
                         RibbonTab::View => self.view_tab(ui),
                         RibbonTab::Output => self.output_tab(ui),
                     }

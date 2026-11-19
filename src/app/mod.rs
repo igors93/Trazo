@@ -47,6 +47,7 @@ const NUDGE_STEP: f64 = 0.25;
 enum RibbonTab {
     Architecture,
     Interiors,
+    Drafting,
     View,
     Output,
 }
@@ -64,6 +65,8 @@ enum Tool {
     Fixture(FixtureKind),
     /// Measures between two points without touching the project.
     Measure,
+    /// Draws lines, polylines, rectangles, arcs, circles and splines.
+    Draw(tools::DrawKind),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -73,6 +76,8 @@ enum Selection {
     Room(u64),
     Terrain(u64),
     Opening(u64),
+    /// A line, arc, circle or other drawing entity.
+    Drawing(u64),
 }
 
 #[derive(Clone, Copy)]
@@ -107,6 +112,9 @@ pub struct FloorPlanApp {
     pending_room: Option<Vec<Point>>,
     /// Corners of the free-shape room being drawn.
     polygon_draft: Vec<Point>,
+    /// Points clicked with a drawing tool.
+    draw_points: Vec<Point>,
+    drawing_radius_text: String,
     room_name: String,
     room_dialog_focus: bool,
     opening_drag: Option<OpeningKind>,
@@ -202,6 +210,8 @@ impl FloorPlanApp {
             drag_initial_project: None,
             pending_room: None,
             polygon_draft: Vec::new(),
+            draw_points: Vec::new(),
+            drawing_radius_text: String::new(),
             room_name: String::new(),
             room_dialog_focus: false,
             opening_drag: None,
@@ -331,7 +341,11 @@ impl FloorPlanApp {
     pub fn draft_start(&self) -> Option<Point> {
         match self.creation_state {
             // A free-shape room continues from its last corner.
-            CreationState::Idle => self.polygon_draft.last().copied(),
+            CreationState::Idle => self
+                .polygon_draft
+                .last()
+                .or(self.draw_points.last())
+                .copied(),
             CreationState::WaitingSecondPoint { start } => Some(start),
             CreationState::Dragging { start } => Some(start),
         }
@@ -340,6 +354,7 @@ impl FloorPlanApp {
     pub fn cancel_creation(&mut self) {
         self.creation_state = CreationState::Idle;
         self.polygon_draft.clear();
+        self.draw_points.clear();
     }
 
     /// Ends an element drag in progress, keeping what it moved as one undo
@@ -359,6 +374,7 @@ impl FloorPlanApp {
         self.tool = tool;
         self.creation_state = CreationState::Idle;
         self.polygon_draft.clear();
+        self.draw_points.clear();
         self.selection = None;
         self.message = match tool {
             Tool::Wall => "Clique em dois pontos para desenhar uma parede.",
@@ -381,6 +397,7 @@ impl FloorPlanApp {
             Tool::Fixture(_) => {
                 "Clique para posicionar. Perto de uma parede o objeto encosta nela; G gira."
             }
+            Tool::Draw(kind) => kind.hint(),
             Tool::Measure => {
                 "Clique em dois pontos para medir. Encaixa em cantos, faces e batentes; nada é alterado."
             }
@@ -663,6 +680,7 @@ impl FloorPlanApp {
             Some(Selection::Opening(id)) => self.project.openings.iter().any(|o| o.id == id),
             Some(Selection::Terrain(_)) => self.project.terrain.is_some(),
             Some(Selection::Fixture(id)) => self.project.fixtures.iter().any(|f| f.id == id),
+            Some(Selection::Drawing(id)) => self.project.drawing(id).is_some(),
             None => false,
         };
         if !valid {
@@ -787,6 +805,10 @@ impl FloorPlanApp {
                 let (low, high) = fixture.bounds();
                 Some(span(&[low, high]))
             }
+            Selection::Drawing(id) => {
+                let (low, high) = self.project.drawing(id)?.shape.bounds();
+                Some(span(&[low, high]))
+            }
             Selection::Opening(id) => {
                 let opening = self.project.openings.iter().find(|o| o.id == id)?;
                 let center = self.opening_center(id)?;
@@ -829,6 +851,9 @@ impl FloorPlanApp {
             }
             Some(Selection::Fixture(_)) => {
                 "Objeto selecionado. Arraste para mover, G para girar ou ajuste as medidas no painel."
+            }
+            Some(Selection::Drawing(_)) => {
+                "Desenho selecionado. Arraste ou use as setas para mover; Delete exclui."
             }
             None => "Clique em um elemento para selecionar.",
         }
@@ -873,6 +898,7 @@ impl FloorPlanApp {
             }
             Selection::Terrain(id) => self.project.move_terrain(id, delta),
             Selection::Fixture(id) => self.project.move_fixture(id, delta),
+            Selection::Drawing(id) => self.project.move_drawing(id, delta),
             Selection::Opening(id) => {
                 if let Some(center) = self.opening_center(id) {
                     self.project.move_opening_along_wall(
@@ -1261,6 +1287,9 @@ impl FloorPlanApp {
                 Selection::Fixture(id) => {
                     self.project.delete_fixture(id);
                 }
+                Selection::Drawing(id) => {
+                    self.project.delete_drawing(id);
+                }
             }
             self.record_change(previous);
             self.message = match selection {
@@ -1269,6 +1298,7 @@ impl FloorPlanApp {
                 Selection::Terrain(_) => "Terreno removido.",
                 Selection::Opening(_) => "Abertura removida.",
                 Selection::Fixture(_) => "Objeto removido.",
+                Selection::Drawing(_) => "Desenho removido.",
             }
             .to_owned();
             self.sync_inspector_fields();
@@ -1309,6 +1339,7 @@ impl FloorPlanApp {
                     self.opening_sill_text = format!("{:.2}", op.sill()).replace('.', ",");
                 }
             }
+            Some(Selection::Drawing(id)) => self.sync_drawing_fields(id),
             _ => {}
         }
     }
@@ -1524,7 +1555,12 @@ impl FloorPlanApp {
                 (Key::M, Tool::Measure),
             ]
             .into_iter()
-            .find_map(|(key, tool)| plain(key).then_some(tool));
+            .find_map(|(key, tool)| plain(key).then_some(tool))
+            .or_else(|| {
+                (!editing_text && !modal_open)
+                    .then(|| Self::drafting_shortcut(input))
+                    .flatten()
+            });
             let free = !modal_open;
             ShortcutActions {
                 save: shortcut(Key::S, false) && free,
@@ -1611,6 +1647,14 @@ impl FloorPlanApp {
         }
         if actions.fit {
             self.fit_view_requested();
+        }
+        if let Tool::Draw(kind) = self.tool {
+            if actions.finish_polygon {
+                self.finish_drawing(kind, false);
+            }
+            if actions.undo_point {
+                self.undo_draw_point();
+            }
         }
         if self.tool == Tool::RoomPolygon {
             if actions.finish_polygon {

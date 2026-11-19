@@ -329,6 +329,33 @@ fn catalogue() -> Vec<Tool> {
             destructive: false,
         },
         Tool {
+            name: "desenhar",
+            title: "Desenhar",
+            description: "Desenha uma entidade 2D sem significado arquitetônico (não vira parede nem entra nas áreas): linha (2 pontos), polilinha ou spline (2 ou mais pontos; fechado opcional), retangulo (2 cantos opostos), arco (início, um ponto do arco e fim) ou circulo (centro e raio). Devolve o id.",
+            properties: json!({
+                "tipo": string("linha, polilinha, retangulo, arco, circulo ou spline."),
+                "pontos": {
+                    "type": "array",
+                    "description": "Os pontos em ordem, como [{\"x\": 0, \"y\": 0}, {\"x\": 3, \"y\": 0}].",
+                    "items": {
+                        "type": "object",
+                        "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+                        "required": ["x", "y"]
+                    }
+                },
+                "centro": {
+                    "type": "object",
+                    "description": "Círculo: o centro {x, y}.",
+                    "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+                },
+                "raio": number("Círculo: raio em metros."),
+                "fechado": boolean("Polilinha ou spline: liga o último ponto ao primeiro."),
+            }),
+            required: &["tipo"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
             name: "editar_comodo",
             title: "Editar cômodo",
             description: "Renomeia um cômodo e/ou muda sua largura e comprimento, movendo as paredes e mantendo portas e janelas.",
@@ -517,7 +544,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 21);
+        assert_eq!(tools.len(), 22);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -598,6 +625,6 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 21);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 22);
     }
 }
