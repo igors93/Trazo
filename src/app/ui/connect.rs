@@ -3,8 +3,11 @@
 
 use super::super::{FloorPlanApp, McpStatus, theme::*};
 use super::icons::{self, Icon};
-use super::widgets::{code_block, hint, icon_button_sized, primary_button};
-use crate::mcp::{self, clients};
+use super::widgets::{code_block, hint, icon_button_sized, primary_button, secondary_button};
+use crate::mcp::{
+    self, clients,
+    tunnel::{self, Tunnel, TunnelState},
+};
 use eframe::egui::{self, Margin, Pos2, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 fn step_title(ui: &mut Ui, number: usize, title: &str, subtitle: &str) {
@@ -29,6 +32,97 @@ fn step_title(ui: &mut Ui, number: usize, title: &str, subtitle: &str) {
 }
 
 impl FloorPlanApp {
+    /// Opens, shows and closes the public tunnel for cloud assistants.
+    fn tunnel_controls(&mut self, ui: &mut Ui, port: Option<u16>) {
+        let state = self.tunnel.as_mut().map(Tunnel::state);
+        match state {
+            None => {
+                ui.horizontal(|ui| {
+                    let installed = tunnel::find_cloudflared().is_some();
+                    let enabled = port.is_some() && installed;
+                    if ui
+                        .add_enabled_ui(enabled, |ui| primary_button(ui, "Abrir túnel"))
+                        .inner
+                        .clicked()
+                        && let Some(port) = port
+                    {
+                        match Tunnel::start(port) {
+                            Ok(started) => {
+                                self.tunnel = Some(started);
+                                self.mcp_feedback = None;
+                            }
+                            Err(error) => self.mcp_feedback = Some((false, error)),
+                        }
+                    }
+                    if !installed {
+                        if secondary_button(ui, "Instalar cloudflared").clicked() {
+                            self.mcp_feedback = Some(match tunnel::install_cloudflared() {
+                                Ok(()) => (
+                                    true,
+                                    "Instalador aberto. Quando terminar, clique em Abrir túnel."
+                                        .to_owned(),
+                                ),
+                                Err(error) => (false, error),
+                            });
+                        }
+                        ui.label(
+                            RichText::new("O túnel usa o cloudflared, gratuito.")
+                                .size(12.0)
+                                .color(MUTED),
+                        );
+                    }
+                });
+            }
+            Some(TunnelState::Starting) => {
+                ui.horizontal(|ui| {
+                    ui.add(egui::Spinner::new().size(16.0).color(ACCENT));
+                    ui.label(RichText::new("Abrindo o túnel...").color(TEXT_2));
+                });
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(400));
+            }
+            Some(TunnelState::Ready(address)) => {
+                ui.label(
+                    RichText::new("Endereço do conector: cole no ChatGPT (modo desenvolvedor) ou no Claude na web, sem autenticação.")
+                        .size(12.0)
+                        .color(TEXT_2),
+                );
+                ui.add_space(4.0);
+                let connector = format!("{address}/mcp");
+                if code_block(ui, &connector) {
+                    self.copy(ui, &connector, "Endereço do conector");
+                }
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if secondary_button(ui, "Fechar túnel").clicked() {
+                        self.tunnel = None;
+                    }
+                    ui.label(
+                        RichText::new("O endereço muda a cada vez que o túnel é aberto e só funciona com o Trazo aberto.")
+                            .size(11.5)
+                            .color(MUTED),
+                    );
+                });
+                // The tunnel may still stop; keep checking while shown.
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_secs(2));
+            }
+            Some(TunnelState::Failed(error)) => {
+                hint(ui, Icon::Warning, &error, DANGER);
+                ui.add_space(4.0);
+                if primary_button(ui, "Tentar de novo").clicked() {
+                    self.tunnel = None;
+                    if let Some(port) = port {
+                        match Tunnel::start(port) {
+                            Ok(started) => self.tunnel = Some(started),
+                            Err(error) => self.mcp_feedback = Some((false, error)),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fn copy(&mut self, ui: &Ui, text: &str, what: &str) {
         ui.ctx().copy_text(text.to_owned());
         self.message = format!("{what} copiado para a área de transferência.");
@@ -241,27 +335,18 @@ impl FloorPlanApp {
                 bottom: 0,
             })
             .show(ui, |ui| {
+                self.tunnel_controls(ui, port);
+                ui.add_space(8.0);
                 ui.label(
-                    RichText::new("Abra um túnel gratuito do Cloudflare (instale com: winget install Cloudflare.cloudflared):")
+                    RichText::new("Ou abra o túnel você mesmo num terminal e acrescente /mcp ao endereço que aparecer:")
                         .size(12.0)
-                        .color(TEXT_2),
+                        .color(MUTED),
                 );
                 ui.add_space(4.0);
                 let command = clients::tunnel_command(port.unwrap_or_else(mcp::port));
                 if code_block(ui, &command) {
                     self.copy(ui, &command, "Comando do túnel");
                 }
-                ui.add_space(6.0);
-                ui.add(
-                    egui::Label::new(
-                        RichText::new(
-                            "Copie o endereço https://…trycloudflare.com que aparecer, acrescente /mcp no fim e crie um conector com ele no ChatGPT (modo desenvolvedor) ou no Claude na web, sem autenticação.",
-                        )
-                        .size(12.0)
-                        .color(TEXT_2),
-                    )
-                    .wrap(),
-                );
             });
         ui.add_space(14.0);
         hint(

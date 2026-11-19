@@ -132,6 +132,8 @@ pub struct FloorPlanApp {
     show_mcp_dialog: bool,
     /// The outcome of the last action in the "Conectar uma IA" window.
     mcp_feedback: Option<(bool, String)>,
+    /// The public tunnel for cloud assistants, while it runs.
+    tunnel: Option<mcp::tunnel::Tunnel>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -207,6 +209,7 @@ impl FloorPlanApp {
             mcp_status,
             show_mcp_dialog: false,
             mcp_feedback: None,
+            tunnel: None,
         }
     }
 
@@ -1289,6 +1292,11 @@ impl eframe::App for FloorPlanApp {
     fn logic(&mut self, _context: &egui::Context, _frame: &mut eframe::Frame) {
         self.process_mcp_calls();
         self.save_recovery_if_pending();
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Closes the public tunnel with the app.
+        self.tunnel = None;
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {

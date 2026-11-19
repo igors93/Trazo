@@ -12,6 +12,7 @@ pub mod bridge;
 pub mod clients;
 pub mod protocol;
 pub mod server;
+pub mod tunnel;
 
 /// The local port of the MCP server, unless `TRAZO_MCP_PORT` says otherwise.
 pub const DEFAULT_PORT: u16 = 7799;
