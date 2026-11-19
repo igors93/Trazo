@@ -241,6 +241,21 @@ impl FloorPlanApp {
                     );
                     shortcut_group(
                         &mut columns[0],
+                        "Modificar",
+                        &[
+                            (&["Ctrl", "C"], "Copiar seleção"),
+                            (&["Ctrl", "X"], "Recortar seleção"),
+                            (&["Ctrl", "V"], "Colar no cursor"),
+                            (&["Ctrl", "D"], "Duplicar seleção"),
+                            (&["G"], "Girar seleção 90° ↻ (Shift: ↺)"),
+                            (&["H"], "Espelhar ↔ (Shift: ↕)"),
+                            (&["O"], "Deslocar (offset)"),
+                            (&["A"], "Aparar"),
+                            (&["E"], "Estender"),
+                        ],
+                    );
+                    shortcut_group(
+                        &mut columns[0],
                         "Arquivo",
                         &[
                             (&["Ctrl", "N"], "Nova planta"),
@@ -261,7 +276,6 @@ impl FloorPlanApp {
                             (&["Delete"], "Excluir seleção"),
                             (&["Setas"], "Mover seleção 0,25 m"),
                             (&["Shift", "Setas"], "Mover seleção 1 m"),
-                            (&["G"], "Girar objeto 90°"),
                             (&["I"], "Porta: abrir para o outro lado"),
                             (&["Shift", "I"], "Porta: trocar a dobradiça"),
                             (&["Esc"], "Cancelar ação ou limpar seleção"),

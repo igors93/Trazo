@@ -78,3 +78,57 @@ pub fn paint_polygon_draft(
         painter.galley(rect.min + egui::vec2(5.0, 2.0), galley, theme::ACCENT_TEXT);
     }
 }
+
+/// What a modify tool would make, drawn see-through in the accent colour:
+/// walls at their thickness, fixtures as ghosts, drawings as lines.
+pub fn paint_fragment_ghost(
+    painter: &Painter,
+    view: ViewTransform,
+    fragment: &crate::domain::model::Fragment,
+) {
+    let color = theme::ACCENT;
+    for wall in &fragment.walls {
+        let (a, b) = (view.to_screen(wall.start), view.to_screen(wall.end));
+        let width = view.pixels(wall.thickness()).max(2.0);
+        painter.line_segment([a, b], Stroke::new(width, color.gamma_multiply(0.30)));
+        painter.line_segment([a, b], Stroke::new(1.0, color.gamma_multiply(0.8)));
+    }
+    for fixture in &fragment.fixtures {
+        super::paint_fixture(painter, view, fixture, super::FixtureTone::Ghost);
+    }
+    for drawing in &fragment.drawings {
+        super::drawings::paint_shape(
+            painter,
+            view,
+            &drawing.shape,
+            Stroke::new(1.6, color.gamma_multiply(0.85)),
+        );
+    }
+}
+
+/// The rubber band of a modify tool from its first point to the pointer;
+/// for mirroring, the whole axis across the view.
+pub fn paint_modify_guide(
+    painter: &Painter,
+    view: ViewTransform,
+    anchor: Point,
+    cursor: Point,
+    axis: bool,
+) {
+    let (a, b) = (view.to_screen(anchor), view.to_screen(cursor));
+    let stroke = Stroke::new(1.2, theme::ACCENT.gamma_multiply(0.8));
+    let ends = if axis && a.distance(b) > 1.0 {
+        let along = (b - a).normalized() * (view.rect.width() + view.rect.height());
+        [a - along, b + along]
+    } else {
+        [a, b]
+    };
+    painter.extend(Shape::dashed_line(&ends, stroke, 6.0, 4.0));
+    painter.rect(
+        Rect::from_center_size(a, egui::vec2(7.0, 7.0)),
+        1.0,
+        theme::PANEL,
+        Stroke::new(1.4, theme::ACCENT),
+        egui::StrokeKind::Middle,
+    );
+}

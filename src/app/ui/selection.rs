@@ -184,6 +184,37 @@ impl FloorPlanApp {
                 ACCENT,
             );
         });
+        let mut action = None;
+        section(ui, "multi_selection_modify", "Modificar", |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for (index, (label, hint)) in [
+                    ("Copiar", "Ctrl+C; Ctrl+V cola no cursor"),
+                    ("Duplicar", "Uma cópia 1 m abaixo e à direita (Ctrl+D)"),
+                    ("Girar 90° ↻", "Em torno do centro da seleção (G)"),
+                    ("Girar 90° ↺", "Em torno do centro da seleção (Shift+G)"),
+                    ("Espelhar ↔", "Esquerda e direita, no lugar (H)"),
+                    ("Espelhar ↕", "Cima e baixo, no lugar (Shift+H)"),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    if secondary_button(ui, label).on_hover_text(hint).clicked() {
+                        action = Some(index);
+                    }
+                }
+            });
+        });
+        match action {
+            Some(0) => {
+                self.copy_selection();
+            }
+            Some(1) => self.duplicate_selection(),
+            Some(2) => self.rotate_selection_quarter(true),
+            Some(3) => self.rotate_selection_quarter(false),
+            Some(4) => self.mirror_selection(true),
+            Some(5) => self.mirror_selection(false),
+            _ => {}
+        }
         let mut zoom = false;
         let mut clear = false;
         let mut delete = false;

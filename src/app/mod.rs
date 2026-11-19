@@ -61,6 +61,7 @@ const NUDGE_STEP: f64 = 0.25;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RibbonTab {
     Architecture,
+    Edit,
     Interiors,
     Drafting,
     View,
@@ -82,6 +83,8 @@ enum Tool {
     Measure,
     /// Draws lines, polylines, rectangles, arcs, circles and splines.
     Draw(tools::DrawKind),
+    /// Copy, move, turn, mirror, offset, trim and extend.
+    Modify(tools::ModifyKind),
 }
 
 /// A selected element: the domain's reference to it.
@@ -214,6 +217,23 @@ pub struct FloorPlanApp {
     wall_height_text: String,
     opening_height_text: String,
     opening_sill_text: String,
+    /// What Ctrl+C or Ctrl+X took, ready for Ctrl+V.
+    clipboard: Option<crate::domain::model::Fragment>,
+    /// Text to leave on the system clipboard after a copy, so Ctrl+V
+    /// reaches the app (egui only reports it when the clipboard is not empty).
+    system_clipboard_note: Option<String>,
+    /// Pastes since the last copy, to step pastes made without the pointer.
+    paste_count: u32,
+    /// Where the plan's context menu was last opened.
+    context_point: Option<Point>,
+    /// The first point of a modify tool: base point, centre or first point
+    /// of the mirror axis.
+    modify_anchor: Option<Point>,
+    /// The wall or drawing picked for an offset.
+    modify_target: Option<Selection>,
+    /// Turning and mirroring make copies, keeping the originals.
+    modify_keep: bool,
+    offset_distance_text: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -320,6 +340,14 @@ impl FloorPlanApp {
             wall_height_text: String::new(),
             opening_height_text: String::new(),
             opening_sill_text: String::new(),
+            clipboard: None,
+            system_clipboard_note: None,
+            paste_count: 0,
+            context_point: None,
+            modify_anchor: None,
+            modify_target: None,
+            modify_keep: false,
+            offset_distance_text: "0,15".to_owned(),
         };
         app.sync_masonry_fields();
         app
@@ -405,11 +433,13 @@ impl FloorPlanApp {
     pub fn draft_start(&self) -> Option<Point> {
         match self.creation_state {
             // A free-shape room continues from its last corner.
+            // A modify tool measures from its base point.
             CreationState::Idle => self
                 .polygon_draft
                 .last()
                 .or(self.draw_points.last())
-                .copied(),
+                .copied()
+                .or(self.modify_anchor),
             CreationState::WaitingSecondPoint { start } => Some(start),
             CreationState::Dragging { start } => Some(start),
         }
@@ -420,6 +450,8 @@ impl FloorPlanApp {
         self.polygon_draft.clear();
         self.draw_points.clear();
         self.draft_input.clear();
+        self.modify_anchor = None;
+        self.modify_target = None;
     }
 
     /// Ends an element drag in progress, keeping what it moved as one undo
@@ -442,11 +474,11 @@ impl FloorPlanApp {
     fn set_tool(&mut self, tool: Tool) {
         self.commit_item_drag();
         self.tool = tool;
-        self.creation_state = CreationState::Idle;
-        self.polygon_draft.clear();
-        self.draw_points.clear();
-        self.draft_input.clear();
-        self.clear_selection();
+        self.cancel_creation();
+        // Moving, copying, turning and mirroring act on the selection.
+        if !matches!(tool, Tool::Modify(kind) if kind.uses_selection()) {
+            self.clear_selection();
+        }
         self.message = match tool {
             Tool::Wall => "Clique em dois pontos para desenhar uma parede.",
             Tool::Room => "Clique em dois cantos opostos e dê um nome ao cômodo.",
@@ -469,6 +501,7 @@ impl FloorPlanApp {
                 "Clique para posicionar. Perto de uma parede o objeto encosta nela; G gira."
             }
             Tool::Draw(kind) => kind.hint(),
+            Tool::Modify(kind) => kind.hint(),
             Tool::Measure => {
                 "Clique em dois pontos para medir. Encaixa em cantos, faces e batentes; nada é alterado."
             }
@@ -552,10 +585,7 @@ impl FloorPlanApp {
     /// Drops everything in progress on the plan (drafts, drags, the
     /// selection) when another project takes its place.
     fn reset_editing_state(&mut self) {
-        self.creation_state = CreationState::Idle;
-        self.polygon_draft.clear();
-        self.draw_points.clear();
-        self.draft_input.clear();
+        self.cancel_creation();
         self.clear_selection();
         self.box_select = None;
         self.item_drag = None;
@@ -1161,9 +1191,18 @@ impl FloorPlanApp {
         );
     }
 
-    /// G: turns the selected fixture, or the next one to be placed.
+    /// G: turns the selected fixture, or the next one to be placed; any
+    /// other selection turns 90° clockwise about its centre.
     fn rotate_fixture_or_next(&mut self) {
-        if let Some(Selection::Fixture(id)) = self.selection {
+        if matches!(self.tool, Tool::Fixture(_)) {
+            self.fixture_turns = (self.fixture_turns + 1) % 4;
+            self.message = format!(
+                "Próximo objeto girado para {}° (longe das paredes).",
+                self.fixture_turns as u32 * 90
+            );
+        } else if let Some(Selection::Fixture(id)) = self.selection
+            && !self.is_multi_selection()
+        {
             let previous = self.project.clone();
             match self.project.rotate_fixture(id) {
                 Ok(()) => {
@@ -1173,12 +1212,8 @@ impl FloorPlanApp {
                 }
                 Err(error) => self.message = error,
             }
-        } else if matches!(self.tool, Tool::Fixture(_)) {
-            self.fixture_turns = (self.fixture_turns + 1) % 4;
-            self.message = format!(
-                "Próximo objeto girado para {}° (longe das paredes).",
-                self.fixture_turns as u32 * 90
-            );
+        } else if self.selection.is_some() {
+            self.rotate_selection_quarter(true);
         }
     }
 
@@ -1794,6 +1829,13 @@ impl FloorPlanApp {
                 | Tool::Terrain
                 | Tool::Measure
                 | Tool::Draw(_)
+                | Tool::Modify(
+                    tools::ModifyKind::Move
+                        | tools::ModifyKind::Copy
+                        | tools::ModifyKind::Rotate
+                        | tools::ModifyKind::Mirror
+                        | tools::ModifyKind::Offset
+                )
         )
     }
 
@@ -1813,12 +1855,17 @@ impl FloorPlanApp {
             },
             Tool::RoomPolygon => self.add_polygon_point(point),
             Tool::Draw(kind) => self.add_draw_point(kind, point),
+            Tool::Modify(kind) => self.modify_click(kind, point),
             _ => {}
         }
     }
 
     fn commit_numeric_input(&mut self) {
         let raw = self.draft_input.trim().to_owned();
+        // An angle to turn by, or the offset distance.
+        if self.commit_modify_input(&raw) {
+            return;
+        }
         let Some(spec) = tools::numeric_input::parse_numeric_input(&raw) else {
             self.message = format!(
                 "Entrada \"{raw}\" inválida. Use ex.: 3,47 · 3,5<45 · 3,5x4,0 · @2;1 · 1,5;2,0"
@@ -1944,6 +1991,9 @@ impl FloorPlanApp {
                 (Key::M, Tool::Measure),
             ]
             .into_iter()
+            .chain(tools::ModifyKind::ALL.into_iter().filter_map(|kind| {
+                kind.key().map(|(key, _)| (key, Tool::Modify(kind)))
+            }))
             .find_map(|(key, tool)| plain(key).then_some(tool))
             .or_else(|| {
                 (!editing_text && !modal_open && !typing_numeric)
@@ -1951,7 +2001,31 @@ impl FloorPlanApp {
                     .flatten()
             });
             let free = !modal_open;
+            // Ctrl+C, Ctrl+X and Ctrl+V reach the app as clipboard events.
+            let clipboard_event = |accept: fn(&egui::Event) -> bool| {
+                !editing_text && free && input.events.iter().any(accept)
+            };
+            let shifted = |key: Key| {
+                !editing_text
+                    && !modal_open
+                    && !typing_numeric
+                    && input.events.iter().any(|event| {
+                        matches!(event, egui::Event::Key { key: event_key, pressed: true, repeat: false, modifiers, .. }
+                            if *event_key == key && modifiers.shift && !modifiers.ctrl && !modifiers.command && !modifiers.alt)
+                    })
+            };
             ShortcutActions {
+                copy: clipboard_event(|event| matches!(event, egui::Event::Copy))
+                    || (shortcut(Key::C, false) && !editing_text && free),
+                cut: clipboard_event(|event| matches!(event, egui::Event::Cut))
+                    || (shortcut(Key::X, false) && !editing_text && free),
+                paste: clipboard_event(|event| {
+                    matches!(event, egui::Event::Paste(_) | egui::Event::PasteImage(_))
+                }) || (shortcut(Key::V, false) && !editing_text && free),
+                duplicate: shortcut(Key::D, false) && !editing_text && free,
+                rotate_back: shifted(Key::G),
+                mirror_left_right: plain(Key::H),
+                mirror_up_down: shifted(Key::H),
                 save: shortcut(Key::S, false) && free,
                 open: shortcut(Key::O, false) && free,
                 new: shortcut(Key::N, false) && free,
@@ -2004,6 +2078,23 @@ impl FloorPlanApp {
         if actions.select_all {
             self.select_all();
         }
+        if actions.copy {
+            self.copy_selection();
+        }
+        if actions.cut {
+            self.cut_selection();
+        }
+        if actions.paste {
+            self.paste();
+        }
+        if actions.duplicate {
+            self.duplicate_selection();
+        }
+        // Ctrl+V only reaches the app while the system clipboard holds
+        // something, so a copy leaves a note there.
+        if let Some(note) = self.system_clipboard_note.take() {
+            context.copy_text(note);
+        }
         if actions.escape {
             if self.show_help || self.show_mcp_dialog || self.active_doc_dialog != DocDialog::None {
                 self.show_help = false;
@@ -2055,6 +2146,12 @@ impl FloorPlanApp {
         if actions.rotate {
             self.rotate_fixture_or_next();
         }
+        if actions.rotate_back {
+            self.rotate_selection_quarter(false);
+        }
+        if actions.mirror_left_right || actions.mirror_up_down {
+            self.mirror_selection(actions.mirror_left_right);
+        }
         if actions.flip_side || actions.flip_hinge {
             self.flip_selected_door(actions.flip_side, actions.flip_hinge);
         }
@@ -2105,6 +2202,13 @@ struct ShortcutActions {
     undo: bool,
     redo: bool,
     select_all: bool,
+    copy: bool,
+    cut: bool,
+    paste: bool,
+    duplicate: bool,
+    rotate_back: bool,
+    mirror_left_right: bool,
+    mirror_up_down: bool,
     escape: bool,
     delete: bool,
     tool: Option<Tool>,

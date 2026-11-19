@@ -9,11 +9,14 @@ use super::geometry::{
 mod auto_rooms;
 mod drawings;
 mod elements;
+mod fragment;
+mod modify;
 mod rooms;
 mod shared_walls;
 mod site;
 mod vertices;
 use super::masonry::{self, Masonry};
+pub use fragment::Fragment;
 
 /// Versão mais recente do formato `.trazo` gravado em disco.
 pub const CURRENT_PROJECT_VERSION: u32 = 2;

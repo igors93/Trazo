@@ -5,6 +5,7 @@ use crate::domain::{geometry::format_meters, model::OpeningKind};
 use eframe::egui::{self, Key, Pos2, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 mod drafting;
+mod modify;
 
 pub(super) fn tool_icon(tool: Tool) -> Icon {
     match tool {
@@ -20,6 +21,7 @@ pub(super) fn tool_icon(tool: Tool) -> Icon {
         Tool::Fixture(kind) => Icon::Fixture(kind),
         Tool::Measure => Icon::Ruler,
         Tool::Draw(kind) => Icon::Glyph(kind.glyph()),
+        Tool::Modify(kind) => Icon::Glyph(kind.glyph()),
     }
 }
 
@@ -37,6 +39,7 @@ pub(super) fn tool_name(tool: Tool) -> &'static str {
         Tool::Fixture(kind) => kind.label(),
         Tool::Measure => "Medir",
         Tool::Draw(kind) => kind.label(),
+        Tool::Modify(kind) => kind.label(),
     }
 }
 
@@ -101,6 +104,7 @@ impl FloorPlanApp {
                 Tool::Terrain => self.terrain_options(ui),
                 Tool::Wall | Tool::Room => self.masonry_options(ui),
                 Tool::Draw(kind) => self.draw_options(ui, kind),
+                Tool::Modify(kind) => self.modify_options(ui, kind),
                 Tool::RoomPolygon => {
                     self.masonry_options(ui);
                     divider(ui);
@@ -179,7 +183,7 @@ impl FloorPlanApp {
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                if matches!(
+                let aided = matches!(
                     tool,
                     Tool::Wall
                         | Tool::Room
@@ -187,7 +191,8 @@ impl FloorPlanApp {
                         | Tool::Terrain
                         | Tool::Measure
                         | Tool::Draw(_)
-                ) {
+                ) || matches!(tool, Tool::Modify(kind) if kind.uses_selection());
+                if aided {
                     if matches!(tool, Tool::Wall | Tool::Room | Tool::RoomPolygon)
                         && toggle_pill(
                             ui,
@@ -201,7 +206,11 @@ impl FloorPlanApp {
                     }
                     if matches!(
                         tool,
-                        Tool::Wall | Tool::RoomPolygon | Tool::Measure | Tool::Draw(_)
+                        Tool::Wall
+                            | Tool::RoomPolygon
+                            | Tool::Measure
+                            | Tool::Draw(_)
+                            | Tool::Modify(_)
                     )
                         && toggle_pill(
                             ui,

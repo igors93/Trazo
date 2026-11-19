@@ -198,6 +198,10 @@ impl FloorPlanApp {
             ui.close();
         }
         menu_separator(ui);
+        self.clipboard_menu_items(ui);
+        menu_separator(ui);
+        self.transform_menu_items(ui);
+        menu_separator(ui);
         self.selection_menu_items(ui);
         menu_separator(ui);
         if ui

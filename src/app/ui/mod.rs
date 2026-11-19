@@ -9,6 +9,7 @@ pub(super) mod icons;
 pub(in crate::app) use icons::Glyph;
 mod inspector;
 mod layers;
+mod modify_menu;
 mod notes;
 mod options_bar;
 mod schedules;

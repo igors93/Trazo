@@ -182,9 +182,29 @@ impl FloorPlanApp {
                 self.select_similar();
                 ui.close();
             }
+            menu_separator(ui);
+            self.clipboard_menu_items(ui);
+            let transform = menu_submenu(ui, Icon::Glyph(super::Glyph::Rotate), "Girar e espelhar");
+            egui::containers::menu::SubMenu::new().show(ui, &transform, |ui| {
+                ui.set_width(MENU_WIDTH);
+                self.transform_menu_items(ui);
+            });
             let delete = if multi { "Excluir todos" } else { "Excluir" };
             if menu_item(ui, Some(Icon::Delete), delete, "Delete").clicked() {
                 self.delete_selection();
+                ui.close();
+            }
+            menu_separator(ui);
+        } else if self.clipboard.is_some() {
+            if menu_item(
+                ui,
+                Some(Icon::Glyph(super::Glyph::Paste)),
+                "Colar aqui",
+                "Ctrl+V",
+            )
+            .clicked()
+            {
+                self.paste_at(self.context_point);
                 ui.close();
             }
             menu_separator(ui);

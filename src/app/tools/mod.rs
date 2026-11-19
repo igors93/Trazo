@@ -2,7 +2,9 @@
 //! from the original interaction code.
 
 mod draw;
+mod modify;
 pub(in crate::app) mod numeric_input;
 mod room_polygon;
 
 pub(in crate::app) use draw::DrawKind;
+pub(in crate::app) use modify::{ModifyKind, parse_degrees};

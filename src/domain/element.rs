@@ -62,6 +62,18 @@ impl ElementKind {
         ElementKind::Terrain,
     ];
 
+    /// The kind's name, for one element.
+    pub fn singular(self) -> &'static str {
+        match self {
+            ElementKind::Terrain => "Terreno",
+            ElementKind::Room => "Cômodo",
+            ElementKind::Wall => "Parede",
+            ElementKind::Opening => "Abertura",
+            ElementKind::Fixture => "Objeto",
+            ElementKind::Drawing => "Desenho",
+        }
+    }
+
     /// The kind's name in the plural, as filters and counts show it.
     pub fn plural(self) -> &'static str {
         match self {

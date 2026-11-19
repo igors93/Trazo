@@ -15,7 +15,7 @@ mod drafts;
 mod drawings;
 mod labels;
 pub mod overlay;
-pub use drafts::paint_polygon_draft;
+pub use drafts::{paint_fragment_ghost, paint_modify_guide, paint_polygon_draft};
 pub use drawings::paint_draw_draft;
 use labels::{paint_preview_measure, paint_room_labels, paint_terrain_label, paint_wall_labels};
 

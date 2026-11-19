@@ -15,7 +15,7 @@ The window opens maximized.
 A light, white and light-blue workspace laid out like CAD/BIM editors:
 
 - **Menu bar**: *Arquivo*, *Editar*, *Exibir*, *Desenhar* and *Ajuda*, each entry with its icon and shortcut; quick buttons for new, open, save, undo and redo; the project name with a dot that shows unsaved changes; and **Exportar** (PNG or PDF).
-- **Ribbon** with four tabs: *Arquitetura* (selection, measuring, terrain, walls, rooms, doors, windows, saloon doors, open spans, modify, drafting aids), *Interiores* (counters, sinks, stoves, wood stove, barbecue grill, fridge, washbasins, toilets, showers, tables and shelves), *Vista* (navigation, grid, panels, help) and *Saída* (project files, export and AI connection). Click the active tab, or the arrow at the right, to fold the ribbon and gain drawing space.
+- **Ribbon** with six tabs: *Arquitetura* (selection, measuring, terrain, walls, rooms, doors, windows, saloon doors, open spans, modify, drafting aids), *Editar* (clipboard, move, copy, turn, mirror, offset, trim, extend and selection commands), *Interiores* (counters, sinks, stoves, wood stove, barbecue grill, fridge, washbasins, toilets, showers, tables and shelves), *Desenho* (lines, polylines, rectangles, arcs, circles and splines), *Vista* (navigation, grid, panels, help) and *Saída* (project files, export and AI connection). Click the active tab, or the arrow at the right, to fold the ribbon and gain drawing space.
 - **Options bar**: the active tool and its settings, for example the terrain's exact width and length, the masonry material and block size, the modulation switch, or the default width of doors and windows.
 - **Project browser** (left): terrain, rooms, walls, doors and windows with their areas and lengths, a filter box, foldable groups, click to select and double-click to zoom to an element.
 - **Properties** (right): foldable sections for the selected element (dimensions, masonry, door and window frame, location, relations); with nothing selected, the project's area schedule, door and window schedule, masonry estimate, occupancy rate and view settings.
@@ -40,6 +40,7 @@ Grid, snapping, ortho mode, modulation, dimension chains, open panels and the fo
    - **Terrain**: resize, check the occupancy rate, or use **Centralizar planta**.
    - **Several at once**: `Shift`+click adds an element to the selection or takes it out; dragging from empty space draws a selection box — left to right it picks by window (elements wholly inside, solid blue box), right to left by crossing (anything it touches, dashed green box); `Ctrl+A` selects everything. *Editar* also selects by kind, similar elements (doors of the same size, the same fixture, walls of the same thickness) or the inverse, and the **selection filter** limits which kinds boxes and select-all pick. In the project browser, `Shift` or `Ctrl`+click adds rows, and **Selecionar os encontrados** selects every element the text filter shows. Dragging any selected element moves them all.
    - Move the selection with the arrow keys (0.25 m, or 1 m with `Shift`), and remove it with **Excluir** or `Delete`.
+   - **Modify** (*Editar* tab, *Editar* menu and context menu): `Ctrl+C`, `Ctrl+X`, `Ctrl+V` (pastes centred on the pointer, keeping the grid) and `Ctrl+D` (duplicate); rooms are copied with their walls, doors and windows. `G` / `Shift+G` turn the selection 90° about its centre and `H` / `Shift+H` mirror it left-right or upside down. **Mover** and **Copiar** work from a base point (with typed distances, `@dX;dY` or `3<45`), **Girar** about a centre (click the angle or type it in degrees) and **Espelhar** across any axis, optionally keeping the original. Fixtures turn and mirror in steps of 90°; a room is not torn away from a neighbour it shares walls with. **Deslocar** (`O`) makes a parallel copy of a wall (centre line to centre line, same material) or of a line, polyline, rectangle, arc, circle or spline, on the side clicked; **Aparar** (`A`) removes the clicked piece of a wall or drawing between its nearest crossings with walls, drawings or the terrain's edge; **Estender** (`E`) runs the nearest open end up to the next of them. Doors and windows keep their place on site, and every operation is one undo step.
 6. Furnish with the *Interiores* tab: near a straight wall, a fixture turns its back to the wall and stands against the face of the bricks (half the 0.12 m wall thickness off the wall's centre line). Fixtures can be dragged in 5 cm steps, nudged with the arrows, turned 90° with `G` and resized in Properties. A washbasin 0.90 m or wider becomes a double (shared) sink. **Porta vai-e-vem** adds double-acting saloon doors.
 7. Check distances with **Medir** (`M`): click two points (snapping to wall ends, faces and the grid) to keep a measurement on screen; it never changes the project. `Esc` in the measuring tool, or **Limpar medidas**, clears them. **Cotas** (status bar or *Vista*) shows dimension chains in centimetres along the top and left of the building — every wall thickness and clear span, plus the total — on screen and in the export.
 8. Save projects (`.json`), export a high-resolution PNG or vector PDF, open existing files, or create new plans. Safe atomic file replacement with an automatic `.trazo.bak` backup, plus a background crash-recovery draft, protect your work.
@@ -59,7 +60,10 @@ Drawing can be cancelled at any time with `Esc`, a right click, or by switching 
 | `Ctrl+A` | Select all (following the selection filter) |
 | `Shift`+click / drag → / drag ← | Add to or remove from the selection / window / crossing selection |
 | Arrows / `Shift`+arrows | Move the selection 0.25 m / 1 m |
-| `G` | Turn the selected fixture (or the next one) 90° |
+| `G` / `Shift+G` | Turn the selection (or the next fixture) 90° clockwise / counter-clockwise |
+| `H` / `Shift+H` | Mirror the selection left-right / upside down |
+| `Ctrl+C` / `Ctrl+X` / `Ctrl+V` / `Ctrl+D` | Copy, cut, paste at the pointer, duplicate |
+| `O` / `A` / `E` | Offset, trim, extend |
 | `Esc` | Cancel the current action, or clear the selection |
 | `F` | Zoom to fit the whole plan |
 | `F3` / `F7` / `F8` | Snapping, grid, ortho mode |
@@ -100,11 +104,14 @@ If Claude Desktop is using Trazo, close it before rebuilding (`cargo build --rel
 - `src/domain/annotations.rs`: dimension chains and the door and window schedule, shared by the canvas and the export.
 - `src/domain/fixtures.rs`: fixture kinds, sizes, rotation and their plan symbols, shared by the canvas, the export and the ribbon icons.
 - `src/domain/element.rs` and `src/domain/model/elements.rs`: references to elements, the selection filter, window and crossing picks, and moving or deleting several elements as one change.
+- `src/domain/transform.rs`, `src/domain/curves.rs` and `src/domain/offset.rs`: moving, turning and mirroring; where lines and circles meet segments and arcs; parallel offsets of drawings.
+- `src/domain/model/fragment.rs` and `src/domain/model/modify.rs`: copying elements with their relations, transforms in place or as copies, and offset, trim and extend of walls and drawings.
 - `src/domain/history.rs`: undo and redo stack with duplicate-state suppression.
 - `src/app/canvas.rs`: rendering grid, terrain, walls, rooms, openings, labels, hover and selection highlights, and live previews.
 - `src/app/canvas/overlay.rs`: drawing aids over the plan: graphic scale, north arrow, crosshair, snap markers.
 - `src/app/interaction.rs`: canvas mouse interactions, creation state machine, picking, dragging, snapping and the context menu trigger.
 - `src/app/selection.rs`: multiple selection, selection boxes, select all, similar and inverse.
+- `src/app/tools/`: the drawing tools, the free-shape room, typed input and the modify tools (clipboard, move, copy, turn, mirror, offset, trim, extend).
 - `src/app/ui/`: menu bar, ribbon, options bar, project browser, properties panel, status bar, view overlays, dialogs (including *Conectar uma IA*), icons and shared widgets.
 - `src/app/theme.rs`: the white and light-blue theme, colours and system fonts.
 - `src/app/mod.rs`: application state, data protection flows, commands, and shortcuts.

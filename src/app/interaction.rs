@@ -4,15 +4,27 @@ use super::{
         self, PaintOptions, Preview, ViewTransform,
         overlay::{self, SnapKind},
     },
+    tools::ModifyKind,
 };
 use crate::domain::{
     fixtures::{Fixture, FixtureKind},
     geometry::{POINT_TOLERANCE, Point},
     snap::{SnapResult, find_snap},
+    transform::Transform,
 };
 use eframe::egui::{self, PointerButton, Sense};
 
 impl FloorPlanApp {
+    /// Whether typed input is an angle to turn by (turning, with the centre
+    /// placed) or the offset distance, rather than a point.
+    fn typing_angle_or_offset(&self) -> bool {
+        match self.tool {
+            Tool::Modify(ModifyKind::Rotate) => self.modify_anchor.is_some(),
+            Tool::Modify(ModifyKind::Offset) => true,
+            _ => false,
+        }
+    }
+
     fn snap(&self, point: Point, start: Option<Point>) -> Point {
         self.snap_detail(point, start)
             .map(|hit| hit.point)
@@ -40,8 +52,13 @@ impl FloorPlanApp {
         };
 
         let mut result = hit.map(|h| h.point).unwrap_or(point);
+        let ortho_tool = match self.tool {
+            Tool::Wall | Tool::RoomPolygon | Tool::Draw(_) => true,
+            Tool::Modify(kind) => kind.uses_selection(),
+            _ => false,
+        };
         if self.ortho_enabled
-            && matches!(self.tool, Tool::Wall | Tool::RoomPolygon | Tool::Draw(_))
+            && ortho_tool
             && let Some(start) = start
         {
             let before = result;
@@ -387,6 +404,13 @@ impl FloorPlanApp {
                 | Tool::Measure
                 | Tool::RoomPolygon
                 | Tool::Draw(_) => self.apply_canvas_point(point),
+                Tool::Modify(kind) if kind.uses_selection() => self.apply_canvas_point(point),
+                // Offset, trim and extend act where the element was clicked.
+                Tool::Modify(kind) => {
+                    if let Some(raw) = world {
+                        self.modify_click(kind, raw);
+                    }
+                }
                 Tool::Opening(kind) => self.add_opening_at(point, kind),
                 Tool::Fixture(kind) => {
                     if let Some(raw) = world {
@@ -406,7 +430,8 @@ impl FloorPlanApp {
             self.finish_drawing(kind, false);
         }
 
-        let numeric_spec = (!self.draft_input.is_empty())
+        // An angle to turn by or an offset distance is not a point.
+        let numeric_spec = (!self.draft_input.is_empty() && !self.typing_angle_or_offset())
             .then(|| super::tools::numeric_input::parse_numeric_input(&self.draft_input))
             .flatten();
         let numeric_point =
@@ -428,6 +453,12 @@ impl FloorPlanApp {
                 .map(|(id, _)| Selection::Wall(id))
         } else if self.tool == Tool::Move {
             hovered_item
+        } else if let Tool::Modify(kind) = self.tool
+            && !kind.uses_selection()
+        {
+            // The wall or drawing offset, trim or extend would act on.
+            self.modify_target
+                .or_else(|| world.and_then(|point| self.pick_editable(point)))
         } else {
             None
         }
@@ -498,6 +529,35 @@ impl FloorPlanApp {
         {
             canvas::paint_measurement(&painter, view, start, end);
         }
+        let typed_angle = match self.tool {
+            Tool::Modify(ModifyKind::Rotate) if !self.draft_input.is_empty() => {
+                super::tools::parse_degrees(&self.draft_input)
+            }
+            _ => None,
+        };
+        if let Tool::Modify(kind) = self.tool {
+            // The selection where it would go, or the offset copy.
+            let ghost = match (typed_angle, self.modify_anchor) {
+                (Some(degrees), Some(center)) => self
+                    .project
+                    .fragment(&self.selected())
+                    .transformed(&Transform::rotate_degrees(center, degrees))
+                    .ok(),
+                _ => preview_cursor.and_then(|cursor| self.modify_preview(kind, cursor)),
+            };
+            if let Some(ghost) = &ghost {
+                canvas::paint_fragment_ghost(&painter, view, ghost);
+            }
+            if let (Some(anchor), Some(cursor)) = (self.modify_anchor, preview_cursor) {
+                canvas::paint_modify_guide(
+                    &painter,
+                    view,
+                    anchor,
+                    cursor,
+                    kind == ModifyKind::Mirror,
+                );
+            }
+        }
 
         if let Some(position) = pointer
             && !panning
@@ -511,16 +571,18 @@ impl FloorPlanApp {
                     | Tool::Fixture(_)
                     | Tool::Measure
                     | Tool::Draw(_)
+                    | Tool::Modify(_)
             ) || opening_target;
             if drawing {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::None);
                 overlay::paint_crosshair(&painter, position);
             }
-            if matches!(
-                self.tool,
-                Tool::Wall | Tool::Room | Tool::RoomPolygon | Tool::Terrain | Tool::Draw(_)
-            ) && let Some(hit) = snap_hit
-            {
+            let snapping_tool = match self.tool {
+                Tool::Wall | Tool::Room | Tool::RoomPolygon | Tool::Terrain | Tool::Draw(_) => true,
+                Tool::Modify(kind) => kind.uses_selection(),
+                _ => false,
+            };
+            if snapping_tool && let Some(hit) = snap_hit {
                 if let Some((from, to)) = hit.guide {
                     overlay::paint_snap_guide(&painter, view.to_screen(from), view.to_screen(to));
                 }
@@ -562,7 +624,41 @@ impl FloorPlanApp {
             if let Some(target) = numeric_point {
                 overlay::paint_snap_marker(&painter, view.to_screen(target), SnapKind::Endpoint);
             }
+            let typed_offset = (self.tool == Tool::Modify(ModifyKind::Offset))
+                .then(|| {
+                    self.draft_input
+                        .trim()
+                        .replace(',', ".")
+                        .parse::<f64>()
+                        .ok()
+                })
+                .flatten()
+                .filter(|distance| distance.is_finite() && *distance > 0.0);
             let (summary, valid) = match (numeric_spec, numeric_point) {
+                _ if self.typing_angle_or_offset() => match (typed_angle, typed_offset) {
+                    (Some(degrees), _) => (
+                        format!(
+                            "Girar {}° · Enter confirma · Esc limpa",
+                            format!("{degrees:.1}").replace('.', ",").replace(",0", "")
+                        ),
+                        true,
+                    ),
+                    (_, Some(distance)) => (
+                        format!(
+                            "Distância de deslocamento: {} · Enter confirma",
+                            crate::domain::geometry::format_meters(distance)
+                        ),
+                        true,
+                    ),
+                    _ => (
+                        if self.tool == Tool::Modify(ModifyKind::Offset) {
+                            "Distância em metros (ex.: 0,15)".to_owned()
+                        } else {
+                            "Ângulo em graus (ex.: 45 ou -90)".to_owned()
+                        },
+                        false,
+                    ),
+                },
                 (Some(spec), Some(_)) => (
                     format!("{} · Enter confirma · Esc limpa", spec.describe()),
                     true,
@@ -602,6 +698,8 @@ impl FloorPlanApp {
     /// A right click: it ends a drawing in progress and selects the element
     /// under the pointer, so the context menu acts on it.
     pub(super) fn context_click(&mut self, point: Option<Point>) {
+        // "Colar aqui" pastes where the menu was opened.
+        self.context_point = point;
         if self.draft_start().is_some() {
             self.cancel_creation();
             self.message = "Desenho cancelado.".to_owned();
