@@ -64,6 +64,10 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dimensions: Vec<super::dimensions::DimensionEntity>,
 
+    /// Texts, technical notes, leader callouts and architectural symbols.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<super::notes::AnnotationNote>,
+
     next_id: u64,
 }
 
@@ -101,6 +105,8 @@ impl Default for Project {
             active_layer_id: None,
 
             dimensions: Vec::new(),
+
+            notes: Vec::new(),
 
             next_id: 1,
         }

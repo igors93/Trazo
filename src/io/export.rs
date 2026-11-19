@@ -461,6 +461,92 @@ fn document(project: &Project) -> SvgDocument {
         }
     }
 
+    if project.category_visible(crate::domain::layers::LayerCategory::Annotations) {
+        use crate::domain::notes::{NoteKind, TechnicalSymbol};
+        for note in &project.notes {
+            let (x, y) = point(note.position);
+            let text = escaped(&note.text);
+            match note.kind {
+                NoteKind::Text => {
+                    let _ = writeln!(
+                        svg,
+                        "<text x=\"{x:.1}\" y=\"{y:.1}\" font-family=\"Arial, sans-serif\" font-size=\"{:.1}\" fill=\"#1c2b3c\">{text}</text>",
+                        note.font_size
+                    );
+                }
+                NoteKind::Note => {
+                    let w = (note.text.chars().count() as f64 * 7.2 + 16.0).max(40.0);
+                    let _ = writeln!(
+                        svg,
+                        "<rect x=\"{x:.1}\" y=\"{:.1}\" width=\"{w:.1}\" height=\"24\" rx=\"3\" fill=\"#fffdf2\" stroke=\"#90a4b8\" stroke-width=\"1\"/><text x=\"{:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"12\" fill=\"#1c2b3c\">{text}</text>",
+                        y - 16.0,
+                        x + 8.0,
+                        y
+                    );
+                }
+                NoteKind::Callout { target } => {
+                    let (tx, ty) = point(target);
+                    let _ = writeln!(
+                        svg,
+                        "<line x1=\"{x:.1}\" y1=\"{y:.1}\" x2=\"{tx:.1}\" y2=\"{ty:.1}\" stroke=\"#2878d2\" stroke-width=\"1.2\"/><circle cx=\"{tx:.1}\" cy=\"{ty:.1}\" r=\"3\" fill=\"#2878d2\"/><text x=\"{:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"12\" fill=\"#1c2b3c\">{text}</text>",
+                        x + 6.0,
+                        y - 4.0
+                    );
+                }
+                NoteKind::Symbol(TechnicalSymbol::LevelMark { .. }) => {
+                    let _ = writeln!(
+                        svg,
+                        "<circle cx=\"{x:.1}\" cy=\"{y:.1}\" r=\"7\" fill=\"#ffffff\" stroke=\"#1c2b3c\" stroke-width=\"1.2\"/><line x1=\"{:.1}\" y1=\"{y:.1}\" x2=\"{:.1}\" y2=\"{y:.1}\" stroke=\"#1c2b3c\" stroke-width=\"1.1\"/><line x1=\"{x:.1}\" y1=\"{:.1}\" x2=\"{x:.1}\" y2=\"{:.1}\" stroke=\"#1c2b3c\" stroke-width=\"1.1\"/><text x=\"{:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#1c2b3c\">{text}</text>",
+                        x - 10.0,
+                        x + 10.0,
+                        y - 10.0,
+                        y + 10.0,
+                        x + 12.0,
+                        y + 4.0
+                    );
+                }
+                NoteKind::Symbol(TechnicalSymbol::SlopeArrow { .. }) => {
+                    let _ = writeln!(
+                        svg,
+                        "<line x1=\"{x:.1}\" y1=\"{y:.1}\" x2=\"{:.1}\" y2=\"{y:.1}\" stroke=\"#1c2b3c\" stroke-width=\"1.2\"/><polyline points=\"{:.1},{:.1} {:.1},{y:.1} {:.1},{:.1}\" fill=\"none\" stroke=\"#1c2b3c\" stroke-width=\"1.2\"/><text x=\"{:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"11\" fill=\"#3b4e63\" text-anchor=\"middle\">{text}</text>",
+                        x + 34.0,
+                        x + 28.0,
+                        y - 4.0,
+                        x + 34.0,
+                        x + 28.0,
+                        y + 4.0,
+                        x + 17.0,
+                        y - 6.0
+                    );
+                }
+                NoteKind::Symbol(TechnicalSymbol::NorthArrow) => {
+                    let _ = writeln!(
+                        svg,
+                        "<circle cx=\"{x:.1}\" cy=\"{y:.1}\" r=\"11\" fill=\"#ffffff\" stroke=\"#1c2b3c\" stroke-width=\"1.2\"/><polygon points=\"{x:.1},{:.1} {:.1},{:.1} {:.1},{:.1}\" fill=\"#1d2836\"/><text x=\"{x:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#1c2b3c\" text-anchor=\"middle\">{text}</text>",
+                        y - 9.0,
+                        x + 5.0,
+                        y + 6.0,
+                        x - 5.0,
+                        y + 6.0,
+                        y - 14.0
+                    );
+                }
+                NoteKind::Symbol(TechnicalSymbol::EntryArrow) => {
+                    let _ = writeln!(
+                        svg,
+                        "<polygon points=\"{x:.1},{:.1} {:.1},{:.1} {:.1},{:.1}\" fill=\"#2878d2\"/><text x=\"{x:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"10\" font-weight=\"700\" fill=\"#2878d2\" text-anchor=\"middle\">{text}</text>",
+                        y - 8.0,
+                        x + 7.0,
+                        y + 5.0,
+                        x - 7.0,
+                        y + 5.0,
+                        y + 17.0
+                    );
+                }
+            }
+        }
+    }
+
     let wall_width = base_wall_width;
     let mut occupied = labels::write_room_labels(&mut svg, project, &point, wall_width);
     labels::write_frame_tags(&mut svg, project, &point, pixels_per_meter, &mut occupied);

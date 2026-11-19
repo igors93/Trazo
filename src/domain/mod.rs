@@ -9,5 +9,6 @@ pub mod junctions;
 pub mod layers;
 pub mod masonry;
 pub mod model;
+pub mod notes;
 pub mod snap;
 pub mod wall_reference;

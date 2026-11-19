@@ -39,6 +39,7 @@ enum DocDialog {
     None,
     Layers,
     Dimensions,
+    Notes,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -168,6 +169,7 @@ pub struct FloorPlanApp {
     show_help: bool,
     active_doc_dialog: DocDialog,
     new_layer_name: String,
+    new_note_text: String,
     browser_filter: String,
     browser_hover: Option<Selection>,
     cursor_world: Option<Point>,
@@ -279,6 +281,7 @@ impl FloorPlanApp {
             show_help: false,
             active_doc_dialog: DocDialog::None,
             new_layer_name: String::new(),
+            new_note_text: String::new(),
             browser_filter: String::new(),
             browser_hover: None,
             cursor_world: None,

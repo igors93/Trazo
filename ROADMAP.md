@@ -141,7 +141,7 @@ O #12 é o mais importante deste grupo. Dois quartos separados por uma parede: o
 | 28 | Pranchas A4, A3, A2, A1, A0 e tamanhos personalizados | P0 | 2 | — |
 | 29 | Impressão em escala exata: 1:25, 1:50, 1:75, 1:100, 1:200 | P0 | 2 | — |
 | 30 | Carimbo editável, legenda, identificação do projeto e paginação | P1 | 2 | — |
-| 31 | Textos, notas, chamadas, linhas de chamada e símbolos | P1 | 2 | — |
+| 31 | Textos, notas, chamadas, linhas de chamada e símbolos | P1 | 2 | Feito |
 | 32 | Hachuras e padrões gráficos por material | P1 | 2 | Feito |
 | 33 | Modelos de planta baixa, implantação e detalhamento | P1 | 3 | — |
 | 34 | Quadros de áreas, esquadrias, ambientes e materiais configuráveis | P1 | 2 | Parcial |

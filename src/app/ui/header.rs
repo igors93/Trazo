@@ -271,6 +271,10 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::Dimensions;
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Info), "Textos, notas e símbolos...", "").clicked() {
+            self.active_doc_dialog = super::super::DocDialog::Notes;
+            ui.close();
+        }
     }
 
     pub(super) fn osnap_menu(&mut self, ui: &mut Ui) {

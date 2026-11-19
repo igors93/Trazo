@@ -9,6 +9,7 @@ pub(super) mod icons;
 pub(in crate::app) use icons::Glyph;
 mod inspector;
 mod layers;
+mod notes;
 mod options_bar;
 mod status_bar;
 mod toolbar;
@@ -90,5 +91,6 @@ impl FloorPlanApp {
         self.connect_dialog(&context);
         self.layers_dialog(&context);
         self.dimensions_dialog(&context);
+        self.notes_dialog(&context);
     }
 }
