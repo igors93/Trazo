@@ -86,12 +86,12 @@ impl Project {
         let delta = if clamp_to_terrain {
             self.clamp_delta_to_terrain(Point::new(min_x, min_y), Point::new(max_x, max_y), delta)
         } else {
-            if let Some(terrain) = &self.terrain {
-                let moved_min = Point::new(min_x + delta.x, min_y + delta.y);
-                let moved_max = Point::new(max_x + delta.x, max_y + delta.y);
-                if !terrain.contains(moved_min) || !terrain.contains(moved_max) {
-                    return Err("As novas dimensões ultrapassam os limites do terreno.".to_owned());
-                }
+            let moved_min = Point::new(min_x + delta.x, min_y + delta.y);
+            let moved_max = Point::new(max_x + delta.x, max_y + delta.y);
+            if !self.point_inside_buildable_limit(moved_min)
+                || !self.point_inside_buildable_limit(moved_max)
+            {
+                return Err("As novas dimensões ultrapassam o limite de implantação.".to_owned());
             }
             delta
         };
@@ -152,6 +152,9 @@ impl Project {
 
         tx.revalidate_openings_on_walls(&affected_walls)?;
         tx.validate_affected_rooms(&affected_walls)?;
+        if !tx.content_inside_buildable_limit() {
+            return Err("O movimento ultrapassa o limite de implantação.".to_owned());
+        }
         *self = tx;
         Ok(())
     }

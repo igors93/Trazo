@@ -718,6 +718,77 @@ impl FloorPlanApp {
             });
         }
 
+        if exists {
+            let mut setbacks = self.project.setbacks;
+            let mut changed = false;
+            section(
+                ui,
+                "terrain_setbacks",
+                "Recuos e limite de implantação",
+                |ui| {
+                    grid(ui, "terrain_setbacks_grid", |ui| {
+                        property_label(ui, "Frontal");
+                        changed |= ui
+                            .add(
+                                egui::DragValue::new(&mut setbacks.front)
+                                    .range(0.0..=1000.0)
+                                    .speed(0.1)
+                                    .fixed_decimals(2)
+                                    .suffix(" m"),
+                            )
+                            .changed();
+                        ui.end_row();
+                        property_label(ui, "Fundos");
+                        changed |= ui
+                            .add(
+                                egui::DragValue::new(&mut setbacks.rear)
+                                    .range(0.0..=1000.0)
+                                    .speed(0.1)
+                                    .fixed_decimals(2)
+                                    .suffix(" m"),
+                            )
+                            .changed();
+                        ui.end_row();
+                        property_label(ui, "Laterais");
+                        changed |= ui
+                            .add(
+                                egui::DragValue::new(&mut setbacks.side)
+                                    .range(0.0..=1000.0)
+                                    .speed(0.1)
+                                    .fixed_decimals(2)
+                                    .suffix(" m"),
+                            )
+                            .changed();
+                        ui.end_row();
+                    });
+                    ui.add_space(6.0);
+                    hint(
+                        ui,
+                        Icon::Info,
+                        "A linha tracejada laranja mostra a faixa edificável e também limita novas paredes.",
+                        ACCENT,
+                    );
+                    if self.project.setbacks.is_active()
+                        && !self.project.content_inside_buildable_limit()
+                    {
+                        ui.add_space(6.0);
+                        hint(
+                            ui,
+                            Icon::Warning,
+                            "Há paredes fora do limite de implantação configurado.",
+                            WARNING,
+                        );
+                    }
+                },
+            );
+            if changed {
+                let previous = self.project.clone();
+                if self.project.set_setbacks(setbacks).is_ok() {
+                    self.record_change(previous);
+                }
+            }
+        }
+
         let valid = self.terrain_dimensions().is_some();
         let selected = matches!(self.selection, Some(Selection::Terrain(_)));
         egui::Frame::new()

@@ -119,7 +119,7 @@ O #10 foi antecipado para a Fase 1 porque cômodos poligonais (#02) só ficam ú
 | 13 | Paredes referenciadas pela face interna, externa ou pelo eixo | P0 | 1 | Feito |
 | 14 | Ambientes detectados automaticamente pelo fechamento das paredes | P1 | 3 | Feito |
 | 15 | Terrenos irregulares, divisas inclinadas e desmembramento de lotes | P1 | 3 | Feito |
-| 16 | Recuos, afastamentos e limites de implantação configuráveis | P1 | 3 | — |
+| 16 | Recuos, afastamentos e limites de implantação configuráveis | P1 | 3 | Feito |
 | 17 | Área útil, construída, de projeção e do terreno calculadas separadamente | P1 | 3 | Parcial |
 | 18 | Paredes multicamadas: alvenaria, revestimento, isolamento, acabamento | P1 | 3 | Parcial |
 | 19 | Portas de correr, pivotantes, duplas, sanfonadas e outras tipologias | P1 | 3 | Parcial |

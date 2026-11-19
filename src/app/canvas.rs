@@ -460,6 +460,14 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
                 4.0,
             ));
         }
+        for (a, b) in terrain.setback_segments(project.setbacks) {
+            painter.extend(Shape::dashed_line(
+                &[view.to_screen(a), view.to_screen(b)],
+                Stroke::new(1.5, theme::WARNING),
+                9.0,
+                5.0,
+            ));
+        }
     }
 
     if project.category_visible(crate::domain::layers::LayerCategory::Rooms) {

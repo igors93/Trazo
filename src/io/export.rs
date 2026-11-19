@@ -10,6 +10,9 @@ use crate::domain::{
 mod csv;
 mod drawings;
 mod labels;
+pub mod sheet;
+
+pub use sheet::{export_scaled_pdf, export_scaled_svg};
 
 const PIXELS_PER_METER: f64 = 100.0;
 const MARGIN: f64 = 130.0;
@@ -92,6 +95,14 @@ fn document(project: &Project) -> SvgDocument {
                 svg,
                 "<polygon points=\"{points}\" fill=\"none\" stroke=\"#5e8bbf\" stroke-width=\"1.5\" stroke-dasharray=\"10 6\" data-lot=\"{}\"/>",
                 escaped(&lot.name)
+            );
+        }
+        for (a, b) in terrain.setback_segments(project.setbacks) {
+            let (x1, y1) = point(a);
+            let (x2, y2) = point(b);
+            let _ = writeln!(
+                svg,
+                "<line x1=\"{x1:.1}\" y1=\"{y1:.1}\" x2=\"{x2:.1}\" y2=\"{y2:.1}\" stroke=\"#d5841b\" stroke-width=\"1.5\" stroke-dasharray=\"9 5\" data-building-limit=\"true\"/>"
             );
         }
     }

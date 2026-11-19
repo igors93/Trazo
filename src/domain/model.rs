@@ -36,6 +36,10 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lots: Vec<Lot>,
 
+    /// Front, rear and side distances that define the buildable part of the site.
+    #[serde(default)]
+    pub setbacks: super::setbacks::Setbacks,
+
     /// Counters, sinks, stoves, bathroom fittings, tables...
     #[serde(default)]
     pub fixtures: Vec<Fixture>,
@@ -95,6 +99,8 @@ impl Default for Project {
             terrain: None,
 
             lots: Vec::new(),
+
+            setbacks: super::setbacks::Setbacks::default(),
 
             fixtures: Vec::new(),
 
@@ -786,10 +792,9 @@ impl Project {
             return None;
         }
 
-        if self
-            .terrain
-            .as_ref()
-            .is_some_and(|terrain| !terrain.contains(start) || !terrain.contains(end))
+        if !self.point_inside_buildable_limit(start)
+            || !self.point_inside_buildable_limit(end)
+            || !self.point_inside_buildable_limit(start.lerp(end, 0.5))
         {
             return None;
         }
@@ -1089,6 +1094,10 @@ impl Project {
         if discard_terrain {
             self.terrain = None;
             self.lots.clear();
+        }
+        if self.setbacks.validate().is_err() {
+            self.setbacks = super::setbacks::Setbacks::default();
+            warnings.push("Recuos inválidos foram restaurados para zero.".to_owned());
         }
 
         // 2. Referential integrity
@@ -1599,10 +1608,10 @@ impl Project {
             old_start.y + dir.y * new_length,
         );
 
-        if let Some(terrain) = &self.terrain
-            && !terrain.contains(new_end)
+        if !self.point_inside_buildable_limit(new_end)
+            || !self.point_inside_buildable_limit(old_start.lerp(new_end, 0.5))
         {
-            return Err("O novo comprimento ultrapassa os limites do terreno.".to_owned());
+            return Err("O novo comprimento ultrapassa o limite de implantação.".to_owned());
         }
 
         self.walls[wall_idx].end = new_end;
