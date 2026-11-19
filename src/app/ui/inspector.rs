@@ -630,14 +630,6 @@ impl FloorPlanApp {
         }
     }
 
-    fn built_area(&self) -> f64 {
-        self.project
-            .rooms
-            .iter()
-            .filter_map(|room| self.project.room_area(room))
-            .sum()
-    }
-
     fn terrain_inspector(&mut self, ui: &mut Ui) {
         let exists = self.project.terrain.is_some();
         type_card(
@@ -688,22 +680,25 @@ impl FloorPlanApp {
             }
         });
 
-        if let Some(terrain) = &self.project.terrain {
-            let built = self.built_area();
-            let lot = terrain.area();
+        if self.project.terrain.is_some() {
+            let summary = self.project.area_summary();
             section(ui, "terrain_occupation", "Ocupação", |ui| {
                 grid(ui, "terrain_occupation_grid", |ui| {
                     property_label(ui, "Área construída");
-                    property_value(ui, &area(built));
+                    property_value(ui, &area(summary.constructed));
+                    ui.end_row();
+                    property_label(ui, "Área de projeção");
+                    property_value(ui, &area(summary.projection));
                     ui.end_row();
                     property_label(ui, "Taxa de ocupação");
                     property_value(
                         ui,
-                        &format!("{:.1} %", built / lot * 100.0).replace('.', ","),
+                        &format!("{:.1} %", summary.projection / summary.terrain * 100.0)
+                            .replace('.', ","),
                     );
                     ui.end_row();
                     property_label(ui, "Área livre");
-                    property_value(ui, &area((lot - built).max(0.0)));
+                    property_value(ui, &area((summary.terrain - summary.projection).max(0.0)));
                     ui.end_row();
                 });
                 if !self.project.walls.is_empty() && !self.project.content_inside_terrain() {
@@ -894,7 +889,7 @@ impl FloorPlanApp {
             });
         });
 
-        let built = self.built_area();
+        let summary = self.project.area_summary();
         let rooms: Vec<(String, f64)> = self
             .project
             .rooms
@@ -902,11 +897,10 @@ impl FloorPlanApp {
             .filter_map(|room| {
                 Some((
                     room.display_name().to_owned(),
-                    self.project.room_area(room)?,
+                    self.project.room_usable_area(room)?,
                 ))
             })
             .collect();
-        let terrain_area = self.project.terrain.as_ref().map(|terrain| terrain.area());
         section(ui, "project_areas", "Quadro de áreas", |ui| {
             grid(ui, "project_areas_grid", |ui| {
                 for (name, room_area) in &rooms {
@@ -914,24 +908,38 @@ impl FloorPlanApp {
                     property_value(ui, &area(*room_area));
                     ui.end_row();
                 }
+                property_label(ui, "Área útil");
+                property_value(ui, &area(summary.usable));
+                ui.end_row();
+                property_label(ui, "Paredes");
+                property_value(ui, &area(summary.walls));
+                ui.end_row();
                 property_label(ui, "Área construída");
                 ui.label(
-                    RichText::new(area(built))
+                    RichText::new(area(summary.constructed))
                         .font(strong(13.0))
                         .color(ACCENT_TEXT),
                 );
                 ui.end_row();
-                property_label(ui, "Terreno");
+                property_label(ui, "Área de projeção");
+                property_value(ui, &area(summary.projection));
+                ui.end_row();
+                property_label(ui, "Área do terreno");
                 property_value(
                     ui,
-                    &terrain_area.map(area).unwrap_or_else(|| "—".to_owned()),
+                    &self
+                        .project
+                        .terrain
+                        .as_ref()
+                        .map_or_else(|| "—".to_owned(), |_| area(summary.terrain)),
                 );
                 ui.end_row();
-                if let Some(lot) = terrain_area {
+                if summary.terrain > 0.0 {
                     property_label(ui, "Ocupação");
                     property_value(
                         ui,
-                        &format!("{:.1} %", built / lot * 100.0).replace('.', ","),
+                        &format!("{:.1} %", summary.projection / summary.terrain * 100.0)
+                            .replace('.', ","),
                     );
                     ui.end_row();
                 }

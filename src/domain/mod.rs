@@ -1,4 +1,5 @@
 pub mod annotations;
+pub mod areas;
 pub mod dimensions;
 pub mod drawing;
 pub mod fixtures;

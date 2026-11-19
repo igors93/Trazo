@@ -1113,11 +1113,7 @@ impl FloorPlanApp {
                 })
             })
             .collect();
-        let built: f64 = project
-            .rooms
-            .iter()
-            .filter_map(|room| project.room_area(room))
-            .sum();
+        let areas = project.area_summary();
         json!({
             "espessura_parede_m": round(self.project.masonry.thickness()),
             "alvenaria": {
@@ -1153,11 +1149,19 @@ impl FloorPlanApp {
                     "quantidade": frame.ids.len(),
                 }))
                 .collect::<Vec<_>>(),
-            "area_construida_m2": round(built),
-            "taxa_ocupacao_percentual": project
-                .terrain
-                .as_ref()
-                .map(|terrain| round(built / terrain.area() * 100.0)),
+            "areas": {
+                "util_m2": round(areas.usable),
+                "paredes_m2": round(areas.walls),
+                "construida_m2": round(areas.constructed),
+                "projecao_m2": round(areas.projection),
+                "terreno_m2": round(areas.terrain),
+            },
+            "area_util_m2": round(areas.usable),
+            "area_construida_m2": round(areas.constructed),
+            "area_projecao_m2": round(areas.projection),
+            "area_terreno_m2": round(areas.terrain),
+            "taxa_ocupacao_percentual": (areas.terrain > 0.0)
+                .then(|| round(areas.projection / areas.terrain * 100.0)),
         })
     }
 }
@@ -1210,7 +1214,9 @@ mod tests {
         assert_eq!(plan["comodos"][1]["largura"], 3.5);
         // Sala and Cozinha share the wall at x = 6.
         assert_eq!(plan["paredes"].as_array().unwrap().len(), 7);
-        assert_eq!(plan["area_construida_m2"], 34.0);
+        assert!(plan["area_util_m2"].as_f64().unwrap() < 34.0);
+        assert!(plan["area_construida_m2"].as_f64().unwrap() > 34.0);
+        assert_eq!(plan["area_terreno_m2"], 300.0);
 
         // The wall along the bottom of the Sala lies at y = 1.
         let walls = sala.structured.unwrap()["paredes"].clone();
