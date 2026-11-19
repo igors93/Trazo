@@ -2,6 +2,7 @@ use eframe::egui::{self, Color32, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 
 use crate::app::theme;
 use crate::domain::{
+    fixtures::{Fixture, SymbolShape, Weight},
     geometry::{GRID_METERS, Point, WALL_THICKNESS_METERS, format_meters},
     model::{OpeningKind, Project, Wall},
 };
@@ -45,6 +46,92 @@ pub struct PaintOptions {
     pub hover: Option<Selection>,
     pub preview: Option<Preview>,
     pub show_grid: bool,
+    /// The fixture about to be placed, drawn under the pointer.
+    pub ghost: Option<Fixture>,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum FixtureTone {
+    Normal,
+    Hovered,
+    Selected,
+    Ghost,
+}
+
+/// Draws a fixture's plan symbol (see `domain::fixtures`).
+pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, tone: FixtureTone) {
+    let (ink, detail, fill) = match tone {
+        FixtureTone::Normal => (theme::TEXT_2, theme::MUTED, Color32::WHITE),
+        FixtureTone::Hovered => (theme::HOVER, theme::HOVER, Color32::WHITE),
+        FixtureTone::Selected => (theme::SELECTION, theme::SELECTION, theme::ACCENT_SOFTER),
+        FixtureTone::Ghost => (
+            theme::ACCENT,
+            theme::ACCENT.gamma_multiply(0.8),
+            theme::ACCENT.gamma_multiply(0.08),
+        ),
+    };
+    let screen = |local: Point| view.to_screen(fixture.to_world(local));
+    let (hw, hd) = (fixture.width / 2.0, fixture.depth / 2.0);
+    painter.add(Shape::convex_polygon(
+        [(-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd)]
+            .iter()
+            .map(|(x, y)| screen(Point::new(*x, *y)))
+            .collect(),
+        fill,
+        Stroke::NONE,
+    ));
+    for shape in fixture.symbol() {
+        match shape {
+            SymbolShape::Polyline {
+                points,
+                closed,
+                dashed,
+                weight,
+            } => {
+                let stroke = match weight {
+                    Weight::Outline => Stroke::new(1.4, ink),
+                    Weight::Detail => Stroke::new(0.9, detail),
+                };
+                let mut points: Vec<Pos2> = points.into_iter().map(screen).collect();
+                if dashed {
+                    if closed {
+                        points.push(points[0]);
+                    }
+                    painter.extend(Shape::dashed_line(&points, stroke, 4.0, 3.0));
+                } else if closed {
+                    painter.add(Shape::closed_line(points, stroke));
+                } else {
+                    painter.add(Shape::line(points, stroke));
+                }
+            }
+            SymbolShape::Circle {
+                center,
+                radius,
+                weight,
+            } => {
+                let stroke = match weight {
+                    Weight::Outline => Stroke::new(1.4, ink),
+                    Weight::Detail => Stroke::new(0.9, detail),
+                };
+                painter.circle_stroke(screen(center), radius * view.scale, stroke);
+            }
+        }
+    }
+    if fixture.kind.needs_label() {
+        let (x, y) = fixture.extent();
+        let galley = painter.layout_no_wrap(
+            fixture.kind.label().to_owned(),
+            theme::regular(10.5),
+            ink,
+        );
+        let room = egui::vec2(x * view.scale - 6.0, y * view.scale - 4.0);
+        if galley.size().x <= room.x && galley.size().y <= room.y {
+            let center = view.to_screen(fixture.center);
+            let backing = Rect::from_center_size(center, galley.size() + egui::vec2(6.0, 2.0));
+            painter.rect_filled(backing, 2.0, Color32::from_rgba_unmultiplied(255, 255, 255, 215));
+            painter.galley(center - galley.size() / 2.0, galley, ink);
+        }
+    }
 }
 
 /// A property line: long dash, short dash.
@@ -64,6 +151,7 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         hover,
         preview,
         show_grid,
+        ghost,
     } = options;
     painter.rect_filled(view.rect, 0.0, theme::CANVAS);
     if show_grid {
@@ -161,6 +249,17 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         paint_wall(painter, view, wall, project, tone, selection, hover);
     }
 
+    for fixture in &project.fixtures {
+        let tone = if selection == Some(Selection::Fixture(fixture.id)) {
+            FixtureTone::Selected
+        } else if hover == Some(Selection::Fixture(fixture.id)) {
+            FixtureTone::Hovered
+        } else {
+            FixtureTone::Normal
+        };
+        paint_fixture(painter, view, fixture, tone);
+    }
+
     let mut occupied = Vec::new();
     paint_room_labels(painter, view, project, &mut occupied);
     paint_wall_labels(painter, view, project, selection, &mut occupied);
@@ -176,6 +275,9 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
 
     if let Some(preview) = preview {
         paint_preview(painter, view, project, preview, &occupied);
+    }
+    if let Some(ghost) = &ghost {
+        paint_fixture(painter, view, ghost, FixtureTone::Ghost);
     }
 }
 
@@ -530,6 +632,57 @@ fn paint_wall(
                         normal,
                         -(half_wall + 4.0),
                         leaf + 4.0,
+                        op_color,
+                    );
+                }
+            }
+            OpeningKind::SaloonDoor => {
+                let leaf_color = if op_color == Color32::TRANSPARENT {
+                    theme::WALL
+                } else {
+                    op_color
+                };
+                let arc_color = if op_color == Color32::TRANSPARENT {
+                    theme::DOOR_ARC
+                } else {
+                    op_color
+                };
+                // Two half leaves, hinged at each jamb, swinging both ways.
+                for (hinge, toward) in [(start, 1.0), (end, -1.0)] {
+                    painter.line_segment(
+                        [hinge, hinge + normal * half],
+                        Stroke::new(2.0, leaf_color),
+                    );
+                    for side in [1.0, -1.0] {
+                        let arc: Vec<Pos2> = (0..=12)
+                            .map(|step| {
+                                let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 12.0;
+                                hinge
+                                    + direction * (toward * theta.sin() * half)
+                                    + normal * (side * theta.cos() * half)
+                            })
+                            .collect();
+                        if side > 0.0 {
+                            painter.add(Shape::line(arc, Stroke::new(1.0, arc_color)));
+                        } else {
+                            painter.extend(Shape::dashed_line(
+                                &arc,
+                                Stroke::new(1.0, arc_color),
+                                3.0,
+                                3.0,
+                            ));
+                        }
+                    }
+                }
+                if op_color != Color32::TRANSPARENT {
+                    outline_opening(
+                        painter,
+                        start,
+                        end,
+                        direction,
+                        normal,
+                        -(half + 4.0),
+                        half + 4.0,
                         op_color,
                     );
                 }

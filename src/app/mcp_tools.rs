@@ -14,7 +14,8 @@ use serde_json::{Value, json};
 use super::{FloorPlanApp, OpenResult, Selection};
 use crate::{
     domain::{
-        geometry::{Point, format_meters},
+        fixtures::FixtureKind,
+        geometry::{Point, WALL_THICKNESS_METERS, format_meters},
         model::{OpeningKind, Project},
     },
     io::export,
@@ -75,6 +76,18 @@ fn element_id(args: &Value, key: &str) -> Result<u64, String> {
         _ => None,
     };
     id.ok_or_else(|| format!("Informe '{key}': o id numérico do elemento (veja obter_planta)."))
+}
+
+/// `rotacao` in degrees (a multiple of 90) as clockwise quarter turns.
+fn quarter_turns(args: &Value) -> Result<Option<u8>, String> {
+    let Some(degrees) = number(args, "rotacao")? else {
+        return Ok(None);
+    };
+    let turns = degrees / 90.0;
+    if (turns - turns.round()).abs() > 0.01 {
+        return Err("'rotacao' deve ser 0, 90, 180 ou 270 graus.".to_owned());
+    }
+    Ok(Some((turns.round() as i32).rem_euclid(4) as u8))
 }
 
 fn text(args: &Value, key: &str) -> Option<String> {
@@ -268,6 +281,8 @@ impl FloorPlanApp {
                 })
             }
             "editar_abertura" => self.tool_edit_opening(args),
+            "inserir_objeto" => self.tool_insert_fixture(args),
+            "editar_objeto" => self.tool_edit_fixture(args),
             "mover_elemento" => self.tool_move(args),
             "excluir_elemento" => {
                 let id = element_id(args, "id")?;
@@ -284,6 +299,9 @@ impl FloorPlanApp {
                         }
                         Selection::Terrain(id) => {
                             project.delete_terrain(id);
+                        }
+                        Selection::Fixture(id) => {
+                            project.delete_fixture(id);
                         }
                     }
                     Ok(Change::new(format!("{label} {id} excluído(a).")))
@@ -458,6 +476,8 @@ impl FloorPlanApp {
             Ok(Selection::Room(id))
         } else if project.openings.iter().any(|opening| opening.id == id) {
             Ok(Selection::Opening(id))
+        } else if project.fixtures.iter().any(|fixture| fixture.id == id) {
+            Ok(Selection::Fixture(id))
         } else if project.terrain.as_ref().is_some_and(|terrain| terrain.id == id) {
             Ok(Selection::Terrain(id))
         } else {
@@ -490,6 +510,7 @@ impl FloorPlanApp {
             Selection::Room(_) => "Cômodo",
             Selection::Opening(_) => "Abertura",
             Selection::Terrain(_) => "Terreno",
+            Selection::Fixture(_) => "Objeto",
         }
     }
 
@@ -590,10 +611,14 @@ impl FloorPlanApp {
 
     fn tool_insert_opening(&mut self, args: &Value) -> Result<ToolOutput, String> {
         let wall_id = element_id(args, "parede_id")?;
-        let kind = match text(args, "tipo").map(|kind| kind.to_lowercase()).as_deref() {
+        let kind = match text(args, "tipo")
+            .map(|kind| kind.to_lowercase().replace(['-', ' '], "_"))
+            .as_deref()
+        {
             Some("porta") => OpeningKind::Door,
             Some("janela") => OpeningKind::Window,
-            _ => return Err("Informe 'tipo': porta ou janela.".to_owned()),
+            Some("porta_vai_e_vem" | "vai_e_vem" | "porta_faroeste") => OpeningKind::SaloonDoor,
+            _ => return Err("Informe 'tipo': porta, janela ou porta_vai_e_vem.".to_owned()),
         };
         let position = number(args, "posicao")?.unwrap_or(0.5);
         if !(0.0..=1.0).contains(&position) {
@@ -622,6 +647,84 @@ impl FloorPlanApp {
             ))
             .select(Selection::Opening(id))
             .data(json!({ "id": id })))
+        })
+    }
+
+    fn tool_insert_fixture(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let keys: Vec<&str> = FixtureKind::ALL.iter().map(|kind| kind.key()).collect();
+        let kind = text(args, "tipo")
+            .and_then(|kind| FixtureKind::from_key(&kind.to_lowercase()))
+            .ok_or_else(|| format!("Informe 'tipo': {}.", keys.join(", ")))?;
+        let (default_width, default_depth) = kind.default_size();
+        let width = number(args, "largura")?.unwrap_or(default_width);
+        let depth = number(args, "profundidade")?.unwrap_or(default_depth);
+        let point = to_model(required_number(args, "x")?, required_number(args, "y")?);
+        let turns = quarter_turns(args)?.unwrap_or(0);
+        let against_wall = flag(args, "encostar_na_parede");
+        let placed = if against_wall {
+            self.place_against_wall(kind, point, width, depth, turns)
+        } else {
+            crate::domain::fixtures::Fixture {
+                id: 0,
+                kind,
+                center: point,
+                width,
+                depth,
+                quarter_turns: turns,
+            }
+        };
+        let moved_to_wall = against_wall && placed.center != point;
+        let mut output = self.apply_change(None, |project| {
+            let id = project
+                .add_fixture(kind, placed.center, width, depth, placed.quarter_turns)
+                .ok_or(format!(
+                    "Não foi possível inserir: o objeto precisa ficar dentro do terreno e medir entre {:.2} e {:.2} m.",
+                    crate::domain::fixtures::MIN_SIZE,
+                    crate::domain::fixtures::MAX_SIZE
+                ).replace('.', ","))?;
+            Ok(Change::new(format!(
+                "{} inserido(a) (id {id}), {} × {}, rotação {}°.",
+                kind.label(),
+                format_meters(width),
+                format_meters(depth),
+                placed.quarter_turns as u32 * 90
+            ))
+            .select(Selection::Fixture(id))
+            .data(json!({ "id": id, "centro": xy(placed.center), "rotacao": placed.quarter_turns as u32 * 90 })))
+        })?;
+        if against_wall && !moved_to_wall {
+            output
+                .text
+                .push_str(" Nenhuma parede reta a menos de 0,8 m: ficou no ponto informado.");
+        }
+        Ok(output)
+    }
+
+    fn tool_edit_fixture(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let id = element_id(args, "id")?;
+        self.require(id, |selection| matches!(selection, Selection::Fixture(_)), "objeto")?;
+        let current = self
+            .project
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.id == id)
+            .copied()
+            .ok_or("Objeto não encontrado.")?;
+        let x = number(args, "x")?;
+        let y = number(args, "y")?;
+        let width = number(args, "largura")?;
+        let depth = number(args, "profundidade")?;
+        let turns = quarter_turns(args)?;
+        if x.is_none() && y.is_none() && width.is_none() && depth.is_none() && turns.is_none() {
+            return Err("Informe x, y, rotacao, largura ou profundidade.".to_owned());
+        }
+        let (cx, cy) = from_model(current.center);
+        let center = (x.is_some() || y.is_some()).then(|| to_model(x.unwrap_or(cx), y.unwrap_or(cy)));
+        let size = (width.is_some() || depth.is_some())
+            .then(|| (width.unwrap_or(current.width), depth.unwrap_or(current.depth)));
+        self.apply_change(None, |project| {
+            project.update_fixture(id, center, size, turns)?;
+            Ok(Change::new(format!("Objeto {id} atualizado.")).select(Selection::Fixture(id)))
         })
     }
 
@@ -725,6 +828,7 @@ impl FloorPlanApp {
                         }
                     }
                     Selection::Terrain(id) => project.move_terrain(id, delta),
+                    Selection::Fixture(id) => project.move_fixture(id, delta),
                     Selection::Opening(id) => {
                         if let Some(target) = opening_target {
                             project.move_opening_along_wall(id, target);
@@ -802,11 +906,30 @@ impl FloorPlanApp {
                     "tipo": match opening.kind {
                         OpeningKind::Door => "porta",
                         OpeningKind::Window => "janela",
+                        OpeningKind::SaloonDoor => "porta_vai_e_vem",
                     },
                     "parede_id": opening.wall_id,
                     "posicao": round(opening.t),
                     "largura": round(opening.width()),
                     "centro": self.opening_center(opening.id).map(xy),
+                })
+            })
+            .collect();
+        let fixtures: Vec<Value> = project
+            .fixtures
+            .iter()
+            .map(|fixture| {
+                let (width, depth) = fixture.extent();
+                json!({
+                    "id": fixture.id,
+                    "tipo": fixture.kind.key(),
+                    "nome": fixture.kind.label(),
+                    "centro": xy(fixture.center),
+                    "largura": round(fixture.width),
+                    "profundidade": round(fixture.depth),
+                    "rotacao": fixture.quarter_turns as u32 * 90,
+                    "ocupa_x": round(width),
+                    "ocupa_y": round(depth),
                 })
             })
             .collect();
@@ -816,6 +939,8 @@ impl FloorPlanApp {
             .filter_map(|room| project.room_area(room))
             .sum();
         json!({
+            "espessura_parede_m": round(WALL_THICKNESS_METERS),
+            "objetos": fixtures,
             "projeto": {
                 "nome": project.name,
                 "arquivo": self.file_path.as_ref().map(|path| path.display().to_string()),
@@ -907,6 +1032,57 @@ mod tests {
         assert_eq!(plan["aberturas"][0]["centro"]["y"], 1.0);
         assert_eq!(app.selection, Some(Selection::Opening(door_id)));
         assert!(app.dirty && app.history.can_undo());
+    }
+
+    #[test]
+    fn places_fixtures_and_saloon_doors() {
+        let mut app = app();
+        ok(
+            &mut app,
+            "criar_comodo",
+            json!({ "nome": "Gourmet", "x": 0, "y": 0, "largura": 5, "comprimento": 4 }),
+        );
+        // Against the left wall (x = 0): the back faces left and touches the
+        // brick face at half the wall thickness.
+        let grill = ok(
+            &mut app,
+            "inserir_objeto",
+            json!({ "tipo": "churrasqueira", "x": 0.4, "y": 2, "encostar_na_parede": true }),
+        );
+        let grill_id = grill.structured.unwrap()["id"].as_u64().unwrap();
+        let plan = app.plan_summary();
+        let placed = &plan["objetos"][0];
+        assert_eq!(placed["rotacao"], 270);
+        let half = round(WALL_THICKNESS_METERS / 2.0);
+        assert!((placed["centro"]["x"].as_f64().unwrap() - (half + 0.3)).abs() < 1e-3);
+        assert_eq!(plan["espessura_parede_m"], round(WALL_THICKNESS_METERS));
+
+        ok(
+            &mut app,
+            "editar_objeto",
+            json!({ "id": grill_id, "largura": 1.2, "rotacao": 90 }),
+        );
+        let edited = &app.plan_summary()["objetos"][0];
+        assert_eq!(edited["largura"], 1.2);
+        assert_eq!(edited["rotacao"], 90);
+        assert!(run(&mut app, "inserir_objeto", json!({ "tipo": "piscina", "x": 1, "y": 1 })).is_error);
+        assert!(run(&mut app, "editar_objeto", json!({ "id": grill_id, "rotacao": 45 })).is_error);
+
+        let wall = plan["paredes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|wall| wall["inicio"]["y"] == 4.0 && wall["fim"]["y"] == 4.0)
+            .unwrap()["id"]
+            .clone();
+        ok(
+            &mut app,
+            "inserir_abertura",
+            json!({ "parede_id": wall, "tipo": "porta_vai_e_vem", "largura": 0.7 }),
+        );
+        assert_eq!(app.plan_summary()["aberturas"][0]["tipo"], "porta_vai_e_vem");
+        ok(&mut app, "excluir_elemento", json!({ "id": grill_id }));
+        assert!(app.project.fixtures.is_empty());
     }
 
     #[test]

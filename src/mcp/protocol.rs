@@ -18,8 +18,11 @@ Unidades em metros. Coordenadas: X para a direita e Y para cima, as mesmas da ba
 status do Trazo.
 Comece com obter_planta para conhecer os elementos e seus ids. Para criar uma planta: \
 definir_terreno, depois criar_comodo para cada cômodo (cômodos vizinhos que encostam \
-lado a lado compartilham a parede automaticamente) e por fim inserir_abertura com o id \
-da parede (posicao de 0 a 1 ao longo da parede). Paredes e cômodos precisam ficar dentro \
+lado a lado compartilham a parede automaticamente), inserir_abertura com o id da parede \
+(posicao de 0 a 1 ao longo da parede) e inserir_objeto para bancadas, pias, fogões, \
+churrasqueira, louças e mesas. As paredes têm espessura (espessura_parede_m): as \
+coordenadas de cômodos são o eixo das paredes, e a face interna fica meia espessura para \
+dentro. Paredes e cômodos precisam ficar dentro \
 do terreno. Confira o resultado com imagem_da_planta. Salve com salvar_projeto quando o \
 usuário pedir.";
 
@@ -247,14 +250,51 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "inserir_abertura",
             title: "Inserir porta ou janela",
-            description: "Insere uma porta (largura padrão 0,90 m, de 0,60 a 2,00) ou janela (padrão 1,20 m, de 0,40 a 4,00) numa parede. Não pode sobrepor outra abertura nem encostar nas pontas da parede.",
+            description: "Insere uma porta (largura padrão 0,90 m, de 0,60 a 2,00), janela (padrão 1,20 m, de 0,40 a 4,00) ou porta vai-e-vem (padrão 0,80 m, de 0,60 a 1,80) numa parede. Não pode sobrepor outra abertura nem encostar nas pontas da parede.",
             properties: json!({
                 "parede_id": id_of("da parede"),
-                "tipo": { "type": "string", "enum": ["porta", "janela"], "description": "porta ou janela." },
+                "tipo": { "type": "string", "enum": ["porta", "janela", "porta_vai_e_vem"], "description": "porta, janela ou porta_vai_e_vem (tipo faroeste, duas folhas que abrem para os dois lados)." },
                 "posicao": number("Centro da abertura ao longo da parede, de 0 (início) a 1 (fim). Padrão 0,5 (meio)."),
                 "largura": number("Opcional: largura em metros."),
             }),
             required: &["parede_id", "tipo"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "inserir_objeto",
+            title: "Inserir objeto",
+            description: "Insere um objeto ou equipamento: bancada, pia, fogao, fogao_lenha, churrasqueira, geladeira, lavatorio (com largura >= 0,90 m vira pia dupla), vaso, chuveiro, mesa (com cadeiras) ou prateleira. x e y são o centro. A rotação diz para onde fica o fundo (o lado encostado na parede): 0 = fundo para +Y, 90 = +X, 180 = -Y, 270 = -X. Com encostar_na_parede = true o Trazo vira o fundo para a parede reta mais próxima (até 0,8 m) e encosta na face dos tijolos, descontando meia espessura de parede (veja espessura_parede_m em obter_planta).",
+            properties: json!({
+                "tipo": {
+                    "type": "string",
+                    "enum": ["bancada", "pia", "fogao", "fogao_lenha", "churrasqueira", "geladeira", "lavatorio", "vaso", "chuveiro", "mesa", "prateleira"],
+                    "description": "Tipo do objeto.",
+                },
+                "x": number("X do centro, em metros."),
+                "y": number("Y do centro, em metros."),
+                "rotacao": integer("0, 90, 180 ou 270 graus (para onde fica o fundo). Padrão 0."),
+                "largura": number("Opcional: largura ao longo do fundo, em metros (padrão do tipo)."),
+                "profundidade": number("Opcional: profundidade, em metros (padrão do tipo)."),
+                "encostar_na_parede": boolean("Encosta na face da parede mais próxima, virando o fundo para ela."),
+            }),
+            required: &["tipo", "x", "y"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "editar_objeto",
+            title: "Editar objeto",
+            description: "Muda posição (centro), rotação, largura ou profundidade de um objeto.",
+            properties: json!({
+                "id": id_of("do objeto"),
+                "x": number("Opcional: novo X do centro."),
+                "y": number("Opcional: novo Y do centro."),
+                "rotacao": integer("Opcional: 0, 90, 180 ou 270 graus."),
+                "largura": number("Opcional: nova largura em metros."),
+                "profundidade": number("Opcional: nova profundidade em metros."),
+            }),
+            required: &["id"],
             read_only: false,
             destructive: false,
         },
@@ -443,7 +483,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 18);
+        assert_eq!(tools.len(), 20);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -505,6 +545,6 @@ mod tests {
         .unwrap();
         assert_eq!(unknown["error"]["code"], -32601);
         let listed = handle_message(&json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" }), &mut run).unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 18);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 20);
     }
 }

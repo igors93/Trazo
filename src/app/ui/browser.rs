@@ -1,7 +1,7 @@
 use super::super::{FloorPlanApp, Selection, theme::*};
 use super::icons::{self, Icon};
 use super::widgets::{icon_button_sized, panel_header};
-use crate::domain::{geometry::format_meters, model::OpeningKind};
+use crate::domain::geometry::format_meters;
 use eframe::egui::{self, Align2, Margin, Pos2, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 /// One element row of the browser.
@@ -52,19 +52,28 @@ impl FloorPlanApp {
                 value: format_meters(wall.length()),
             })
             .collect();
-        let openings = |kind: OpeningKind, name: &str| {
+        let openings = |doors: bool| {
             project
                 .openings
                 .iter()
-                .filter(|opening| opening.kind == kind)
+                .filter(|opening| opening.kind.is_door() == doors)
                 .enumerate()
                 .map(|(index, opening)| Row {
                     selection: Selection::Opening(opening.id),
-                    label: format!("{name} {:02}", index + 1),
+                    label: format!("{} {:02}", opening.kind.label(), index + 1),
                     value: format_meters(opening.width()),
                 })
                 .collect()
         };
+        let fixtures = project
+            .fixtures
+            .iter()
+            .map(|fixture| Row {
+                selection: Selection::Fixture(fixture.id),
+                label: fixture.kind.label().to_owned(),
+                value: format!("{:.2} × {:.2}", fixture.width, fixture.depth).replace('.', ","),
+            })
+            .collect();
         vec![
             Group {
                 key: "terrain",
@@ -88,13 +97,19 @@ impl FloorPlanApp {
                 key: "doors",
                 title: "Portas",
                 icon: Icon::Door,
-                rows: openings(OpeningKind::Door, "Porta"),
+                rows: openings(true),
             },
             Group {
                 key: "windows",
                 title: "Janelas",
                 icon: Icon::Window,
-                rows: openings(OpeningKind::Window, "Janela"),
+                rows: openings(false),
+            },
+            Group {
+                key: "fixtures",
+                title: "Objetos",
+                icon: Icon::Fixture(crate::domain::fixtures::FixtureKind::Counter),
+                rows: fixtures,
             },
         ]
     }

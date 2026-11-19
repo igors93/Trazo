@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use super::fixtures::{self, Fixture, FixtureKind};
 use super::geometry::{Point, nearest_point_on_segment};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -16,6 +17,10 @@ pub struct Project {
 
     #[serde(default)]
     pub terrain: Option<Terrain>,
+
+    /// Counters, sinks, stoves, bathroom fittings, tables...
+    #[serde(default)]
+    pub fixtures: Vec<Fixture>,
 
     next_id: u64,
 }
@@ -34,6 +39,8 @@ impl Default for Project {
             openings: Vec::new(),
 
             terrain: None,
+
+            fixtures: Vec::new(),
 
             next_id: 1,
         }
@@ -153,6 +160,9 @@ pub enum OpeningKind {
     Door,
 
     Window,
+
+    /// Double-acting café ("saloon") doors: two half leaves swinging both ways.
+    SaloonDoor,
 }
 
 impl OpeningKind {
@@ -161,7 +171,13 @@ impl OpeningKind {
             Self::Door => "Porta",
 
             Self::Window => "Janela",
+
+            Self::SaloonDoor => "Porta vai-e-vem",
         }
+    }
+
+    pub fn is_door(self) -> bool {
+        matches!(self, Self::Door | Self::SaloonDoor)
     }
 
     pub fn default_width(self) -> f32 {
@@ -169,6 +185,8 @@ impl OpeningKind {
             Self::Door => 0.9,
 
             Self::Window => 1.2,
+
+            Self::SaloonDoor => 0.8,
         }
     }
 
@@ -181,6 +199,8 @@ impl OpeningKind {
             Self::Door => 0.60,
 
             Self::Window => 0.40,
+
+            Self::SaloonDoor => 0.60,
         }
     }
 
@@ -189,6 +209,8 @@ impl OpeningKind {
             Self::Door => 2.00,
 
             Self::Window => 4.00,
+
+            Self::SaloonDoor => 1.80,
         }
     }
 }
@@ -249,7 +271,7 @@ fn is_collinear_and_overlapping(a: Point, b: Point, p1: Point, p2: Point) -> Opt
 
 impl Project {
     pub fn content_bounds(&self) -> Option<(Point, Point)> {
-        if self.walls.is_empty() {
+        if self.walls.is_empty() && self.fixtures.is_empty() {
             return None;
         }
 
@@ -265,6 +287,12 @@ impl Project {
             max.x = max.x.max(wall.start.x.max(wall.end.x));
 
             max.y = max.y.max(wall.start.y.max(wall.end.y));
+        }
+
+        for fixture in &self.fixtures {
+            let (low, high) = fixture.bounds();
+            min = Point::new(min.x.min(low.x), min.y.min(low.y));
+            max = Point::new(max.x.max(high.x), max.y.max(high.y));
         }
 
         Some((min, max))
@@ -307,6 +335,10 @@ impl Project {
             wall.start = wall.start.translated(delta);
 
             wall.end = wall.end.translated(delta);
+        }
+
+        for fixture in &mut self.fixtures {
+            fixture.center = fixture.center.translated(delta);
         }
 
         true
@@ -359,7 +391,127 @@ impl Project {
 
                 wall.end = wall.end.translated(delta);
             }
+
+            for fixture in &mut self.fixtures {
+                fixture.center = fixture.center.translated(delta);
+            }
         }
+    }
+
+    /// Whether `fixture` lies inside the terrain (or there is none).
+    fn fixture_fits(&self, fixture: &Fixture) -> bool {
+        let (low, high) = fixture.bounds();
+        self.terrain
+            .as_ref()
+            .is_none_or(|terrain| terrain.contains(low) && terrain.contains(high))
+    }
+
+    /// Places a fixture centred at `center`; it must fit in the terrain.
+    pub fn add_fixture(
+        &mut self,
+        kind: FixtureKind,
+        center: Point,
+        width: f32,
+        depth: f32,
+        quarter_turns: u8,
+    ) -> Option<u64> {
+        if !fixtures::valid_size(width, depth) || !center.x.is_finite() || !center.y.is_finite() {
+            return None;
+        }
+        let fixture = Fixture {
+            id: 0,
+            kind,
+            center,
+            width,
+            depth,
+            quarter_turns: quarter_turns % 4,
+        };
+        if !self.fixture_fits(&fixture) {
+            return None;
+        }
+        let id = self.id();
+        self.fixtures.push(Fixture { id, ..fixture });
+        Some(id)
+    }
+
+    /// Changes a fixture's position, size or rotation all at once; nothing
+    /// changes when the result would not fit.
+    pub fn update_fixture(
+        &mut self,
+        id: u64,
+        center: Option<Point>,
+        size: Option<(f32, f32)>,
+        quarter_turns: Option<u8>,
+    ) -> Result<(), String> {
+        let index = self
+            .fixtures
+            .iter()
+            .position(|fixture| fixture.id == id)
+            .ok_or("Objeto não encontrado.")?;
+        let mut updated = self.fixtures[index];
+        if let Some(center) = center {
+            updated.center = center;
+        }
+        if let Some((width, depth)) = size {
+            if !fixtures::valid_size(width, depth) {
+                return Err(format!(
+                    "Largura e profundidade devem estar entre {:.2} e {:.2} m.",
+                    fixtures::MIN_SIZE,
+                    fixtures::MAX_SIZE
+                )
+                .replace('.', ","));
+            }
+            updated.width = width;
+            updated.depth = depth;
+        }
+        if let Some(turns) = quarter_turns {
+            updated.quarter_turns = turns % 4;
+        }
+        if !updated.center.x.is_finite() || !updated.center.y.is_finite() {
+            return Err("Posição inválida.".to_owned());
+        }
+        if !self.fixture_fits(&updated) {
+            return Err("O objeto precisa ficar dentro do terreno.".to_owned());
+        }
+        self.fixtures[index] = updated;
+        Ok(())
+    }
+
+    /// Moves a fixture, stopping at the terrain's edge like walls do.
+    pub fn move_fixture(&mut self, id: u64, delta: Point) {
+        let Some(index) = self.fixtures.iter().position(|fixture| fixture.id == id) else {
+            return;
+        };
+        let (low, high) = self.fixtures[index].bounds();
+        let delta = self.clamp_delta_to_terrain(low, high, delta);
+        self.fixtures[index].center = self.fixtures[index].center.translated(delta);
+    }
+
+    /// Turns a fixture a quarter turn clockwise about its centre.
+    pub fn rotate_fixture(&mut self, id: u64) -> Result<(), String> {
+        let turns = self
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.id == id)
+            .map(|fixture| fixture.quarter_turns + 1)
+            .ok_or("Objeto não encontrado.")?;
+        self.update_fixture(id, None, None, Some(turns))
+            .map_err(|_| "Girado, o objeto sairia do terreno.".to_owned())
+    }
+
+    pub fn delete_fixture(&mut self, id: u64) -> bool {
+        let before = self.fixtures.len();
+        self.fixtures.retain(|fixture| fixture.id != id);
+        self.fixtures.len() < before
+    }
+
+    pub fn fixture_at(&self, point: Point) -> Option<u64> {
+        // The last placed is drawn on top, so it is picked first.
+        self.fixtures
+            .iter()
+            .rev()
+            .find(|fixture| fixture.contains(point))
+            .map(|fixture| fixture.id)
     }
 
     pub fn delete_terrain(&mut self, id: u64) -> bool {
@@ -719,6 +871,22 @@ impl Project {
         }
         if let Some(t) = &self.terrain {
             max_id = max_id.max(t.id);
+        }
+        let orig_fixtures = self.fixtures.len();
+        self.fixtures.retain(|fixture| {
+            fixture.center.x.is_finite()
+                && fixture.center.y.is_finite()
+                && fixtures::valid_size(fixture.width, fixture.depth)
+        });
+        if self.fixtures.len() < orig_fixtures {
+            warnings.push(format!(
+                "{} objetos com medidas inválidas foram removidos.",
+                orig_fixtures - self.fixtures.len()
+            ));
+        }
+        for fixture in &mut self.fixtures {
+            fixture.quarter_turns %= 4;
+            max_id = max_id.max(fixture.id);
         }
         if self.next_id <= max_id {
             self.next_id = max_id + 1;
@@ -1484,7 +1652,7 @@ impl Project {
     }
 
     pub fn bounds(&self) -> Option<(Point, Point)> {
-        if self.walls.is_empty() && self.terrain.is_none() {
+        if self.walls.is_empty() && self.fixtures.is_empty() && self.terrain.is_none() {
             return None;
         }
 

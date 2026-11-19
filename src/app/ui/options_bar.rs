@@ -15,6 +15,8 @@ pub(super) fn tool_icon(tool: Tool) -> Icon {
         Tool::Room => Icon::Room,
         Tool::Opening(OpeningKind::Door) => Icon::Door,
         Tool::Opening(OpeningKind::Window) => Icon::Window,
+        Tool::Opening(OpeningKind::SaloonDoor) => Icon::SaloonDoor,
+        Tool::Fixture(kind) => Icon::Fixture(kind),
     }
 }
 
@@ -26,6 +28,8 @@ pub(super) fn tool_name(tool: Tool) -> &'static str {
         Tool::Room => "Cômodo",
         Tool::Opening(OpeningKind::Door) => "Porta",
         Tool::Opening(OpeningKind::Window) => "Janela",
+        Tool::Opening(OpeningKind::SaloonDoor) => "Porta vai-e-vem",
+        Tool::Fixture(kind) => kind.label(),
     }
 }
 
@@ -113,6 +117,29 @@ impl FloorPlanApp {
                     );
                     divider(ui);
                     caption(ui, "Clique numa parede para inserir.");
+                }
+                Tool::Fixture(kind) => {
+                    let (width, depth) = kind.default_size();
+                    caption(ui, "Tamanho");
+                    chip(
+                        ui,
+                        &format!("{width:.2} × {depth:.2} m").replace('.', ","),
+                    );
+                    caption(ui, "Giro livre");
+                    chip(ui, &format!("{}°", self.fixture_turns as u32 * 90));
+                    if tip(
+                        secondary_button(ui, "Girar (G)"),
+                        "Gira o próximo objeto colocado longe das paredes",
+                    )
+                    .clicked()
+                    {
+                        self.fixture_turns = (self.fixture_turns + 1) % 4;
+                    }
+                    divider(ui);
+                    caption(
+                        ui,
+                        "Perto de uma parede, ele encosta na face dos tijolos (parede de 12 cm).",
+                    );
                 }
                 Tool::Move => self.selection_options(ui),
             }
@@ -240,6 +267,15 @@ impl FloorPlanApp {
                     })
                     .unwrap_or_default(),
             ),
+            Selection::Fixture(id) => {
+                let fixture = self.project.fixtures.iter().find(|f| f.id == id);
+                (
+                    fixture.map(|f| f.kind.label()).unwrap_or("Objeto"),
+                    fixture
+                        .map(|f| format!("{:.2} × {:.2} m", f.width, f.depth).replace('.', ","))
+                        .unwrap_or_default(),
+                )
+            }
             Selection::Opening(id) => {
                 let opening = self.project.openings.iter().find(|o| o.id == id);
                 (

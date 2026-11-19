@@ -228,6 +228,7 @@ impl FloorPlanApp {
                             (&["Delete"], "Excluir seleção"),
                             (&["Setas"], "Mover seleção 0,25 m"),
                             (&["Shift", "Setas"], "Mover seleção 1 m"),
+                            (&["G"], "Girar objeto 90°"),
                             (&["Esc"], "Cancelar ação ou limpar seleção"),
                         ],
                     );

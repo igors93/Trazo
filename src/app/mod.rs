@@ -12,6 +12,7 @@ use eframe::egui::{self, Key};
 
 use crate::{
     domain::{
+        fixtures::FixtureKind,
         geometry::Point,
         history::History,
         model::{OpeningKind, Project},
@@ -44,6 +45,7 @@ const NUDGE_STEP: f32 = 0.25;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RibbonTab {
     Architecture,
+    Interiors,
     View,
     Output,
 }
@@ -55,10 +57,13 @@ enum Tool {
     Terrain,
     Move,
     Opening(OpeningKind),
+    /// Places counters, sinks, stoves, bathroom fittings...
+    Fixture(FixtureKind),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Selection {
+    Fixture(u64),
     Wall(u64),
     Room(u64),
     Terrain(u64),
@@ -134,6 +139,10 @@ pub struct FloorPlanApp {
     mcp_feedback: Option<(bool, String)>,
     /// The public tunnel for cloud assistants, while it runs.
     tunnel: Option<mcp::tunnel::Tunnel>,
+    /// Rotation of the next fixture placed away from walls.
+    fixture_turns: u8,
+    fixture_width_text: String,
+    fixture_depth_text: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -210,6 +219,9 @@ impl FloorPlanApp {
             show_mcp_dialog: false,
             mcp_feedback: None,
             tunnel: None,
+            fixture_turns: 0,
+            fixture_width_text: String::new(),
+            fixture_depth_text: String::new(),
         }
     }
 
@@ -320,6 +332,12 @@ impl FloorPlanApp {
             Tool::Move => "Clique para selecionar. Arraste parede, cômodo ou terreno para mover.",
             Tool::Opening(OpeningKind::Door) => "Clique em uma parede para colocar uma porta.",
             Tool::Opening(OpeningKind::Window) => "Clique em uma parede para colocar uma janela.",
+            Tool::Opening(OpeningKind::SaloonDoor) => {
+                "Clique em uma parede para colocar uma porta vai-e-vem."
+            }
+            Tool::Fixture(_) => {
+                "Clique para posicionar. Perto de uma parede o objeto encosta nela; G gira."
+            }
         }
         .to_owned();
     }
@@ -573,6 +591,7 @@ impl FloorPlanApp {
             Some(Selection::Room(id)) => self.project.rooms.iter().any(|r| r.id == id),
             Some(Selection::Opening(id)) => self.project.openings.iter().any(|o| o.id == id),
             Some(Selection::Terrain(_)) => self.project.terrain.is_some(),
+            Some(Selection::Fixture(id)) => self.project.fixtures.iter().any(|f| f.id == id),
             None => false,
         };
         if !valid {
@@ -686,6 +705,11 @@ impl FloorPlanApp {
                 let terrain = self.project.terrain.as_ref()?;
                 Some(span(&[terrain.min, terrain.max]))
             }
+            Selection::Fixture(id) => {
+                let fixture = self.project.fixtures.iter().find(|f| f.id == id)?;
+                let (low, high) = fixture.bounds();
+                Some(span(&[low, high]))
+            }
             Selection::Opening(id) => {
                 let opening = self.project.openings.iter().find(|o| o.id == id)?;
                 let center = self.opening_center(id)?;
@@ -725,6 +749,9 @@ impl FloorPlanApp {
             }
             Some(Selection::Terrain(_)) => {
                 "Terreno selecionado. Ajuste as medidas ou arraste para mover."
+            }
+            Some(Selection::Fixture(_)) => {
+                "Objeto selecionado. Arraste para mover, G para girar ou ajuste as medidas no painel."
             }
             None => "Clique em um elemento para selecionar.",
         }
@@ -768,6 +795,7 @@ impl FloorPlanApp {
                 }
             }
             Selection::Terrain(id) => self.project.move_terrain(id, delta),
+            Selection::Fixture(id) => self.project.move_fixture(id, delta),
             Selection::Opening(id) => {
                 if let Some(center) = self.opening_center(id) {
                     self.project.move_opening_along_wall(
@@ -793,6 +821,48 @@ impl FloorPlanApp {
             "Seleção movida {}. Setas: 0,25 m · Shift+setas: 1 m.",
             crate::domain::geometry::format_meters(delta.x.abs().max(delta.y.abs()))
         );
+    }
+
+    /// G: turns the selected fixture, or the next one to be placed.
+    fn rotate_fixture_or_next(&mut self) {
+        if let Some(Selection::Fixture(id)) = self.selection {
+            let previous = self.project.clone();
+            match self.project.rotate_fixture(id) {
+                Ok(()) => {
+                    self.record_change(previous);
+                    self.sync_inspector_fields();
+                    self.message = "Objeto girado 90°.".to_owned();
+                }
+                Err(error) => self.message = error,
+            }
+        } else if matches!(self.tool, Tool::Fixture(_)) {
+            self.fixture_turns = (self.fixture_turns + 1) % 4;
+            self.message = format!(
+                "Próximo objeto girado para {}° (longe das paredes).",
+                self.fixture_turns as u32 * 90
+            );
+        }
+    }
+
+    /// Applies the width and depth typed in the properties panel.
+    fn apply_fixture_size(&mut self, id: u64) {
+        let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
+        let (Some(width), Some(depth)) = (
+            parse(&self.fixture_width_text),
+            parse(&self.fixture_depth_text),
+        ) else {
+            self.message = "Informe largura e profundidade válidas em metros.".to_owned();
+            return;
+        };
+        let previous = self.project.clone();
+        match self.project.update_fixture(id, None, Some((width, depth)), None) {
+            Ok(()) => {
+                self.record_change(previous);
+                self.sync_inspector_fields();
+                self.message = format!("Objeto com {width:.2} × {depth:.2} m.").replace('.', ",");
+            }
+            Err(error) => self.message = error,
+        }
     }
 
     fn toggle_snap(&mut self) {
@@ -937,6 +1007,9 @@ impl FloorPlanApp {
                 Selection::Opening(id) => {
                     self.project.delete_opening(id);
                 }
+                Selection::Fixture(id) => {
+                    self.project.delete_fixture(id);
+                }
             }
             self.record_change(previous);
             self.message = match selection {
@@ -944,6 +1017,7 @@ impl FloorPlanApp {
                 Selection::Room(_) => "Cômodo removido.",
                 Selection::Terrain(_) => "Terreno removido.",
                 Selection::Opening(_) => "Abertura removida.",
+                Selection::Fixture(_) => "Objeto removido.",
             }
             .to_owned();
             self.sync_inspector_fields();
@@ -953,6 +1027,12 @@ impl FloorPlanApp {
     pub fn sync_inspector_fields(&mut self) {
         self.sync_terrain_fields();
         match self.selection {
+            Some(Selection::Fixture(id)) => {
+                if let Some(fixture) = self.project.fixtures.iter().find(|f| f.id == id) {
+                    self.fixture_width_text = format!("{:.2}", fixture.width).replace('.', ",");
+                    self.fixture_depth_text = format!("{:.2}", fixture.depth).replace('.', ",");
+                }
+            }
             Some(Selection::Wall(id)) => {
                 if let Some(wall) = self.project.walls.iter().find(|w| w.id == id) {
                     self.wall_length_text = format!("{:.2}", wall.length()).replace('.', ",");
@@ -1185,6 +1265,7 @@ impl FloorPlanApp {
                 delete: pressed(Key::Delete) && !editing_text && free,
                 tool,
                 nudge,
+                rotate: plain(Key::G),
                 fit: plain(Key::F),
                 snap: pressed(Key::F3) && free,
                 grid: pressed(Key::F7) && free,
@@ -1230,6 +1311,9 @@ impl FloorPlanApp {
         if let Some(delta) = actions.nudge {
             self.nudge_selection(delta);
         }
+        if actions.rotate {
+            self.rotate_fixture_or_next();
+        }
         if let Some(tool) = actions.tool {
             self.set_tool(tool);
             if tool == Tool::Terrain {
@@ -1264,6 +1348,7 @@ struct ShortcutActions {
     delete: bool,
     tool: Option<Tool>,
     nudge: Option<Point>,
+    rotate: bool,
     fit: bool,
     snap: bool,
     grid: bool,

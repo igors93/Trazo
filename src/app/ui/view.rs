@@ -91,6 +91,21 @@ impl FloorPlanApp {
                 })
                 .unwrap_or_else(|| "Abertura".to_owned()),
             Selection::Terrain(_) => "Terreno".to_owned(),
+            Selection::Fixture(id) => self
+                .project
+                .fixtures
+                .iter()
+                .find(|fixture| fixture.id == id)
+                .map(|fixture| {
+                    format!(
+                        "{} · {:.2} × {:.2} m",
+                        fixture.kind.label(),
+                        fixture.width,
+                        fixture.depth
+                    )
+                    .replace('.', ",")
+                })
+                .unwrap_or_else(|| "Objeto".to_owned()),
         }
     }
 
@@ -113,6 +128,12 @@ impl FloorPlanApp {
             }
             if menu_item(ui, Some(Icon::Search), "Aproximar", "").clicked() {
                 self.zoom_to_selection(selection);
+                ui.close();
+            }
+            if matches!(selection, Selection::Fixture(_))
+                && menu_item(ui, Some(Icon::Redo), "Girar 90°", "G").clicked()
+            {
+                self.rotate_fixture_or_next();
                 ui.close();
             }
             if menu_item(ui, Some(Icon::Delete), "Excluir", "Delete").clicked() {

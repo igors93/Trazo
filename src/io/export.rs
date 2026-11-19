@@ -1,6 +1,7 @@
 use std::{fmt::Write as _, fs, path::Path};
 
 use crate::domain::{
+    fixtures::{SymbolShape, Weight},
     geometry::{Point, WALL_THICKNESS_METERS, format_meters},
     model::{OpeningKind, Project},
 };
@@ -116,6 +117,30 @@ fn document(project: &Project) -> SvgDocument {
                         half * 2.0
                     );
                 }
+                OpeningKind::SaloonDoor => {
+                    // Two half leaves swinging both ways (dashed on the far side).
+                    let quarter = |hinge: f32, toward: f32, side: f32| {
+                        (0..=12)
+                            .map(|step| {
+                                let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 12.0;
+                                format!(
+                                    "{:.1},{:.1}",
+                                    hinge + toward * theta.sin() * half,
+                                    side * theta.cos() * half
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    };
+                    for (hinge, toward) in [(left, 1.0), (right, -1.0)] {
+                        let _ = writeln!(
+                            svg,
+                            "<line x1=\"{hinge:.1}\" y1=\"0\" x2=\"{hinge:.1}\" y2=\"{half:.1}\" stroke=\"#1d2836\" stroke-width=\"3\"/><polyline points=\"{}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.5\"/><polyline points=\"{}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.5\" stroke-dasharray=\"5 4\"/>",
+                            quarter(hinge, toward, 1.0),
+                            quarter(hinge, toward, -1.0)
+                        );
+                    }
+                }
                 OpeningKind::Window => {
                     let _ = writeln!(
                         svg,
@@ -129,6 +154,58 @@ fn document(project: &Project) -> SvgDocument {
             svg,
             "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{length:.1}\" y2=\"0\" stroke=\"#1d2836\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/></g>"
         );
+    }
+    for fixture in &project.fixtures {
+        let corner = |x: f32, y: f32| {
+            let (px, py) = point(fixture.to_world(Point::new(x, y)));
+            format!("{px:.1},{py:.1}")
+        };
+        let (hw, hd) = (fixture.width / 2.0, fixture.depth / 2.0);
+        let _ = writeln!(
+            svg,
+            "<polygon points=\"{} {} {} {}\" fill=\"#ffffff\"/>",
+            corner(-hw, -hd),
+            corner(hw, -hd),
+            corner(hw, hd),
+            corner(-hw, hd)
+        );
+        for shape in fixture.symbol() {
+            let weight = match &shape {
+                SymbolShape::Polyline { weight, .. } | SymbolShape::Circle { weight, .. } => *weight,
+            };
+            let (color, width) = match weight {
+                Weight::Outline => ("#3b4e63", 2.0),
+                Weight::Detail => ("#627489", 1.2),
+            };
+            match shape {
+                SymbolShape::Polyline {
+                    points,
+                    closed,
+                    dashed,
+                    ..
+                } => {
+                    let points = points
+                        .iter()
+                        .map(|local| corner(local.x, local.y))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let element = if closed { "polygon" } else { "polyline" };
+                    let dash = if dashed { " stroke-dasharray=\"6 4\"" } else { "" };
+                    let _ = writeln!(
+                        svg,
+                        "<{element} points=\"{points}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{width}\"{dash}/>"
+                    );
+                }
+                SymbolShape::Circle { center, radius, .. } => {
+                    let (cx, cy) = point(fixture.to_world(center));
+                    let _ = writeln!(
+                        svg,
+                        "<circle cx=\"{cx:.1}\" cy=\"{cy:.1}\" r=\"{:.1}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{width}\"/>",
+                        radius * pixels_per_meter
+                    );
+                }
+            }
+        }
     }
     let mut occupied = labels::write_room_labels(&mut svg, project, &point, wall_width);
     labels::write_wall_labels(

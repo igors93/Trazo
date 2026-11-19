@@ -1,4 +1,5 @@
-use super::super::{FloorPlanApp, RibbonTab, Tool, theme::*};
+use super::super::{FloorPlanApp, RibbonTab, Selection, Tool, theme::*};
+use crate::domain::fixtures::FixtureKind;
 use super::icons::Icon;
 use super::widgets::{
     icon_button_sized, ribbon_button, ribbon_panel, ribbon_small, ribbon_stack, tip,
@@ -7,8 +8,9 @@ use super::widgets::{
 use crate::domain::model::OpeningKind;
 use eframe::egui::{self, Margin, PointerButton, Pos2, Sense, Stroke, Ui, vec2};
 
-const TABS: [(RibbonTab, &str); 3] = [
+const TABS: [(RibbonTab, &str); 4] = [
     (RibbonTab::Architecture, "Arquitetura"),
+    (RibbonTab::Interiors, "Interiores"),
     (RibbonTab::View, "Vista"),
     (RibbonTab::Output, "Saída"),
 ];
@@ -39,6 +41,7 @@ impl FloorPlanApp {
                     ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
                     match self.ribbon_tab {
                         RibbonTab::Architecture => self.architecture_tab(ui),
+                        RibbonTab::Interiors => self.interiors_tab(ui),
                         RibbonTab::View => self.view_tab(ui),
                         RibbonTab::Output => self.output_tab(ui),
                     }
@@ -180,6 +183,7 @@ impl FloorPlanApp {
         ribbon_panel(ui, "Aberturas", |ui| {
             self.opening_tile(ui, OpeningKind::Door, "Porta", Icon::Door);
             self.opening_tile(ui, OpeningKind::Window, "Janela", Icon::Window);
+            self.opening_tile(ui, OpeningKind::SaloonDoor, "Vai-e-vem", Icon::SaloonDoor);
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Modificar", |ui| {
@@ -270,6 +274,84 @@ impl FloorPlanApp {
             {
                 self.fit_view_requested();
             }
+        });
+    }
+
+    fn fixture_button(&mut self, ui: &mut Ui, kind: FixtureKind, label: &str) {
+        let (width, depth) = kind.default_size();
+        let hint = format!(
+            "{}: {width:.2} × {depth:.2} m. Clique na planta; perto de uma parede ele encosta nela.",
+            kind.label()
+        )
+        .replace('.', ",");
+        if tip(
+            ribbon_button(ui, Icon::Fixture(kind), label, self.tool == Tool::Fixture(kind), false),
+            &hint,
+        )
+        .clicked()
+        {
+            self.set_tool(Tool::Fixture(kind));
+        }
+    }
+
+    fn interiors_tab(&mut self, ui: &mut Ui) {
+        ribbon_panel(ui, "Cozinha e churrasco", |ui| {
+            self.fixture_button(ui, FixtureKind::Counter, "Bancada");
+            self.fixture_button(ui, FixtureKind::KitchenSink, "Pia");
+            self.fixture_button(ui, FixtureKind::Stove, "Fogão");
+            self.fixture_button(ui, FixtureKind::WoodStove, "F. a lenha");
+            self.fixture_button(ui, FixtureKind::Grill, "Churrasq.");
+            self.fixture_button(ui, FixtureKind::Fridge, "Geladeira");
+        });
+        vertical_divider(ui, 72.0);
+        ribbon_panel(ui, "Banheiro", |ui| {
+            self.fixture_button(ui, FixtureKind::Washbasin, "Lavatório");
+            self.fixture_button(ui, FixtureKind::Toilet, "Vaso");
+            self.fixture_button(ui, FixtureKind::Shower, "Chuveiro");
+        });
+        vertical_divider(ui, 72.0);
+        ribbon_panel(ui, "Mobiliário", |ui| {
+            self.fixture_button(ui, FixtureKind::Table, "Mesa");
+            self.fixture_button(ui, FixtureKind::Shelves, "Prateleira");
+        });
+        vertical_divider(ui, 72.0);
+        ribbon_panel(ui, "Ajustar", |ui| {
+            ribbon_stack(ui, |ui| {
+                let can_rotate = matches!(self.selection, Some(Selection::Fixture(_)))
+                    || matches!(self.tool, Tool::Fixture(_));
+                if ui
+                    .add_enabled_ui(can_rotate, |ui| {
+                        tip(
+                            ribbon_small(ui, Icon::Redo, "Girar 90°", false),
+                            "Gira o objeto selecionado, ou o próximo a ser colocado (G)",
+                        )
+                    })
+                    .inner
+                    .clicked()
+                {
+                    self.rotate_fixture_or_next();
+                }
+                if ui
+                    .add_enabled_ui(self.selection.is_some(), |ui| {
+                        tip(
+                            ribbon_small(ui, Icon::Delete, "Excluir", false),
+                            "Excluir o elemento selecionado (Delete)",
+                        )
+                    })
+                    .inner
+                    .clicked()
+                {
+                    self.delete_selection();
+                }
+                if tip(
+                    ribbon_small(ui, Icon::Select, "Selecionar", self.tool == Tool::Move),
+                    "Voltar à seleção (V)",
+                )
+                .clicked()
+                {
+                    self.set_tool(Tool::Move);
+                }
+            });
         });
     }
 
@@ -420,6 +502,9 @@ impl FloorPlanApp {
         let tooltip = match kind {
             OpeningKind::Door => "Inserir porta: clique numa parede ou arraste até ela (R)",
             OpeningKind::Window => "Inserir janela: clique numa parede ou arraste até ela (J)",
+            OpeningKind::SaloonDoor => {
+                "Inserir porta vai-e-vem (tipo faroeste): duas folhas que abrem para os dois lados"
+            }
         };
         let response = tip(
             ribbon_button(ui, icon, label, self.tool == Tool::Opening(kind), true),

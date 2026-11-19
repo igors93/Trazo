@@ -6,6 +6,8 @@ use std::f32::consts::{FRAC_PI_2, PI};
 
 use eframe::egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, vec2};
 
+use crate::domain::fixtures::{self, FixtureKind, SymbolShape, Weight};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Icon {
     Select,
@@ -43,6 +45,55 @@ pub enum Icon {
     Check,
     Warning,
     Ai,
+    SaloonDoor,
+    /// The plan symbol of a fixture, as the ribbon shows it.
+    Fixture(FixtureKind),
+}
+
+/// Draws a fixture's plan symbol fitted in `rect`.
+fn paint_fixture_icon(painter: &Painter, rect: Rect, kind: FixtureKind, ink: Color32, accent: Color32) {
+    let (width, depth) = kind.default_size();
+    // Tables draw chairs beyond their top.
+    let reach_y = if kind == FixtureKind::Table { depth + 0.9 } else { depth };
+    let scale = (rect.width() * 0.86 / width).min(rect.height() * 0.86 / reach_y);
+    let at = |x: f32, y: f32| rect.center() + vec2(x * scale, y * scale);
+    for shape in fixtures::symbol(kind, width, depth) {
+        match shape {
+            SymbolShape::Polyline {
+                points,
+                closed,
+                dashed,
+                weight,
+            } => {
+                let stroke = match weight {
+                    Weight::Outline => Stroke::new(1.4, ink),
+                    Weight::Detail => Stroke::new(1.0, accent),
+                };
+                let mut points: Vec<Pos2> = points.iter().map(|p| at(p.x, p.y)).collect();
+                if dashed {
+                    if closed {
+                        points.push(points[0]);
+                    }
+                    painter.extend(Shape::dashed_line(&points, stroke, 2.5, 2.0));
+                } else if closed {
+                    painter.add(Shape::closed_line(points, stroke));
+                } else {
+                    painter.add(Shape::line(points, stroke));
+                }
+            }
+            SymbolShape::Circle {
+                center,
+                radius,
+                weight,
+            } => {
+                let stroke = match weight {
+                    Weight::Outline => Stroke::new(1.4, ink),
+                    Weight::Detail => Stroke::new(1.0, accent),
+                };
+                painter.circle_stroke(at(center.x, center.y), (radius * scale).max(1.0), stroke);
+            }
+        }
+    }
 }
 
 struct Pen<'a> {
@@ -125,6 +176,10 @@ impl Pen<'_> {
 /// Paints `icon` centred in `rect` (square or not), with `ink` for its
 /// outline and `accent` for its distinguishing detail.
 pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Color32) {
+    if let Icon::Fixture(kind) = icon {
+        paint_fixture_icon(painter, rect, kind, ink, accent);
+        return;
+    }
     let side = rect.width().min(rect.height());
     let scale = side / 24.0;
     let width = (1.55 * scale).max(1.0);
@@ -348,6 +403,17 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
             pen.dot(12.0, 7.8, 1.2, accent);
         }
         Icon::Check => pen.accent_line(&[(5.0, 12.5), (9.8, 17.0), (19.0, 7.0)]),
+        Icon::SaloonDoor => {
+            pen.line(&[(2.0, 13.0), (5.0, 13.0)]);
+            pen.line(&[(19.0, 13.0), (22.0, 13.0)]);
+            pen.line(&[(5.0, 13.0), (5.0, 6.0)]);
+            pen.line(&[(19.0, 13.0), (19.0, 6.0)]);
+            pen.arc(5.0, 13.0, 7.0, -FRAC_PI_2, 0.0, acc_s);
+            pen.arc(19.0, 13.0, 7.0, -PI, -FRAC_PI_2, acc_s);
+            pen.arc(5.0, 13.0, 7.0, 0.0, FRAC_PI_2, thin);
+            pen.arc(19.0, 13.0, 7.0, FRAC_PI_2, PI, thin);
+        }
+        Icon::Fixture(_) => {}
         Icon::Ai => {
             // A four-pointed spark with a small one beside it.
             let vertical = [(10.5, 3.5), (12.6, 12.0), (10.5, 20.5), (8.4, 12.0)];

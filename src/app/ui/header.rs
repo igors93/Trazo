@@ -265,6 +265,12 @@ impl FloorPlanApp {
             (Icon::Room, "Cômodo", "C", Tool::Room),
             (Icon::Door, "Porta", "R", Tool::Opening(OpeningKind::Door)),
             (Icon::Window, "Janela", "J", Tool::Opening(OpeningKind::Window)),
+            (
+                Icon::SaloonDoor,
+                "Porta vai-e-vem",
+                "",
+                Tool::Opening(OpeningKind::SaloonDoor),
+            ),
         ];
         for (index, (icon, label, key, tool)) in entries.into_iter().enumerate() {
             if index == 1 || index == 4 {

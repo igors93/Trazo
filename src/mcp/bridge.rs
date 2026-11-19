@@ -239,7 +239,7 @@ mod tests {
             &handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#, &mut forward).unwrap(),
         )
         .unwrap();
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 18);
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 20);
     }
 
     #[test]

@@ -131,6 +131,7 @@ impl FloorPlanApp {
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
                 match self.selection {
+                    Some(Selection::Fixture(id)) => self.fixture_inspector(ui, id),
                     Some(Selection::Wall(id)) => self.wall_inspector(ui, id),
                     Some(Selection::Room(id)) => self.room_inspector(ui, id),
                     Some(Selection::Opening(id)) => self.opening_inspector(ui, id),
@@ -145,6 +146,63 @@ impl FloorPlanApp {
         egui::Frame::new()
             .inner_margin(Margin::same(14))
             .show(ui, |ui| hint(ui, Icon::Warning, text, DANGER));
+    }
+
+    fn fixture_inspector(&mut self, ui: &mut Ui, id: u64) {
+        let Some(fixture) = self.project.fixtures.iter().find(|f| f.id == id).copied() else {
+            Self::missing(ui, "Objeto não encontrado.");
+            return;
+        };
+        type_card(
+            ui,
+            Icon::Fixture(fixture.kind),
+            fixture.kind.label(),
+            "Objeto · equipamento",
+        );
+        let mut submit = false;
+        section(ui, "fixture_dimensions", "Dimensões", |ui| {
+            grid(ui, "fixture_dimensions_grid", |ui| {
+                property_label(ui, "Largura");
+                let width = metres_field(ui, &mut self.fixture_width_text);
+                ui.end_row();
+                property_label(ui, "Profundidade");
+                let depth = metres_field(ui, &mut self.fixture_depth_text);
+                ui.end_row();
+                submit |= (width.lost_focus() || depth.lost_focus())
+                    && ui.input(|i| i.key_pressed(Key::Enter));
+            });
+        });
+        let mut rotate = false;
+        section(ui, "fixture_position", "Posição", |ui| {
+            grid(ui, "fixture_position_grid", |ui| {
+                property_label(ui, "Centro");
+                property_value(ui, &format_point(fixture.center));
+                ui.end_row();
+                property_label(ui, "Rotação");
+                ui.horizontal(|ui| {
+                    property_value(ui, &format!("{}°", fixture.quarter_turns as u32 * 90));
+                    rotate = secondary_button(ui, "Girar 90° (G)").clicked();
+                });
+                ui.end_row();
+            });
+            ui.add_space(6.0);
+            hint(
+                ui,
+                Icon::Info,
+                "Arraste para mover (passos de 5 cm com encaixe) ou use as setas.",
+                ACCENT,
+            );
+        });
+        if rotate {
+            self.rotate_fixture_or_next();
+        }
+        let (apply, delete) = actions(ui, Some("Aplicar"), Some("Excluir objeto"));
+        if apply || submit {
+            self.apply_fixture_size(id);
+        }
+        if delete {
+            self.delete_selection();
+        }
     }
 
     fn wall_inspector(&mut self, ui: &mut Ui, id: u64) {
@@ -332,6 +390,11 @@ impl FloorPlanApp {
         let (icon, title, subtitle) = match opening.kind {
             OpeningKind::Door => (Icon::Door, "Porta", "Porta de abrir · 1 folha"),
             OpeningKind::Window => (Icon::Window, "Janela", "Janela em parede"),
+            OpeningKind::SaloonDoor => (
+                Icon::SaloonDoor,
+                "Porta vai-e-vem",
+                "Tipo faroeste · 2 folhas, abre para os dois lados",
+            ),
         };
         type_card(ui, icon, title, subtitle);
         let wall_length = self
@@ -385,6 +448,7 @@ impl FloorPlanApp {
         let delete_label = match opening.kind {
             OpeningKind::Door => "Excluir porta",
             OpeningKind::Window => "Excluir janela",
+            OpeningKind::SaloonDoor => "Excluir porta",
         };
         let (apply, delete) = actions(ui, Some("Aplicar"), Some(delete_label));
         if apply || submit {

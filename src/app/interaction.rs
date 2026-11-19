@@ -5,7 +5,10 @@ use super::{
         overlay::{self, SnapKind},
     },
 };
-use crate::domain::geometry::Point;
+use crate::domain::{
+    fixtures::{Fixture, FixtureKind},
+    geometry::{Point, WALL_THICKNESS_METERS},
+};
 use eframe::egui::{self, Key, PointerButton, Sense};
 
 impl FloorPlanApp {
@@ -72,6 +75,7 @@ impl FloorPlanApp {
         self.project
             .nearest_opening(point, 14.0 / self.scale)
             .map(Selection::Opening)
+            .or_else(|| self.project.fixture_at(point).map(Selection::Fixture))
             .or_else(|| {
                 self.project
                     .nearest_wall(point, 12.0 / self.scale)
@@ -269,6 +273,11 @@ impl FloorPlanApp {
                     CreationState::Dragging { .. } => {}
                 },
                 Tool::Opening(kind) => self.add_opening_at(point, kind),
+                Tool::Fixture(kind) => {
+                    if let Some(raw) = world {
+                        self.place_fixture(kind, raw);
+                    }
+                }
                 Tool::Move => {}
             }
         }
@@ -296,6 +305,10 @@ impl FloorPlanApp {
             None
         }
         .or(self.browser_hover);
+        let ghost = match (self.tool, world) {
+            (Tool::Fixture(kind), Some(point)) => Some(self.fixture_placement(kind, point)),
+            _ => None,
+        };
         canvas::paint(
             &painter,
             view,
@@ -305,6 +318,7 @@ impl FloorPlanApp {
                 hover,
                 preview,
                 show_grid: self.show_grid,
+                ghost,
             },
         );
         self.paint_view_aids(&painter, view);
@@ -312,8 +326,10 @@ impl FloorPlanApp {
         if let Some(position) = pointer
             && !panning
         {
-            let drawing = matches!(self.tool, Tool::Wall | Tool::Room | Tool::Terrain)
-                || opening_target;
+            let drawing = matches!(
+                self.tool,
+                Tool::Wall | Tool::Room | Tool::Terrain | Tool::Fixture(_)
+            ) || opening_target;
             if drawing {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::None);
                 overlay::paint_crosshair(&painter, position);
@@ -399,13 +415,93 @@ impl FloorPlanApp {
         self.sync_inspector_fields();
     }
 
-    /// Walls, rooms and the terrain move in grid steps when snapping is on;
-    /// openings slide freely along their wall.
+    /// Walls, rooms and the terrain move in grid steps when snapping is on,
+    /// fixtures in 5 cm steps; openings slide freely along their wall.
     fn drag_position(&self, selection: Selection, point: Point) -> Point {
-        if self.snap_enabled && !matches!(selection, Selection::Opening(_)) {
-            point.snapped_to(0.25)
-        } else {
-            point
+        match selection {
+            _ if !self.snap_enabled => point,
+            Selection::Opening(_) => point,
+            Selection::Fixture(_) => point.snapped_to(0.05),
+            _ => point.snapped_to(0.25),
+        }
+    }
+
+    /// Where a fixture of `kind` lands for the pointer at `point`. Near a
+    /// straight wall it turns its back to the wall and stands against the
+    /// wall's face, half a wall thickness off its centre line, so counters
+    /// and sinks sit where the bricks end.
+    pub(super) fn fixture_placement(&self, kind: FixtureKind, point: Point) -> Fixture {
+        let (width, depth) = kind.default_size();
+        self.place_against_wall(kind, point, width, depth, self.fixture_turns)
+    }
+
+    /// `fixture_placement` for a given size and free rotation.
+    pub(super) fn place_against_wall(
+        &self,
+        kind: FixtureKind,
+        point: Point,
+        width: f32,
+        depth: f32,
+        turns: u8,
+    ) -> Fixture {
+        let step = |value: f32| {
+            if self.snap_enabled {
+                (value / 0.05).round() * 0.05
+            } else {
+                value
+            }
+        };
+        let mut fixture = Fixture {
+            id: 0,
+            kind,
+            center: Point::new(step(point.x), step(point.y)),
+            width,
+            depth,
+            quarter_turns: turns % 4,
+        };
+        let wall = self
+            .project
+            .nearest_wall(point, 0.8)
+            .and_then(|(id, _)| self.project.walls.iter().find(|wall| wall.id == id));
+        if let Some(wall) = wall {
+            let offset = WALL_THICKNESS_METERS / 2.0 + depth / 2.0;
+            if (wall.start.y - wall.end.y).abs() < 1e-3 {
+                let below = point.y > wall.start.y;
+                fixture.quarter_turns = if below { 0 } else { 2 };
+                fixture.center = Point::new(
+                    step(point.x),
+                    wall.start.y + if below { offset } else { -offset },
+                );
+            } else if (wall.start.x - wall.end.x).abs() < 1e-3 {
+                let right = point.x > wall.start.x;
+                fixture.quarter_turns = if right { 3 } else { 1 };
+                fixture.center = Point::new(
+                    wall.start.x + if right { offset } else { -offset },
+                    step(point.y),
+                );
+            }
+        }
+        fixture
+    }
+
+    pub(super) fn place_fixture(&mut self, kind: FixtureKind, point: Point) {
+        let placed = self.fixture_placement(kind, point);
+        let previous = self.project.clone();
+        match self.project.add_fixture(
+            kind,
+            placed.center,
+            placed.width,
+            placed.depth,
+            placed.quarter_turns,
+        ) {
+            Some(_) => {
+                self.record_change(previous);
+                self.message = format!(
+                    "{} inserido(a). Clique de novo para outro, ou Esc.",
+                    kind.label()
+                );
+            }
+            None => self.message = "O objeto precisa ficar dentro do terreno.".to_owned(),
         }
     }
 
@@ -429,6 +525,7 @@ impl FloorPlanApp {
                 }
             }
             Selection::Terrain(id) => self.project.move_terrain(id, delta),
+            Selection::Fixture(id) => self.project.move_fixture(id, delta),
             Selection::Opening(id) => {
                 let target = Point::new(
                     point.x - drag.grab_offset.x,
@@ -551,6 +648,45 @@ mod tests {
         // Right-clicking empty space keeps the selection for the menu.
         app.context_click(Some(Point::new(9.0, 9.0)));
         assert_eq!(app.selection, Some(Selection::Wall(wall)));
+    }
+
+    #[test]
+    fn fixtures_stand_against_the_wall_face() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        // A horizontal wall along y = 0 and a vertical one along x = 0.
+        app.project
+            .add_wall(Point::new(0.0, 0.0), Point::new(6.0, 0.0));
+        app.project
+            .add_wall(Point::new(0.0, 0.0), Point::new(0.0, 6.0));
+        let half = WALL_THICKNESS_METERS / 2.0;
+
+        let below = app.fixture_placement(FixtureKind::KitchenSink, Point::new(3.02, 0.5));
+        assert_eq!(below.quarter_turns, 0);
+        assert!((below.center.y - (half + 0.3)).abs() < 1e-4);
+        assert!((below.center.x - 3.0).abs() < 1e-4);
+        // Its back touches the face of the bricks, not the centre line.
+        let (low, _) = below.bounds();
+        assert!((low.y - half).abs() < 1e-4);
+
+        let beside = app.fixture_placement(FixtureKind::Grill, Point::new(0.4, 3.0));
+        assert_eq!(beside.quarter_turns, 3);
+        let (low, _) = beside.bounds();
+        assert!((low.x - half).abs() < 1e-4);
+
+        // Far from walls the chosen rotation is kept.
+        app.fixture_turns = 1;
+        let free = app.fixture_placement(FixtureKind::Table, Point::new(3.0, 3.0));
+        assert_eq!(free.quarter_turns, 1);
+
+        app.set_tool(Tool::Fixture(FixtureKind::KitchenSink));
+        app.place_fixture(FixtureKind::KitchenSink, Point::new(3.0, 0.5));
+        assert_eq!(app.project.fixtures.len(), 1);
+        assert!(app.history.can_undo());
+        assert_eq!(
+            app.pick(Point::new(3.0, half + 0.3)),
+            Some(Selection::Fixture(app.project.fixtures[0].id))
+        );
     }
 
     #[test]
