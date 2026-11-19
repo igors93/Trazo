@@ -141,6 +141,12 @@ fn document(project: &Project) -> SvgDocument {
                         );
                     }
                 }
+                OpeningKind::Gap => {
+                    let _ = writeln!(
+                        svg,
+                        "<line x1=\"{left:.1}\" y1=\"0\" x2=\"{right:.1}\" y2=\"0\" stroke=\"#8ea2b8\" stroke-width=\"1.5\" stroke-dasharray=\"8 6\"/>"
+                    );
+                }
                 OpeningKind::Window => {
                     let _ = writeln!(
                         svg,

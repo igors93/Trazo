@@ -335,6 +335,9 @@ impl FloorPlanApp {
             Tool::Opening(OpeningKind::SaloonDoor) => {
                 "Clique em uma parede para colocar uma porta vai-e-vem."
             }
+            Tool::Opening(OpeningKind::Gap) => {
+                "Clique em uma parede para abrir um vão livre; ajuste a largura no painel."
+            }
             Tool::Fixture(_) => {
                 "Clique para posicionar. Perto de uma parede o objeto encosta nela; G gira."
             }

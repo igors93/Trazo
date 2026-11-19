@@ -163,6 +163,9 @@ pub enum OpeningKind {
 
     /// Double-acting café ("saloon") doors: two half leaves swinging both ways.
     SaloonDoor,
+
+    /// An open span with no leaf, such as the open side of a covered area.
+    Gap,
 }
 
 impl OpeningKind {
@@ -173,6 +176,8 @@ impl OpeningKind {
             Self::Window => "Janela",
 
             Self::SaloonDoor => "Porta vai-e-vem",
+
+            Self::Gap => "Vão livre",
         }
     }
 
@@ -187,6 +192,8 @@ impl OpeningKind {
             Self::Window => 1.2,
 
             Self::SaloonDoor => 0.8,
+
+            Self::Gap => 2.0,
         }
     }
 
@@ -201,6 +208,8 @@ impl OpeningKind {
             Self::Window => 0.40,
 
             Self::SaloonDoor => 0.60,
+
+            Self::Gap => 0.50,
         }
     }
 
@@ -211,6 +220,8 @@ impl OpeningKind {
             Self::Window => 4.00,
 
             Self::SaloonDoor => 1.80,
+
+            Self::Gap => 30.00,
         }
     }
 }
@@ -1066,9 +1077,21 @@ impl Project {
                     wall.start.x + (wall.end.x - wall.start.x) * op.t,
                     wall.start.y + (wall.end.y - wall.start.y) * op.t,
                 );
-                let dist = point.distance(center);
-                let hit_radius = (op.width() / 2.0).max(max_distance);
-                (dist <= hit_radius).then_some((op.id, dist))
+                // Measured to the opening's stretch of wall, so a long open
+                // span is picked near it rather than metres away.
+                let half = op.width() / 2.0 / wall.length().max(1e-4);
+                let (from, to) = (op.t - half, op.t + half);
+                let along = |t: f32| {
+                    Point::new(
+                        wall.start.x + (wall.end.x - wall.start.x) * t,
+                        wall.start.y + (wall.end.y - wall.start.y) * t,
+                    )
+                };
+                let (_, t) = nearest_point_on_segment(point, along(from), along(to));
+                let closest = along(from + (to - from) * t);
+                let dist = point.distance(closest);
+                let hit_radius = (op.width() / 2.0).min(0.45).max(max_distance);
+                (dist <= hit_radius).then_some((op.id, point.distance(center)))
             })
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(id, _)| id)

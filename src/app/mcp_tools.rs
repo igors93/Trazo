@@ -618,7 +618,12 @@ impl FloorPlanApp {
             Some("porta") => OpeningKind::Door,
             Some("janela") => OpeningKind::Window,
             Some("porta_vai_e_vem" | "vai_e_vem" | "porta_faroeste") => OpeningKind::SaloonDoor,
-            _ => return Err("Informe 'tipo': porta, janela ou porta_vai_e_vem.".to_owned()),
+            Some("vao_livre" | "vao" | "vão_livre" | "vão") => OpeningKind::Gap,
+            _ => {
+                return Err(
+                    "Informe 'tipo': porta, janela, porta_vai_e_vem ou vao_livre.".to_owned(),
+                );
+            }
         };
         let position = number(args, "posicao")?.unwrap_or(0.5);
         if !(0.0..=1.0).contains(&position) {
@@ -907,6 +912,7 @@ impl FloorPlanApp {
                         OpeningKind::Door => "porta",
                         OpeningKind::Window => "janela",
                         OpeningKind::SaloonDoor => "porta_vai_e_vem",
+                        OpeningKind::Gap => "vao_livre",
                     },
                     "parede_id": opening.wall_id,
                     "posicao": round(opening.t),
@@ -1083,6 +1089,30 @@ mod tests {
         assert_eq!(app.plan_summary()["aberturas"][0]["tipo"], "porta_vai_e_vem");
         ok(&mut app, "excluir_elemento", json!({ "id": grill_id }));
         assert!(app.project.fixtures.is_empty());
+
+        // A long open span: picked near its stretch of wall, not metres away.
+        let side = plan["paredes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|wall| wall["inicio"]["x"] == 5.0 && wall["fim"]["x"] == 5.0)
+            .unwrap()["id"]
+            .clone();
+        ok(
+            &mut app,
+            "inserir_abertura",
+            json!({ "parede_id": side, "tipo": "vao_livre", "largura": 3.8 }),
+        );
+        let gap = app
+            .project
+            .openings
+            .iter()
+            .find(|opening| opening.kind == OpeningKind::Gap)
+            .unwrap()
+            .id;
+        assert_eq!(app.plan_summary()["aberturas"][1]["tipo"], "vao_livre");
+        assert_eq!(app.project.nearest_opening(Point::new(4.9, -3.6), 0.2), Some(gap));
+        assert_eq!(app.project.nearest_opening(Point::new(2.5, -2.0), 0.2), None);
     }
 
     #[test]

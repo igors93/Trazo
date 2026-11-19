@@ -395,6 +395,7 @@ impl FloorPlanApp {
                 "Porta vai-e-vem",
                 "Tipo faroeste · 2 folhas, abre para os dois lados",
             ),
+            OpeningKind::Gap => (Icon::Gap, "Vão livre", "Trecho aberto da parede, sem porta"),
         };
         type_card(ui, icon, title, subtitle);
         let wall_length = self
@@ -449,6 +450,7 @@ impl FloorPlanApp {
             OpeningKind::Door => "Excluir porta",
             OpeningKind::Window => "Excluir janela",
             OpeningKind::SaloonDoor => "Excluir porta",
+            OpeningKind::Gap => "Fechar o vão",
         };
         let (apply, delete) = actions(ui, Some("Aplicar"), Some(delete_label));
         if apply || submit {

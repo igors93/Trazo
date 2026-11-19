@@ -250,10 +250,10 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "inserir_abertura",
             title: "Inserir porta ou janela",
-            description: "Insere uma porta (largura padrão 0,90 m, de 0,60 a 2,00), janela (padrão 1,20 m, de 0,40 a 4,00) ou porta vai-e-vem (padrão 0,80 m, de 0,60 a 1,80) numa parede. Não pode sobrepor outra abertura nem encostar nas pontas da parede.",
+            description: "Insere uma porta (largura padrão 0,90 m, de 0,60 a 2,00), janela (padrão 1,20 m, de 0,40 a 4,00) porta vai-e-vem (padrão 0,80 m, de 0,60 a 1,80) ou vão livre (sem porta, de 0,50 a 30 m, para lados abertos) numa parede. Não pode sobrepor outra abertura nem encostar nas pontas da parede.",
             properties: json!({
                 "parede_id": id_of("da parede"),
-                "tipo": { "type": "string", "enum": ["porta", "janela", "porta_vai_e_vem"], "description": "porta, janela ou porta_vai_e_vem (tipo faroeste, duas folhas que abrem para os dois lados)." },
+                "tipo": { "type": "string", "enum": ["porta", "janela", "porta_vai_e_vem", "vao_livre"], "description": "porta, janela, porta_vai_e_vem (tipo faroeste, duas folhas que abrem para os dois lados) ou vao_livre (trecho aberto, sem porta)." },
                 "posicao": number("Centro da abertura ao longo da parede, de 0 (início) a 1 (fim). Padrão 0,5 (meio)."),
                 "largura": number("Opcional: largura em metros."),
             }),

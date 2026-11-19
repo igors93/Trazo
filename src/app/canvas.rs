@@ -687,6 +687,32 @@ fn paint_wall(
                     );
                 }
             }
+            OpeningKind::Gap => {
+                // No leaf: a dashed line marks the open span.
+                let gap_color = if op_color == Color32::TRANSPARENT {
+                    theme::DOOR_ARC
+                } else {
+                    op_color
+                };
+                painter.extend(Shape::dashed_line(
+                    &[start, end],
+                    Stroke::new(1.2, gap_color),
+                    6.0,
+                    4.0,
+                ));
+                if op_color != Color32::TRANSPARENT {
+                    outline_opening(
+                        painter,
+                        start,
+                        end,
+                        direction,
+                        normal,
+                        -(half_wall + 4.0),
+                        half_wall + 4.0,
+                        op_color,
+                    );
+                }
+            }
             OpeningKind::Window => {
                 let window_color = if op_color == Color32::TRANSPARENT {
                     theme::WINDOW

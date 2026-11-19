@@ -184,6 +184,7 @@ impl FloorPlanApp {
             self.opening_tile(ui, OpeningKind::Door, "Porta", Icon::Door);
             self.opening_tile(ui, OpeningKind::Window, "Janela", Icon::Window);
             self.opening_tile(ui, OpeningKind::SaloonDoor, "Vai-e-vem", Icon::SaloonDoor);
+            self.opening_tile(ui, OpeningKind::Gap, "Vão livre", Icon::Gap);
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Modificar", |ui| {
@@ -504,6 +505,9 @@ impl FloorPlanApp {
             OpeningKind::Window => "Inserir janela: clique numa parede ou arraste até ela (J)",
             OpeningKind::SaloonDoor => {
                 "Inserir porta vai-e-vem (tipo faroeste): duas folhas que abrem para os dois lados"
+            }
+            OpeningKind::Gap => {
+                "Abrir um vão livre (sem porta), como o lado aberto de uma área coberta; até 30 m"
             }
         };
         let response = tip(

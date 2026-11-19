@@ -16,6 +16,7 @@ pub(super) fn tool_icon(tool: Tool) -> Icon {
         Tool::Opening(OpeningKind::Door) => Icon::Door,
         Tool::Opening(OpeningKind::Window) => Icon::Window,
         Tool::Opening(OpeningKind::SaloonDoor) => Icon::SaloonDoor,
+        Tool::Opening(OpeningKind::Gap) => Icon::Gap,
         Tool::Fixture(kind) => Icon::Fixture(kind),
     }
 }
@@ -29,6 +30,7 @@ pub(super) fn tool_name(tool: Tool) -> &'static str {
         Tool::Opening(OpeningKind::Door) => "Porta",
         Tool::Opening(OpeningKind::Window) => "Janela",
         Tool::Opening(OpeningKind::SaloonDoor) => "Porta vai-e-vem",
+        Tool::Opening(OpeningKind::Gap) => "Vão livre",
         Tool::Fixture(kind) => kind.label(),
     }
 }

@@ -1,7 +1,7 @@
 use super::super::{FloorPlanApp, Selection, theme::*};
 use super::icons::{self, Icon};
 use super::widgets::{icon_button_sized, panel_header};
-use crate::domain::geometry::format_meters;
+use crate::domain::{geometry::format_meters, model::OpeningKind};
 use eframe::egui::{self, Align2, Margin, Pos2, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 /// One element row of the browser.
@@ -52,11 +52,11 @@ impl FloorPlanApp {
                 value: format_meters(wall.length()),
             })
             .collect();
-        let openings = |doors: bool| {
+        let openings = |accept: fn(OpeningKind) -> bool| {
             project
                 .openings
                 .iter()
-                .filter(|opening| opening.kind.is_door() == doors)
+                .filter(|opening| accept(opening.kind))
                 .enumerate()
                 .map(|(index, opening)| Row {
                     selection: Selection::Opening(opening.id),
@@ -97,13 +97,19 @@ impl FloorPlanApp {
                 key: "doors",
                 title: "Portas",
                 icon: Icon::Door,
-                rows: openings(true),
+                rows: openings(OpeningKind::is_door),
             },
             Group {
                 key: "windows",
                 title: "Janelas",
                 icon: Icon::Window,
-                rows: openings(false),
+                rows: openings(|kind| kind == OpeningKind::Window),
+            },
+            Group {
+                key: "gaps",
+                title: "Vãos livres",
+                icon: Icon::Gap,
+                rows: openings(|kind| kind == OpeningKind::Gap),
             },
             Group {
                 key: "fixtures",
