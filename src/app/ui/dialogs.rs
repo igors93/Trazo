@@ -254,7 +254,7 @@ impl FloorPlanApp {
                         for tip in [
                             "Terreno, Parede e Cômodo: arraste, ou clique no primeiro e no segundo ponto.",
                             "Porta e Janela: clique numa parede, ou arraste o botão do ribbon até ela.",
-                            "Roda do mouse: zoom no cursor · botão do meio: mover a vista.",
+                            "Roda do mouse: zoom no cursor · botão do meio: mover a vista · botão direito: menu de contexto.",
                             "Navegador do projeto: clique para selecionar, duplo clique para aproximar.",
                             "Valores numéricos aceitam vírgula decimal (ex.: 3,50).",
                         ] {

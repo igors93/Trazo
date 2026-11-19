@@ -1,9 +1,14 @@
-//! The view's label and the floating navigation bar over the plan.
+//! The view's label, the floating navigation bar and the context menu of
+//! the plan.
 
-use super::super::{FloorPlanApp, canvas::overlay, theme::*};
+use super::super::{FloorPlanApp, RibbonTab, Selection, Tool, canvas::overlay, theme::*};
 use super::icons::{self, Icon};
 use super::options_bar::{tool_icon, tool_name};
-use super::widgets::icon_button_sized;
+use super::widgets::{
+    MENU_WIDTH, caps_galley, icon_button_sized, menu_check, menu_item, menu_separator,
+    menu_submenu,
+};
+use crate::domain::{geometry::format_meters, model::OpeningKind};
 use eframe::egui::{self, Pos2, Rect, Sense, Stroke, Ui, UiBuilder, vec2};
 
 impl FloorPlanApp {
@@ -57,6 +62,100 @@ impl FloorPlanApp {
             detail,
             MUTED,
         );
+    }
+
+    /// A short name for the selected element, for the context menu.
+    fn selection_title(&self, selection: Selection) -> String {
+        match selection {
+            Selection::Wall(id) => self
+                .project
+                .walls
+                .iter()
+                .find(|wall| wall.id == id)
+                .map(|wall| format!("Parede · {}", format_meters(wall.length())))
+                .unwrap_or_else(|| "Parede".to_owned()),
+            Selection::Room(id) => self
+                .project
+                .rooms
+                .iter()
+                .find(|room| room.id == id)
+                .map(|room| format!("Cômodo · {}", room.display_name()))
+                .unwrap_or_else(|| "Cômodo".to_owned()),
+            Selection::Opening(id) => self
+                .project
+                .openings
+                .iter()
+                .find(|opening| opening.id == id)
+                .map(|opening| {
+                    format!("{} · {}", opening.kind.label(), format_meters(opening.width()))
+                })
+                .unwrap_or_else(|| "Abertura".to_owned()),
+            Selection::Terrain(_) => "Terreno".to_owned(),
+        }
+    }
+
+    /// The right-click menu of the plan: what can be done with the element
+    /// under the pointer, then the view and drawing commands.
+    pub(in crate::app) fn canvas_context_menu(&mut self, ui: &mut Ui) {
+        ui.set_width(MENU_WIDTH);
+        if let Some(selection) = self.selection {
+            let title = self.selection_title(selection);
+            let galley = caps_galley(ui.painter(), &title, 10.5, MUTED);
+            let (rect, _) = ui.allocate_exact_size(vec2(MENU_WIDTH, 22.0), Sense::hover());
+            ui.painter().galley(
+                Pos2::new(rect.left() + 10.0, rect.center().y - galley.size().y / 2.0),
+                galley,
+                MUTED,
+            );
+            if menu_item(ui, Some(Icon::PanelRight), "Propriedades", "").clicked() {
+                self.show_properties = true;
+                ui.close();
+            }
+            if menu_item(ui, Some(Icon::Search), "Aproximar", "").clicked() {
+                self.zoom_to_selection(selection);
+                ui.close();
+            }
+            if menu_item(ui, Some(Icon::Delete), "Excluir", "Delete").clicked() {
+                self.delete_selection();
+                ui.close();
+            }
+            menu_separator(ui);
+        }
+        if menu_item(ui, Some(Icon::ZoomFit), "Enquadrar tudo", "F").clicked() {
+            self.fit_view_requested();
+            ui.close();
+        }
+        let draw = menu_submenu(ui, Icon::Wall, "Desenhar");
+        egui::containers::menu::SubMenu::new().show(ui, &draw, |ui| {
+            ui.set_width(MENU_WIDTH);
+            for (icon, label, key, tool) in [
+                (Icon::Select, "Selecionar", "V", Tool::Move),
+                (Icon::Terrain, "Terreno", "T", Tool::Terrain),
+                (Icon::Wall, "Parede", "P", Tool::Wall),
+                (Icon::Room, "Cômodo", "C", Tool::Room),
+                (Icon::Door, "Porta", "R", Tool::Opening(OpeningKind::Door)),
+                (Icon::Window, "Janela", "J", Tool::Opening(OpeningKind::Window)),
+            ] {
+                if menu_item(ui, Some(icon), label, key).clicked() {
+                    self.set_tool(tool);
+                    if tool == Tool::Terrain {
+                        self.sync_terrain_fields();
+                    }
+                    self.ribbon_tab = RibbonTab::Architecture;
+                    ui.close();
+                }
+            }
+        });
+        menu_separator(ui);
+        if menu_check(ui, "Grade", "F7", self.show_grid).clicked() {
+            self.toggle_grid();
+        }
+        if menu_check(ui, "Encaixe magnético", "F3", self.snap_enabled).clicked() {
+            self.toggle_snap();
+        }
+        if menu_check(ui, "Modo orto", "F8", self.ortho_enabled).clicked() {
+            self.toggle_ortho();
+        }
     }
 
     /// The floating zoom bar at the top right of the plan.

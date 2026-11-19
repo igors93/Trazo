@@ -351,6 +351,27 @@ impl FloorPlanApp {
         }
 
         self.canvas_navigation(ui, navigation);
+
+        if response.secondary_clicked() {
+            let point = response
+                .interact_pointer_pos()
+                .filter(|position| on_canvas(*position))
+                .map(|position| view.to_world(position));
+            self.context_click(point);
+        }
+        response.context_menu(|ui| self.canvas_context_menu(ui));
+    }
+
+    /// A right click: it ends a drawing in progress and selects the element
+    /// under the pointer, so the context menu acts on it.
+    pub(super) fn context_click(&mut self, point: Option<Point>) {
+        if self.draft_start().is_some() {
+            self.cancel_creation();
+            self.message = "Desenho cancelado.".to_owned();
+        }
+        if let Some(selection) = point.and_then(|point| self.pick(point)) {
+            self.select(selection);
+        }
     }
 
     /// Picks the element at `point` and gets ready to drag it.
@@ -503,6 +524,33 @@ mod tests {
         let center = app.opening_center(door).unwrap();
         assert!((center.x - 4.0).abs() < 1e-3, "{center:?}");
         assert!(app.dirty && app.history.can_undo());
+    }
+
+    #[test]
+    fn right_click_ends_a_draft_and_selects_what_is_under_the_pointer() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let wall = app
+            .project
+            .add_wall(Point::new(0.0, 0.0), Point::new(4.0, 0.0))
+            .unwrap();
+
+        app.set_tool(Tool::Wall);
+        app.creation_state = CreationState::WaitingSecondPoint {
+            start: Point::new(0.0, 2.0),
+        };
+        app.context_click(Some(Point::new(9.0, 9.0)));
+        assert!(app.draft_start().is_none());
+        assert_eq!(app.selection, None);
+        assert_eq!(app.tool, Tool::Wall);
+
+        app.context_click(Some(Point::new(2.0, 0.02)));
+        assert_eq!(app.selection, Some(Selection::Wall(wall)));
+        assert_eq!(app.tool, Tool::Move);
+
+        // Right-clicking empty space keeps the selection for the menu.
+        app.context_click(Some(Point::new(9.0, 9.0)));
+        assert_eq!(app.selection, Some(Selection::Wall(wall)));
     }
 
     #[test]

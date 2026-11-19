@@ -313,6 +313,20 @@ pub fn menu_item(ui: &mut Ui, icon: Option<Icon>, label: &str, shortcut: &str) -
     })
 }
 
+/// A menu entry that opens a submenu, marked with an arrow.
+pub fn menu_submenu(ui: &mut Ui, icon: Icon, label: &str) -> Response {
+    let response = menu_row(ui, label, "", |painter, slot, enabled| {
+        let (ink, accent) = tones(enabled, false);
+        icons::paint(painter, slot, icon, ink, accent);
+    });
+    let arrow = Rect::from_center_size(
+        Pos2::new(response.rect.right() - 14.0, response.rect.center().y),
+        vec2(13.0, 13.0),
+    );
+    icons::paint(ui.painter(), arrow, Icon::ChevronRight, MUTED, MUTED);
+    response
+}
+
 /// A menu entry that shows a check mark while `checked`.
 pub fn menu_check(ui: &mut Ui, label: &str, shortcut: &str, checked: bool) -> Response {
     menu_row(ui, label, shortcut, |painter, slot, enabled| {
