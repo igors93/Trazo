@@ -7,6 +7,7 @@ use crate::domain::{
     model::{OpeningKind, Project},
 };
 
+mod csv;
 mod drawings;
 mod labels;
 
@@ -401,6 +402,11 @@ pub fn pdf(project: &Project, path: &Path) -> Result<(), String> {
 /// elementos independentes para edição em programas gráficos e CAD.
 pub fn svg(project: &Project, path: &Path) -> Result<(), String> {
     fs::write(path, document(project).markup).map_err(|error| error.to_string())
+}
+
+/// Exporta áreas, esquadrias e quantitativos em CSV UTF-8.
+pub fn csv(project: &Project, path: &Path) -> Result<(), String> {
+    csv::write(project, path)
 }
 
 #[cfg(test)]

@@ -707,6 +707,20 @@ impl FloorPlanApp {
         };
     }
 
+    fn export_csv(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Planilha CSV", &["csv"])
+            .set_file_name("quantitativos.csv")
+            .save_file()
+        else {
+            return;
+        };
+        self.message = match export::csv(&self.project, &path) {
+            Ok(()) => "CSV de áreas, esquadrias e quantitativos exportado.".to_owned(),
+            Err(error) => format!("Não foi possível exportar CSV: {error}"),
+        };
+    }
+
     pub fn revalidate_selection(&mut self) {
         let valid = match self.selection {
             Some(Selection::Wall(id)) => self.project.walls.iter().any(|w| w.id == id),

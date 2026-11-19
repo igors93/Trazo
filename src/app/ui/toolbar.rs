@@ -546,6 +546,14 @@ impl FloorPlanApp {
             {
                 self.export_svg();
             }
+            if tip(
+                ribbon_button(ui, Icon::Export, "Planilha CSV", false, false),
+                "Exportar áreas, esquadrias e quantitativos para planilha",
+            )
+            .clicked()
+            {
+                self.export_csv();
+            }
         });
     }
 
