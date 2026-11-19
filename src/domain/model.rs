@@ -60,6 +60,10 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_layer_id: Option<u64>,
 
+    /// Persistent associative dimensions (internal, external, aligned, angular).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dimensions: Vec<super::dimensions::DimensionEntity>,
+
     next_id: u64,
 }
 
@@ -95,6 +99,8 @@ impl Default for Project {
             layers: super::layers::default_layers(),
 
             active_layer_id: None,
+
+            dimensions: Vec::new(),
 
             next_id: 1,
         }

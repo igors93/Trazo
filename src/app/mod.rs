@@ -38,6 +38,7 @@ enum DocDialog {
     #[default]
     None,
     Layers,
+    Dimensions,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -3,6 +3,7 @@ use eframe::egui::{self, Margin, Ui};
 mod browser;
 mod connect;
 mod dialogs;
+mod dimensions;
 mod header;
 pub(super) mod icons;
 pub(in crate::app) use icons::Glyph;
@@ -88,5 +89,6 @@ impl FloorPlanApp {
         self.help_dialog(&context);
         self.connect_dialog(&context);
         self.layers_dialog(&context);
+        self.dimensions_dialog(&context);
     }
 }

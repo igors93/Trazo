@@ -570,6 +570,7 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         dimensions && project.category_visible(crate::domain::layers::LayerCategory::Dimensions);
     if show_dims {
         occupied.extend(paint_dimensions(painter, view, project));
+        paint_associative_dimensions(painter, view, project);
     }
 
     if project.category_visible(crate::domain::layers::LayerCategory::Rooms) {
@@ -659,6 +660,89 @@ fn paint_empty_state(painter: &Painter, area: Rect) {
         theme::regular(11.5),
         theme::MUTED,
     );
+}
+
+fn paint_associative_dimensions(painter: &Painter, view: ViewTransform, project: &Project) {
+    use crate::domain::dimensions::ResolvedDimension;
+    let line_stroke = Stroke::new(1.0, theme::TEXT_2);
+    let tick_stroke = Stroke::new(1.5, theme::WALL);
+    for dim in &project.dimensions {
+        if !dim.visible {
+            continue;
+        }
+        let Some(resolved) = project.resolve_dimension(dim) else {
+            continue;
+        };
+        match &resolved {
+            ResolvedDimension::Linear {
+                p1,
+                p2,
+                dim_p1,
+                dim_p2,
+                label,
+                ..
+            } => {
+                let s1 = view.to_screen(*p1);
+                let s2 = view.to_screen(*p2);
+                let d1 = view.to_screen(*dim_p1);
+                let d2 = view.to_screen(*dim_p2);
+                if s1.distance(d1) > 1.5 {
+                    painter.line_segment([s1, d1], line_stroke);
+                }
+                if s2.distance(d2) > 1.5 {
+                    painter.line_segment([s2, d2], line_stroke);
+                }
+                painter.line_segment([d1, d2], line_stroke);
+                for end in [d1, d2] {
+                    painter.line_segment(
+                        [end + egui::vec2(-3.5, 3.5), end + egui::vec2(3.5, -3.5)],
+                        tick_stroke,
+                    );
+                }
+                let mid = d1.lerp(d2, 0.5);
+                let galley =
+                    painter.layout_no_wrap(label.clone(), theme::regular(11.0), theme::TEXT);
+                let pill = Rect::from_center_size(
+                    mid + egui::vec2(0.0, -9.0),
+                    galley.size() + egui::vec2(6.0, 2.0),
+                );
+                painter.rect_filled(
+                    pill,
+                    3.0,
+                    Color32::from_rgba_unmultiplied(255, 255, 255, 220),
+                );
+                painter.galley(pill.min + egui::vec2(3.0, 1.0), galley, theme::TEXT);
+            }
+            ResolvedDimension::Angular {
+                vertex,
+                start_angle,
+                sweep,
+                radius,
+                label,
+                ..
+            } => {
+                let arc_pts: Vec<Pos2> = resolved
+                    .arc_points(20)
+                    .into_iter()
+                    .map(|p| view.to_screen(p))
+                    .collect();
+                if arc_pts.len() >= 2 {
+                    painter.add(egui::Shape::line(arc_pts, line_stroke));
+                }
+                let mid_angle = start_angle + sweep * 0.5;
+                let text_world =
+                    crate::domain::drawing::point_at_angle(*vertex, radius + 0.18, mid_angle);
+                let text_pos = view.to_screen(text_world);
+                painter.text(
+                    text_pos,
+                    egui::Align2::CENTER_CENTER,
+                    label,
+                    theme::regular(11.0),
+                    theme::TEXT,
+                );
+            }
+        }
+    }
 }
 
 fn paint_preview(

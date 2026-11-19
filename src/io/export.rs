@@ -52,11 +52,18 @@ fn document(project: &Project) -> SvgDocument {
         && let Some(terrain) = &project.terrain
     {
         let (x, y) = point(terrain.min);
-        let w = terrain.width() * pixels_per_meter;
-        let h = terrain.height() * pixels_per_meter;
+        let terrain_points = terrain
+            .outline()
+            .into_iter()
+            .map(|corner| {
+                let (x, y) = point(corner);
+                format!("{x:.1},{y:.1}")
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
         let _ = writeln!(
             svg,
-            "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" fill=\"#f8fbfe\" stroke=\"#5e8bbf\" stroke-width=\"2.5\" stroke-dasharray=\"28 8 5 8\"/>"
+            "<polygon points=\"{terrain_points}\" fill=\"#f8fbfe\" stroke=\"#5e8bbf\" stroke-width=\"2.5\" stroke-dasharray=\"28 8 5 8\"/>"
         );
         let label = format!(
             "Terreno · {} × {} · {:.2} m²",
@@ -71,6 +78,22 @@ fn document(project: &Project) -> SvgDocument {
             y - 12.0,
             escaped(&label)
         );
+        for lot in &project.lots {
+            let points = lot
+                .vertices
+                .iter()
+                .map(|corner| {
+                    let (x, y) = point(*corner);
+                    format!("{x:.1},{y:.1}")
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = writeln!(
+                svg,
+                "<polygon points=\"{points}\" fill=\"none\" stroke=\"#5e8bbf\" stroke-width=\"1.5\" stroke-dasharray=\"10 6\" data-lot=\"{}\"/>",
+                escaped(&lot.name)
+            );
+        }
     }
     if project.category_visible(crate::domain::layers::LayerCategory::Rooms) {
         for room in &project.rooms {
@@ -358,6 +381,85 @@ fn document(project: &Project) -> SvgDocument {
     }
 
     drawings::write_drawings(&mut svg, project, &point);
+
+    if project.category_visible(crate::domain::layers::LayerCategory::Dimensions) {
+        for dim in &project.dimensions {
+            if !dim.visible {
+                continue;
+            }
+            let Some(resolved) = project.resolve_dimension(dim) else {
+                continue;
+            };
+            match &resolved {
+                crate::domain::dimensions::ResolvedDimension::Linear {
+                    p1,
+                    p2,
+                    dim_p1,
+                    dim_p2,
+                    label,
+                    ..
+                } => {
+                    let (x1, y1) = point(*p1);
+                    let (x2, y2) = point(*p2);
+                    let (dx1, dy1) = point(*dim_p1);
+                    let (dx2, dy2) = point(*dim_p2);
+                    let _ = writeln!(
+                        svg,
+                        "<line x1=\"{x1:.1}\" y1=\"{y1:.1}\" x2=\"{dx1:.1}\" y2=\"{dy1:.1}\" stroke=\"#627489\" stroke-width=\"0.9\"/><line x1=\"{x2:.1}\" y1=\"{y2:.1}\" x2=\"{dx2:.1}\" y2=\"{dy2:.1}\" stroke=\"#627489\" stroke-width=\"0.9\"/><line x1=\"{dx1:.1}\" y1=\"{dy1:.1}\" x2=\"{dx2:.1}\" y2=\"{dy2:.1}\" stroke=\"#3b4e63\" stroke-width=\"1.1\"/>"
+                    );
+                    for (tx, ty) in [(dx1, dy1), (dx2, dy2)] {
+                        let _ = writeln!(
+                            svg,
+                            "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#3b4e63\" stroke-width=\"1.5\"/>",
+                            tx - 4.0,
+                            ty + 4.0,
+                            tx + 4.0,
+                            ty - 4.0
+                        );
+                    }
+                    let (mx, my) = ((dx1 + dx2) * 0.5, (dy1 + dy2) * 0.5 - 5.0);
+                    let _ = writeln!(
+                        svg,
+                        "<text x=\"{mx:.1}\" y=\"{my:.1}\" font-family=\"Arial, sans-serif\" font-size=\"11\" fill=\"#1c2b3c\" text-anchor=\"middle\">{}</text>",
+                        escaped(label)
+                    );
+                }
+                crate::domain::dimensions::ResolvedDimension::Angular {
+                    vertex,
+                    start_angle,
+                    sweep,
+                    radius,
+                    label,
+                    ..
+                } => {
+                    let pts: String = resolved
+                        .arc_points(20)
+                        .into_iter()
+                        .map(|p| {
+                            let (x, y) = point(p);
+                            format!("{x:.1},{y:.1}")
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let _ = writeln!(
+                        svg,
+                        "<polyline points=\"{pts}\" fill=\"none\" stroke=\"#3b4e63\" stroke-width=\"1.1\"/>"
+                    );
+                    let mid = crate::domain::drawing::point_at_angle(
+                        *vertex,
+                        radius + 0.18,
+                        start_angle + sweep * 0.5,
+                    );
+                    let (mx, my) = point(mid);
+                    let _ = writeln!(
+                        svg,
+                        "<text x=\"{mx:.1}\" y=\"{my:.1}\" font-family=\"Arial, sans-serif\" font-size=\"11\" fill=\"#1c2b3c\" text-anchor=\"middle\">{}</text>",
+                        escaped(label)
+                    );
+                }
+            }
+        }
+    }
 
     let wall_width = base_wall_width;
     let mut occupied = labels::write_room_labels(&mut svg, project, &point, wall_width);

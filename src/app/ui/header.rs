@@ -267,6 +267,10 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::Layers;
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Ruler), "Cotas associativas...", "").clicked() {
+            self.active_doc_dialog = super::super::DocDialog::Dimensions;
+            ui.close();
+        }
     }
 
     pub(super) fn osnap_menu(&mut self, ui: &mut Ui) {
