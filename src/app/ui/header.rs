@@ -241,6 +241,9 @@ impl FloorPlanApp {
         if menu_check(ui, "Grade", "F7", self.show_grid).clicked() {
             self.toggle_grid();
         }
+        if menu_check(ui, "Cotas (cm)", "", self.show_dimensions).clicked() {
+            self.show_dimensions = !self.show_dimensions;
+        }
         if menu_check(ui, "Encaixe magnético", "F3", self.snap_enabled).clicked() {
             self.toggle_snap();
         }

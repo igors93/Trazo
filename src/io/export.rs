@@ -1,6 +1,7 @@
 use std::{fmt::Write as _, fs, path::Path};
 
 use crate::domain::{
+    annotations::{building_dimensions, centimetres},
     fixtures::{SymbolShape, Weight},
     geometry::{Point, WALL_THICKNESS_METERS, format_meters},
     model::{OpeningKind, Project},
@@ -233,6 +234,56 @@ fn document(project: &Project) -> SvgDocument {
             }
         }
     }
+    // Dimension chains in centimetres above and left of the building.
+    if let Some(dims) = building_dimensions(project) {
+        let (left, top) = point(dims.min);
+        let x_of = |x: f32| point(Point::new(x, dims.min.y)).0;
+        let y_of = |y: f32| point(Point::new(dims.min.x, y)).1;
+        let style = "stroke=\"#627489\" stroke-width=\"1\"";
+        let text = "font-family=\"Arial, sans-serif\" font-size=\"12\" fill=\"#3b4e63\" text-anchor=\"middle\"";
+        for (row, stations) in [
+            (top - 30.0, dims.xs.clone()),
+            (top - 58.0, vec![dims.min.x, dims.max.x]),
+        ] {
+            let xs: Vec<f32> = stations.iter().map(|x| x_of(*x)).collect();
+            let _ = writeln!(svg, "<line x1=\"{:.1}\" y1=\"{row:.1}\" x2=\"{:.1}\" y2=\"{row:.1}\" {style}/>", xs[0], xs[xs.len() - 1]);
+            for x in &xs {
+                let _ = writeln!(
+                    svg,
+                    "<line x1=\"{x:.1}\" y1=\"{:.1}\" x2=\"{x:.1}\" y2=\"{:.1}\" {style}/><line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#3b4e63\" stroke-width=\"1.5\"/>",
+                    row - 6.0, row + 10.0, x - 4.0, row + 4.0, x + 4.0, row - 4.0
+                );
+            }
+            for (pair, span) in stations.windows(2).zip(xs.windows(2)) {
+                let value = centimetres(pair[1] - pair[0]);
+                if value.len() as f32 * 7.0 + 4.0 <= span[1] - span[0] {
+                    let _ = writeln!(svg, "<text x=\"{:.1}\" y=\"{:.1}\" {text}>{value}</text>", (span[0] + span[1]) / 2.0, row - 4.0);
+                }
+            }
+        }
+        for (column, stations) in [
+            (left - 30.0, dims.ys.clone()),
+            (left - 58.0, vec![dims.min.y, dims.max.y]),
+        ] {
+            let ys: Vec<f32> = stations.iter().map(|y| y_of(*y)).collect();
+            let _ = writeln!(svg, "<line x1=\"{column:.1}\" y1=\"{:.1}\" x2=\"{column:.1}\" y2=\"{:.1}\" {style}/>", ys[0], ys[ys.len() - 1]);
+            for y in &ys {
+                let _ = writeln!(
+                    svg,
+                    "<line x1=\"{:.1}\" y1=\"{y:.1}\" x2=\"{:.1}\" y2=\"{y:.1}\" {style}/><line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#3b4e63\" stroke-width=\"1.5\"/>",
+                    column - 6.0, column + 10.0, column - 4.0, y + 4.0, column + 4.0, y - 4.0
+                );
+            }
+            for (pair, span) in stations.windows(2).zip(ys.windows(2)) {
+                let value = centimetres(pair[1] - pair[0]);
+                if value.len() as f32 * 7.0 + 4.0 <= span[1] - span[0] {
+                    let (x, y) = (column - 4.0, (span[0] + span[1]) / 2.0);
+                    let _ = writeln!(svg, "<text x=\"{x:.1}\" y=\"{y:.1}\" transform=\"rotate(-90 {x:.1} {y:.1})\" {text}>{value}</text>");
+                }
+            }
+        }
+    }
+
     let wall_width = base_wall_width;
     let mut occupied = labels::write_room_labels(&mut svg, project, &point, wall_width);
     labels::write_wall_labels(

@@ -2,6 +2,7 @@ use eframe::egui::{self, Color32, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 
 use crate::app::theme;
 use crate::domain::{
+    annotations::{self, centimetres},
     fixtures::{Fixture, SymbolShape, Weight},
     geometry::{GRID_METERS, Point, WALL_THICKNESS_METERS, format_meters},
     model::{OpeningKind, Project, Wall},
@@ -48,6 +49,92 @@ pub struct PaintOptions {
     pub show_grid: bool,
     /// The fixture about to be placed, drawn under the pointer.
     pub ghost: Option<Fixture>,
+    /// Dimension chains around the building.
+    pub dimensions: bool,
+}
+
+/// Dimension chains in centimetres above and to the left of the building:
+/// one with every wall face, one with the total. Returns the bands they
+/// take, so labels keep clear of them.
+fn paint_dimensions(painter: &Painter, view: ViewTransform, project: &Project) -> Vec<Rect> {
+    let Some(dims) = annotations::building_dimensions(project) else {
+        return Vec::new();
+    };
+    let stroke = Stroke::new(1.0, theme::MUTED);
+    let tick = Stroke::new(1.4, theme::TEXT_2);
+    let font = theme::regular(10.5);
+    let corner = view.to_screen(dims.min);
+    let total = [dims.min, dims.max];
+
+    // Along the top, reading left to right.
+    for (row, stations) in [
+        (corner.y - 24.0, dims.xs.clone()),
+        (corner.y - 46.0, vec![total[0].x, total[1].x]),
+    ] {
+        let xs: Vec<f32> = stations
+            .iter()
+            .map(|x| view.to_screen(Point::new(*x, 0.0)).x)
+            .collect();
+        painter.line_segment(
+            [Pos2::new(xs[0], row), Pos2::new(*xs.last().unwrap(), row)],
+            stroke,
+        );
+        for x in &xs {
+            painter.line_segment([Pos2::new(*x, row - 5.0), Pos2::new(*x, row + 8.0)], stroke);
+            painter.line_segment(
+                [Pos2::new(x - 3.5, row + 3.5), Pos2::new(x + 3.5, row - 3.5)],
+                tick,
+            );
+        }
+        for (pair, span) in stations.windows(2).zip(xs.windows(2)) {
+            let galley =
+                painter.layout_no_wrap(centimetres(pair[1] - pair[0]), font.clone(), theme::TEXT_2);
+            if galley.size().x + 4.0 <= span[1] - span[0] {
+                let at = Pos2::new((span[0] + span[1]) / 2.0, row - 3.0);
+                painter.galley(at - egui::vec2(galley.size().x / 2.0, galley.size().y), galley, theme::TEXT_2);
+            }
+        }
+    }
+
+    // Down the left side, reading bottom to top.
+    for (column, stations) in [
+        (corner.x - 24.0, dims.ys.clone()),
+        (corner.x - 46.0, vec![total[0].y, total[1].y]),
+    ] {
+        let ys: Vec<f32> = stations
+            .iter()
+            .map(|y| view.to_screen(Point::new(0.0, *y)).y)
+            .collect();
+        painter.line_segment(
+            [Pos2::new(column, ys[0]), Pos2::new(column, *ys.last().unwrap())],
+            stroke,
+        );
+        for y in &ys {
+            painter.line_segment([Pos2::new(column - 5.0, *y), Pos2::new(column + 8.0, *y)], stroke);
+            painter.line_segment(
+                [Pos2::new(column - 3.5, y + 3.5), Pos2::new(column + 3.5, y - 3.5)],
+                tick,
+            );
+        }
+        for (pair, span) in stations.windows(2).zip(ys.windows(2)) {
+            let galley =
+                painter.layout_no_wrap(centimetres(pair[1] - pair[0]), font.clone(), theme::TEXT_2);
+            let (width, height) = (galley.size().x, galley.size().y);
+            if width + 4.0 <= span[1] - span[0] {
+                let middle = (span[0] + span[1]) / 2.0;
+                let at = Pos2::new(column - 3.0 - height, middle + width / 2.0);
+                painter.add(
+                    egui::epaint::TextShape::new(at, galley, theme::TEXT_2)
+                        .with_angle(-std::f32::consts::FRAC_PI_2),
+                );
+            }
+        }
+    }
+    let far = view.to_screen(dims.max);
+    vec![
+        Rect::from_min_max(Pos2::new(corner.x, corner.y - 62.0), Pos2::new(far.x, corner.y - 16.0)),
+        Rect::from_min_max(Pos2::new(corner.x - 62.0, corner.y), Pos2::new(corner.x - 16.0, far.y)),
+    ]
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -189,6 +276,7 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         preview,
         show_grid,
         ghost,
+        dimensions,
     } = options;
     painter.rect_filled(view.rect, 0.0, theme::CANVAS);
     if show_grid {
@@ -298,6 +386,10 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
     }
 
     let mut occupied = Vec::new();
+    if dimensions {
+        occupied.extend(paint_dimensions(painter, view, project));
+    }
+
     paint_room_labels(painter, view, project, &mut occupied);
     paint_wall_labels(painter, view, project, selection, &mut occupied);
     paint_terrain_label(painter, view, project, &mut occupied);

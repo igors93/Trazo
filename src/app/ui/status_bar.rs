@@ -104,6 +104,11 @@ Clique para ver como conectar uma IA."),
                 if toggle_pill(ui, "Grade", self.show_grid, "Mostrar a grade (F7)").clicked() {
                     self.toggle_grid();
                 }
+                if toggle_pill(ui, "Cotas", self.show_dimensions, "Cotas em cm em volta da construção")
+                    .clicked()
+                {
+                    self.show_dimensions = !self.show_dimensions;
+                }
                 divider(ui);
 
                 let coordinates = self

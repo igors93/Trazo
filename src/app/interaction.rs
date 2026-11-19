@@ -204,6 +204,7 @@ impl FloorPlanApp {
                     selection: self.selection,
                     preview: Some(Preview::Room(start, end)),
                     show_grid: self.show_grid,
+                    dimensions: self.show_dimensions,
                     ..Default::default()
                 },
             );
@@ -366,6 +367,7 @@ impl FloorPlanApp {
                 preview,
                 show_grid: self.show_grid,
                 ghost,
+                dimensions: self.show_dimensions,
             },
         );
         self.paint_view_aids(&painter, view);

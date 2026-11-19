@@ -19,6 +19,8 @@ pub struct Settings {
     pub ribbon_collapsed: bool,
     /// Wall lengths and room sides follow the block module.
     pub modulation: bool,
+    /// Dimension chains around the building.
+    pub dimensions: bool,
 }
 
 impl Default for Settings {
@@ -31,6 +33,7 @@ impl Default for Settings {
             show_properties: true,
             ribbon_collapsed: false,
             modulation: true,
+            dimensions: true,
         }
     }
 }

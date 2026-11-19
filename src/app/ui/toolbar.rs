@@ -414,6 +414,14 @@ impl FloorPlanApp {
             {
                 self.toggle_grid();
             }
+            if tip(
+                ribbon_button(ui, Icon::Ruler, "Cotas", self.show_dimensions, false),
+                "Mostrar as cotas em cm em volta da construção (faces das paredes e total)",
+            )
+            .clicked()
+            {
+                self.show_dimensions = !self.show_dimensions;
+            }
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Janelas", |ui| {

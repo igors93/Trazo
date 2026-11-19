@@ -149,6 +149,8 @@ pub struct FloorPlanApp {
     measurements: Vec<(Point, Point)>,
     /// Walls and rooms follow the block module while drawn.
     modulation_enabled: bool,
+    /// Dimension chains (cotas) around the building.
+    show_dimensions: bool,
     masonry_width_text: String,
     masonry_length_text: String,
     masonry_joint_text: String,
@@ -235,6 +237,7 @@ impl FloorPlanApp {
             fixture_depth_text: String::new(),
             measurements: Vec::new(),
             modulation_enabled: preferences.modulation,
+            show_dimensions: preferences.dimensions,
             masonry_width_text: String::new(),
             masonry_length_text: String::new(),
             masonry_joint_text: String::new(),
@@ -294,6 +297,7 @@ impl FloorPlanApp {
             show_properties: self.show_properties,
             ribbon_collapsed: self.ribbon_collapsed,
             modulation: self.modulation_enabled,
+            dimensions: self.show_dimensions,
         }
     }
 
