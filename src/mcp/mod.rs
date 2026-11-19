@@ -8,6 +8,7 @@
 use base64::Engine as _;
 use serde_json::{Value, json};
 
+pub mod bridge;
 pub mod protocol;
 pub mod server;
 

@@ -8,6 +8,13 @@ mod mcp;
 use eframe::egui;
 
 fn main() -> eframe::Result {
+    // `trazo --mcp-stdio`: no window of its own; it serves MCP on
+    // stdin/stdout for clients such as Claude Desktop.
+    if std::env::args().skip(1).any(|argument| argument == "--mcp-stdio") {
+        mcp::bridge::run(mcp::port());
+        return Ok(());
+    }
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Trazo")
