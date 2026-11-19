@@ -286,4 +286,107 @@ mod tests {
         assert!(abs.near(Point::new(2.5, 3.5), 1e-4));
         assert!(NumericSpec::Distance(3.0).resolve(None, None).is_none());
     }
+
+    #[test]
+    fn angle_lock_relative_space_pairs_and_char_filtering() {
+        let start = Some(Point::new(2.0, 2.0));
+        // Angle-only lock keeps pointer distance (5 m from (2,2) to (7,2)) at 90° (up -> -Y).
+        let locked = NumericSpec::Angle(90.0)
+            .resolve(start, Some(Point::new(7.0, 2.0)))
+            .unwrap();
+        assert!(locked.near(Point::new(2.0, -3.0), 1e-4));
+
+        // Relative offset and alternative dimension separators.
+        let rel = parse_numeric_input("@1,5 -0,5")
+            .unwrap()
+            .resolve(start, None)
+            .unwrap();
+        assert!(rel.near(Point::new(3.5, 1.5), 1e-4));
+        assert_eq!(
+            parse_numeric_input("2,5×3,0"),
+            Some(NumericSpec::Dimensions {
+                width: 2.5,
+                height: 3.0
+            })
+        );
+        assert_eq!(
+            parse_numeric_input("2.5*3"),
+            Some(NumericSpec::Dimensions {
+                width: 2.5,
+                height: 3.0
+            })
+        );
+        assert_eq!(
+            parse_numeric_input("4,25 1,75"),
+            Some(NumericSpec::Absolute(4.25, 1.75))
+        );
+
+        // Plain letters must not hijack tool shortcuts before typing starts,
+        // but dimension separators are allowed once typing is active.
+        assert!(!accepts_char('p', false));
+        assert!(!accepts_char('x', false));
+        assert!(accepts_char('3', false));
+        assert!(accepts_char('@', false));
+        assert!(accepts_char('<', false));
+        assert!(accepts_char('x', true));
+        assert!(accepts_char(',', true));
+        assert!(accepts_char(';', true));
+        assert!(!accepts_char('p', true));
+    }
+
+    #[test]
+    fn numeric_input_supports_room_dimensions_circle_radius_and_backspace_editing() {
+        use crate::app::{FloorPlanApp, Tool, tools::DrawKind};
+        use eframe::egui::{self, Key};
+
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+
+        // Room by exact dimensions `3,5x4,0`.
+        app.set_tool(Tool::Room);
+        app.apply_canvas_point(Point::new(0.0, 0.0));
+        app.draft_aim = Some(Point::new(2.0, 2.0));
+        app.draft_input = "3,5x4,0".to_owned();
+        app.commit_numeric_input();
+        let corners = app.pending_room.as_ref().expect("pending room corners");
+        assert!((crate::domain::geometry::polygon_area(corners) - 14.0).abs() < 1e-4);
+        app.pending_room = None;
+
+        // Circle by exact radius `2,5`.
+        app.set_tool(Tool::Draw(DrawKind::Circle));
+        app.apply_canvas_point(Point::new(5.0, 5.0));
+        app.draft_input = "2,5".to_owned();
+        app.commit_numeric_input();
+        assert_eq!(app.project.drawings.len(), 1);
+        match app.project.drawings[0].shape {
+            crate::domain::drawing::Shape::Circle { center, radius } => {
+                assert!(center.near(Point::new(5.0, 5.0), 1e-4));
+                assert!((radius - 2.5).abs() < 1e-4);
+            }
+            ref other => panic!("expected circle, got {other:?}"),
+        }
+
+        // Backspace edits draft_input instead of undoing a RoomPolygon corner.
+        app.set_tool(Tool::RoomPolygon);
+        app.add_polygon_point(Point::new(0.0, 0.0));
+        app.add_polygon_point(Point::new(3.0, 0.0));
+        app.draft_input = "2,5".to_owned();
+        let mut raw = egui::RawInput::default();
+        raw.events.push(egui::Event::Key {
+            key: Key::Backspace,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        context.begin_pass(raw);
+        app.handle_shortcuts(&context);
+        let _ = context.end_pass();
+        assert_eq!(app.draft_input, "2,");
+        assert_eq!(app.polygon_draft.len(), 2);
+
+        // Switching tools clears draft_input.
+        app.set_tool(Tool::Move);
+        assert!(app.draft_input.is_empty());
+    }
 }

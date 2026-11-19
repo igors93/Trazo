@@ -118,6 +118,26 @@ mod tests {
         let loaded = load_from(&older);
         assert!(!loaded.show_grid);
         assert!(loaded.snap_enabled && loaded.show_browser);
+        assert_eq!(loaded.osnap, OsnapSettings::default());
         let _ = fs::remove_file(&older);
+    }
+
+    #[test]
+    fn osnap_preferences_persist_across_saves() {
+        let path = temp_path("osnap");
+        let settings = Settings {
+            osnap: OsnapSettings {
+                midpoint: false,
+                tangent: false,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        save_to(&settings, &path).unwrap();
+        let loaded = load_from(&path);
+        assert!(!loaded.osnap.midpoint);
+        assert!(!loaded.osnap.tangent);
+        assert!(loaded.osnap.endpoint && loaded.osnap.intersection && loaded.osnap.center);
+        let _ = fs::remove_file(&path);
     }
 }

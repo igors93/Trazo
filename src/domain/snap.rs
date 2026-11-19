@@ -583,4 +583,98 @@ mod tests {
         assert!((ext.point.y - 6.0).abs() < 1e-4);
         assert!(ext.guide.is_some());
     }
+
+    #[test]
+    fn snaps_circle_and_arc_intersections_and_respects_arc_span() {
+        let mut project = Project::default();
+        // Horizontal line y = 0 from x = -5 to x = 5.
+        project
+            .add_drawing(Shape::Line {
+                start: Point::new(-5.0, 0.0),
+                end: Point::new(5.0, 0.0),
+            })
+            .unwrap();
+        // Upper-half arc around (0, 0) with radius 2: angles 0..=PI (in plan coords: +y side).
+        project
+            .add_drawing(Shape::Arc {
+                center: Point::new(0.0, 0.0),
+                radius: 2.0,
+                start: 0.0,
+                sweep: std::f64::consts::PI,
+            })
+            .unwrap();
+        // Full circle centred at (3, 0) with radius 2 (intersects arc at x = 1.5, y = +sqrt(1.75)).
+        project
+            .add_drawing(Shape::Circle {
+                center: Point::new(3.0, 0.0),
+                radius: 2.0,
+            })
+            .unwrap();
+
+        let all = OsnapSettings::default();
+        // Arc midpoint at angle PI/2 -> (0, 2).
+        let arc_mid = find_snap(&project, &[], Point::new(0.02, 2.01), None, 0.2, all);
+        assert_eq!(arc_mid.kind, SnapKind::Midpoint);
+        assert!(arc_mid.point.near(Point::new(0.0, 2.0), 1e-4));
+
+        // Circle-arc intersection on the arc's valid half (y > 0).
+        let y = (4.0_f64 - 2.25).sqrt();
+        let hit_valid = find_snap(&project, &[], Point::new(1.51, y + 0.01), None, 0.2, all);
+        assert_eq!(hit_valid.kind, SnapKind::Intersection);
+        assert!(hit_valid.point.near(Point::new(1.5, y), 1e-3));
+
+        // Symmetric point (1.5, -y) is NOT on the arc, so it must not snap as Intersection.
+        let hit_outside = find_snap(&project, &[], Point::new(1.51, -y - 0.01), None, 0.2, all);
+        assert_ne!(hit_outside.kind, SnapKind::Intersection);
+
+        // Segment-circle intersection at (5, 0) is also the line endpoint -> Endpoint wins priority.
+        let corner = find_snap(&project, &[], Point::new(5.01, 0.01), None, 0.2, all);
+        assert_eq!(corner.kind, SnapKind::Endpoint);
+        assert!(corner.point.near(Point::new(5.0, 0.0), 1e-4));
+
+        // Segment-circle intersection at (1, 0) is strictly interior -> Intersection.
+        let seg_circ = find_snap(&project, &[], Point::new(1.01, 0.02), None, 0.2, all);
+        assert_eq!(seg_circ.kind, SnapKind::Intersection);
+        assert!(seg_circ.point.near(Point::new(1.0, 0.0), 1e-4));
+    }
+
+    #[test]
+    fn disabling_individual_osnap_modes_and_snapping_to_draft_points() {
+        let mut project = Project::default();
+        project
+            .add_wall(Point::new(0.0, 0.0), Point::new(4.0, 0.0))
+            .unwrap();
+        let no_mid = OsnapSettings {
+            midpoint: false,
+            extension: false,
+            ..Default::default()
+        };
+        // Midpoint at (2, 0) is ignored when midpoint OSNAP is disabled; falls back to grid.
+        let hit = find_snap(&project, &[], Point::new(2.03, 0.02), None, 0.2, no_mid);
+        assert_eq!(hit.kind, SnapKind::Grid);
+
+        // Active polygon/polyline draft points expose endpoints and midpoints.
+        let draft = [Point::new(1.0, 3.0), Point::new(5.0, 3.0)];
+        let draft_end = find_snap(
+            &project,
+            &draft,
+            Point::new(1.02, 3.01),
+            None,
+            0.2,
+            OsnapSettings::default(),
+        );
+        assert_eq!(draft_end.kind, SnapKind::Endpoint);
+        assert!(draft_end.point.near(Point::new(1.0, 3.0), 1e-4));
+
+        let draft_mid = find_snap(
+            &project,
+            &draft,
+            Point::new(3.01, 3.02),
+            None,
+            0.2,
+            OsnapSettings::default(),
+        );
+        assert_eq!(draft_mid.kind, SnapKind::Midpoint);
+        assert!(draft_mid.point.near(Point::new(3.0, 3.0), 1e-4));
+    }
 }

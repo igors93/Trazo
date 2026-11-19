@@ -493,4 +493,98 @@ mod tests {
         assert_eq!(extract_path_token("/mcp/a/b"), None);
         assert_eq!(extract_path_token("/other/abc"), None);
     }
+
+    #[test]
+    fn tunnel_token_handles_proxy_headers_options_get_and_local_hosts() {
+        assert!(is_local_host("127.0.0.1"));
+        assert!(is_local_host("127.0.0.1:7799"));
+        assert!(is_local_host("localhost:7799"));
+        assert!(is_local_host("LOCALHOST"));
+        assert!(is_local_host("[::1]:7799"));
+        assert!(is_local_host(""));
+        assert!(!is_local_host("demo.trycloudflare.com"));
+        assert!(!is_local_host("192.168.0.10:7799"));
+
+        assert!(constant_time_eq(b"abc123", b"abc123"));
+        assert!(!constant_time_eq(b"abc123", b"abc124"));
+        assert!(!constant_time_eq(b"abc", b"abcd"));
+
+        let token = TunnelToken::new();
+        assert_eq!(token.current(), None);
+        assert!(!token.matches("anything"));
+        token.set(Some("chave-xyz".to_owned()));
+        assert_eq!(token.current().as_deref(), Some("chave-xyz"));
+        assert!(token.matches("chave-xyz"));
+        assert!(!token.matches("chave-xyZ"));
+
+        let (sender, receiver) = mpsc::channel::<ToolCall>();
+        std::thread::spawn(move || {
+            for call in receiver {
+                let _ = call.reply.send(ToolOutput::ok("ok").to_result());
+            }
+        });
+        let port = start_with_token(0, sender, token.clone(), || {}).unwrap();
+
+        let send = |method: &str, path: &str, headers: &str, body: &str| -> u16 {
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            write!(
+                stream,
+                "{method} {path} HTTP/1.1\r\n{headers}Accept: application/json\r\n\
+                 Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+            let mut raw = String::new();
+            stream.read_to_string(&mut raw).unwrap();
+            raw.split(' ').nth(1).unwrap().parse().unwrap()
+        };
+
+        let ping = r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#;
+        // CORS preflight passes through tunnel without requiring a token.
+        assert_eq!(
+            send(
+                "OPTIONS",
+                "/mcp",
+                "Host: demo.trycloudflare.com\r\nCf-Connecting-Ip: 1.2.3.4\r\n",
+                ""
+            ),
+            204
+        );
+        // Proxy headers force token check even if Host says 127.0.0.1.
+        assert_eq!(
+            send(
+                "POST",
+                "/mcp",
+                "Host: 127.0.0.1\r\nX-Forwarded-For: 203.0.113.9\r\n",
+                ping
+            ),
+            403
+        );
+        assert_eq!(
+            send(
+                "POST",
+                "/mcp/chave-xyz",
+                "Host: 127.0.0.1\r\nX-Forwarded-For: 203.0.113.9\r\n",
+                ping
+            ),
+            200
+        );
+        // GET over tunnel also requires the token.
+        assert_eq!(
+            send("GET", "/mcp", "Host: demo.trycloudflare.com\r\n", ""),
+            403
+        );
+        assert_eq!(
+            send(
+                "GET",
+                "/mcp/chave-xyz",
+                "Host: demo.trycloudflare.com\r\n",
+                ""
+            ),
+            200
+        );
+    }
 }
