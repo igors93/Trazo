@@ -11,6 +11,7 @@ mod inspector;
 mod layers;
 mod notes;
 mod options_bar;
+mod sheet;
 mod status_bar;
 mod toolbar;
 mod view;
@@ -92,5 +93,6 @@ impl FloorPlanApp {
         self.layers_dialog(&context);
         self.dimensions_dialog(&context);
         self.notes_dialog(&context);
+        self.sheet_dialog(&context);
     }
 }

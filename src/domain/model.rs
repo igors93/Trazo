@@ -68,6 +68,10 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<super::notes::AnnotationNote>,
 
+    /// Technical sheet format (A4–A0 or custom), orientation and margins.
+    #[serde(default)]
+    pub sheet: super::sheet::SheetLayout,
+
     next_id: u64,
 }
 
@@ -107,6 +111,8 @@ impl Default for Project {
             dimensions: Vec::new(),
 
             notes: Vec::new(),
+
+            sheet: super::sheet::SheetLayout::default(),
 
             next_id: 1,
         }

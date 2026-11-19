@@ -10,5 +10,6 @@ pub mod layers;
 pub mod masonry;
 pub mod model;
 pub mod notes;
+pub mod sheet;
 pub mod snap;
 pub mod wall_reference;

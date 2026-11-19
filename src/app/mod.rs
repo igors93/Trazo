@@ -40,6 +40,7 @@ enum DocDialog {
     Layers,
     Dimensions,
     Notes,
+    Sheet,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

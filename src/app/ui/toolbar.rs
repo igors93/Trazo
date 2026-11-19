@@ -577,6 +577,23 @@ impl FloorPlanApp {
                 self.export_csv();
             }
         });
+        vertical_divider(ui, 72.0);
+        ribbon_panel(ui, "Documentação", |ui| {
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::ExportPdf,
+                    "Prancha",
+                    self.active_doc_dialog == super::super::DocDialog::Sheet,
+                    false,
+                ),
+                "Configurar prancha (A4–A0), escala exata e carimbo",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Sheet;
+            }
+        });
     }
 
     fn opening_tile(&mut self, ui: &mut Ui, kind: OpeningKind, label: &str, icon: Icon) {
