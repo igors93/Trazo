@@ -1036,23 +1036,39 @@ impl Project {
     }
 
     pub fn add_opening(&mut self, wall_id: u64, kind: OpeningKind, t: f32) -> Option<u64> {
-        let wall = self.walls.iter().find(|wall| wall.id == wall_id)?;
+        self.add_opening_sized(wall_id, kind, t, None)
+    }
 
-        if wall.length() < kind.width() + 0.3 {
+    /// Inserts an opening centred at `t` along the wall, `width` wide (the
+    /// kind's usual width when `None`). The rules are those of resizing: 8 cm
+    /// of wall at each end and 10 cm between openings, measured with the
+    /// real widths, so an opening that could be widened to a size can also
+    /// be inserted at it.
+    pub fn add_opening_sized(
+        &mut self,
+        wall_id: u64,
+        kind: OpeningKind,
+        t: f32,
+        width: Option<f32>,
+    ) -> Option<u64> {
+        let size = width.unwrap_or_else(|| kind.width());
+        if !size.is_finite() || size < kind.min_width() - 1e-4 || size > kind.max_width() + 1e-4 {
+            return None;
+        }
+        let wall = self.walls.iter().find(|wall| wall.id == wall_id)?;
+        let length = wall.length();
+
+        if length < size + 0.16 {
             return None;
         }
 
-        let half = kind.width() / (2.0 * wall.length());
+        let half = size / (2.0 * length);
 
-        let t = t.clamp(
-            half + 0.08 / wall.length(),
-            1.0 - half - 0.08 / wall.length(),
-        );
+        let t = t.clamp(half + 0.08 / length, 1.0 - half - 0.08 / length);
 
         if self.openings.iter().any(|opening| {
             opening.wall_id == wall_id
-                && ((opening.t - t).abs() * wall.length())
-                    < (opening.kind.width() + kind.width()) / 2.0 + 0.15
+                && ((opening.t - t).abs() * length) < (opening.width() + size) / 2.0 + 0.10
         }) {
             return None;
         }
@@ -1063,7 +1079,7 @@ impl Project {
             wall_id,
             kind,
             t,
-            width: None,
+            width: width.map(|_| size),
         });
         Some(id)
     }
@@ -1828,6 +1844,35 @@ mod tests {
 
     #[test]
 
+    fn openings_are_inserted_at_their_own_width_and_respect_real_widths() {
+        let mut project = Project::default();
+        // A 1 m wall takes a 0.70 m door, though not the usual 0.90 m one.
+        let short = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(1.0, 0.0))
+            .unwrap();
+        assert!(project.add_opening(short, OpeningKind::Door, 0.5).is_none());
+        let door = project
+            .add_opening_sized(short, OpeningKind::Door, 0.5, Some(0.7))
+            .unwrap();
+        let width = project.openings.iter().find(|o| o.id == door).unwrap().width();
+        assert!((width - 0.7).abs() < 1e-6);
+        assert!(
+            project
+                .add_opening_sized(short, OpeningKind::Door, 0.5, Some(3.0))
+                .is_none()
+        );
+
+        // A 9 m open span blocks a door anywhere on it.
+        let long = project
+            .add_wall(Point::new(0.0, 5.0), Point::new(10.0, 5.0))
+            .unwrap();
+        project
+            .add_opening_sized(long, OpeningKind::Gap, 0.5, Some(9.0))
+            .unwrap();
+        assert!(project.add_opening(long, OpeningKind::Door, 0.2).is_none());
+    }
+
+    #[test]
     fn openings_cannot_overlap() {
         let mut project = Project::default();
 
@@ -2083,7 +2128,10 @@ mod tests {
                 .contains("Abertura maior que a parede")
         );
 
-        // 5. Reject collision / overlap with another opening on same wall
+        // 5. Reject collision / overlap with another opening on same wall.
+        // The door is still 1.95 m wide; inserting is checked against real
+        // widths, so narrow it first to make room for the window.
+        project.update_opening_width(door_id, 0.90).unwrap();
         let _op2_id = project.add_opening(w_id, OpeningKind::Window, 0.8).unwrap();
         // Expanding door to collide with op2
         let err_overlap = project.update_opening_width(door_id, 1.80);

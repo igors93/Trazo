@@ -630,15 +630,22 @@ impl FloorPlanApp {
             return Err("'posicao' é uma fração de 0 a 1 ao longo da parede (0,5 = meio).".to_owned());
         }
         let width = number(args, "largura")?;
+        if let Some(width) = width
+            && !(kind.min_width()..=kind.max_width()).contains(&width)
+        {
+            return Err(format!(
+                "A largura de {} deve estar entre {} e {}.",
+                kind.label().to_lowercase(),
+                format_meters(kind.min_width()),
+                format_meters(kind.max_width())
+            ));
+        }
         self.require(wall_id, |selection| matches!(selection, Selection::Wall(_)), "parede")?;
         self.apply_change(None, |project| {
-            let id = project.add_opening(wall_id, kind, position).ok_or(format!(
+            let id = project.add_opening_sized(wall_id, kind, position, width).ok_or(format!(
                 "Não há espaço para a {} nessa posição: ela não pode sobrepor outra abertura nem ficar perto demais das pontas da parede.",
                 kind.label().to_lowercase()
             ))?;
-            if let Some(width) = width {
-                project.update_opening_width(id, width)?;
-            }
             let width = project
                 .openings
                 .iter()
