@@ -90,6 +90,19 @@ struct ItemDrag {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+enum GripTarget {
+    WallCorner(Point),
+    DrawingHandle { id: u64, index: usize },
+    TerrainCorner(usize),
+}
+
+#[derive(Clone, Copy)]
+struct VertexDrag {
+    target: GripTarget,
+    moved: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum CreationState {
     Idle,
     WaitingSecondPoint { start: Point },
@@ -107,6 +120,7 @@ pub struct FloorPlanApp {
     creation_state: CreationState,
     selection: Option<Selection>,
     item_drag: Option<ItemDrag>,
+    vertex_drag: Option<VertexDrag>,
     drag_initial_project: Option<Project>,
     /// The corners of a room waiting for its name.
     pending_room: Option<Vec<Point>>,
@@ -216,6 +230,7 @@ impl FloorPlanApp {
             creation_state: CreationState::Idle,
             selection: None,
             item_drag: None,
+            vertex_drag: None,
             drag_initial_project: None,
             pending_room: None,
             polygon_draft: Vec::new(),
@@ -384,10 +399,13 @@ impl FloorPlanApp {
     /// here, so a move is never left outside the history and unsaved.
     fn commit_item_drag(&mut self) {
         let drag = self.item_drag.take();
+        let vertex = self.vertex_drag.take();
+        let moved = drag.is_some_and(|d| d.moved) || vertex.is_some_and(|v| v.moved);
         if let Some(initial) = self.drag_initial_project.take()
-            && drag.is_some_and(|drag| drag.moved)
+            && moved
         {
             self.record_change(initial);
+            self.sync_inspector_fields();
         }
     }
 

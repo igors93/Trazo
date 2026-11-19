@@ -1,5 +1,5 @@
 use super::{
-    CreationState, FloorPlanApp, ItemDrag, Selection, Tool,
+    CreationState, FloorPlanApp, GripTarget, ItemDrag, Selection, Tool, VertexDrag,
     canvas::{
         self, PaintOptions, Preview, ViewTransform,
         overlay::{self, SnapKind},
@@ -271,18 +271,29 @@ impl FloorPlanApp {
             return;
         }
 
-        let hovered_item = if self.item_drag.is_some() {
+        let hovered_grip = if self.tool == Tool::Move && self.item_drag.is_none() {
+            world.and_then(|point| self.grip_at(point))
+        } else {
+            None
+        };
+        let hovered_item = if self.item_drag.is_some() || self.vertex_drag.is_some() {
             None
         } else {
             world.and_then(|point| self.pick(point))
         };
 
-        if self.tool == Tool::Move && hovered_item.is_some() && !panning {
-            ui.ctx().set_cursor_icon(if self.item_drag.is_some() {
-                egui::CursorIcon::Grabbing
-            } else {
-                egui::CursorIcon::Grab
-            });
+        if self.tool == Tool::Move && !panning {
+            if self.vertex_drag.is_some() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            } else if hovered_grip.is_some() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            } else if hovered_item.is_some() {
+                ui.ctx().set_cursor_icon(if self.item_drag.is_some() {
+                    egui::CursorIcon::Grabbing
+                } else {
+                    egui::CursorIcon::Grab
+                });
+            }
         }
         if self.tool == Tool::Move
             && let Some(drag) = self.item_drag
@@ -437,6 +448,13 @@ impl FloorPlanApp {
             },
         );
         self.paint_view_aids(&painter, view);
+        if self.tool == Tool::Move {
+            for (pos, target) in self.selection_grips() {
+                let active = self.vertex_drag.is_some_and(|drag| drag.target == target)
+                    || hovered_grip.is_some_and(|(_, hovered)| hovered == target);
+                overlay::paint_vertex_grip(&painter, view.to_screen(pos), active);
+            }
+        }
         if self.tool == Tool::RoomPolygon && !self.polygon_draft.is_empty() {
             canvas::paint_polygon_draft(&painter, view, &self.polygon_draft, preview_cursor, false);
         }
@@ -563,8 +581,82 @@ impl FloorPlanApp {
         }
     }
 
-    /// Picks the element at `point` and gets ready to drag it.
+    /// Editable vertex handles for the current selection in Select/Move mode.
+    pub(super) fn selection_grips(&self) -> Vec<(Point, GripTarget)> {
+        match self.selection {
+            Some(Selection::Wall(id)) => self
+                .project
+                .walls
+                .iter()
+                .find(|wall| wall.id == id)
+                .map(|wall| {
+                    vec![
+                        (wall.start, GripTarget::WallCorner(wall.start)),
+                        (wall.end, GripTarget::WallCorner(wall.end)),
+                    ]
+                })
+                .unwrap_or_default(),
+            Some(Selection::Room(id)) => self
+                .project
+                .rooms
+                .iter()
+                .find(|room| room.id == id)
+                .and_then(|room| self.project.room_outline(room))
+                .map(|corners| {
+                    corners
+                        .into_iter()
+                        .map(|corner| (corner, GripTarget::WallCorner(corner)))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            Some(Selection::Drawing(id)) => self
+                .project
+                .drawing(id)
+                .map(|drawing| {
+                    crate::domain::model::Project::drawing_handles(&drawing.shape)
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, pos)| (pos, GripTarget::DrawingHandle { id, index }))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            Some(Selection::Terrain(_)) => self
+                .project
+                .terrain_corners()
+                .map(|corners| {
+                    corners
+                        .into_iter()
+                        .enumerate()
+                        .map(|(index, pos)| (pos, GripTarget::TerrainCorner(index)))
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn grip_at(&self, point: Point) -> Option<(Point, GripTarget)> {
+        let tolerance = self.screen_metres(10.0).clamp(0.08, 0.35);
+        self.selection_grips()
+            .into_iter()
+            .filter(|(pos, _)| pos.distance(point) <= tolerance)
+            .min_by(|a, b| a.0.distance(point).total_cmp(&b.0.distance(point)))
+    }
+
+    /// Picks the element (or vertex grip of the current selection) at `point`
+    /// and gets ready to drag it.
     pub(super) fn begin_item_drag(&mut self, point: Point) {
+        if let Some((_, target)) = self.grip_at(point) {
+            self.vertex_drag = Some(VertexDrag {
+                target,
+                moved: false,
+            });
+            self.item_drag = None;
+            self.drag_initial_project = Some(self.project.clone());
+            self.message = "Arraste o vértice para editar a geometria.".to_owned();
+            return;
+        }
+        self.vertex_drag = None;
         self.selection = self.pick(point);
         self.item_drag = self.selection.map(|selection| {
             // An opening keeps the spot where it was grabbed instead of
@@ -682,6 +774,10 @@ impl FloorPlanApp {
     /// Nothing changes until the pointer actually moves, so a click only
     /// selects.
     pub(super) fn drag_item_to(&mut self, point: Point) {
+        if self.vertex_drag.is_some() {
+            self.drag_vertex_to(point);
+            return;
+        }
         let Some(drag) = self.item_drag else {
             return;
         };
@@ -708,6 +804,53 @@ impl FloorPlanApp {
         if let Some(drag) = &mut self.item_drag {
             drag.last = current;
             drag.moved = true;
+        }
+    }
+
+    fn drag_vertex_to(&mut self, raw_point: Point) {
+        let Some(drag) = self.vertex_drag else {
+            return;
+        };
+        let target_point = if self.snap_enabled {
+            match drag.target {
+                GripTarget::DrawingHandle { .. } => raw_point.snapped_to(0.05),
+                GripTarget::WallCorner(_) | GripTarget::TerrainCorner(_) => {
+                    self.snap(raw_point, None)
+                }
+            }
+        } else {
+            raw_point
+        }
+        .rounded();
+
+        let outcome = match drag.target {
+            GripTarget::WallCorner(anchor) => {
+                if anchor.near(target_point, POINT_TOLERANCE) {
+                    return;
+                }
+                self.project.move_wall_corner(anchor, target_point)
+            }
+            GripTarget::DrawingHandle { id, index } => {
+                self.project.move_drawing_handle(id, index, target_point)
+            }
+            GripTarget::TerrainCorner(corner) => {
+                self.project.move_terrain_corner(corner, target_point)
+            }
+        };
+
+        match outcome {
+            Ok(()) => {
+                if let Some(active) = &mut self.vertex_drag {
+                    if let GripTarget::WallCorner(anchor) = &mut active.target {
+                        *anchor = target_point;
+                    }
+                    active.moved = true;
+                }
+                self.sync_inspector_fields();
+            }
+            Err(error) => {
+                self.message = error;
+            }
         }
     }
 
@@ -1091,5 +1234,41 @@ mod tests {
             Some(Selection::Room(_))
         ));
         assert_eq!(app.pick(Point::new(40.0, 40.0)), None);
+    }
+
+    #[test]
+    fn dragging_a_selected_room_corner_grip_reshapes_and_records_one_undo_step() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let room_id = app
+            .project
+            .add_polygon_room(
+                &[
+                    Point::new(0.0, 0.0),
+                    Point::new(4.0, 0.0),
+                    Point::new(4.0, 2.0),
+                    Point::new(2.0, 2.0),
+                    Point::new(2.0, 4.0),
+                    Point::new(0.0, 4.0),
+                ],
+                "Sala em L",
+            )
+            .unwrap();
+        app.set_tool(Tool::Move);
+        app.select(Selection::Room(room_id));
+        assert_eq!(app.selection_grips().len(), 6);
+
+        // Grab the inner corner (2, 2) and drag it to (3, 2).
+        app.begin_item_drag(Point::new(2.0, 2.0));
+        assert!(app.vertex_drag.is_some());
+        app.drag_item_to(Point::new(3.0, 2.0));
+        app.commit_item_drag();
+        let room = app.project.rooms.iter().find(|r| r.id == room_id).unwrap();
+        assert!((app.project.room_area(room).unwrap() - 13.0).abs() < 1e-4);
+
+        // One Ctrl+Z restores the original 12 m² L-room.
+        app.undo();
+        let room = app.project.rooms.iter().find(|r| r.id == room_id).unwrap();
+        assert!((app.project.room_area(room).unwrap() - 12.0).abs() < 1e-4);
     }
 }

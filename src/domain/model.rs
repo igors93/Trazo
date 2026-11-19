@@ -8,6 +8,7 @@ use super::geometry::{
 
 mod drawings;
 mod rooms;
+mod vertices;
 use super::masonry::{self, Masonry};
 
 /// Versão mais recente do formato `.trazo` gravado em disco.

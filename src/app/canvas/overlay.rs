@@ -337,6 +337,24 @@ pub fn paint_numeric_input_hud(
     painter.galley(badge.min + vec2(10.0, 6.0 + 18.0), hint_galley, hint_color);
 }
 
+/// Interactive CAD grip square drawn on editable vertices of the selection.
+pub fn paint_vertex_grip(painter: &Painter, position: Pos2, active: bool) {
+    let size = if active { 11.0 } else { 9.0 };
+    let rect = Rect::from_center_size(position, vec2(size, size));
+    let fill = if active {
+        theme::ACCENT
+    } else {
+        Color32::WHITE
+    };
+    let stroke = if active {
+        Stroke::new(1.8, Color32::WHITE)
+    } else {
+        Stroke::new(1.8, theme::ACCENT)
+    };
+    painter.rect_filled(rect, 1.5, fill);
+    painter.rect_stroke(rect, 1.5, stroke, StrokeKind::Middle);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
