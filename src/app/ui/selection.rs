@@ -211,7 +211,9 @@ impl FloorPlanApp {
                 let previous = self.project.clone();
                 match self.project.rename_group(group, &self.group_name_text) {
                     Ok(()) => {
-                        self.record_change(previous);
+                        if !self.record_change(previous) {
+                            return;
+                        }
                         self.message =
                             format!("Grupo renomeado para \"{}\".", self.group_name_text.trim());
                     }

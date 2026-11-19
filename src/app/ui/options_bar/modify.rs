@@ -129,3 +129,31 @@ impl FloorPlanApp {
         }
     }
 }
+
+impl FloorPlanApp {
+    pub(super) fn constrain_options(
+        &mut self,
+        ui: &mut Ui,
+        kind: crate::app::tools::ConstraintTool,
+    ) {
+        use crate::app::tools::ConstraintTool;
+        let step = match (kind, self.constraint_pick.is_some()) {
+            (ConstraintTool::Coincident, false) => "1. ponto de referência",
+            (ConstraintTool::Coincident, true) => "2. ponto que vai até ele",
+            (ConstraintTool::Distance, false) => "1. primeiro ponto ou linha",
+            (ConstraintTool::Distance, true) => "2. segundo ponto ou linha",
+            (_, false) => "1. linha de referência",
+            (_, true) => "2. linha que se ajusta",
+        };
+        chip(ui, step);
+        caption(ui, kind.hint());
+        divider(ui);
+        caption(
+            ui,
+            &format!(
+                "{} restrição(ões) na planta",
+                self.project.constraints.len()
+            ),
+        );
+    }
+}

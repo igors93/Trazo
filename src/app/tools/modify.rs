@@ -253,7 +253,9 @@ impl FloorPlanApp {
                 if self.tool != Tool::Move {
                     self.set_tool(Tool::Move);
                 }
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 let count = fragment.len();
                 self.set_selection_set(created);
                 self.sync_inspector_fields();
@@ -299,7 +301,9 @@ impl FloorPlanApp {
                         "Nada mudou: sem espaço nessa direção dentro do terreno.".to_owned();
                     return;
                 }
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 if let Some(created) = created {
                     self.set_selection_set(created);
                 }
@@ -431,7 +435,9 @@ impl FloorPlanApp {
                 };
                 match result {
                     Ok(()) => {
-                        self.record_change(previous);
+                        if !self.record_change(previous) {
+                            return;
+                        }
                         self.revalidate_selection();
                         self.message = if kind == ModifyKind::Trim {
                             "Trecho aparado. Clique em outro ou Esc."
@@ -457,7 +463,9 @@ impl FloorPlanApp {
                 };
                 match result {
                     Ok(pieces) => {
-                        self.record_change(previous);
+                        if !self.record_change(previous) {
+                            return;
+                        }
                         self.revalidate_selection();
                         self.message = format!(
                             "Dividido em {} partes. Clique em outro ou Esc.",
@@ -526,7 +534,9 @@ impl FloorPlanApp {
         let previous = self.project.clone();
         match self.project.offset_element(target, distance, point) {
             Ok(_) => {
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 self.modify_target = None;
                 self.message = format!(
                     "Cópia paralela criada a {}. Clique em outro elemento ou Esc.",

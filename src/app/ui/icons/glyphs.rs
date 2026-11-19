@@ -34,6 +34,10 @@ pub enum Glyph {
     Repeat,
     AlignLeft,
     Distribute,
+    Parallel,
+    Perpendicular,
+    Coincident,
+    FixedDistance,
 }
 
 /// Paints `glyph` with `pen`; `soft` fills, `thin` draws details.
@@ -231,6 +235,28 @@ pub(super) fn paint(pen: &Pen, glyph: Glyph, soft: Color32, thin: Stroke) {
             pen.rect(9.5, 7.0, 14.5, 17.0, ink);
             pen.dashed(&[(4.5, 12.0), (8.5, 12.0)], 1.5, 1.2, thin);
             pen.dashed(&[(15.5, 12.0), (19.5, 12.0)], 1.5, 1.2, thin);
+        }
+        Glyph::Parallel => {
+            pen.polyline(&[(4.0, 18.0), (14.0, 4.0)], ink);
+            pen.polyline(&[(10.0, 20.0), (20.0, 6.0)], accent);
+        }
+        Glyph::Perpendicular => {
+            pen.polyline(&[(4.0, 20.0), (20.0, 20.0)], ink);
+            pen.polyline(&[(12.0, 20.0), (12.0, 4.0)], accent);
+            pen.polyline(&[(12.0, 16.0), (16.0, 16.0), (16.0, 20.0)], thin);
+        }
+        Glyph::Coincident => {
+            pen.polyline(&[(3.0, 18.0), (12.0, 12.0)], ink);
+            pen.polyline(&[(12.0, 12.0), (21.0, 16.0)], accent);
+            pen.dot(12.0, 12.0, 2.6, accent.color);
+            pen.circle(12.0, 12.0, 4.5, thin);
+        }
+        Glyph::FixedDistance => {
+            pen.polyline(&[(4.0, 6.0), (4.0, 18.0)], ink);
+            pen.polyline(&[(20.0, 6.0), (20.0, 18.0)], ink);
+            pen.polyline(&[(4.0, 12.0), (20.0, 12.0)], accent);
+            pen.polyline(&[(7.0, 9.5), (4.5, 12.0), (7.0, 14.5)], accent);
+            pen.polyline(&[(17.0, 9.5), (19.5, 12.0), (17.0, 14.5)], accent);
         }
     }
 }

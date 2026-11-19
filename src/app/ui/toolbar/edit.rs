@@ -3,7 +3,7 @@
 
 use eframe::egui::{self, Ui};
 
-use crate::app::tools::ModifyKind;
+use crate::app::tools::{ConstraintTool, ModifyKind};
 use crate::app::ui::Glyph;
 use crate::app::ui::icons::Icon;
 use crate::app::ui::widgets::{
@@ -222,6 +222,40 @@ impl FloorPlanApp {
                     .clicked()
                 {
                     self.open_repeat_dialog();
+                }
+            });
+        });
+        vertical_divider(ui, 72.0);
+        ribbon_panel(ui, "Restrições", |ui| {
+            for kind in ConstraintTool::ALL {
+                if tip(
+                    ribbon_button(
+                        ui,
+                        Icon::Glyph(kind.glyph()),
+                        kind.label(),
+                        self.tool == Tool::Constrain(kind),
+                        false,
+                    ),
+                    kind.hint(),
+                )
+                .clicked()
+                {
+                    self.set_tool(Tool::Constrain(kind));
+                }
+            }
+            let constrained = self.selection_has_constraints();
+            ribbon_stack(ui, |ui| {
+                if ui
+                    .add_enabled_ui(constrained, |ui| {
+                        tip(
+                            ribbon_small(ui, Icon::Delete, "Remover", false),
+                            "Remove as restrições das paredes e desenhos selecionados (a geometria fica como está)",
+                        )
+                    })
+                    .inner
+                    .clicked()
+                {
+                    self.remove_selection_constraints();
                 }
             });
         });

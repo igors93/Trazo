@@ -479,7 +479,10 @@ impl FloorPlanApp {
             && self.project.rooms.is_empty()
             && self.project.terrain.is_none();
         let previous = std::mem::replace(&mut self.project, draft);
-        self.record_change(previous);
+        // The plan's constraints hold for the assistant's edits too.
+        if !self.record_change(previous) {
+            return Err(self.message.clone());
+        }
         if was_empty {
             self.fit_view_requested();
         }

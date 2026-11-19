@@ -224,7 +224,9 @@ impl FloorPlanApp {
         let label = shape.label();
         match self.project.add_drawing(shape) {
             Ok(_) => {
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 self.message = format!("{label} criado(a). Continue desenhando ou Esc.");
             }
             Err(error) => self.message = error,

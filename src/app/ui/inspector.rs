@@ -147,6 +147,9 @@ impl FloorPlanApp {
                     None if self.tool == Tool::Terrain => self.terrain_inspector(ui),
                     None => self.project_inspector(ui),
                 }
+                if let Some(entity) = self.selection.and_then(crate::domain::model::Entity::of) {
+                    self.constraints_section(ui, entity);
+                }
             });
     }
 

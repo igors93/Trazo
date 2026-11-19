@@ -85,6 +85,8 @@ enum Tool {
     Draw(tools::DrawKind),
     /// Copy, move, turn, mirror, offset, trim and extend.
     Modify(tools::ModifyKind),
+    /// Keeps lines parallel or perpendicular, points together or distances fixed.
+    Constrain(tools::ConstraintTool),
 }
 
 /// A selected element: the domain's reference to it.
@@ -240,6 +242,13 @@ pub struct FloorPlanApp {
     repeat_form: Option<tools::RepeatForm>,
     /// The name of the selected group, as typed in the properties panel.
     group_name_text: String,
+    /// Why the last edit was refused, shown again at the end of the frame
+    /// over any message written after it.
+    edit_notice: Option<String>,
+    /// The first pick of a constraint tool.
+    constraint_pick: Option<tools::ConstraintPick>,
+    /// The distances of the constraints, as typed in the properties panel.
+    constraint_texts: std::collections::HashMap<u64, String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -357,6 +366,9 @@ impl FloorPlanApp {
             split_parts: 1,
             repeat_form: None,
             group_name_text: String::new(),
+            edit_notice: None,
+            constraint_pick: None,
+            constraint_texts: std::collections::HashMap::new(),
         };
         app.sync_masonry_fields();
         app
@@ -461,6 +473,7 @@ impl FloorPlanApp {
         self.draft_input.clear();
         self.modify_anchor = None;
         self.modify_target = None;
+        self.constraint_pick = None;
     }
 
     /// Ends an element drag in progress, keeping what it moved as one undo
@@ -511,6 +524,7 @@ impl FloorPlanApp {
             }
             Tool::Draw(kind) => kind.hint(),
             Tool::Modify(kind) => kind.hint(),
+            Tool::Constrain(kind) => kind.hint(),
             Tool::Measure => {
                 "Clique em dois pontos para medir. Encaixa em cantos, faces e batentes; nada é alterado."
             }
@@ -701,7 +715,9 @@ impl FloorPlanApp {
             Tool::Terrain => {
                 let previous = self.project.clone();
                 if let Some(id) = self.project.set_terrain(start, end) {
-                    self.record_change(previous);
+                    if !self.record_change(previous) {
+                        return;
+                    }
                     self.set_selection(Some(Selection::Terrain(id)));
                     if let Some(terrain) = &self.project.terrain {
                         self.terrain_width_text =
@@ -724,7 +740,9 @@ impl FloorPlanApp {
                 );
                 let previous = self.project.clone();
                 if self.project.add_wall(wall_start, wall_end).is_some() {
-                    self.record_change(previous);
+                    if !self.record_change(previous) {
+                        return;
+                    }
                     self.message = if self.wall_reference
                         == crate::domain::wall_reference::WallReference::Center
                     {
@@ -1148,7 +1166,9 @@ impl FloorPlanApp {
                         .to_owned();
                 return;
             }
-            self.record_change(previous);
+            if !self.record_change(previous) {
+                return;
+            }
             self.sync_inspector_fields();
             self.message = format!(
                 "{} movidos {}. Setas: 0,25 m · Shift+setas: 1 m.",
@@ -1192,7 +1212,9 @@ impl FloorPlanApp {
             .to_owned();
             return;
         }
-        self.record_change(previous);
+        if !self.record_change(previous) {
+            return;
+        }
         self.sync_inspector_fields();
         self.message = format!(
             "Seleção movida {}. Setas: 0,25 m · Shift+setas: 1 m.",
@@ -1215,7 +1237,9 @@ impl FloorPlanApp {
             let previous = self.project.clone();
             match self.project.rotate_fixture(id) {
                 Ok(()) => {
-                    self.record_change(previous);
+                    if !self.record_change(previous) {
+                        return;
+                    }
                     self.sync_inspector_fields();
                     self.message = "Objeto girado 90°.".to_owned();
                 }
@@ -1244,7 +1268,9 @@ impl FloorPlanApp {
         }
         let previous = self.project.clone();
         self.project.flip_opening(id, side, hinge);
-        self.record_change(previous);
+        if !self.record_change(previous) {
+            return;
+        }
         self.message = match (side, hinge) {
             (true, false) => "Porta abrindo para o outro lado da parede.",
             (false, true) => "Dobradiça da porta trocada de lado.",
@@ -1285,7 +1311,9 @@ impl FloorPlanApp {
         }
         let previous = self.project.clone();
         self.project.masonry = material;
-        self.record_change(previous);
+        if !self.record_change(previous) {
+            return;
+        }
         self.sync_masonry_fields();
         self.message = format!(
             "Novas paredes: {} (parede acabada de {}).",
@@ -1336,7 +1364,9 @@ impl FloorPlanApp {
             }
             None => self.project.set_all_walls_masonry(&material),
         }
-        self.record_change(previous);
+        if !self.record_change(previous) {
+            return;
+        }
         self.message = format!(
             "{} construída(s) com {}.",
             if only.is_some() {
@@ -1390,7 +1420,9 @@ impl FloorPlanApp {
         let previous = self.project.clone();
         match self.project.set_opening_heights(id, height, sill) {
             Ok(()) => {
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 self.sync_inspector_fields();
             }
             Err(error) => self.message = error,
@@ -1413,7 +1445,9 @@ impl FloorPlanApp {
             .update_fixture(id, None, Some((width, depth)), None)
         {
             Ok(()) => {
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 self.sync_inspector_fields();
                 self.message = format!("Objeto com {width:.2} × {depth:.2} m.").replace('.', ",");
             }
@@ -1488,7 +1522,9 @@ impl FloorPlanApp {
                 .set_terrain(origin, Point::new(origin.x + width, origin.y + height))
                 .unwrap()
         };
-        self.record_change(previous);
+        if !self.record_change(previous) {
+            return;
+        }
         self.set_selection(Some(Selection::Terrain(id)));
         self.fit_view_requested();
         self.message = format!(
@@ -1510,7 +1546,9 @@ impl FloorPlanApp {
     fn center_content_on_terrain(&mut self) {
         let previous = self.project.clone();
         if self.project.center_content_on_terrain() {
-            self.record_change(previous);
+            if !self.record_change(previous) {
+                return;
+            }
             self.fit_view_requested();
             self.message = "Planta centralizada no terreno.".to_owned();
         } else {
@@ -1579,14 +1617,32 @@ impl FloorPlanApp {
             .then_some((width, height))
     }
 
-    fn record_change(&mut self, previous: Project) {
+    /// Records `previous` as the undo step of the edit just made, once the
+    /// constraints have been kept (moving what the edit did not touch).
+    /// Returns false when the constraints refused the edit, or undid it,
+    /// leaving the project as it was; the message then says why, and the
+    /// caller must not announce a change.
+    fn record_change(&mut self, previous: Project) -> bool {
         // Deleted elements leave their groups (a group of one goes).
         self.project.prune_groups();
+        let edited = previous != self.project;
+        if let Err(error) = self.project.settle_constraints(&previous) {
+            self.project = previous;
+            self.message = error;
+            self.edit_notice = Some(self.message.clone());
+            return false;
+        }
         if previous == self.project {
-            return;
+            if edited {
+                self.message = "As restrições mantiveram a geometria como estava; remova a restrição para fazer essa mudança.".to_owned();
+                self.edit_notice = Some(self.message.clone());
+                return false;
+            }
+            return true;
         }
         self.history.record(previous);
         self.mark_edited_outside_history();
+        true
     }
 
     /// Marks the project as changed and due for the crash-recovery draft,
@@ -1612,7 +1668,9 @@ impl FloorPlanApp {
             let previous = self.project.clone();
             self.project.delete_elements(&items);
             self.clear_selection();
-            self.record_change(previous);
+            if !self.record_change(previous) {
+                return;
+            }
             self.message = format!("{summary} removidos.");
             self.sync_inspector_fields();
             return;
@@ -1637,7 +1695,9 @@ impl FloorPlanApp {
                     self.project.delete_drawing(id);
                 }
             }
-            self.record_change(previous);
+            if !self.record_change(previous) {
+                return;
+            }
             self.message = match selection {
                 Selection::Wall(_) => "Parede removida.",
                 Selection::Room(_) => "Cômodo removido.",
@@ -1660,6 +1720,7 @@ impl FloorPlanApp {
         {
             self.group_name_text = group.name.clone();
         }
+        self.sync_constraint_fields();
         match self.selection {
             Some(Selection::Fixture(id)) => {
                 if let Some(fixture) = self.project.fixtures.iter().find(|f| f.id == id) {
@@ -1712,7 +1773,9 @@ impl FloorPlanApp {
         let previous = self.project.clone();
         match self.project.resize_wall_length(id, new_length) {
             Ok(()) => {
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 self.sync_inspector_fields();
                 self.message = format!("Comprimento da parede alterado para {:.2} m.", new_length)
                     .replace('.', ",");
@@ -1765,7 +1828,9 @@ impl FloorPlanApp {
 
         let previous = self.project.clone();
         self.project = tx;
-        self.record_change(previous);
+        if !self.record_change(previous) {
+            return;
+        }
         self.sync_inspector_fields();
         if name_changed && dimensions_changed {
             self.message = format!(
@@ -1803,7 +1868,9 @@ impl FloorPlanApp {
         let previous = self.project.clone();
         match self.project.update_opening_width(id, new_w) {
             Ok(()) => {
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 self.sync_inspector_fields();
                 self.message =
                     format!("Largura da abertura alterada para {:.2} m.", new_w).replace('.', ",");
@@ -1820,7 +1887,9 @@ impl FloorPlanApp {
             if let Some(id) = self.project.add_opening(wall_id, kind, t) {
                 // Doors open towards the side of the wall that was clicked.
                 self.project.swing_towards(id, point);
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 self.message = if kind.is_door() {
                     format!(
                         "{} adicionada, abrindo para o lado clicado. I inverte o lado; Shift+I, a dobradiça.",
@@ -2296,6 +2365,10 @@ impl eframe::App for FloorPlanApp {
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.show_layout(ui);
+        // A refused edit's reason wins over a message written after it.
+        if let Some(notice) = self.edit_notice.take() {
+            self.message = notice;
+        }
         self.persist_settings();
         self.save_recovery_if_pending();
     }

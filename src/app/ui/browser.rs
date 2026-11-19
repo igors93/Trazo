@@ -156,6 +156,28 @@ impl FloorPlanApp {
                     })
                     .collect(),
             },
+            Group {
+                key: "constraints",
+                title: "Restrições",
+                icon: Icon::Glyph(super::Glyph::Parallel),
+                rows: project
+                    .constraints
+                    .iter()
+                    .map(|constraint| {
+                        let [a, b] = constraint.kind.entities();
+                        let mut members = vec![a.element()];
+                        if b != a {
+                            members.push(b.element());
+                        }
+                        Row {
+                            selection: b.element(),
+                            members,
+                            label: constraint.kind.label(),
+                            value: constraint.kind.symbol(),
+                        }
+                    })
+                    .collect(),
+            },
         ]
     }
 

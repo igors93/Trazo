@@ -161,7 +161,9 @@ impl FloorPlanApp {
             .update_drawing(id, Shape::Circle { center, radius })
         {
             Ok(()) => {
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 self.message = format!("Raio alterado para {}.", format_meters(radius));
             }
             Err(error) => self.message = error,

@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{Group, Opening, Project, Room, Wall};
+use super::{Constraint, ConstraintKind, Entity, Group, Opening, Project, Room, Wall};
 use crate::domain::drawing::Drawing;
 use crate::domain::element::Element;
 use crate::domain::fixtures::Fixture;
@@ -22,6 +22,8 @@ pub struct Fragment {
     pub drawings: Vec<Drawing>,
     /// Groups whose members all came along (by their original ids).
     pub groups: Vec<Group>,
+    /// Constraints between elements that all came along.
+    pub constraints: Vec<Constraint>,
 }
 
 impl Fragment {
@@ -144,6 +146,18 @@ impl Project {
             .filter(|group| group.members.iter().all(included))
             .cloned()
             .collect();
+        let constraints: Vec<Constraint> = self
+            .constraints
+            .iter()
+            .filter(|constraint| {
+                constraint
+                    .kind
+                    .entities()
+                    .iter()
+                    .all(|entity| included(&entity.element()))
+            })
+            .copied()
+            .collect();
         Fragment {
             walls: self
                 .walls
@@ -153,6 +167,7 @@ impl Project {
                 .collect(),
             rooms,
             groups,
+            constraints,
             openings: self
                 .openings
                 .iter()
@@ -263,6 +278,40 @@ impl Project {
             });
             created.push(Element::Drawing(id));
             copies.insert(Element::Drawing(drawing.id), Element::Drawing(id));
+        }
+        // Constraints between copies tie the copies.
+        let copy_of = |entity: Entity| match copies.get(&entity.element()) {
+            Some(Element::Wall(id)) => Some(Entity::Wall(*id)),
+            Some(Element::Drawing(id)) => Some(Entity::Drawing(*id)),
+            _ => None,
+        };
+        for constraint in &fragment.constraints {
+            let mut kind = constraint.kind;
+            let mapped = match &mut kind {
+                ConstraintKind::Parallel { a, b }
+                | ConstraintKind::Perpendicular { a, b }
+                | ConstraintKind::LineDistance { a, b, .. } => match (copy_of(*a), copy_of(*b)) {
+                    (Some(new_a), Some(new_b)) => {
+                        (*a, *b) = (new_a, new_b);
+                        true
+                    }
+                    _ => false,
+                },
+                ConstraintKind::Coincident { a, b }
+                | ConstraintKind::PointDistance { a, b, .. } => {
+                    match (copy_of(a.entity), copy_of(b.entity)) {
+                        (Some(new_a), Some(new_b)) => {
+                            (a.entity, b.entity) = (new_a, new_b);
+                            true
+                        }
+                        _ => false,
+                    }
+                }
+            };
+            if mapped {
+                let id = tx.id();
+                tx.constraints.push(Constraint { id, kind });
+            }
         }
         // Groups copied whole are groups again.
         for group in &fragment.groups {

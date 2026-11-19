@@ -122,7 +122,9 @@ impl FloorPlanApp {
                 .add_polygon_room(&corners, self.room_name.trim())
             {
                 Ok(_) => {
-                    self.record_change(previous);
+                    if !self.record_change(previous) {
+                        return;
+                    }
                     self.message = format!("Cômodo {} criado.", self.room_name.trim());
                 }
                 Err(error) => self.message = error,
@@ -313,6 +315,7 @@ impl FloorPlanApp {
                             "Porta e Janela: clique numa parede, ou arraste o botão do ribbon até ela.",
                             "Roda do mouse: zoom no cursor · botão do meio: mover a vista · botão direito: menu de contexto.",
                             "Navegador do projeto: clique para selecionar, duplo clique para aproximar.",
+                            "Restrições (aba Editar): paralelas, perpendiculares, pontos coincidentes e distâncias fixas são mantidas a cada edição.",
                             "Valores numéricos aceitam vírgula decimal (ex.: 3,50).",
                         ] {
                             ui.horizontal_wrapped(|ui| {

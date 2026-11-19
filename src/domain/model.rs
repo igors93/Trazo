@@ -8,6 +8,7 @@ use super::geometry::{
 
 mod arrange;
 mod auto_rooms;
+mod constraints;
 mod drawings;
 mod elements;
 mod fragment;
@@ -19,6 +20,7 @@ mod site;
 mod vertices;
 use super::masonry::{self, Masonry};
 pub use arrange::{Alignment, Axis, MAX_COPIES};
+pub use constraints::{Constraint, ConstraintKind, Entity, Vertex};
 pub use fragment::Fragment;
 pub use groups::Group;
 
@@ -103,6 +105,10 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<Group>,
 
+    /// Parallels, perpendiculars, coincident points and fixed distances.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub constraints: Vec<Constraint>,
+
     next_id: u64,
 }
 
@@ -155,6 +161,8 @@ impl Default for Project {
 
             sheet_set: super::sheet_set::SheetSet::default(),
             groups: Vec::new(),
+
+            constraints: Vec::new(),
 
             next_id: 1,
         }
@@ -1216,6 +1224,9 @@ impl Project {
             warnings.push(format!("{dropped} desenhos inválidos foram removidos."));
         }
         max_id = max_id.max(highest);
+        for constraint in &self.constraints {
+            max_id = max_id.max(constraint.id);
+        }
         for group in &self.groups {
             max_id = max_id.max(group.id);
         }
@@ -1233,11 +1244,23 @@ impl Project {
             ));
         }
 
-        // 5. Groups only hold elements that exist.
+        // 5. Groups and constraints only name elements that exist.
         let dissolved = self.prune_groups();
         if dissolved > 0 {
             warnings.push(format!(
                 "{dissolved} grupos sem elementos suficientes foram desfeitos."
+            ));
+        }
+        let dropped = self.prune_constraints();
+        if dropped > 0 {
+            warnings.push(format!(
+                "{dropped} restrições sem os elementos que ligavam foram removidas."
+            ));
+        }
+        let conflicting = self.repair_constraints();
+        if conflicting > 0 {
+            warnings.push(format!(
+                "{conflicting} restrições impossíveis de manter foram removidas."
             ));
         }
 

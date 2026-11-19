@@ -2,6 +2,7 @@ use eframe::egui::{self, Margin, Ui};
 
 mod browser;
 mod connect;
+mod constraints;
 mod dialogs;
 mod dimensions;
 mod header;

@@ -81,7 +81,9 @@ impl FloorPlanApp {
         let previous = self.project.clone();
         match change(&mut self.project, &items) {
             Ok(done) => {
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 self.revalidate_selection();
                 self.sync_inspector_fields();
                 self.message = done;
@@ -99,7 +101,9 @@ impl FloorPlanApp {
         let previous = self.project.clone();
         match self.project.join_elements(&items) {
             Ok(joined) => {
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 self.set_selection(Some(joined));
                 self.sync_inspector_fields();
                 self.message = match joined {
@@ -140,7 +144,9 @@ impl FloorPlanApp {
         let previous = self.project.clone();
         match self.project.group_elements(&items, "") {
             Ok(id) => {
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 let name = self
                     .project
                     .groups
@@ -166,7 +172,9 @@ impl FloorPlanApp {
             self.message = "A seleção não está em nenhum grupo.".to_owned();
             return;
         }
-        self.record_change(previous);
+        if !self.record_change(previous) {
+            return;
+        }
         self.sync_inspector_fields();
         self.message =
             format!("{count} grupo(s) desfeito(s); os elementos continuam selecionados.");
@@ -245,7 +253,9 @@ impl FloorPlanApp {
                     self.set_tool(Tool::Move);
                     self.set_selection_set(items);
                 }
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return false;
+                }
                 self.sync_inspector_fields();
                 self.message = format!("{} cópia(s) criada(s).", copies.len());
                 self.repeat_form = None;

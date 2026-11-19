@@ -22,6 +22,7 @@ pub(super) fn tool_icon(tool: Tool) -> Icon {
         Tool::Measure => Icon::Ruler,
         Tool::Draw(kind) => Icon::Glyph(kind.glyph()),
         Tool::Modify(kind) => Icon::Glyph(kind.glyph()),
+        Tool::Constrain(kind) => Icon::Glyph(kind.glyph()),
     }
 }
 
@@ -40,6 +41,7 @@ pub(super) fn tool_name(tool: Tool) -> &'static str {
         Tool::Measure => "Medir",
         Tool::Draw(kind) => kind.label(),
         Tool::Modify(kind) => kind.label(),
+        Tool::Constrain(kind) => kind.label(),
     }
 }
 
@@ -105,6 +107,7 @@ impl FloorPlanApp {
                 Tool::Wall | Tool::Room => self.masonry_options(ui),
                 Tool::Draw(kind) => self.draw_options(ui, kind),
                 Tool::Modify(kind) => self.modify_options(ui, kind),
+                Tool::Constrain(kind) => self.constrain_options(ui, kind),
                 Tool::RoomPolygon => {
                     self.masonry_options(ui);
                     divider(ui);

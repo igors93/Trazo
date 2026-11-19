@@ -411,6 +411,11 @@ impl FloorPlanApp {
                         self.modify_click(kind, raw);
                     }
                 }
+                Tool::Constrain(kind) => {
+                    if let Some(raw) = world {
+                        self.constrain_click(kind, raw);
+                    }
+                }
                 Tool::Opening(kind) => self.add_opening_at(point, kind),
                 Tool::Fixture(kind) => {
                     if let Some(raw) = world {
@@ -459,6 +464,21 @@ impl FloorPlanApp {
             // The wall or drawing offset, trim or extend would act on.
             self.modify_target
                 .or_else(|| world.and_then(|point| self.pick_editable(point)))
+        } else if let Tool::Constrain(kind) = self.tool {
+            // What the constraint tool has picked, or would pick.
+            self.constraint_pick
+                .map(Self::constraint_pick_element)
+                .or_else(|| {
+                    let point = world?;
+                    match kind {
+                        super::tools::ConstraintTool::Coincident
+                        | super::tools::ConstraintTool::Distance => self
+                            .pick_vertex(point)
+                            .map(|(vertex, _)| vertex.entity.element())
+                            .or_else(|| self.pick_line(point).map(|line| line.element())),
+                        _ => self.pick_line(point).map(|line| line.element()),
+                    }
+                })
         } else {
             None
         }
@@ -510,6 +530,19 @@ impl FloorPlanApp {
                     &group.name,
                 );
             }
+        }
+        // The constraints of the selection, or all of them with the tool.
+        for (at, text, concerned) in self.constraint_marks() {
+            overlay::paint_constraint_badge(&painter, view.to_screen(at), &text, concerned);
+        }
+        if let Tool::Constrain(kind) = self.tool
+            && matches!(
+                kind,
+                super::tools::ConstraintTool::Coincident | super::tools::ConstraintTool::Distance
+            )
+            && let Some((_, at)) = world.and_then(|point| self.pick_vertex(point))
+        {
+            overlay::paint_snap_marker(&painter, view.to_screen(at), SnapKind::Endpoint);
         }
         if let Some(selection_box) = self.box_select
             && selection_box.start.distance(selection_box.end) >= self.screen_metres(4.0)
@@ -584,6 +617,7 @@ impl FloorPlanApp {
                     | Tool::Measure
                     | Tool::Draw(_)
                     | Tool::Modify(_)
+                    | Tool::Constrain(_)
             ) || opening_target;
             if drawing {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::None);
@@ -995,7 +1029,9 @@ impl FloorPlanApp {
             placed.quarter_turns,
         ) {
             Some(_) => {
-                self.record_change(previous);
+                if !self.record_change(previous) {
+                    return;
+                }
                 self.message = format!(
                     "{} inserido(a). Clique de novo para outro, ou Esc.",
                     kind.label()
@@ -1013,6 +1049,57 @@ impl FloorPlanApp {
             self.update_box_select(point);
             return;
         }
+        if self.project.constraints.is_empty() {
+            self.drag_step(point);
+            return;
+        }
+        // Constraints hold while dragging: what the drag does not touch
+        // follows, and a step that cannot keep them is not taken.
+        let before = self.project.clone();
+        let drags = (self.item_drag, self.vertex_drag);
+        let corner = match self.vertex_drag {
+            Some(VertexDrag {
+                target: GripTarget::WallCorner(anchor),
+                ..
+            }) => self.project.walls.iter().find_map(|wall| {
+                if wall
+                    .start
+                    .near(anchor, crate::domain::geometry::JOIN_TOLERANCE)
+                {
+                    Some((wall.id, true))
+                } else if wall
+                    .end
+                    .near(anchor, crate::domain::geometry::JOIN_TOLERANCE)
+                {
+                    Some((wall.id, false))
+                } else {
+                    None
+                }
+            }),
+            _ => None,
+        };
+        self.drag_step(point);
+        if self.project == before {
+            return;
+        }
+        if let Err(error) = self.project.settle_constraints(&before) {
+            self.project = before;
+            (self.item_drag, self.vertex_drag) = drags;
+            self.message = error;
+            return;
+        }
+        // The dragged corner is wherever the constraints left it.
+        if let (Some((id, at_start)), Some(drag)) = (corner, &mut self.vertex_drag)
+            && let GripTarget::WallCorner(anchor) = &mut drag.target
+            && let Some(wall) = self.project.walls.iter().find(|wall| wall.id == id)
+        {
+            *anchor = if at_start { wall.start } else { wall.end };
+        }
+        self.sync_inspector_fields();
+    }
+
+    /// One step of a drag, before the constraints are kept.
+    fn drag_step(&mut self, point: Point) {
         if self.vertex_drag.is_some() {
             self.drag_vertex_to(point);
             return;

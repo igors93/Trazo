@@ -355,6 +355,34 @@ pub fn paint_vertex_grip(painter: &Painter, position: Pos2, active: bool) {
     painter.rect_stroke(rect, 1.5, stroke, StrokeKind::Middle);
 }
 
+/// The mark of a constraint (∥, ⊥, ●, ↔ 1,20 m) at `position`; stronger
+/// when it concerns the selection.
+pub fn paint_constraint_badge(painter: &Painter, position: Pos2, text: &str, strong: bool) {
+    let color = if strong {
+        theme::ACCENT_TEXT
+    } else {
+        theme::MUTED
+    };
+    let galley = painter.layout_no_wrap(text.to_owned(), theme::strong(11.0), color);
+    let badge =
+        Rect::from_center_size(position + vec2(0.0, -12.0), galley.size() + vec2(10.0, 4.0));
+    painter.rect(
+        badge,
+        8.0,
+        Color32::WHITE,
+        Stroke::new(
+            1.0,
+            if strong {
+                theme::ACCENT_RING
+            } else {
+                theme::BORDER_STRONG
+            },
+        ),
+        StrokeKind::Inside,
+    );
+    painter.galley(badge.min + vec2(5.0, 2.0), galley, color);
+}
+
 /// A dashed frame around a selected group, with its name on the top edge.
 pub fn paint_group_frame(painter: &Painter, rect: Rect, name: &str) {
     let rect = rect.expand(6.0);

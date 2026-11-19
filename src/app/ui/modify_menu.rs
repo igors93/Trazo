@@ -3,14 +3,48 @@
 
 use eframe::egui::Ui;
 
-use super::super::{FloorPlanApp, RibbonTab};
+use super::super::{FloorPlanApp, RibbonTab, Tool};
 use super::Glyph;
 use super::icons::Icon;
 use super::widgets::{MENU_WIDTH, menu_item};
-use crate::app::tools::ModifyKind;
-use crate::domain::model::{Alignment, Axis};
+use crate::app::tools::{ConstraintTool, ModifyKind};
+use crate::domain::model::{Alignment, Axis, Entity};
 
 impl FloorPlanApp {
+    /// The constraint tools, and removing the selection's constraints.
+    pub(in crate::app) fn constraint_menu_items(&mut self, ui: &mut Ui) {
+        ui.set_width(MENU_WIDTH);
+        for kind in ConstraintTool::ALL {
+            if menu_item(ui, Some(Icon::Glyph(kind.glyph())), kind.label(), "")
+                .on_hover_text(kind.hint())
+                .clicked()
+            {
+                self.set_tool(Tool::Constrain(kind));
+                self.ribbon_tab = RibbonTab::Edit;
+                ui.close();
+            }
+        }
+        let constrained = self.selection_has_constraints();
+        if ui
+            .add_enabled_ui(constrained, |ui| {
+                menu_item(ui, Some(Icon::Delete), "Remover restrições da seleção", "")
+            })
+            .inner
+            .clicked()
+        {
+            self.remove_selection_constraints();
+            ui.close();
+        }
+    }
+
+    /// Whether any selected wall or drawing is constrained.
+    pub(in crate::app) fn selection_has_constraints(&self) -> bool {
+        self.selected()
+            .into_iter()
+            .filter_map(Entity::of)
+            .any(|entity| !self.project.constraints_of(entity).is_empty())
+    }
+
     /// The six alignments.
     pub(in crate::app) fn align_menu_items(&mut self, ui: &mut Ui) {
         ui.set_width(MENU_WIDTH);
