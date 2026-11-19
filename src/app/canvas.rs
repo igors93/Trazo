@@ -53,6 +53,86 @@ pub struct PaintOptions {
     pub dimensions: bool,
 }
 
+/// Door and window type tags ("P1 80/210") beside each opening: on the side
+/// a door does not swing to, or past its leaf when that side is taken. A tag
+/// that would cover another label is left out until the view is closer.
+fn paint_frame_tags(
+    painter: &Painter,
+    view: ViewTransform,
+    project: &Project,
+    occupied: &mut Vec<Rect>,
+) {
+    if view.scale < 24.0 {
+        return;
+    }
+    let types = annotations::frame_types(project);
+    for opening in &project.openings {
+        let (Some(frame), Some(wall)) = (
+            annotations::frame_of(&types, opening),
+            project.walls.iter().find(|wall| wall.id == opening.wall_id),
+        ) else {
+            continue;
+        };
+        let length = wall.length().max(1e-4);
+        let along = Point::new(
+            (wall.end.x - wall.start.x) / length,
+            (wall.end.y - wall.start.y) / length,
+        );
+        let mut normal = Point::new(-along.y, along.x);
+        if opening.kind.is_door() && !opening.flip_side {
+            normal = Point::new(-normal.x, -normal.y);
+        }
+        let center = Point::new(
+            wall.start.x + (wall.end.x - wall.start.x) * opening.t,
+            wall.start.y + (wall.end.y - wall.start.y) * opening.t,
+        );
+        let galley = painter.layout_no_wrap(frame.tag(), theme::strong(10.0), theme::ACCENT_TEXT);
+        let size = galley.size() + egui::vec2(8.0, 2.0);
+        let across = |direction: Point| {
+            (direction.x.abs() * size.x / 2.0 + direction.y.abs() * size.y / 2.0) / view.scale
+        };
+        let slide = opening.width() / 2.0 + across(along) + 4.0 / view.scale;
+        let rect_at = |side: f32, beyond: f32, shift: f32| {
+            let offset = wall.thickness() / 2.0 + beyond + 4.0 / view.scale + across(normal);
+            Rect::from_center_size(
+                view.to_screen(Point::new(
+                    center.x + normal.x * offset * side + along.x * shift,
+                    center.y + normal.y * offset * side + along.y * shift,
+                )),
+                size,
+            )
+        };
+        let leaf = if opening.kind.is_door() {
+            opening.width()
+        } else {
+            0.0
+        };
+        let candidates = [
+            rect_at(1.0, 0.0, 0.0),
+            rect_at(-1.0, leaf, 0.0),
+            rect_at(1.0, 0.0, slide),
+            rect_at(1.0, 0.0, -slide),
+            rect_at(-1.0, 0.0, slide),
+            rect_at(-1.0, 0.0, -slide),
+        ];
+        let Some(rect) = candidates
+            .into_iter()
+            .find(|rect| !occupied.iter().any(|taken| taken.intersects(*rect)))
+        else {
+            continue;
+        };
+        occupied.push(rect.expand(2.0));
+        painter.rect(
+            rect,
+            3.0,
+            Color32::from_rgba_unmultiplied(255, 255, 255, 230),
+            Stroke::new(0.8, theme::ACCENT_RING),
+            egui::StrokeKind::Inside,
+        );
+        painter.galley(rect.min + egui::vec2(4.0, 1.0), galley, theme::ACCENT_TEXT);
+    }
+}
+
 /// Dimension chains in centimetres above and to the left of the building:
 /// one with every wall face, one with the total. Returns the bands they
 /// take, so labels keep clear of them.
@@ -411,6 +491,9 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
     }
 
     paint_room_labels(painter, view, project, &mut occupied);
+    if dimensions {
+        paint_frame_tags(painter, view, project, &mut occupied);
+    }
     paint_wall_labels(painter, view, project, selection, &mut occupied);
     paint_terrain_label(painter, view, project, &mut occupied);
 

@@ -355,6 +355,8 @@ fn catalogue() -> Vec<Tool> {
                 "posicao": number("Opcional: novo centro ao longo da parede, de 0 a 1."),
                 "inverter_lado": boolean("Opcional: a porta passa a abrir para o outro lado da parede."),
                 "inverter_dobradica": boolean("Opcional: a dobradiça vai para o outro batente."),
+                "altura": number("Opcional: altura em metros (porta padrão 2,10; janela 1,00)."),
+                "peitoril": number("Opcional: altura do peitoril da janela em metros (padrão 1,10)."),
             }),
             required: &["id"],
             read_only: false,

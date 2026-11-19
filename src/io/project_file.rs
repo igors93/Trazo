@@ -235,6 +235,8 @@ mod tests {
             width: None,
             flip_side: false,
             flip_hinge: false,
+            height: None,
+            sill: None,
         });
         // Opening on valid wall
         project.add_opening(w1, OpeningKind::Window, 0.5);

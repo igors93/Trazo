@@ -320,6 +320,7 @@ fn document(project: &Project) -> SvgDocument {
 
     let wall_width = base_wall_width;
     let mut occupied = labels::write_room_labels(&mut svg, project, &point, wall_width);
+    labels::write_frame_tags(&mut svg, project, &point, pixels_per_meter, &mut occupied);
     labels::write_wall_labels(
         &mut svg,
         project,

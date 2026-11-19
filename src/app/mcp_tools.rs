@@ -901,9 +901,18 @@ impl FloorPlanApp {
         let position = number(args, "posicao")?;
         let flip_side = flag(args, "inverter_lado");
         let flip_hinge = flag(args, "inverter_dobradica");
-        if width.is_none() && position.is_none() && !flip_side && !flip_hinge {
+        let height = number(args, "altura")?;
+        let sill = number(args, "peitoril")?;
+        if width.is_none()
+            && position.is_none()
+            && !flip_side
+            && !flip_hinge
+            && height.is_none()
+            && sill.is_none()
+        {
             return Err(
-                "Informe largura, posicao, inverter_lado ou inverter_dobradica.".to_owned(),
+                "Informe largura, posicao, altura, peitoril, inverter_lado ou inverter_dobradica."
+                    .to_owned(),
             );
         }
         if position.is_some_and(|position| !(0.0..=1.0).contains(&position)) {
@@ -933,6 +942,9 @@ impl FloorPlanApp {
             }
             if flip_side || flip_hinge {
                 project.flip_opening(id, flip_side, flip_hinge);
+            }
+            if height.is_some() || sill.is_some() {
+                project.set_opening_heights(id, height, sill)?;
             }
             Ok(Change::new(format!("Abertura {id} atualizada.")).select(Selection::Opening(id)))
         })
@@ -1030,6 +1042,7 @@ impl FloorPlanApp {
                 })
             })
             .collect();
+        let frame_types = crate::domain::annotations::frame_types(project);
         let openings: Vec<Value> = project
             .openings
             .iter()
@@ -1043,6 +1056,10 @@ impl FloorPlanApp {
                         OpeningKind::Gap => "vao_livre",
                     },
                     "parede_id": opening.wall_id,
+                    "codigo": crate::domain::annotations::frame_of(&frame_types, opening)
+                        .map(|frame| frame.code.clone()),
+                    "altura": opening.height().map(round),
+                    "peitoril": round(opening.sill()),
                     "lado_invertido": opening.flip_side,
                     "dobradica_no_fim": opening.flip_hinge,
                     "posicao": round(opening.t),
@@ -1097,6 +1114,17 @@ impl FloorPlanApp {
             "comodos": rooms,
             "paredes": walls,
             "aberturas": openings,
+            "quadro_esquadrias": frame_types
+                .iter()
+                .map(|frame| json!({
+                    "codigo": frame.code,
+                    "tipo": frame.kind.label(),
+                    "largura": round(frame.width),
+                    "altura": frame.height.map(round),
+                    "peitoril": round(frame.sill),
+                    "quantidade": frame.ids.len(),
+                }))
+                .collect::<Vec<_>>(),
             "area_construida_m2": round(built),
             "taxa_ocupacao_percentual": project
                 .terrain
@@ -1181,6 +1209,35 @@ mod tests {
         assert_eq!(plan["aberturas"][0]["centro"]["y"], 1.0);
         assert_eq!(app.selection, Some(Selection::Opening(door_id)));
         assert!(app.dirty && app.history.can_undo());
+        assert_eq!(plan["aberturas"][0]["codigo"], "P1");
+        assert_eq!(plan["quadro_esquadrias"][0]["altura"], 2.1);
+
+        // A window gets its own code, height and sill.
+        let window = ok(
+            &mut app,
+            "inserir_abertura",
+            json!({ "parede_id": bottom, "tipo": "janela", "posicao": 0.75 }),
+        );
+        let window_id = window.structured.unwrap()["id"].as_u64().unwrap();
+        ok(
+            &mut app,
+            "editar_abertura",
+            json!({ "id": window_id, "altura": 1.2, "peitoril": 0.9 }),
+        );
+        let plan = app.plan_summary();
+        let frames = plan["quadro_esquadrias"].as_array().unwrap();
+        assert_eq!(frames.len(), 2);
+        assert_eq!(frames[1]["codigo"], "J1");
+        assert_eq!(frames[1]["altura"], 1.2);
+        assert_eq!(frames[1]["peitoril"], 0.9);
+        assert!(
+            run(
+                &mut app,
+                "editar_abertura",
+                json!({ "id": door_id, "peitoril": 1.0 })
+            )
+            .is_error
+        );
     }
 
     #[test]

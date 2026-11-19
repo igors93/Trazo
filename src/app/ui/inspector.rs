@@ -467,6 +467,36 @@ impl FloorPlanApp {
                 ui.end_row();
             });
         });
+        let types = crate::domain::annotations::frame_types(&self.project);
+        let frame = crate::domain::annotations::frame_of(&types, &opening).cloned();
+        let mut heights_submit = false;
+        if opening.kind != OpeningKind::Gap {
+            section(ui, "opening_frame", "Esquadria", |ui| {
+                grid(ui, "opening_frame_grid", |ui| {
+                    if let Some(frame) = &frame {
+                        property_label(ui, "Tipo");
+                        ui.label(
+                            RichText::new(frame.tag())
+                                .font(strong(13.0))
+                                .color(ACCENT_TEXT),
+                        );
+                        ui.end_row();
+                    }
+                    property_label(ui, "Altura");
+                    let height = metres_field(ui, &mut self.opening_height_text);
+                    ui.end_row();
+                    let mut sill_lost = false;
+                    if opening.kind == OpeningKind::Window {
+                        property_label(ui, "Peitoril");
+                        sill_lost = metres_field(ui, &mut self.opening_sill_text).lost_focus();
+                        ui.end_row();
+                    }
+                    heights_submit = (height.lost_focus() || sill_lost)
+                        && ui.input(|i| i.key_pressed(Key::Enter));
+                });
+            });
+        }
+
         section(ui, "opening_position", "Posição", |ui| {
             grid(ui, "opening_position_grid", |ui| {
                 property_label(ui, "Na parede");
@@ -536,6 +566,9 @@ impl FloorPlanApp {
         let (apply, delete) = actions(ui, Some("Aplicar"), Some(delete_label));
         if apply || submit {
             self.apply_opening_width(id);
+        }
+        if apply || heights_submit {
+            self.apply_opening_heights(id);
         }
         if delete {
             self.delete_selection();
@@ -816,6 +849,41 @@ impl FloorPlanApp {
         }
         if height_submit {
             self.apply_wall_height();
+        }
+
+        let types = crate::domain::annotations::frame_types(&self.project);
+        if !types.is_empty() {
+            section(ui, "project_frames", "Quadro de esquadrias", |ui| {
+                grid(ui, "project_frames_grid", |ui| {
+                    for frame in &types {
+                        ui.label(
+                            RichText::new(frame.tag())
+                                .font(strong(12.5))
+                                .color(ACCENT_TEXT),
+                        );
+                        let sill = if frame.kind == OpeningKind::Window {
+                            format!(
+                                " · peitoril {}",
+                                crate::domain::annotations::centimetres(frame.sill)
+                            )
+                        } else {
+                            String::new()
+                        };
+                        property_value(
+                            ui,
+                            &format!("{} · {} un.{sill}", frame.kind.label(), frame.ids.len()),
+                        );
+                        ui.end_row();
+                    }
+                });
+                ui.add_space(4.0);
+                hint(
+                    ui,
+                    Icon::Info,
+                    "Largura/altura em cm. Esquadrias iguais têm o mesmo código.",
+                    ACCENT,
+                );
+            });
         }
 
         section(ui, "project_elements", "Elementos", |ui| {

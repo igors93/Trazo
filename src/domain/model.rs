@@ -280,11 +280,30 @@ pub struct Opening {
     /// The hinge is on the jamb towards the wall's end instead of its start.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub flip_hinge: bool,
+    /// Height of the opening; the kind's usual one when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height: Option<f32>,
+    /// Sill height (peitoril) of a window; 1,10 m when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sill: Option<f32>,
 }
 
 impl Opening {
     pub fn width(&self) -> f32 {
         self.width.unwrap_or_else(|| self.kind.width())
+    }
+
+    /// Height of the opening; `None` for open spans up to the ceiling.
+    pub fn height(&self) -> Option<f32> {
+        self.height.or(self.kind.default_height())
+    }
+
+    /// Height of the window sill above the floor; 0 for doors.
+    pub fn sill(&self) -> f32 {
+        match self.kind {
+            OpeningKind::Window => self.sill.unwrap_or(1.10),
+            _ => 0.0,
+        }
     }
 }
 
@@ -485,8 +504,7 @@ impl Project {
                 .map(|opening| {
                     opening.width()
                         * opening
-                            .kind
-                            .default_height()
+                            .height()
                             .unwrap_or(self.wall_height)
                             .min(self.wall_height)
                 })
@@ -1178,8 +1196,40 @@ impl Project {
             width: width.map(|_| size),
             flip_side: false,
             flip_hinge: false,
+            height: None,
+            sill: None,
         });
         Some(id)
+    }
+
+    /// Sets the height and, for windows, the sill of an opening.
+    pub fn set_opening_heights(
+        &mut self,
+        id: u64,
+        height: Option<f32>,
+        sill: Option<f32>,
+    ) -> Result<(), String> {
+        let opening = self
+            .openings
+            .iter_mut()
+            .find(|opening| opening.id == id)
+            .ok_or("Abertura não encontrada.")?;
+        if let Some(height) = height {
+            if !height.is_finite() || !(0.3..=3.5).contains(&height) {
+                return Err("A altura deve estar entre 0,30 e 3,50 m.".to_owned());
+            }
+            opening.height = Some(height);
+        }
+        if let Some(sill) = sill {
+            if opening.kind != OpeningKind::Window {
+                return Err("Só janelas têm peitoril.".to_owned());
+            }
+            if !sill.is_finite() || !(0.0..=2.5).contains(&sill) {
+                return Err("O peitoril deve estar entre 0 e 2,50 m.".to_owned());
+            }
+            opening.sill = Some(sill);
+        }
+        Ok(())
     }
 
     /// Turns a door the other way: to the other side of the wall (`side`)
@@ -2206,6 +2256,8 @@ mod tests {
             width: None,
             flip_side: false,
             flip_hinge: false,
+            height: None,
+            sill: None,
         });
 
         project.deduplicate_walls();
@@ -2267,6 +2319,8 @@ mod tests {
             width: Some(0.70),
             flip_side: false,
             flip_hinge: false,
+            height: None,
+            sill: None,
         });
         // 0.90 + 0.16 = 1.06 > 1.00 => should fail with wall too short / abertura maior que a parede
         let err_short = project.update_opening_width(short_door, 0.90);

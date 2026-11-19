@@ -156,6 +156,8 @@ pub struct FloorPlanApp {
     masonry_joint_text: String,
     masonry_plaster_text: String,
     wall_height_text: String,
+    opening_height_text: String,
+    opening_sill_text: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -243,6 +245,8 @@ impl FloorPlanApp {
             masonry_joint_text: String::new(),
             masonry_plaster_text: String::new(),
             wall_height_text: String::new(),
+            opening_height_text: String::new(),
+            opening_sill_text: String::new(),
         };
         app.sync_masonry_fields();
         app
@@ -1031,6 +1035,35 @@ impl FloorPlanApp {
         self.record_change(previous);
     }
 
+    /// Applies the height and sill typed in the properties panel.
+    fn apply_opening_heights(&mut self, id: u64) {
+        let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
+        let Some(opening) = self.project.openings.iter().find(|o| o.id == id).cloned() else {
+            return;
+        };
+        let height = parse(&self.opening_height_text).filter(|height| {
+            opening
+                .height()
+                .is_none_or(|current| (current - height).abs() > 1e-4)
+        });
+        let sill = if opening.kind == OpeningKind::Window {
+            parse(&self.opening_sill_text).filter(|sill| (opening.sill() - sill).abs() > 1e-4)
+        } else {
+            None
+        };
+        if height.is_none() && sill.is_none() {
+            return;
+        }
+        let previous = self.project.clone();
+        match self.project.set_opening_heights(id, height, sill) {
+            Ok(()) => {
+                self.record_change(previous);
+                self.sync_inspector_fields();
+            }
+            Err(error) => self.message = error,
+        }
+    }
+
     /// Applies the width and depth typed in the properties panel.
     fn apply_fixture_size(&mut self, id: u64) {
         let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
@@ -1241,6 +1274,11 @@ impl FloorPlanApp {
             Some(Selection::Opening(id)) => {
                 if let Some(op) = self.project.openings.iter().find(|o| o.id == id) {
                     self.opening_width_text = format!("{:.2}", op.width()).replace('.', ",");
+                    self.opening_height_text = op
+                        .height()
+                        .map(|height| format!("{height:.2}").replace('.', ","))
+                        .unwrap_or_default();
+                    self.opening_sill_text = format!("{:.2}", op.sill()).replace('.', ",");
                 }
             }
             _ => {}

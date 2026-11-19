@@ -1,6 +1,7 @@
 use std::fmt::Write as _;
 
 use crate::domain::{
+    annotations::{frame_of, frame_types},
     geometry::{Point, format_meters},
     model::Project,
 };
@@ -164,6 +165,81 @@ pub(super) fn write_room_labels(
         occupied.push(block);
     }
     occupied
+}
+
+/// Door and window type tags ("P1 80/210") beside each opening, on the
+/// side a door does not swing to, or past its leaf when that side is taken.
+pub(super) fn write_frame_tags(
+    svg: &mut String,
+    project: &Project,
+    point: &impl Fn(Point) -> (f32, f32),
+    pixels_per_meter: f32,
+    occupied: &mut Vec<LabelBox>,
+) {
+    let types = frame_types(project);
+    let font_size = 12.0;
+    for opening in &project.openings {
+        let (Some(frame), Some(wall)) = (
+            frame_of(&types, opening),
+            project.walls.iter().find(|wall| wall.id == opening.wall_id),
+        ) else {
+            continue;
+        };
+        let tag = frame.tag();
+        let width = estimated_text_width(&tag, font_size) + 6.0;
+        let height = font_size * 1.2 + 2.0;
+        let a = point(wall.start);
+        let b = point(wall.end);
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let length = (dx * dx + dy * dy).sqrt().max(1e-4);
+        let mut normal = (-dy / length, dx / length);
+        if opening.kind.is_door() && !opening.flip_side {
+            normal = (-normal.0, -normal.1);
+        }
+        let center = (a.0 + dx * opening.t, a.1 + dy * opening.t);
+        let leaf = if opening.kind.is_door() {
+            opening.width() * pixels_per_meter
+        } else {
+            0.0
+        };
+        let along = (dx / length, dy / length);
+        let across = normal.0.abs() * width / 2.0 + normal.1.abs() * height / 2.0;
+        let lengthwise = along.0.abs() * width / 2.0 + along.1.abs() * height / 2.0;
+        let slide = opening.width() * pixels_per_meter / 2.0 + lengthwise + 4.0;
+        let candidate = |side: f32, beyond: f32, shift: f32| {
+            let offset = wall.thickness() * pixels_per_meter / 2.0 + beyond + 5.0 + across;
+            LabelBox::centered(
+                center.0 + normal.0 * offset * side + along.0 * shift,
+                center.1 + normal.1 * offset * side + along.1 * shift,
+                width,
+                height,
+            )
+        };
+        let candidates = [
+            candidate(1.0, 0.0, 0.0),
+            candidate(-1.0, leaf, 0.0),
+            candidate(1.0, 0.0, slide),
+            candidate(1.0, 0.0, -slide),
+            candidate(-1.0, 0.0, slide),
+            candidate(-1.0, 0.0, -slide),
+        ];
+        let Some(rect) = candidates
+            .into_iter()
+            .find(|rect| !occupied.iter().any(|other| other.intersects(*rect, 3.0)))
+        else {
+            continue;
+        };
+        let _ = writeln!(
+            svg,
+            "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{width:.1}\" height=\"{height:.1}\" rx=\"3\" fill=\"#ffffff\" fill-opacity=\"0.9\" stroke=\"#a9c7ec\" stroke-width=\"0.8\"/><text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"{font_size:.1}\" font-weight=\"700\" fill=\"#1659b0\">{}</text>",
+            rect.x,
+            rect.y,
+            rect.x + width / 2.0,
+            rect.y + height / 2.0 + font_size * 0.35,
+            escaped(&tag)
+        );
+        occupied.push(rect);
+    }
 }
 
 pub(super) fn write_wall_labels(
