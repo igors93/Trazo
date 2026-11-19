@@ -344,4 +344,75 @@ mod tests {
         let r2 = project.rooms.iter().find(|r| r.id == q2).unwrap();
         assert!((project.room_area(r2).unwrap() - 10.5).abs() < 1e-3);
     }
+
+    #[test]
+    fn resizing_room_with_split_shared_edge_updates_all_three_rooms_and_blocks_opening_overlap() {
+        let mut project = Project::default();
+        // Left room (0..4 x 0..4) meets two stacked rooms on the right (4..8 x 0..2 and 4..8 x 2..4),
+        // so its right edge is split into two wall segments.
+        let left = project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 4.0), "Sala")
+            .unwrap();
+        let top_right = project
+            .add_room(Point::new(4.0, 0.0), Point::new(8.0, 2.0), "Banho")
+            .unwrap();
+        let bottom_right = project
+            .add_room(Point::new(4.0, 2.0), Point::new(8.0, 4.0), "Lavanderia")
+            .unwrap();
+
+        project.resize_room_dimensions(left, 4.5, 4.0).unwrap();
+        let area_of = |p: &Project, id: u64| {
+            let room = p.rooms.iter().find(|r| r.id == id).unwrap();
+            p.room_area(room).unwrap()
+        };
+        assert!((area_of(&project, left) - 18.0).abs() < 1e-3);
+        assert!((area_of(&project, top_right) - 7.0).abs() < 1e-3);
+        assert!((area_of(&project, bottom_right) - 7.0).abs() < 1e-3);
+
+        // Put two windows on Banho's top wall (4.5..8.0, length 3.5 m).
+        let banho_top = project
+            .walls
+            .iter()
+            .find(|w| {
+                w.start.y.abs() < 1e-4 && w.end.y.abs() < 1e-4 && w.start.x.min(w.end.x) >= 4.4
+            })
+            .unwrap()
+            .id;
+        project
+            .add_opening_sized(banho_top, OpeningKind::Window, 0.25, Some(1.0))
+            .unwrap();
+        project
+            .add_opening_sized(banho_top, OpeningKind::Window, 0.75, Some(1.0))
+            .unwrap();
+
+        // Shrinking Banho's width to 1.80 m (left width 6.20 m) cannot fit two 1.0 m windows + margins.
+        assert!(project.resize_room_dimensions(left, 6.2, 4.0).is_err());
+        assert!((area_of(&project, top_right) - 7.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn moving_horizontal_shared_wall_updates_stacked_rooms_and_y_dimensions() {
+        let mut project = Project::default();
+        let top = project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Cozinha")
+            .unwrap();
+        let bottom = project
+            .add_room(Point::new(0.0, 3.0), Point::new(4.0, 6.0), "Copa")
+            .unwrap();
+        let shared = project
+            .walls
+            .iter()
+            .find(|w| (w.start.y - 3.0).abs() < 1e-4 && (w.end.y - 3.0).abs() < 1e-4)
+            .unwrap()
+            .id;
+        project
+            .move_wall_checked(shared, Point::new(0.0, -0.5))
+            .unwrap();
+        let r_top = project.rooms.iter().find(|r| r.id == top).unwrap();
+        let r_bottom = project.rooms.iter().find(|r| r.id == bottom).unwrap();
+        assert!((project.room_area(r_top).unwrap() - 10.0).abs() < 1e-3);
+        assert!((project.room_area(r_bottom).unwrap() - 14.0).abs() < 1e-3);
+        let dims = building_dimensions(&project).unwrap();
+        assert!(dims.ys.iter().any(|&y| (y - 2.5).abs() < 1e-3));
+    }
 }

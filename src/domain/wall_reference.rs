@@ -213,4 +213,21 @@ mod tests {
         assert_eq!(WallReference::External.next(), WallReference::Internal);
         assert_eq!(WallReference::Internal.next(), WallReference::Center);
     }
+
+    #[test]
+    fn diagonal_wall_reference_preserves_length_and_exact_perpendicular_offset() {
+        let start = Point::new(0.0, 0.0);
+        let end = Point::new(3.0, 4.0); // length 5.0 m
+        let thickness = 0.24;
+        for reference in [WallReference::External, WallReference::Internal] {
+            let (s, e) = reference.offset_segment(start, end, thickness);
+            assert!((s.distance(e) - 5.0).abs() < 1e-4);
+            assert!((s.distance(start) - thickness * 0.5).abs() < 1e-4);
+            assert!((e.distance(end) - thickness * 0.5).abs() < 1e-4);
+            // Offset vector must be perpendicular to the wall direction.
+            let wall_dir = end.minus(start);
+            let shift = s.minus(start);
+            assert!(wall_dir.dot(shift).abs() < 1e-4);
+        }
+    }
 }

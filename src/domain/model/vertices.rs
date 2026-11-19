@@ -402,4 +402,66 @@ mod tests {
         assert!((terrain.width() - 8.0).abs() < 1e-4);
         assert!((terrain.height() - 9.0).abs() < 1e-4);
     }
+
+    #[test]
+    fn moving_polyline_spline_and_circle_center_handles_validates_bounds() {
+        let mut project = Project::default();
+        let poly_id = project
+            .add_drawing(Shape::Polyline {
+                points: vec![
+                    Point::new(0.0, 0.0),
+                    Point::new(2.0, 0.0),
+                    Point::new(2.0, 2.0),
+                ],
+                closed: false,
+            })
+            .unwrap();
+        project
+            .move_drawing_handle(poly_id, 1, Point::new(4.0, 0.0))
+            .unwrap();
+        assert!(
+            project
+                .move_drawing_handle(poly_id, 9, Point::new(0.0, 0.0))
+                .is_err()
+        );
+        match &project.drawing(poly_id).unwrap().shape {
+            Shape::Polyline { points, .. } => assert!(points[1].near(Point::new(4.0, 0.0), 1e-4)),
+            other => panic!("expected polyline, got {other:?}"),
+        }
+
+        let spline_id = project
+            .add_drawing(Shape::Spline {
+                points: vec![
+                    Point::new(0.0, 0.0),
+                    Point::new(1.0, 1.0),
+                    Point::new(2.0, 0.0),
+                ],
+                closed: false,
+            })
+            .unwrap();
+        project
+            .move_drawing_handle(spline_id, 1, Point::new(1.0, 3.0))
+            .unwrap();
+        match &project.drawing(spline_id).unwrap().shape {
+            Shape::Spline { points, .. } => assert!(points[1].near(Point::new(1.0, 3.0), 1e-4)),
+            other => panic!("expected spline, got {other:?}"),
+        }
+
+        let circle_id = project
+            .add_drawing(Shape::Circle {
+                center: Point::new(5.0, 5.0),
+                radius: 2.0,
+            })
+            .unwrap();
+        project
+            .move_drawing_handle(circle_id, 0, Point::new(7.0, 8.0))
+            .unwrap();
+        match project.drawing(circle_id).unwrap().shape {
+            Shape::Circle { center, radius } => {
+                assert!(center.near(Point::new(7.0, 8.0), 1e-4));
+                assert!((radius - 2.0).abs() < 1e-4);
+            }
+            ref other => panic!("expected circle, got {other:?}"),
+        }
+    }
 }

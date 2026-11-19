@@ -1275,4 +1275,57 @@ mod tests {
         let room = app.project.rooms.iter().find(|r| r.id == room_id).unwrap();
         assert!((app.project.room_area(room).unwrap() - 12.0).abs() < 1e-4);
     }
+
+    #[test]
+    fn dragging_a_drawing_handle_and_nudging_a_shared_wall_both_undo_cleanly() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let line_id = app
+            .project
+            .add_drawing(crate::domain::drawing::Shape::Line {
+                start: Point::new(0.0, 0.0),
+                end: Point::new(2.0, 0.0),
+            })
+            .unwrap();
+        app.set_tool(Tool::Move);
+        app.select(Selection::Drawing(line_id));
+        app.begin_item_drag(Point::new(2.0, 0.0));
+        app.drag_item_to(Point::new(5.0, 0.0));
+        app.commit_item_drag();
+        assert!((app.project.drawing(line_id).unwrap().shape.length() - 5.0).abs() < 1e-4);
+        app.undo();
+        assert!((app.project.drawing(line_id).unwrap().shape.length() - 2.0).abs() < 1e-4);
+
+        // Shared wall nudge updates both rooms and rolls back in one undo step.
+        let q1 = app
+            .project
+            .add_room(Point::new(0.0, 10.0), Point::new(4.0, 13.0), "Q1")
+            .unwrap();
+        let q2 = app
+            .project
+            .add_room(Point::new(4.0, 10.0), Point::new(8.0, 13.0), "Q2")
+            .unwrap();
+        let shared = app
+            .project
+            .walls
+            .iter()
+            .find(|w| {
+                (w.start.x - 4.0).abs() < 1e-4
+                    && (w.end.x - 4.0).abs() < 1e-4
+                    && w.start.y.min(w.end.y) >= 9.9
+            })
+            .unwrap()
+            .id;
+        app.select(Selection::Wall(shared));
+        app.nudge_selection(Point::new(0.5, 0.0));
+        let area = |p: &crate::domain::model::Project, id: u64| {
+            p.room_area(p.rooms.iter().find(|r| r.id == id).unwrap())
+                .unwrap()
+        };
+        assert!((area(&app.project, q1) - 13.5).abs() < 1e-3);
+        assert!((area(&app.project, q2) - 10.5).abs() < 1e-3);
+        app.undo();
+        assert!((area(&app.project, q1) - 12.0).abs() < 1e-3);
+        assert!((area(&app.project, q2) - 12.0).abs() < 1e-3);
+    }
 }

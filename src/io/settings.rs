@@ -121,11 +121,12 @@ mod tests {
         assert!(!loaded.show_grid);
         assert!(loaded.snap_enabled && loaded.show_browser);
         assert_eq!(loaded.osnap, OsnapSettings::default());
+        assert_eq!(loaded.wall_reference, WallReference::Center);
         let _ = fs::remove_file(&older);
     }
 
     #[test]
-    fn osnap_preferences_persist_across_saves() {
+    fn osnap_and_wall_reference_preferences_persist_across_saves() {
         let path = temp_path("osnap");
         let settings = Settings {
             osnap: OsnapSettings {
@@ -133,6 +134,7 @@ mod tests {
                 tangent: false,
                 ..Default::default()
             },
+            wall_reference: WallReference::Internal,
             ..Default::default()
         };
         save_to(&settings, &path).unwrap();
@@ -140,6 +142,7 @@ mod tests {
         assert!(!loaded.osnap.midpoint);
         assert!(!loaded.osnap.tangent);
         assert!(loaded.osnap.endpoint && loaded.osnap.intersection && loaded.osnap.center);
+        assert_eq!(loaded.wall_reference, WallReference::Internal);
         let _ = fs::remove_file(&path);
     }
 }
