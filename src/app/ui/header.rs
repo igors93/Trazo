@@ -139,6 +139,10 @@ impl FloorPlanApp {
             self.request_new_project();
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Plan), "Novo a partir de modelo...", "").clicked() {
+            self.active_doc_dialog = super::super::DocDialog::Templates;
+            ui.close();
+        }
         if menu_item(ui, Some(Icon::Open), "Abrir...", "Ctrl+O").clicked() {
             self.request_open();
             ui.close();

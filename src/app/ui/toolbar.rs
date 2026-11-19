@@ -526,6 +526,20 @@ impl FloorPlanApp {
                 self.request_new_project();
             }
             if tip(
+                ribbon_button(
+                    ui,
+                    Icon::Plan,
+                    "Modelos",
+                    self.active_doc_dialog == super::super::DocDialog::Templates,
+                    false,
+                ),
+                "Criar projeto a partir de modelos de planta baixa, implantação ou detalhamento",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Templates;
+            }
+            if tip(
                 ribbon_button(ui, Icon::Open, "Abrir", false, false),
                 "Abrir projeto (Ctrl+O)",
             )

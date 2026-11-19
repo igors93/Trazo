@@ -16,4 +16,5 @@ pub mod schedules;
 pub mod setbacks;
 pub mod sheet;
 pub mod snap;
+pub mod templates;
 pub mod wall_reference;
