@@ -10,6 +10,7 @@ pub(super) fn tool_icon(tool: Tool) -> Icon {
         Tool::Terrain => Icon::Terrain,
         Tool::Wall => Icon::Wall,
         Tool::Room => Icon::Room,
+        Tool::RoomPolygon => Icon::RoomPolygon,
         Tool::Opening(OpeningKind::Door) => Icon::Door,
         Tool::Opening(OpeningKind::Window) => Icon::Window,
         Tool::Opening(OpeningKind::SaloonDoor) => Icon::SaloonDoor,
@@ -25,6 +26,7 @@ pub(super) fn tool_name(tool: Tool) -> &'static str {
         Tool::Terrain => "Terreno",
         Tool::Wall => "Parede",
         Tool::Room => "Cômodo",
+        Tool::RoomPolygon => "Cômodo livre",
         Tool::Opening(OpeningKind::Door) => "Porta",
         Tool::Opening(OpeningKind::Window) => "Janela",
         Tool::Opening(OpeningKind::SaloonDoor) => "Porta vai-e-vem",
@@ -94,6 +96,23 @@ impl FloorPlanApp {
             match tool {
                 Tool::Terrain => self.terrain_options(ui),
                 Tool::Wall | Tool::Room => self.masonry_options(ui),
+                Tool::RoomPolygon => {
+                    self.masonry_options(ui);
+                    divider(ui);
+                    let corners = self.polygon_draft.len();
+                    chip(
+                        ui,
+                        &match corners {
+                            0 => "nenhum canto".to_owned(),
+                            1 => "1 canto".to_owned(),
+                            count => format!("{count} cantos"),
+                        },
+                    );
+                    caption(
+                        ui,
+                        "Feche no 1º canto, duplo clique ou Enter · Backspace desfaz o último canto",
+                    );
+                }
                 Tool::Opening(kind) => {
                     caption(ui, "Largura padrão");
                     chip(ui, &format_meters(kind.default_width()));
@@ -155,8 +174,11 @@ impl FloorPlanApp {
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                if matches!(tool, Tool::Wall | Tool::Room | Tool::Terrain | Tool::Measure) {
-                    if matches!(tool, Tool::Wall | Tool::Room)
+                if matches!(
+                    tool,
+                    Tool::Wall | Tool::Room | Tool::RoomPolygon | Tool::Terrain | Tool::Measure
+                ) {
+                    if matches!(tool, Tool::Wall | Tool::Room | Tool::RoomPolygon)
                         && toggle_pill(
                             ui,
                             "Modulação",
@@ -167,7 +189,7 @@ impl FloorPlanApp {
                     {
                         self.modulation_enabled = !self.modulation_enabled;
                     }
-                    if matches!(tool, Tool::Wall | Tool::Measure)
+                    if matches!(tool, Tool::Wall | Tool::RoomPolygon | Tool::Measure)
                         && toggle_pill(
                             ui,
                             "Orto",

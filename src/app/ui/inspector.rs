@@ -1,6 +1,8 @@
 use eframe::egui::{self, Key, Margin, Pos2, Rect, Response, RichText, Sense, Stroke, Ui, vec2};
 
 use super::super::{FloorPlanApp, Selection, Tool, theme::*};
+
+mod room_shape;
 use super::icons::{self, Icon};
 use super::widgets::{
     danger_button, hint, icon_button_sized, panel_header, primary_button, property_label,
@@ -341,7 +343,21 @@ impl FloorPlanApp {
             Self::missing(ui, "Cômodo não encontrado.");
             return;
         };
-        type_card(ui, Icon::Room, room.display_name(), "Cômodo retangular");
+        let rectangle = self.project.room_is_rectangle(&room);
+        type_card(
+            ui,
+            if rectangle {
+                Icon::Room
+            } else {
+                Icon::RoomPolygon
+            },
+            room.display_name(),
+            if rectangle {
+                "Cômodo retangular"
+            } else {
+                "Cômodo de forma livre"
+            },
+        );
 
         let mut submit = false;
         section(ui, "room_identity", "Identificação", |ui| {
@@ -355,8 +371,13 @@ impl FloorPlanApp {
         });
         let bounds = self.project.room_bounds(&room);
         let room_area = self.project.room_area(&room);
+        let outline = self.project.room_outline(&room);
         section(ui, "room_dimensions", "Dimensões", |ui| {
             grid(ui, "room_dimensions_grid", |ui| {
+                if !rectangle {
+                    room_shape::free_shape_dimensions(ui, room_area, outline.as_deref(), bounds);
+                    return;
+                }
                 property_label(ui, "Largura");
                 let width = metres_field(ui, &mut self.room_width_text);
                 ui.end_row();

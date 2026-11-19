@@ -4,6 +4,8 @@ use super::fixtures::{self, Fixture, FixtureKind};
 use super::geometry::{
     JOIN_TOLERANCE, Point, distance_to_segment, nearest_point_on_segment, round_to_resolution,
 };
+
+mod rooms;
 use super::masonry::{self, Masonry};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1055,37 +1057,8 @@ impl Project {
             return None;
         }
 
-        if self
-            .terrain
-            .as_ref()
-            .is_some_and(|terrain| !terrain.contains(min) || !terrain.contains(max))
-        {
-            return None;
-        }
-
         let corners = [min, Point::new(max.x, min.y), max, Point::new(min.x, max.y)];
-
-        let mut tx = self.clone();
-        let mut all_wall_ids = Vec::new();
-
-        for index in 0..4 {
-            let edge_walls =
-                tx.find_or_create_edge_walls(corners[index], corners[(index + 1) % 4])?;
-
-            all_wall_ids.extend(edge_walls);
-        }
-
-        let id = tx.id();
-
-        tx.rooms.push(Room {
-            id,
-            name,
-            legacy_kind: None,
-            wall_ids: all_wall_ids,
-        });
-
-        *self = tx;
-        Some(id)
+        self.add_polygon_room(&corners, &name).ok()
     }
 
     pub fn room_polygon(&self, room: &Room) -> Option<Vec<Point>> {
@@ -1484,6 +1457,11 @@ impl Project {
             .ok_or("Cômodo não encontrado.")?;
 
         let old_wall_ids = self.rooms[room_idx].wall_ids.clone();
+        if !self.room_is_rectangle(&self.rooms[room_idx]) {
+            return Err(
+                "Este cômodo não é retangular: ajuste a forma pelos cantos e paredes.".to_owned(),
+            );
+        }
         if old_wall_ids.len() != 4 {
             return Err(
                 "Cômodo não possui formato retangular padrão de 4 paredes para redimensionamento."

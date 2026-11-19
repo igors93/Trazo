@@ -57,13 +57,24 @@ impl FloorPlanApp {
                 ui.set_width(360.0);
                 let size = self
                     .pending_room
-                    .map(|(a, b)| {
-                        format!(
-                            "{:.2} × {:.2} m · {:.2} m²",
-                            (b.x - a.x).abs(),
-                            (b.y - a.y).abs(),
-                            (b.x - a.x).abs() * (b.y - a.y).abs()
-                        )
+                    .as_ref()
+                    .map(|corners| {
+                        let area = crate::domain::geometry::polygon_area(corners);
+                        let upright = corners.len() == 4
+                            && (0..4).all(|i| {
+                                let (a, b) = (corners[i], corners[(i + 1) % 4]);
+                                a.x == b.x || a.y == b.y
+                            });
+                        if upright {
+                            let (a, b) = (corners[0], corners[2]);
+                            format!(
+                                "{:.2} × {:.2} m · {area:.2} m²",
+                                (b.x - a.x).abs(),
+                                (b.y - a.y).abs(),
+                            )
+                        } else {
+                            format!("{} cantos · {area:.2} m²", corners.len())
+                        }
                         .replace('.', ",")
                     })
                     .unwrap_or_default();
@@ -104,15 +115,17 @@ impl FloorPlanApp {
         if cancel {
             self.pending_room = None;
             self.message = "Criação do cômodo cancelada.".to_owned();
-        } else if confirm && let Some((start, end)) = self.pending_room.take() {
+        } else if confirm && let Some(corners) = self.pending_room.take() {
             let previous = self.project.clone();
-            if self
+            match self
                 .project
-                .add_room(start, end, self.room_name.trim())
-                .is_some()
+                .add_polygon_room(&corners, self.room_name.trim())
             {
-                self.record_change(previous);
-                self.message = format!("Cômodo {} criado.", self.room_name.trim());
+                Ok(_) => {
+                    self.record_change(previous);
+                    self.message = format!("Cômodo {} criado.", self.room_name.trim());
+                }
+                Err(error) => self.message = error,
             }
         }
     }
@@ -206,6 +219,7 @@ impl FloorPlanApp {
                             (&["T"], "Terreno"),
                             (&["P"], "Parede"),
                             (&["C"], "Cômodo"),
+                            (&["L"], "Cômodo livre (L, U...)"),
                             (&["R"], "Porta"),
                             (&["J"], "Janela"),
                             (&["M"], "Medir (régua)"),

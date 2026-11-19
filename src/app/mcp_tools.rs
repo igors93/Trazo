@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 
 use super::{FloorPlanApp, OpenResult, Selection};
+
+mod shapes;
 use crate::{
     domain::{
         fixtures::FixtureKind,
@@ -595,6 +597,9 @@ impl FloorPlanApp {
 
     fn tool_create_room(&mut self, args: &Value) -> Result<ToolOutput, String> {
         let name = text(args, "nome").ok_or("Informe 'nome' do cômodo.")?;
+        if let Some(corners) = args.get("pontos").filter(|value| !value.is_null()) {
+            return self.create_polygon_room(&name, corners);
+        }
         let x = required_number(args, "x")?;
         let y = required_number(args, "y")?;
         let width = required_number(args, "largura")?;
@@ -1002,9 +1007,20 @@ impl FloorPlanApp {
             .iter()
             .map(|room| {
                 let bounds = project.room_bounds(room);
+                let rectangle = project.room_is_rectangle(room);
                 json!({
                     "id": room.id,
                     "nome": room.display_name(),
+                    "forma": if rectangle { "retangulo" } else { "poligono" },
+                    "centro": project.room_centroid(room).map(xy),
+                    "cantos": (!rectangle).then(|| {
+                        project
+                            .room_outline(room)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .map(xy)
+                            .collect::<Vec<_>>()
+                    }),
                     "x": bounds.map(|(min, _)| round(min.x + 0.0)),
                     "y": bounds.map(|(_, max)| round(-max.y + 0.0)),
                     "largura": bounds.map(|(min, max)| round(max.x - min.x)),

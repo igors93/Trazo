@@ -88,11 +88,12 @@ pub(super) fn write_room_labels(
 ) -> Vec<LabelBox> {
     let mut occupied = Vec::new();
     for room in &project.rooms {
-        let Some((min, max)) = project.room_bounds(room) else {
+        let Some((anchor, width, height)) = project.room_label_anchor(room) else {
             continue;
         };
-        let (x, y) = point(min);
-        let (right, bottom) = point(max);
+        let half = Point::new(width / 2.0, height / 2.0);
+        let (x, y) = point(anchor.minus(half));
+        let (right, bottom) = point(anchor.translated(half));
         let padding = wall_width / 2.0 + 8.0;
         let inner = LabelBox {
             x: x + padding,
@@ -112,11 +113,17 @@ pub(super) fn write_room_labels(
         else {
             continue;
         };
-        let dimensions = format!(
-            "{} × {}",
-            format_meters(max.x - min.x),
-            format_meters(max.y - min.y)
-        );
+        let dimensions = match project.room_bounds(room) {
+            Some((min, max)) if project.room_is_rectangle(room) => format!(
+                "{} × {}",
+                format_meters(max.x - min.x),
+                format_meters(max.y - min.y)
+            ),
+            _ => project
+                .room_area(room)
+                .map(|area| format!("{area:.2} m²").replace('.', ","))
+                .unwrap_or_default(),
+        };
         let measure = fit_export_text(&dimensions, inner.width, 14, 10, false)
             .filter(|(_, size)| name_size * 1.2 + 4.0 + size * 1.2 <= inner.height);
         let block_height =

@@ -10,8 +10,10 @@ use crate::domain::{
 
 use super::Selection;
 
+mod drafts;
 mod labels;
 pub mod overlay;
+pub use drafts::paint_polygon_draft;
 use labels::{paint_preview_measure, paint_room_labels, paint_terrain_label, paint_wall_labels};
 
 #[derive(Clone, Copy)]

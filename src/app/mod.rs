@@ -2,6 +2,7 @@ mod canvas;
 mod interaction;
 mod mcp_tools;
 mod theme;
+mod tools;
 mod ui;
 
 use std::path::{Path, PathBuf};
@@ -54,6 +55,8 @@ enum RibbonTab {
 enum Tool {
     Wall,
     Room,
+    /// A room of any shape, drawn corner by corner.
+    RoomPolygon,
     Terrain,
     Move,
     Opening(OpeningKind),
@@ -100,7 +103,10 @@ pub struct FloorPlanApp {
     selection: Option<Selection>,
     item_drag: Option<ItemDrag>,
     drag_initial_project: Option<Project>,
-    pending_room: Option<(Point, Point)>,
+    /// The corners of a room waiting for its name.
+    pending_room: Option<Vec<Point>>,
+    /// Corners of the free-shape room being drawn.
+    polygon_draft: Vec<Point>,
     room_name: String,
     room_dialog_focus: bool,
     opening_drag: Option<OpeningKind>,
@@ -195,6 +201,7 @@ impl FloorPlanApp {
             item_drag: None,
             drag_initial_project: None,
             pending_room: None,
+            polygon_draft: Vec::new(),
             room_name: String::new(),
             room_dialog_focus: false,
             opening_drag: None,
@@ -323,7 +330,8 @@ impl FloorPlanApp {
 
     pub fn draft_start(&self) -> Option<Point> {
         match self.creation_state {
-            CreationState::Idle => None,
+            // A free-shape room continues from its last corner.
+            CreationState::Idle => self.polygon_draft.last().copied(),
             CreationState::WaitingSecondPoint { start } => Some(start),
             CreationState::Dragging { start } => Some(start),
         }
@@ -331,6 +339,7 @@ impl FloorPlanApp {
 
     pub fn cancel_creation(&mut self) {
         self.creation_state = CreationState::Idle;
+        self.polygon_draft.clear();
     }
 
     /// Ends an element drag in progress, keeping what it moved as one undo
@@ -349,10 +358,14 @@ impl FloorPlanApp {
         self.commit_item_drag();
         self.tool = tool;
         self.creation_state = CreationState::Idle;
+        self.polygon_draft.clear();
         self.selection = None;
         self.message = match tool {
             Tool::Wall => "Clique em dois pontos para desenhar uma parede.",
             Tool::Room => "Clique em dois cantos opostos e dê um nome ao cômodo.",
+            Tool::RoomPolygon => {
+                "Clique em cada canto do cômodo (em L, U ou livre); feche no primeiro canto ou com Enter."
+            }
             Tool::Terrain => {
                 "Clique em dois cantos ou digite largura e comprimento para criar o terreno."
             }
@@ -581,7 +594,16 @@ impl FloorPlanApp {
             }
             Tool::Room => {
                 if (start.x - end.x).abs() >= 0.5 && (start.y - end.y).abs() >= 0.5 {
-                    self.pending_room = Some((start, end));
+                    let (min, max) = (
+                        Point::new(start.x.min(end.x), start.y.min(end.y)),
+                        Point::new(start.x.max(end.x), start.y.max(end.y)),
+                    );
+                    self.pending_room = Some(vec![
+                        min,
+                        Point::new(max.x, min.y),
+                        max,
+                        Point::new(min.x, max.y),
+                    ]);
                     self.room_name.clear();
                     self.room_dialog_focus = true;
                     self.message = "Digite o nome do cômodo para concluir.".to_owned();
@@ -1333,7 +1355,10 @@ impl FloorPlanApp {
         };
 
         let name_changed = room.name != self.room_name_text.trim();
-        let dimensions_changed = if let Some((min, max)) = self.project.room_bounds(&room) {
+        // A free-shape room has no width and length to type.
+        let dimensions_changed = if !self.project.room_is_rectangle(&room) {
+            false
+        } else if let Some((min, max)) = self.project.room_bounds(&room) {
             let current_w = max.x - min.x;
             let current_h = max.y - min.y;
             (current_w - new_w).abs() > 1e-4 || (current_h - new_h).abs() > 1e-4
@@ -1493,6 +1518,7 @@ impl FloorPlanApp {
                 (Key::T, Tool::Terrain),
                 (Key::P, Tool::Wall),
                 (Key::C, Tool::Room),
+                (Key::L, Tool::RoomPolygon),
                 (Key::R, Tool::Opening(OpeningKind::Door)),
                 (Key::J, Tool::Opening(OpeningKind::Window)),
                 (Key::M, Tool::Measure),
@@ -1519,6 +1545,8 @@ impl FloorPlanApp {
                             if modifiers.shift && !modifiers.ctrl && !modifiers.command && !modifiers.alt)
                     }),
                 fit: plain(Key::F),
+                finish_polygon: plain(Key::Enter),
+                undo_point: plain(Key::Backspace),
                 snap: pressed(Key::F3) && free,
                 grid: pressed(Key::F7) && free,
                 ortho: pressed(Key::F8) && free,
@@ -1584,6 +1612,14 @@ impl FloorPlanApp {
         if actions.fit {
             self.fit_view_requested();
         }
+        if self.tool == Tool::RoomPolygon {
+            if actions.finish_polygon {
+                self.close_polygon_draft();
+            }
+            if actions.undo_point {
+                self.undo_polygon_point();
+            }
+        }
         if actions.snap {
             self.toggle_snap();
         }
@@ -1613,6 +1649,8 @@ struct ShortcutActions {
     flip_side: bool,
     flip_hinge: bool,
     fit: bool,
+    finish_polygon: bool,
+    undo_point: bool,
     snap: bool,
     grid: bool,
     ortho: bool,

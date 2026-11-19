@@ -262,6 +262,7 @@ impl FloorPlanApp {
             (Icon::Terrain, "Terreno", "T", Tool::Terrain),
             (Icon::Wall, "Parede", "P", Tool::Wall),
             (Icon::Room, "Cômodo", "C", Tool::Room),
+            (Icon::RoomPolygon, "Cômodo livre", "L", Tool::RoomPolygon),
             (Icon::Door, "Porta", "R", Tool::Opening(OpeningKind::Door)),
             (
                 Icon::Window,

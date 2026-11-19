@@ -5,6 +5,9 @@
 
 use serde::{Deserialize, Serialize};
 
+mod polygon;
+pub use polygon::{interior_box, polygon_is_simple, polygon_perimeter, simplify_polygon};
+
 pub const GRID_METERS: f64 = 0.25;
 pub const WALL_THICKNESS_METERS: f64 = 0.12;
 

@@ -225,15 +225,24 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "criar_comodo",
             title: "Criar cômodo",
-            description: "Cria um cômodo retangular com suas quatro paredes. Paredes que coincidem com as de cômodos vizinhos são compartilhadas. Devolve o id do cômodo e de suas paredes.",
+            description: "Cria um cômodo com suas paredes: retangular (x, y, largura, comprimento) ou de qualquer forma, como em L ou U (pontos: os cantos em ordem). Paredes que coincidem com as de cômodos vizinhos são compartilhadas. Devolve o id do cômodo e de suas paredes.",
             properties: json!({
                 "nome": string("Nome do cômodo, por exemplo Sala, Cozinha, Suíte."),
-                "x": number("X do canto inferior esquerdo, em metros."),
-                "y": number("Y do canto inferior esquerdo, em metros."),
-                "largura": number("Largura em metros (eixo X), mínimo 0,5."),
-                "comprimento": number("Comprimento em metros (eixo Y), mínimo 0,5."),
+                "x": number("Retângulo: X do canto inferior esquerdo, em metros."),
+                "y": number("Retângulo: Y do canto inferior esquerdo, em metros."),
+                "largura": number("Retângulo: largura em metros (eixo X), mínimo 0,5."),
+                "comprimento": number("Retângulo: comprimento em metros (eixo Y), mínimo 0,5."),
+                "pontos": {
+                    "type": "array",
+                    "description": "Forma livre: os cantos em ordem, como [{\"x\": 0, \"y\": 0}, {\"x\": 4, \"y\": 0}, ...]; pelo menos 3, sem lados cruzados. Substitui x, y, largura e comprimento.",
+                    "items": {
+                        "type": "object",
+                        "properties": { "x": { "type": "number" }, "y": { "type": "number" } },
+                        "required": ["x", "y"]
+                    }
+                },
             }),
-            required: &["nome", "x", "y", "largura", "comprimento"],
+            required: &["nome"],
             read_only: false,
             destructive: false,
         },

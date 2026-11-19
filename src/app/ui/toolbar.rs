@@ -183,6 +183,13 @@ impl FloorPlanApp {
                 "Cômodo",
                 "Criar cômodo retangular: arraste ou clique em dois cantos (C)",
             );
+            self.tool_button(
+                ui,
+                Tool::RoomPolygon,
+                Icon::RoomPolygon,
+                "Cômodo livre",
+                "Cômodo em L, U ou de qualquer forma: clique em cada canto e feche no primeiro (L)",
+            );
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Aberturas", |ui| {

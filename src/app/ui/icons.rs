@@ -14,6 +14,8 @@ pub enum Icon {
     Terrain,
     Wall,
     Room,
+    /// A room of free shape (an L).
+    RoomPolygon,
     Door,
     Window,
     Delete,
@@ -263,6 +265,30 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
             ]);
             pen.accent_line(&[(9.0, 20.0), (9.0, 14.0)]);
             pen.arc(9.0, 20.0, 6.0, -FRAC_PI_2, 0.0, thin);
+        }
+        Icon::RoomPolygon => {
+            let outline = [
+                (4.0, 4.0),
+                (20.0, 4.0),
+                (20.0, 12.0),
+                (12.0, 12.0),
+                (12.0, 20.0),
+                (4.0, 20.0),
+            ];
+            pen.fill(&outline, soft);
+            pen.line(&[
+                (4.0, 4.0),
+                (20.0, 4.0),
+                (20.0, 12.0),
+                (12.0, 12.0),
+                (12.0, 20.0),
+                (4.0, 20.0),
+                (4.0, 4.0),
+            ]);
+            for (x, y) in [(20.0, 12.0), (12.0, 12.0), (12.0, 20.0)] {
+                pen.accent_line(&[(x - 1.5, y), (x + 1.5, y)]);
+                pen.accent_line(&[(x, y - 1.5), (x, y + 1.5)]);
+            }
         }
         Icon::Door => {
             pen.line(&[(2.0, 19.0), (6.0, 19.0)]);

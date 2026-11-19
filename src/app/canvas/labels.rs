@@ -62,11 +62,14 @@ pub(super) fn paint_room_labels(
     let name_color = theme::TEXT;
     let measure_color = theme::MUTED;
     for room in &project.rooms {
-        let Some((min, max)) = project.room_bounds(room) else {
+        let Some((anchor, width, height)) = project.room_label_anchor(room) else {
             continue;
         };
-        let inner = Rect::from_two_pos(view.to_screen(min), view.to_screen(max))
-            .shrink(wall_stroke_width(view.scale) / 2.0 + 7.0);
+        let inner = Rect::from_center_size(
+            view.to_screen(anchor),
+            egui::vec2(view.pixels(width), view.pixels(height)),
+        )
+        .shrink(wall_stroke_width(view.scale) / 2.0 + 7.0);
         if inner.width() < 12.0 || inner.height() < 12.0 {
             continue;
         }
@@ -90,11 +93,18 @@ pub(super) fn paint_room_labels(
         if name.size().y > inner.height() {
             continue;
         }
-        let dimensions = format!(
-            "{} × {}",
-            format_meters(max.x - min.x),
-            format_meters(max.y - min.y)
-        );
+        // Rectangles show their sides, other shapes their area.
+        let dimensions = match project.room_bounds(room) {
+            Some((min, max)) if project.room_is_rectangle(room) => format!(
+                "{} × {}",
+                format_meters(max.x - min.x),
+                format_meters(max.y - min.y)
+            ),
+            _ => project
+                .room_area(room)
+                .map(|area| format!("{area:.2} m²").replace('.', ","))
+                .unwrap_or_default(),
+        };
         let measure = fit_text(
             painter,
             &dimensions,
@@ -111,10 +121,7 @@ pub(super) fn paint_room_labels(
             .size()
             .x
             .max(measure.as_ref().map_or(0.0, |galley| galley.size().x));
-        let center_pos = project
-            .room_centroid(room)
-            .map(|c| view.to_screen(c))
-            .unwrap_or_else(|| inner.center());
+        let center_pos = inner.center();
         let block = Rect::from_center_size(center_pos, egui::vec2(block_width, block_height));
         if occupied
             .iter()

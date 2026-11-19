@@ -19,7 +19,7 @@ impl FloorPlanApp {
             point
         };
         if self.ortho_enabled
-            && self.tool == Tool::Wall
+            && matches!(self.tool, Tool::Wall | Tool::RoomPolygon)
             && let Some(start) = start
         {
             if (result.x - start.x).abs() >= (result.y - start.y).abs() {
@@ -48,7 +48,7 @@ impl FloorPlanApp {
     pub(super) fn modular_point(&self, start: Point, point: Point) -> Point {
         let material = &self.project.masonry;
         match self.tool {
-            Tool::Wall => {
+            Tool::Wall | Tool::RoomPolygon => {
                 let length = start.distance(point);
                 if length < 1e-4 {
                     return point;
@@ -74,13 +74,18 @@ impl FloorPlanApp {
         let mut result = point.snapped_to(0.25);
         let snap_threshold = self.screen_metres(12.0).clamp(0.12, 0.40);
         let mut closest = snap_threshold;
-        for wall in &self.project.walls {
-            for endpoint in [wall.start, wall.end] {
-                let distance = point.distance(endpoint);
-                if distance < closest {
-                    closest = distance;
-                    result = endpoint;
-                }
+        // Wall ends, and the corners of the room being drawn (to close it).
+        let corners = self
+            .project
+            .walls
+            .iter()
+            .flat_map(|wall| [wall.start, wall.end])
+            .chain(self.polygon_draft.iter().copied());
+        for endpoint in corners {
+            let distance = point.distance(endpoint);
+            if distance < closest {
+                closest = distance;
+                result = endpoint;
             }
         }
         if let Some(start) = start {
@@ -185,7 +190,7 @@ impl FloorPlanApp {
                 return self.measure_snap(point, self.draft_start()).0;
             }
             let point = self.snap(point, self.draft_start());
-            if matches!(self.tool, Tool::Room | Tool::Wall)
+            if matches!(self.tool, Tool::Room | Tool::RoomPolygon | Tool::Wall)
                 && let Some(terrain) = &self.project.terrain
             {
                 return Point::new(
@@ -196,20 +201,20 @@ impl FloorPlanApp {
             point
         });
 
-        if let Some((start, end)) = self.pending_room {
-            // Keep the drawn rectangle on screen while the room is named.
+        if let Some(corners) = &self.pending_room {
+            // Keep the drawn room on screen while it is named.
             canvas::paint(
                 &painter,
                 view,
                 &self.project,
                 PaintOptions {
                     selection: self.selection,
-                    preview: Some(Preview::Room(start, end)),
                     show_grid: self.show_grid,
                     dimensions: self.show_dimensions,
                     ..Default::default()
                 },
             );
+            canvas::paint_polygon_draft(&painter, view, corners, None, true);
             self.paint_view_aids(&painter, view);
             self.canvas_navigation(ui, navigation);
             return;
@@ -326,6 +331,7 @@ impl FloorPlanApp {
                         CreationState::Dragging { .. } => {}
                     }
                 }
+                Tool::RoomPolygon => self.add_polygon_point(point),
                 Tool::Opening(kind) => self.add_opening_at(point, kind),
                 Tool::Fixture(kind) => {
                     if let Some(raw) = world {
@@ -334,6 +340,10 @@ impl FloorPlanApp {
                 }
                 Tool::Move => {}
             }
+        }
+
+        if self.tool == Tool::RoomPolygon && response.double_clicked() {
+            self.close_polygon_draft();
         }
 
         if ui.input(|input| input.key_pressed(Key::Escape)) {
@@ -377,6 +387,9 @@ impl FloorPlanApp {
             },
         );
         self.paint_view_aids(&painter, view);
+        if self.tool == Tool::RoomPolygon && !self.polygon_draft.is_empty() {
+            canvas::paint_polygon_draft(&painter, view, &self.polygon_draft, snapped, false);
+        }
         if self.tool == Tool::Measure
             && let (Some(start), Some(end)) = (self.draft_start(), snapped)
         {
@@ -388,14 +401,21 @@ impl FloorPlanApp {
         {
             let drawing = matches!(
                 self.tool,
-                Tool::Wall | Tool::Room | Tool::Terrain | Tool::Fixture(_) | Tool::Measure
+                Tool::Wall
+                    | Tool::Room
+                    | Tool::RoomPolygon
+                    | Tool::Terrain
+                    | Tool::Fixture(_)
+                    | Tool::Measure
             ) || opening_target;
             if drawing {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::None);
                 overlay::paint_crosshair(&painter, position);
             }
-            if matches!(self.tool, Tool::Wall | Tool::Room | Tool::Terrain)
-                && let Some(point) = snapped
+            if matches!(
+                self.tool,
+                Tool::Wall | Tool::Room | Tool::RoomPolygon | Tool::Terrain
+            ) && let Some(point) = snapped
                 && let Some(kind) = self.snap_kind(point)
             {
                 overlay::paint_snap_marker(&painter, view.to_screen(point), kind);
