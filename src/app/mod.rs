@@ -978,7 +978,12 @@ impl FloorPlanApp {
         }
         let previous = self.project.clone();
         match selection {
-            Selection::Wall(id) => self.project.move_wall(id, delta),
+            Selection::Wall(id) => {
+                if let Err(error) = self.project.move_wall_checked(id, delta) {
+                    self.message = error;
+                    return;
+                }
+            }
             Selection::Room(id) => {
                 if !self.project.move_room(id, delta) {
                     self.message = "Cômodo possui paredes compartilhadas. Mova as paredes individualmente para ajustar a planta.".to_owned();
