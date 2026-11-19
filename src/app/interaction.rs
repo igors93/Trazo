@@ -147,13 +147,15 @@ impl FloorPlanApp {
             point
         });
 
-        if self.pending_room.is_some() {
+        if let Some((start, end)) = self.pending_room {
+            // Keep the drawn rectangle on screen while the room is named.
             canvas::paint(
                 &painter,
                 view,
                 &self.project,
                 PaintOptions {
                     selection: self.selection,
+                    preview: Some(Preview::Room(start, end)),
                     show_grid: self.show_grid,
                     ..Default::default()
                 },
