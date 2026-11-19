@@ -92,7 +92,12 @@ impl FloorPlanApp {
         let rect = response.rect;
         self.prepare_canvas_view(rect);
         let navigation = overlay::navigation_rect(rect);
-        let on_canvas = |position: egui::Pos2| rect.contains(position) && !navigation.contains(position);
+        // False while a menu, a dialog or a floating button covers the plan:
+        // the pointer then belongs to them, not to the drawing below.
+        let pointer_free = response.contains_pointer();
+        let on_canvas = |position: egui::Pos2| {
+            pointer_free && rect.contains(position) && !navigation.contains(position)
+        };
 
         if response.hovered() {
             let scroll = ui.input(|input| input.smooth_scroll_delta.y);
@@ -114,6 +119,7 @@ impl FloorPlanApp {
         let (middle_down, pointer_delta) =
             ui.input(|input| (input.pointer.middle_down(), input.pointer.delta()));
         let panning = middle_down
+            && pointer_free
             && rect.contains(ui.input(|input| input.pointer.hover_pos().unwrap_or_default()));
         if panning {
             self.pan += pointer_delta;
