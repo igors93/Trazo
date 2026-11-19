@@ -149,6 +149,7 @@ impl Project {
                 name: format!("Ambiente {}", first_number + index),
                 legacy_kind: None,
                 wall_ids: detected.wall_ids.clone(),
+                hatch: None,
             });
         }
         detected.len()

@@ -72,17 +72,36 @@ fn document(project: &Project) -> SvgDocument {
             escaped(&label)
         );
     }
-    for room in &project.rooms {
-        if let Some(poly) = project.room_polygon(room) {
-            let points_str: String = poly
-                .iter()
-                .map(|p| {
-                    let (x, y) = point(*p);
-                    format!("{:.1},{:.1}", x, y)
-                })
-                .collect::<Vec<_>>()
-                .join(" ");
-            let _ = writeln!(svg, "<polygon points=\"{}\" fill=\"#eef5fd\"/>", points_str);
+    if project.category_visible(crate::domain::layers::LayerCategory::Rooms) {
+        for room in &project.rooms {
+            if let Some(poly) = project.room_polygon(room) {
+                let points_str: String = poly
+                    .iter()
+                    .map(|p| {
+                        let (x, y) = point(*p);
+                        format!("{:.1},{:.1}", x, y)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let fill = match room.hatch {
+                    Some(style) if style.pattern == crate::domain::hatch::HatchPattern::Solid => {
+                        style.hex_color()
+                    }
+                    _ => "#eef5fd".to_owned(),
+                };
+                let _ = writeln!(svg, "<polygon points=\"{points_str}\" fill=\"{fill}\"/>");
+                if let Some(style) = room.hatch {
+                    let stroke_color = style.hex_color();
+                    for (a, b) in crate::domain::hatch::hatch_segments_in_polygon(&poly, &style) {
+                        let (x1, y1) = point(a);
+                        let (x2, y2) = point(b);
+                        let _ = writeln!(
+                            svg,
+                            "<line x1=\"{x1:.1}\" y1=\"{y1:.1}\" x2=\"{x2:.1}\" y2=\"{y2:.1}\" stroke=\"{stroke_color}\" stroke-width=\"0.9\" opacity=\"0.75\"/>"
+                        );
+                    }
+                }
+            }
         }
     }
     for junction in project.wall_junctions() {

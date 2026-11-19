@@ -2,6 +2,7 @@ pub mod annotations;
 pub mod drawing;
 pub mod fixtures;
 pub mod geometry;
+pub mod hatch;
 pub mod history;
 pub mod junctions;
 pub mod layers;

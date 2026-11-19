@@ -9,6 +9,7 @@ use super::geometry::{
 mod auto_rooms;
 mod drawings;
 mod rooms;
+mod site;
 mod shared_walls;
 mod vertices;
 use super::masonry::{self, Masonry};
@@ -30,6 +31,10 @@ pub struct Project {
 
     #[serde(default)]
     pub terrain: Option<Terrain>,
+
+    /// Lots created by subdividing the terrain polygon.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lots: Vec<Lot>,
 
     /// Counters, sinks, stoves, bathroom fittings, tables...
     #[serde(default)]
@@ -77,6 +82,8 @@ impl Default for Project {
 
             terrain: None,
 
+            lots: Vec::new(),
+
             fixtures: Vec::new(),
 
             masonry: Masonry::default(),
@@ -118,9 +125,39 @@ pub struct Terrain {
     pub min: Point,
 
     pub max: Point,
+
+    /// Free boundary. Empty in legacy rectangular projects.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vertices: Vec<Point>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Lot {
+    pub id: u64,
+    pub name: String,
+    pub vertices: Vec<Point>,
+}
+
+impl Lot {
+    pub fn area(&self) -> f64 {
+        super::geometry::polygon_area(&self.vertices)
+    }
 }
 
 impl Terrain {
+    pub fn outline(&self) -> Vec<Point> {
+        if self.vertices.len() >= 3 {
+            self.vertices.clone()
+        } else {
+            vec![
+                self.min,
+                Point::new(self.max.x, self.min.y),
+                self.max,
+                Point::new(self.min.x, self.max.y),
+            ]
+        }
+    }
+
     pub fn width(&self) -> f64 {
         self.max.x - self.min.x
     }
@@ -130,14 +167,23 @@ impl Terrain {
     }
 
     pub fn area(&self) -> f64 {
-        self.width() * self.height()
+        if self.vertices.len() >= 3 {
+            super::geometry::polygon_area(&self.vertices)
+        } else {
+            self.width() * self.height()
+        }
     }
 
     pub fn contains(&self, point: Point) -> bool {
-        point.x >= self.min.x
-            && point.x <= self.max.x
-            && point.y >= self.min.y
-            && point.y <= self.max.y
+        let outline = self.outline();
+        super::geometry::polygon_contains_point(&outline, point)
+            || (0..outline.len()).any(|index| {
+                super::geometry::distance_to_segment(
+                    point,
+                    outline[index],
+                    outline[(index + 1) % outline.len()],
+                ) < super::geometry::POINT_TOLERANCE
+            })
     }
 }
 
@@ -205,6 +251,9 @@ pub struct Room {
     pub legacy_kind: Option<RoomKind>,
 
     pub wall_ids: Vec<u64>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hatch: Option<super::hatch::HatchStyle>,
 }
 
 impl Room {
@@ -398,14 +447,23 @@ impl Project {
     }
 
     pub fn content_inside_terrain(&self) -> bool {
-        let (Some(terrain), Some((min, max))) = (&self.terrain, self.content_bounds()) else {
+        let Some(terrain) = &self.terrain else {
             return true;
         };
-
-        min.x >= terrain.min.x - 0.001
-            && min.y >= terrain.min.y - 0.001
-            && max.x <= terrain.max.x + 0.001
-            && max.y <= terrain.max.y + 0.001
+        self.walls
+            .iter()
+            .all(|wall| terrain.contains(wall.start) && terrain.contains(wall.end))
+            && self.fixtures.iter().all(|fixture| {
+                let (low, high) = fixture.bounds();
+                [
+                    low,
+                    Point::new(high.x, low.y),
+                    high,
+                    Point::new(low.x, high.y),
+                ]
+                .into_iter()
+                .all(|corner| terrain.contains(corner))
+            })
     }
 
     pub fn center_content_on_terrain(&mut self) -> bool {
@@ -451,7 +509,13 @@ impl Project {
             .map(|terrain| terrain.id)
             .unwrap_or_else(|| self.id());
 
-        self.terrain = Some(Terrain { id, min, max });
+        self.terrain = Some(Terrain {
+            id,
+            min,
+            max,
+            vertices: Vec::new(),
+        });
+        self.lots.clear();
 
         Some(id)
     }
@@ -465,7 +529,17 @@ impl Project {
             return false;
         };
 
+        if terrain.vertices.len() >= 3 {
+            let old_width = terrain.width();
+            let old_height = terrain.height();
+            for point in &mut terrain.vertices {
+                point.x = terrain.min.x + (point.x - terrain.min.x) * width / old_width;
+                point.y = terrain.min.y + (point.y - terrain.min.y) * height / old_height;
+                *point = point.rounded();
+            }
+        }
         terrain.max = Point::new(terrain.min.x + width, terrain.min.y + height);
+        self.lots.clear();
 
         true
     }
@@ -477,6 +551,16 @@ impl Project {
             terrain.min = terrain.min.translated(delta);
 
             terrain.max = terrain.max.translated(delta);
+
+            for point in &mut terrain.vertices {
+                *point = point.translated(delta);
+            }
+
+            for lot in &mut self.lots {
+                for point in &mut lot.vertices {
+                    *point = point.translated(delta);
+                }
+            }
 
             for wall in &mut self.walls {
                 wall.start = wall.start.translated(delta);
@@ -536,9 +620,16 @@ impl Project {
     /// Whether `fixture` lies inside the terrain (or there is none).
     fn fixture_fits(&self, fixture: &Fixture) -> bool {
         let (low, high) = fixture.bounds();
-        self.terrain
-            .as_ref()
-            .is_none_or(|terrain| terrain.contains(low) && terrain.contains(high))
+        self.terrain.as_ref().is_none_or(|terrain| {
+            [
+                low,
+                Point::new(high.x, low.y),
+                high,
+                Point::new(low.x, high.y),
+            ]
+            .into_iter()
+            .all(|corner| terrain.contains(corner))
+        })
     }
 
     /// Places a fixture centred at `center`; it must fit in the terrain.
@@ -656,6 +747,7 @@ impl Project {
             .is_some_and(|terrain| terrain.id == id)
         {
             self.terrain = None;
+            self.lots.clear();
 
             true
         } else {
@@ -962,6 +1054,17 @@ impl Project {
                     warnings.push("Limites do terreno foram normalizados.".to_owned());
                 }
             }
+            if terrain.vertices.len() >= 3
+                && (!super::geometry::polygon_is_simple(&terrain.vertices)
+                    || terrain.vertices.iter().any(|point| !point.is_finite()))
+            {
+                terrain.vertices.clear();
+                self.lots.clear();
+                warnings.push(
+                    "Divisa irregular inválida foi substituída pelos limites retangulares."
+                        .to_owned(),
+                );
+            }
         }
 
         // 2. Referential integrity
@@ -1013,6 +1116,15 @@ impl Project {
         if let Some(t) = &self.terrain {
             max_id = max_id.max(t.id);
         }
+        self.lots.retain(|lot| {
+            lot.vertices.len() >= 3
+                && lot.vertices.iter().all(|point| point.is_finite())
+                && super::geometry::polygon_is_simple(&lot.vertices)
+                && super::geometry::polygon_area(&lot.vertices) >= 0.25
+        });
+        for lot in &self.lots {
+            max_id = max_id.max(lot.id);
+        }
         let orig_fixtures = self.fixtures.len();
         self.fixtures.retain(|fixture| {
             fixture.center.x.is_finite()
@@ -1062,6 +1174,14 @@ impl Project {
         if let Some(terrain) = &mut self.terrain {
             terrain.min = terrain.min.rounded();
             terrain.max = terrain.max.rounded();
+            for point in &mut terrain.vertices {
+                *point = point.rounded();
+            }
+        }
+        for lot in &mut self.lots {
+            for point in &mut lot.vertices {
+                *point = point.rounded();
+            }
         }
         for opening in &mut self.openings {
             // Positions along a wall are fractions: a micro-unit is a

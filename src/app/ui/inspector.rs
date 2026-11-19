@@ -417,6 +417,38 @@ impl FloorPlanApp {
             .iter()
             .filter(|o| o.kind == OpeningKind::Window && room.wall_ids.contains(&o.wall_id))
             .count();
+        let current_hatch = room
+            .hatch
+            .map(|h| h.pattern)
+            .unwrap_or(crate::domain::hatch::HatchPattern::None);
+        let mut chosen_hatch = None;
+        section(ui, "room_hatch", "Hachura e material", |ui| {
+            grid(ui, "room_hatch_grid", |ui| {
+                property_label(ui, "Padrão");
+                egui::ComboBox::from_id_salt(("room_hatch_combo", id))
+                    .width(152.0)
+                    .selected_text(RichText::new(current_hatch.label()).size(12.0))
+                    .show_ui(ui, |ui| {
+                        for pattern in crate::domain::hatch::HatchPattern::ALL {
+                            if ui
+                                .selectable_label(current_hatch == pattern, pattern.label())
+                                .clicked()
+                            {
+                                chosen_hatch = Some(pattern);
+                            }
+                        }
+                    });
+                ui.end_row();
+            });
+        });
+        if let Some(pattern) = chosen_hatch {
+            let prev = self.project.clone();
+            let style = crate::domain::hatch::HatchStyle::for_pattern(pattern);
+            if self.project.set_room_hatch(id, Some(style)).is_ok() {
+                self.record_change(prev);
+                self.message = format!("Hachura atualizada: {}.", pattern.label());
+            }
+        }
         section(ui, "room_relations", "Relações", |ui| {
             grid(ui, "room_relations_grid", |ui| {
                 property_label(ui, "Paredes");

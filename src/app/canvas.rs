@@ -462,6 +462,17 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
             };
 
             if let Some(poly) = project.room_polygon(room) {
+                let fill = match room.hatch {
+                    Some(style)
+                        if !selected
+                            && !hovered
+                            && style.pattern == crate::domain::hatch::HatchPattern::Solid =>
+                    {
+                        let [r, g, b] = style.color;
+                        Color32::from_rgba_unmultiplied(r, g, b, 175)
+                    }
+                    _ => fill_color,
+                };
                 let triangles = crate::domain::geometry::triangulate_polygon(&poly);
                 for tri in triangles {
                     let p0 = view.to_screen(tri[0]);
@@ -469,9 +480,16 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
                     let p2 = view.to_screen(tri[2]);
                     painter.add(egui::Shape::convex_polygon(
                         vec![p0, p1, p2],
-                        fill_color,
+                        fill,
                         Stroke::NONE,
                     ));
+                }
+                if let Some(style) = room.hatch {
+                    let [r, g, b] = style.color;
+                    let stroke = Stroke::new(0.9, Color32::from_rgba_unmultiplied(r, g, b, 180));
+                    for (a, b) in crate::domain::hatch::hatch_segments_in_polygon(&poly, &style) {
+                        painter.line_segment([view.to_screen(a), view.to_screen(b)], stroke);
+                    }
                 }
             } else if let Some((min, max)) = project.room_bounds(room) {
                 let rect = Rect::from_two_pos(view.to_screen(min), view.to_screen(max));
