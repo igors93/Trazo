@@ -13,7 +13,10 @@ use crate::{
         history::History,
         model::{OpeningKind, Project},
     },
-    io::{export, project_file, recovery},
+    io::{
+        export, project_file, recovery,
+        settings::{self, Settings},
+    },
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,6 +110,8 @@ pub struct FloorPlanApp {
     cursor_world: Option<Point>,
     zoom_target: Option<(Point, Point)>,
     window_title: String,
+    /// The interface preferences as last written to disk.
+    saved_settings: Settings,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,6 +126,11 @@ impl FloorPlanApp {
         theme::apply(context);
         let recovered = if cfg!(test) { None } else { recovery::load() };
         let restored = recovered.is_some();
+        let preferences = if cfg!(test) {
+            Settings::default()
+        } else {
+            settings::load()
+        };
         Self {
             project: recovered.unwrap_or_default(),
             history: History::new(),
@@ -141,7 +151,7 @@ impl FloorPlanApp {
             pan: egui::Vec2::ZERO,
             last_canvas_center: None,
             fit_pending: restored,
-            snap_enabled: true,
+            snap_enabled: preferences.snap_enabled,
             terrain_width_text: "5,00".to_owned(),
             terrain_height_text: "10,00".to_owned(),
             wall_length_text: String::new(),
@@ -155,17 +165,42 @@ impl FloorPlanApp {
                 "Selecione uma ferramenta ou clique em um elemento para começar.".to_owned()
             },
             ribbon_tab: RibbonTab::Architecture,
-            ribbon_collapsed: false,
-            show_grid: true,
-            ortho_enabled: false,
-            show_browser: true,
-            show_properties: true,
+            ribbon_collapsed: preferences.ribbon_collapsed,
+            show_grid: preferences.show_grid,
+            ortho_enabled: preferences.ortho_enabled,
+            show_browser: preferences.show_browser,
+            show_properties: preferences.show_properties,
             show_help: false,
             browser_filter: String::new(),
             browser_hover: None,
             cursor_world: None,
             zoom_target: None,
             window_title: String::new(),
+            saved_settings: preferences,
+        }
+    }
+
+    fn current_settings(&self) -> Settings {
+        Settings {
+            show_grid: self.show_grid,
+            snap_enabled: self.snap_enabled,
+            ortho_enabled: self.ortho_enabled,
+            show_browser: self.show_browser,
+            show_properties: self.show_properties,
+            ribbon_collapsed: self.ribbon_collapsed,
+        }
+    }
+
+    /// Writes the interface preferences when they change. It is best
+    /// effort: preferences are a convenience, so a failing disk is neither
+    /// reported nor retried every frame.
+    fn persist_settings(&mut self) {
+        let current = self.current_settings();
+        if current != self.saved_settings {
+            if !cfg!(test) {
+                let _ = settings::save(&current);
+            }
+            self.saved_settings = current;
         }
     }
 
@@ -1172,6 +1207,7 @@ impl FloorPlanApp {
 impl eframe::App for FloorPlanApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.show_layout(ui);
+        self.persist_settings();
         if self.recovery_pending {
             match recovery::save(&self.project) {
                 Ok(()) => self.recovery_pending = false,
@@ -1372,6 +1408,20 @@ mod tests {
         assert_eq!(app.project.walls[0].start, Point::new(0.0, 1.0));
         assert!(!app.dirty && !app.history.can_undo());
         assert!(app.message.contains("terreno"));
+    }
+
+    #[test]
+    fn interface_preferences_are_tracked_for_saving() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        assert_eq!(app.current_settings(), Settings::default());
+        app.toggle_grid();
+        app.toggle_ortho();
+        app.ribbon_collapsed = true;
+        assert_ne!(app.current_settings(), app.saved_settings);
+        app.persist_settings();
+        assert_eq!(app.saved_settings, app.current_settings());
+        assert!(!app.saved_settings.show_grid && app.saved_settings.ortho_enabled);
     }
 
     #[test]

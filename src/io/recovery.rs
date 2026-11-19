@@ -8,11 +8,7 @@ use crate::domain::model::Project;
 use super::project_file;
 
 fn recovery_path() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join("Trazo")
-        .join("recovery.json")
+    super::data_dir().join("recovery.json")
 }
 
 fn backup_path(path: &Path) -> PathBuf {
