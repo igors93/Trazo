@@ -3,6 +3,7 @@
 mod app;
 mod domain;
 mod io;
+mod mcp;
 
 use eframe::egui;
 

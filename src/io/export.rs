@@ -152,20 +152,41 @@ fn document(project: &Project) -> SvgDocument {
     }
 }
 
-pub fn png(project: &Project, path: &Path) -> Result<(), String> {
+/// Rasterizes the plan, scaled down so that its longer side is at most
+/// `max_side` pixels (never up).
+fn render(project: &Project, max_side: Option<u32>) -> Result<resvg::tiny_skia::Pixmap, String> {
     let document = document(project);
     let mut options = resvg::usvg::Options::default();
     options.fontdb_mut().load_system_fonts();
     let tree = resvg::usvg::Tree::from_str(&document.markup, &options)
         .map_err(|error| error.to_string())?;
-    let mut pixmap = resvg::tiny_skia::Pixmap::new(document.width, document.height)
+    let scale = max_side
+        .map(|side| (side as f32 / document.width.max(document.height) as f32).min(1.0))
+        .unwrap_or(1.0);
+    let width = ((document.width as f32 * scale).round() as u32).max(1);
+    let height = ((document.height as f32 * scale).round() as u32).max(1);
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)
         .ok_or("A planta é grande demais para exportar como imagem")?;
     resvg::render(
         &tree,
-        resvg::tiny_skia::Transform::default(),
+        resvg::tiny_skia::Transform::from_scale(scale, scale),
         &mut pixmap.as_mut(),
     );
-    pixmap.save_png(path).map_err(|error| error.to_string())
+    Ok(pixmap)
+}
+
+pub fn png(project: &Project, path: &Path) -> Result<(), String> {
+    render(project, None)?
+        .save_png(path)
+        .map_err(|error| error.to_string())
+}
+
+/// The plan as PNG bytes no larger than `max_side` pixels, for previews such
+/// as the picture an AI assistant asks for.
+pub fn png_preview(project: &Project, max_side: u32) -> Result<Vec<u8>, String> {
+    render(project, Some(max_side))?
+        .encode_png()
+        .map_err(|error| error.to_string())
 }
 
 pub fn pdf(project: &Project, path: &Path) -> Result<(), String> {
@@ -203,6 +224,18 @@ mod tests {
         assert!(svg.contains('…'));
         assert!(!svg.contains("Quarto com nome excepcionalmente longo</text>"));
         assert!(!svg.contains("0,50 m × 0,50 m</text>"));
+    }
+
+    #[test]
+    fn preview_png_fits_the_requested_size() {
+        let mut project = Project::default();
+        project.set_terrain(Point::new(0.0, 0.0), Point::new(12.0, 25.0));
+        let bytes = png_preview(&project, 512).unwrap();
+        assert!(bytes.starts_with(b"\x89PNG"));
+        // The IHDR chunk holds width and height right after the signature.
+        let width = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
+        let height = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
+        assert_eq!(width.max(height), 512);
     }
 
     #[test]

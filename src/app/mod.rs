@@ -1,9 +1,12 @@
 mod canvas;
 mod interaction;
+mod mcp_tools;
 mod theme;
 mod ui;
 
 use std::path::{Path, PathBuf};
+use std::sync::mpsc;
+use std::time::Instant;
 
 use eframe::egui::{self, Key};
 
@@ -17,7 +20,16 @@ use crate::{
         export, project_file, recovery,
         settings::{self, Settings},
     },
+    mcp::{self, server::ToolCall},
 };
+
+/// The state of the MCP server that lets AI assistants use Trazo.
+#[derive(Clone, Debug, PartialEq)]
+pub enum McpStatus {
+    Off,
+    Listening(u16),
+    Failed(String),
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PendingAction {
@@ -112,6 +124,11 @@ pub struct FloorPlanApp {
     window_title: String,
     /// The interface preferences as last written to disk.
     saved_settings: Settings,
+    /// Tools run by an AI assistant through MCP in this session.
+    mcp_actions: u32,
+    /// Tool calls from the MCP server, run on the UI thread.
+    mcp_calls: Option<mpsc::Receiver<ToolCall>>,
+    mcp_status: McpStatus,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -130,6 +147,11 @@ impl FloorPlanApp {
             Settings::default()
         } else {
             settings::load()
+        };
+        let (mcp_calls, mcp_status) = if cfg!(test) {
+            (None, McpStatus::Off)
+        } else {
+            Self::start_mcp(context)
         };
         Self {
             project: recovered.unwrap_or_default(),
@@ -177,6 +199,49 @@ impl FloorPlanApp {
             zoom_target: None,
             window_title: String::new(),
             saved_settings: preferences,
+            mcp_actions: 0,
+            mcp_calls,
+            mcp_status,
+        }
+    }
+
+    /// Starts the MCP server. A busy port (another Trazo window, say) only
+    /// leaves MCP off; the editor works as usual.
+    fn start_mcp(
+        context: &egui::Context,
+    ) -> (Option<mpsc::Receiver<ToolCall>>, McpStatus) {
+        let (sender, receiver) = mpsc::channel();
+        let waker = context.clone();
+        match mcp::server::start(mcp::port(), sender, move || waker.request_repaint()) {
+            Ok(port) => (Some(receiver), McpStatus::Listening(port)),
+            Err(error) => (None, McpStatus::Failed(error)),
+        }
+    }
+
+    /// Runs the tool calls the MCP server has queued, answering each.
+    fn process_mcp_calls(&mut self) {
+        let Some(calls) = &self.mcp_calls else {
+            return;
+        };
+        let pending: Vec<ToolCall> = calls.try_iter().collect();
+        for call in pending {
+            if Instant::now() > call.deadline {
+                // The client gave up waiting; running it now would surprise it.
+                continue;
+            }
+            let result = self.run_mcp_tool(&call.name, &call.arguments).to_result();
+            let _ = call.reply.send(result);
+        }
+    }
+
+    fn save_recovery_if_pending(&mut self) {
+        if self.recovery_pending {
+            match recovery::save(&self.project) {
+                Ok(()) => self.recovery_pending = false,
+                Err(error) => {
+                    self.message = format!("Não foi possível proteger o rascunho: {error}")
+                }
+            }
         }
     }
 
@@ -401,6 +466,11 @@ impl FloorPlanApp {
                 None => return false,
             },
         };
+        self.write_project(path)
+    }
+
+    /// Saves the project to `path`, which becomes the current file.
+    fn write_project(&mut self, path: PathBuf) -> bool {
         match project_file::save(&self.project, &path) {
             Ok(()) => {
                 recovery::clear();
@@ -1205,17 +1275,17 @@ impl FloorPlanApp {
 }
 
 impl eframe::App for FloorPlanApp {
+    /// Runs before every frame and also while the window is minimized, so
+    /// an assistant's tool calls are answered even then.
+    fn logic(&mut self, _context: &egui::Context, _frame: &mut eframe::Frame) {
+        self.process_mcp_calls();
+        self.save_recovery_if_pending();
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.show_layout(ui);
         self.persist_settings();
-        if self.recovery_pending {
-            match recovery::save(&self.project) {
-                Ok(()) => self.recovery_pending = false,
-                Err(error) => {
-                    self.message = format!("Não foi possível proteger o rascunho: {error}")
-                }
-            }
-        }
+        self.save_recovery_if_pending();
     }
 }
 

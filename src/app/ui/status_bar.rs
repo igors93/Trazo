@@ -1,4 +1,5 @@
-use super::super::{FloorPlanApp, theme::*};
+use super::super::{FloorPlanApp, McpStatus, theme::*};
+use crate::mcp;
 use super::icons::{self, Icon};
 use super::inspector::format_point;
 use super::widgets::{icon_button_sized, tip, toggle_pill};
@@ -16,6 +17,31 @@ fn divider(ui: &mut Ui) {
 }
 
 impl FloorPlanApp {
+    /// Whether AI assistants can reach Trazo, and the address to give them.
+    fn mcp_pill(&mut self, ui: &mut Ui) {
+        let (on, tooltip) = match &self.mcp_status {
+            McpStatus::Listening(port) => (
+                true,
+                format!(
+                    "Servidor MCP ativo em {}
+{} ação(ões) da IA nesta sessão.
+Clique para copiar o endereço.",
+                    mcp::local_url(*port),
+                    self.mcp_actions
+                ),
+            ),
+            McpStatus::Failed(error) => (false, format!("Servidor MCP desligado: {error}.")),
+            McpStatus::Off => (false, "Servidor MCP desligado.".to_owned()),
+        };
+        if toggle_pill(ui, "IA", on, &tooltip).clicked()
+            && let McpStatus::Listening(port) = self.mcp_status
+        {
+            let url = mcp::local_url(port);
+            ui.ctx().copy_text(url.clone());
+            self.message = format!("Endereço MCP copiado: {url}");
+        }
+    }
+
     pub(super) fn status_bar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.set_min_height(22.0);
@@ -62,6 +88,9 @@ impl FloorPlanApp {
                 if icon_button_sized(ui, Icon::ZoomOut, "Reduzir", false, 22.0, 15.0).clicked() {
                     self.zoom_by(0.8);
                 }
+                divider(ui);
+
+                self.mcp_pill(ui);
                 divider(ui);
 
                 if toggle_pill(ui, "Encaixe", self.snap_enabled, "Encaixe magnético (F3)")

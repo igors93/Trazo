@@ -1,0 +1,1057 @@
+//! The tools an AI assistant runs through MCP (see `crate::mcp`). They act
+//! on the open project the way the interface does: each change is one undo
+//! step, marks the project unsaved and feeds the recovery draft.
+//!
+//! The assistant sees plan coordinates in metres with X to the right and Y
+//! up, as the status bar shows them; the model's Y grows downwards on
+//! screen, so Y is flipped at this boundary.
+
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::path::{Path, PathBuf};
+
+use serde_json::{Value, json};
+
+use super::{FloorPlanApp, OpenResult, Selection};
+use crate::{
+    domain::{
+        geometry::{Point, format_meters},
+        model::{OpeningKind, Project},
+    },
+    io::export,
+    mcp::{ToolOutput, protocol},
+};
+
+/// Largest coordinate or length accepted, in metres.
+const LIMIT: f32 = 10_000.0;
+
+fn to_model(x: f32, y: f32) -> Point {
+    Point::new(x, -y)
+}
+
+fn from_model(point: Point) -> (f32, f32) {
+    // Adding 0.0 turns -0.0 into 0.0.
+    (point.x + 0.0, -point.y + 0.0)
+}
+
+fn round(value: f32) -> f64 {
+    (value as f64 * 1000.0).round() / 1000.0 + 0.0
+}
+
+fn xy(point: Point) -> Value {
+    let (x, y) = from_model(point);
+    json!({ "x": round(x), "y": round(y) })
+}
+
+fn square_metres(value: f32) -> String {
+    format!("{value:.2} m²").replace('.', ",")
+}
+
+/// An optional number argument; strings such as "3,5" are accepted too.
+fn number(args: &Value, key: &str) -> Result<Option<f32>, String> {
+    let value = match args.get(key) {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::Number(number)) => number.as_f64().map(|value| value as f32),
+        Some(Value::String(text)) => text.trim().replace(',', ".").parse::<f32>().ok(),
+        Some(_) => None,
+    };
+    match value {
+        Some(value) if value.is_finite() && value.abs() <= LIMIT => Ok(Some(value)),
+        _ => Err(format!(
+            "'{key}' deve ser um número entre -10000 e 10000 (metros)."
+        )),
+    }
+}
+
+fn required_number(args: &Value, key: &str) -> Result<f32, String> {
+    number(args, key)?.ok_or_else(|| format!("Informe '{key}' (número, em metros)."))
+}
+
+fn element_id(args: &Value, key: &str) -> Result<u64, String> {
+    let id = match args.get(key) {
+        Some(Value::Number(number)) => number
+            .as_u64()
+            .or_else(|| number.as_f64().filter(|v| v.fract() == 0.0 && *v >= 0.0).map(|v| v as u64)),
+        Some(Value::String(text)) => text.trim().parse::<u64>().ok(),
+        _ => None,
+    };
+    id.ok_or_else(|| format!("Informe '{key}': o id numérico do elemento (veja obter_planta)."))
+}
+
+fn text(args: &Value, key: &str) -> Option<String> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .map(str::to_owned)
+}
+
+fn flag(args: &Value, key: &str) -> bool {
+    match args.get(key) {
+        Some(Value::Bool(value)) => *value,
+        Some(Value::String(text)) => matches!(text.trim().to_lowercase().as_str(), "true" | "sim" | "1"),
+        _ => false,
+    }
+}
+
+/// Trazo's folder inside the person's Documents (OneDrive's when Windows
+/// keeps Documents there), where files go when no folder is given.
+fn documents_dir() -> PathBuf {
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let one_drive = std::env::var_os("OneDrive").map(PathBuf::from);
+    let candidates = one_drive
+        .iter()
+        .flat_map(|folder| [folder.join("Documentos"), folder.join("Documents")])
+        .chain([home.join("Documents"), home.join("Documentos")]);
+    candidates
+        .into_iter()
+        .find(|folder| folder.is_dir())
+        .unwrap_or(home)
+        .join("Trazo")
+}
+
+/// A path given by the assistant: relative ones are taken from Trazo's
+/// Documents folder, and a missing extension is added.
+fn resolve_path(input: &str, extension: &str) -> PathBuf {
+    let mut path = PathBuf::from(input.trim().trim_matches('"'));
+    if path.is_relative() {
+        path = documents_dir().join(path);
+    }
+    if path.extension().is_none() {
+        path.set_extension(extension);
+    }
+    path
+}
+
+/// `path`, or the first "name (2).ext", "name (3).ext"... that is free.
+fn unique_path(path: PathBuf) -> PathBuf {
+    if !path.exists() {
+        return path;
+    }
+    let stem = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let extension = path
+        .extension()
+        .map(|extension| format!(".{}", extension.to_string_lossy()))
+        .unwrap_or_default();
+    (2..)
+        .map(|index| path.with_file_name(format!("{stem} ({index}){extension}")))
+        .find(|candidate| !candidate.exists())
+        .unwrap_or(path)
+}
+
+/// The project name as a safe file name.
+fn file_stem(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| {
+            if c.is_control() || r#"<>:"/\|?*"#.contains(c) {
+                '-'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let cleaned = cleaned.trim().trim_matches('.').to_owned();
+    if cleaned.is_empty() {
+        "planta".to_owned()
+    } else {
+        cleaned
+    }
+}
+
+fn ensure_parent(path: &Path) -> Result<(), String> {
+    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Não foi possível criar a pasta {}: {error}", parent.display()))?;
+    }
+    Ok(())
+}
+
+/// What a successful change reports.
+struct Change {
+    message: String,
+    selection: Option<Selection>,
+    data: Option<Value>,
+}
+
+impl Change {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            selection: None,
+            data: None,
+        }
+    }
+
+    fn select(mut self, selection: Selection) -> Self {
+        self.selection = Some(selection);
+        self
+    }
+
+    fn data(mut self, data: Value) -> Self {
+        self.data = Some(data);
+        self
+    }
+}
+
+impl FloorPlanApp {
+    /// Runs one tool for the assistant. A panic inside a tool leaves the
+    /// plan as it was instead of taking the app down.
+    pub(super) fn run_mcp_tool(&mut self, name: &str, args: &Value) -> ToolOutput {
+        self.commit_item_drag();
+        let backup = (self.project.clone(), self.selection);
+        let outcome = catch_unwind(AssertUnwindSafe(|| self.dispatch_tool(name, args)));
+        let output = match outcome {
+            Ok(Ok(output)) => output,
+            Ok(Err(message)) => ToolOutput::error(message),
+            Err(_) => {
+                self.project = backup.0;
+                self.selection = backup.1;
+                ToolOutput::error(
+                    "Erro interno do Trazo ao executar a ferramenta; a planta foi mantida como estava.",
+                )
+            }
+        };
+        self.revalidate_selection();
+        self.sync_inspector_fields();
+        self.mcp_actions += 1;
+        self.message = if output.is_error {
+            format!("IA · {}", output.text)
+        } else if protocol::is_read_only(name) {
+            "IA consultou a planta.".to_owned()
+        } else {
+            format!("IA · {}", output.text.lines().next().unwrap_or_default())
+        };
+        output
+    }
+
+    fn dispatch_tool(&mut self, name: &str, args: &Value) -> Result<ToolOutput, String> {
+        match name {
+            "obter_planta" => {
+                let summary = self.plan_summary();
+                let text = serde_json::to_string_pretty(&summary).unwrap_or_default();
+                Ok(ToolOutput::ok(text).with_structured(summary))
+            }
+            "imagem_da_planta" => {
+                let side = number(args, "tamanho_max")?.unwrap_or(1024.0).clamp(256.0, 2048.0);
+                let png = export::png_preview(&self.project, side as u32)?;
+                Ok(ToolOutput::ok(format!(
+                    "Imagem da planta \"{}\" com {} cômodos, {} paredes e {} aberturas.",
+                    self.project.name,
+                    self.project.rooms.len(),
+                    self.project.walls.len(),
+                    self.project.openings.len()
+                ))
+                .with_image(png))
+            }
+            "definir_terreno" => self.tool_terrain(args),
+            "criar_comodo" => self.tool_create_room(args),
+            "criar_parede" => self.tool_create_wall(args),
+            "inserir_abertura" => self.tool_insert_opening(args),
+            "editar_comodo" => self.tool_edit_room(args),
+            "editar_parede" => {
+                let id = element_id(args, "id")?;
+                let length = required_number(args, "comprimento")?;
+                self.require(id, |selection| matches!(selection, Selection::Wall(_)), "parede")?;
+                self.apply_change(None, |project| {
+                    project.resize_wall_length(id, length)?;
+                    Ok(Change::new(format!(
+                        "Parede {id} agora tem {}.",
+                        format_meters(length)
+                    ))
+                    .select(Selection::Wall(id)))
+                })
+            }
+            "editar_abertura" => self.tool_edit_opening(args),
+            "mover_elemento" => self.tool_move(args),
+            "excluir_elemento" => {
+                let id = element_id(args, "id")?;
+                let selection = self.find_element(id)?;
+                let label = Self::element_label(selection);
+                self.apply_change(Some("Nada foi excluído."), |project| {
+                    match selection {
+                        Selection::Wall(id) => project.delete_wall(id),
+                        Selection::Room(id) => {
+                            project.delete_room(id);
+                        }
+                        Selection::Opening(id) => {
+                            project.delete_opening(id);
+                        }
+                        Selection::Terrain(id) => {
+                            project.delete_terrain(id);
+                        }
+                    }
+                    Ok(Change::new(format!("{label} {id} excluído(a).")))
+                })
+            }
+            "desfazer" | "refazer" => {
+                let steps = number(args, "passos")?.unwrap_or(1.0).clamp(1.0, 50.0) as usize;
+                let undo = name == "desfazer";
+                let mut done = 0;
+                for _ in 0..steps {
+                    let possible = if undo {
+                        self.history.can_undo()
+                    } else {
+                        self.history.can_redo()
+                    };
+                    if !possible {
+                        break;
+                    }
+                    if undo {
+                        self.undo();
+                    } else {
+                        self.redo();
+                    }
+                    done += 1;
+                }
+                if done == 0 {
+                    return Err(if undo {
+                        "Não há ações para desfazer.".to_owned()
+                    } else {
+                        "Não há ações para refazer.".to_owned()
+                    });
+                }
+                Ok(ToolOutput::ok(format!(
+                    "{} {done} ação(ões).",
+                    if undo { "Desfeita(s)" } else { "Refeita(s)" }
+                )))
+            }
+            "centralizar_planta" => {
+                if self.project.terrain.is_none() {
+                    return Err("Não há terreno: crie um com definir_terreno.".to_owned());
+                }
+                if !self.project.content_fits_terrain() {
+                    return Err("A planta não cabe no terreno; aumente o terreno primeiro.".to_owned());
+                }
+                let output = self.apply_change(Some("A planta já está centralizada."), |project| {
+                    project.center_content_on_terrain();
+                    Ok(Change::new("Planta centralizada no terreno."))
+                })?;
+                self.fit_view_requested();
+                Ok(output)
+            }
+            "novo_projeto" => {
+                self.check_discard(args)?;
+                self.new_project();
+                if let Some(name) = text(args, "nome") {
+                    self.project.name = name;
+                }
+                self.fit_view_requested();
+                Ok(ToolOutput::ok(format!(
+                    "Nova planta \"{}\" criada.",
+                    self.project.name
+                )))
+            }
+            "abrir_projeto" => {
+                let input = text(args, "caminho").ok_or("Informe 'caminho' do arquivo .json.")?;
+                let path = resolve_path(&input, "json");
+                if !path.is_file() {
+                    return Err(format!("Arquivo não encontrado: {}", path.display()));
+                }
+                self.check_discard(args)?;
+                match self.open_file(&path) {
+                    OpenResult::Success => Ok(ToolOutput::ok(format!(
+                        "Projeto \"{}\" aberto de {}.",
+                        self.project.name,
+                        path.display()
+                    ))),
+                    _ => Err(self.message.clone()),
+                }
+            }
+            "salvar_projeto" => {
+                let path = match text(args, "caminho") {
+                    Some(input) => resolve_path(&input, "json"),
+                    None => match &self.file_path {
+                        Some(path) => path.clone(),
+                        None => unique_path(
+                            documents_dir()
+                                .join(format!("{}.trazo.json", file_stem(&self.project.name))),
+                        ),
+                    },
+                };
+                ensure_parent(&path)?;
+                if self.write_project(path.clone()) {
+                    Ok(ToolOutput::ok(format!("Projeto salvo em {}", path.display()))
+                        .with_structured(json!({ "caminho": path.display().to_string() })))
+                } else {
+                    Err(self.message.clone())
+                }
+            }
+            "exportar_planta" => {
+                let format = text(args, "formato")
+                    .map(|format| format.to_lowercase())
+                    .filter(|format| format == "pdf" || format == "png")
+                    .ok_or("Informe 'formato': pdf ou png.")?;
+                let path = match text(args, "caminho") {
+                    Some(input) => resolve_path(&input, &format),
+                    None => unique_path(
+                        documents_dir().join(format!("{}.{format}", file_stem(&self.project.name))),
+                    ),
+                };
+                ensure_parent(&path)?;
+                if format == "pdf" {
+                    export::pdf(&self.project, &path)?;
+                } else {
+                    export::png(&self.project, &path)?;
+                }
+                Ok(ToolOutput::ok(format!("Planta exportada em {}", path.display()))
+                    .with_structured(json!({ "caminho": path.display().to_string() })))
+            }
+            _ => Err(format!("Ferramenta desconhecida: {name}")),
+        }
+    }
+
+    /// Runs `change` on a copy of the project and keeps the result only when
+    /// it succeeds, as one undo step. When nothing changed, the change is
+    /// either reported as such or, with `unchanged`, turned into that error.
+    fn apply_change(
+        &mut self,
+        unchanged: Option<&str>,
+        change: impl FnOnce(&mut Project) -> Result<Change, String>,
+    ) -> Result<ToolOutput, String> {
+        let mut draft = self.project.clone();
+        let outcome = change(&mut draft)?;
+        if draft == self.project {
+            return match unchanged {
+                Some(message) => Err(message.to_owned()),
+                None => Ok(ToolOutput::ok(format!(
+                    "{} (nenhuma alteração era necessária)",
+                    outcome.message
+                ))),
+            };
+        }
+        let was_empty = self.project.walls.is_empty()
+            && self.project.rooms.is_empty()
+            && self.project.terrain.is_none();
+        let previous = std::mem::replace(&mut self.project, draft);
+        self.record_change(previous);
+        if was_empty {
+            self.fit_view_requested();
+        }
+        if let Some(selection) = outcome.selection {
+            self.selection = Some(selection);
+        }
+        let mut output = ToolOutput::ok(outcome.message);
+        if let Some(data) = outcome.data {
+            output = output.with_structured(data);
+        }
+        Ok(output)
+    }
+
+    fn check_discard(&self, args: &Value) -> Result<(), String> {
+        if self.dirty && !flag(args, "descartar_alteracoes") {
+            return Err("A planta atual tem alterações não salvas. Salve com salvar_projeto ou repita com descartar_alteracoes = true.".to_owned());
+        }
+        Ok(())
+    }
+
+    fn find_element(&self, id: u64) -> Result<Selection, String> {
+        let project = &self.project;
+        if project.walls.iter().any(|wall| wall.id == id) {
+            Ok(Selection::Wall(id))
+        } else if project.rooms.iter().any(|room| room.id == id) {
+            Ok(Selection::Room(id))
+        } else if project.openings.iter().any(|opening| opening.id == id) {
+            Ok(Selection::Opening(id))
+        } else if project.terrain.as_ref().is_some_and(|terrain| terrain.id == id) {
+            Ok(Selection::Terrain(id))
+        } else {
+            Err(format!(
+                "Não existe elemento com id {id}. Use obter_planta para ver os ids."
+            ))
+        }
+    }
+
+    fn require(
+        &self,
+        id: u64,
+        is_kind: impl Fn(Selection) -> bool,
+        kind: &str,
+    ) -> Result<Selection, String> {
+        let selection = self.find_element(id)?;
+        if is_kind(selection) {
+            Ok(selection)
+        } else {
+            Err(format!(
+                "O elemento {id} é um(a) {}, não um(a) {kind}.",
+                Self::element_label(selection).to_lowercase()
+            ))
+        }
+    }
+
+    fn element_label(selection: Selection) -> &'static str {
+        match selection {
+            Selection::Wall(_) => "Parede",
+            Selection::Room(_) => "Cômodo",
+            Selection::Opening(_) => "Abertura",
+            Selection::Terrain(_) => "Terreno",
+        }
+    }
+
+    fn tool_terrain(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let width = required_number(args, "largura")?;
+        let length = required_number(args, "comprimento")?;
+        if width < 0.25 || length < 0.25 {
+            return Err("O terreno precisa ter pelo menos 0,25 m de largura e de comprimento.".to_owned());
+        }
+        let (min, max) = match (number(args, "x")?, number(args, "y")?) {
+            (Some(x), Some(y)) => (to_model(x, y + length), to_model(x + width, y)),
+            (None, None) => match (&self.project.terrain, self.project.content_bounds()) {
+                // Keep the lower left corner the assistant already knows.
+                (Some(terrain), _) => (
+                    Point::new(terrain.min.x, terrain.max.y - length),
+                    Point::new(terrain.min.x + width, terrain.max.y),
+                ),
+                (None, Some((low, high))) => {
+                    let origin = Point::new(
+                        (low.x + high.x - width) / 2.0,
+                        (low.y + high.y - length) / 2.0,
+                    );
+                    (origin, Point::new(origin.x + width, origin.y + length))
+                }
+                (None, None) => (to_model(0.0, length), to_model(width, 0.0)),
+            },
+            _ => return Err("Informe x e y juntos, ou nenhum dos dois.".to_owned()),
+        };
+        let mut output = self.apply_change(None, |project| {
+            let id = project
+                .set_terrain(min, max)
+                .ok_or("Medidas de terreno inválidas.")?;
+            Ok(Change::new(format!(
+                "Terreno de {} × {} ({}) definido.",
+                format_meters(width),
+                format_meters(length),
+                square_metres(width * length)
+            ))
+            .select(Selection::Terrain(id))
+            .data(json!({ "id": id })))
+        })?;
+        if !self.project.content_inside_terrain() {
+            output.text.push_str(
+                " Atenção: há paredes ou cômodos fora do terreno; use centralizar_planta ou mova-os.",
+            );
+        }
+        self.sync_terrain_fields();
+        self.fit_view_requested();
+        Ok(output)
+    }
+
+    fn tool_create_room(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let name = text(args, "nome").ok_or("Informe 'nome' do cômodo.")?;
+        let x = required_number(args, "x")?;
+        let y = required_number(args, "y")?;
+        let width = required_number(args, "largura")?;
+        let length = required_number(args, "comprimento")?;
+        if width < 0.5 || length < 0.5 {
+            return Err("O cômodo precisa ter pelo menos 0,50 m de largura e de comprimento.".to_owned());
+        }
+        self.apply_change(None, |project| {
+            let id = project
+                .add_room(to_model(x, y), to_model(x + width, y + length), &name)
+                .ok_or(
+                    "Não foi possível criar o cômodo: ele precisa ficar inteiro dentro do terreno.",
+                )?;
+            let walls = project
+                .rooms
+                .iter()
+                .find(|room| room.id == id)
+                .map(|room| room.wall_ids.clone())
+                .unwrap_or_default();
+            Ok(Change::new(format!(
+                "Cômodo \"{name}\" criado (id {id}), {} × {}.",
+                format_meters(width),
+                format_meters(length)
+            ))
+            .select(Selection::Room(id))
+            .data(json!({ "id": id, "paredes": walls })))
+        })
+    }
+
+    fn tool_create_wall(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let start = to_model(required_number(args, "x1")?, required_number(args, "y1")?);
+        let end = to_model(required_number(args, "x2")?, required_number(args, "y2")?);
+        self.apply_change(None, |project| {
+            let id = project.add_wall(start, end).ok_or(
+                "Não foi possível criar a parede: ela precisa ter pelo menos 0,25 m e ficar dentro do terreno.",
+            )?;
+            Ok(Change::new(format!(
+                "Parede criada (id {id}), {}.",
+                format_meters(start.distance(end))
+            ))
+            .select(Selection::Wall(id))
+            .data(json!({ "id": id })))
+        })
+    }
+
+    fn tool_insert_opening(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let wall_id = element_id(args, "parede_id")?;
+        let kind = match text(args, "tipo").map(|kind| kind.to_lowercase()).as_deref() {
+            Some("porta") => OpeningKind::Door,
+            Some("janela") => OpeningKind::Window,
+            _ => return Err("Informe 'tipo': porta ou janela.".to_owned()),
+        };
+        let position = number(args, "posicao")?.unwrap_or(0.5);
+        if !(0.0..=1.0).contains(&position) {
+            return Err("'posicao' é uma fração de 0 a 1 ao longo da parede (0,5 = meio).".to_owned());
+        }
+        let width = number(args, "largura")?;
+        self.require(wall_id, |selection| matches!(selection, Selection::Wall(_)), "parede")?;
+        self.apply_change(None, |project| {
+            let id = project.add_opening(wall_id, kind, position).ok_or(format!(
+                "Não há espaço para a {} nessa posição: ela não pode sobrepor outra abertura nem ficar perto demais das pontas da parede.",
+                kind.label().to_lowercase()
+            ))?;
+            if let Some(width) = width {
+                project.update_opening_width(id, width)?;
+            }
+            let width = project
+                .openings
+                .iter()
+                .find(|opening| opening.id == id)
+                .map(|opening| opening.width())
+                .unwrap_or_default();
+            Ok(Change::new(format!(
+                "{} inserida na parede {wall_id} (id {id}), {}.",
+                kind.label(),
+                format_meters(width)
+            ))
+            .select(Selection::Opening(id))
+            .data(json!({ "id": id })))
+        })
+    }
+
+    fn tool_edit_room(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let id = element_id(args, "id")?;
+        self.require(id, |selection| matches!(selection, Selection::Room(_)), "cômodo")?;
+        let name = text(args, "nome");
+        let width = number(args, "largura")?;
+        let length = number(args, "comprimento")?;
+        if name.is_none() && width.is_none() && length.is_none() {
+            return Err("Informe nome, largura ou comprimento.".to_owned());
+        }
+        let (current_width, current_length) = self
+            .project
+            .rooms
+            .iter()
+            .find(|room| room.id == id)
+            .and_then(|room| self.project.room_bounds(room))
+            .map(|(min, max)| (max.x - min.x, max.y - min.y))
+            .ok_or("Cômodo sem paredes válidas para medir.")?;
+        self.apply_change(None, |project| {
+            if let Some(name) = &name {
+                project.rename_room(id, name)?;
+            }
+            if width.is_some() || length.is_some() {
+                project.resize_room_dimensions(
+                    id,
+                    width.unwrap_or(current_width),
+                    length.unwrap_or(current_length),
+                )?;
+            }
+            let room = project.rooms.iter().find(|room| room.id == id);
+            let summary = room
+                .and_then(|room| {
+                    let (min, max) = project.room_bounds(room)?;
+                    Some(format!(
+                        "\"{}\", {} × {}",
+                        room.display_name(),
+                        format_meters(max.x - min.x),
+                        format_meters(max.y - min.y)
+                    ))
+                })
+                .unwrap_or_default();
+            Ok(Change::new(format!("Cômodo {id} atualizado: {summary}.")).select(Selection::Room(id)))
+        })
+    }
+
+    fn tool_edit_opening(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let id = element_id(args, "id")?;
+        self.require(id, |selection| matches!(selection, Selection::Opening(_)), "porta ou janela")?;
+        let width = number(args, "largura")?;
+        let position = number(args, "posicao")?;
+        if width.is_none() && position.is_none() {
+            return Err("Informe largura ou posicao.".to_owned());
+        }
+        if position.is_some_and(|position| !(0.0..=1.0).contains(&position)) {
+            return Err("'posicao' é uma fração de 0 a 1 ao longo da parede.".to_owned());
+        }
+        self.apply_change(None, |project| {
+            if let Some(width) = width {
+                project.update_opening_width(id, width)?;
+            }
+            if let Some(position) = position {
+                let wall = project
+                    .openings
+                    .iter()
+                    .find(|opening| opening.id == id)
+                    .and_then(|opening| project.walls.iter().find(|wall| wall.id == opening.wall_id))
+                    .cloned()
+                    .ok_or("A parede dessa abertura não existe.")?;
+                let target = Point::new(
+                    wall.start.x + (wall.end.x - wall.start.x) * position,
+                    wall.start.y + (wall.end.y - wall.start.y) * position,
+                );
+                if !project.move_opening_along_wall(id, target) {
+                    return Err("Não há espaço para a abertura nessa posição.".to_owned());
+                }
+            }
+            Ok(Change::new(format!("Abertura {id} atualizada.")).select(Selection::Opening(id)))
+        })
+    }
+
+    fn tool_move(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let id = element_id(args, "id")?;
+        let dx = required_number(args, "dx")?;
+        let dy = required_number(args, "dy")?;
+        let selection = self.find_element(id)?;
+        let delta = Point::new(dx, -dy);
+        let opening_target = self
+            .opening_center(id)
+            .map(|center| Point::new(center.x + delta.x, center.y + delta.y));
+        let label = Self::element_label(selection);
+        self.apply_change(
+            Some("Não foi possível mover: o terreno ou as paredes vizinhas não deixam espaço nessa direção."),
+            |project| {
+                match selection {
+                    Selection::Wall(id) => project.move_wall(id, delta),
+                    Selection::Room(id) => {
+                        if !project.move_room(id, delta) {
+                            return Err("Esse cômodo compartilha paredes com outro e não pode ser movido sozinho; mova as paredes individualmente.".to_owned());
+                        }
+                    }
+                    Selection::Terrain(id) => project.move_terrain(id, delta),
+                    Selection::Opening(id) => {
+                        if let Some(target) = opening_target {
+                            project.move_opening_along_wall(id, target);
+                        }
+                    }
+                }
+                Ok(Change::new(format!("{label} {id} movido(a).")).select(selection))
+            },
+        )
+    }
+
+    /// The plan as the assistant sees it, in its own coordinates.
+    pub(super) fn plan_summary(&self) -> Value {
+        let project = &self.project;
+        let terrain = project.terrain.as_ref().map(|terrain| {
+            let (x, y) = from_model(Point::new(terrain.min.x, terrain.max.y));
+            json!({
+                "id": terrain.id,
+                "x": round(x),
+                "y": round(y),
+                "largura": round(terrain.width()),
+                "comprimento": round(terrain.height()),
+                "area_m2": round(terrain.area()),
+            })
+        });
+        let rooms: Vec<Value> = project
+            .rooms
+            .iter()
+            .map(|room| {
+                let bounds = project.room_bounds(room);
+                json!({
+                    "id": room.id,
+                    "nome": room.display_name(),
+                    "x": bounds.map(|(min, _)| round(min.x + 0.0)),
+                    "y": bounds.map(|(_, max)| round(-max.y + 0.0)),
+                    "largura": bounds.map(|(min, max)| round(max.x - min.x)),
+                    "comprimento": bounds.map(|(min, max)| round(max.y - min.y)),
+                    "area_m2": project.room_area(room).map(round),
+                    "paredes": room.wall_ids,
+                })
+            })
+            .collect();
+        let walls: Vec<Value> = project
+            .walls
+            .iter()
+            .map(|wall| {
+                let rooms: Vec<&str> = project
+                    .rooms
+                    .iter()
+                    .filter(|room| room.wall_ids.contains(&wall.id))
+                    .map(|room| room.display_name())
+                    .collect();
+                let openings: Vec<u64> = project
+                    .openings
+                    .iter()
+                    .filter(|opening| opening.wall_id == wall.id)
+                    .map(|opening| opening.id)
+                    .collect();
+                json!({
+                    "id": wall.id,
+                    "inicio": xy(wall.start),
+                    "fim": xy(wall.end),
+                    "comprimento": round(wall.length()),
+                    "comodos": rooms,
+                    "aberturas": openings,
+                })
+            })
+            .collect();
+        let openings: Vec<Value> = project
+            .openings
+            .iter()
+            .map(|opening| {
+                json!({
+                    "id": opening.id,
+                    "tipo": match opening.kind {
+                        OpeningKind::Door => "porta",
+                        OpeningKind::Window => "janela",
+                    },
+                    "parede_id": opening.wall_id,
+                    "posicao": round(opening.t),
+                    "largura": round(opening.width()),
+                    "centro": self.opening_center(opening.id).map(xy),
+                })
+            })
+            .collect();
+        let built: f32 = project
+            .rooms
+            .iter()
+            .filter_map(|room| project.room_area(room))
+            .sum();
+        json!({
+            "projeto": {
+                "nome": project.name,
+                "arquivo": self.file_path.as_ref().map(|path| path.display().to_string()),
+                "alteracoes_nao_salvas": self.dirty,
+                "unidade": "metro",
+                "coordenadas": "X para a direita, Y para cima",
+            },
+            "terreno": terrain,
+            "comodos": rooms,
+            "paredes": walls,
+            "aberturas": openings,
+            "area_construida_m2": round(built),
+            "taxa_ocupacao_percentual": project
+                .terrain
+                .as_ref()
+                .map(|terrain| round(built / terrain.area() * 100.0)),
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::egui;
+
+    fn app() -> FloorPlanApp {
+        FloorPlanApp::new(&egui::Context::default())
+    }
+
+    fn run(app: &mut FloorPlanApp, name: &str, args: Value) -> ToolOutput {
+        app.run_mcp_tool(name, &args)
+    }
+
+    fn ok(app: &mut FloorPlanApp, name: &str, args: Value) -> ToolOutput {
+        let output = run(app, name, args);
+        assert!(!output.is_error, "{name}: {}", output.text);
+        output
+    }
+
+    #[test]
+    fn builds_a_plan_in_the_assistants_coordinates() {
+        let mut app = app();
+        ok(&mut app, "definir_terreno", json!({ "largura": 12, "comprimento": 25 }));
+        let sala = ok(
+            &mut app,
+            "criar_comodo",
+            json!({ "nome": "Sala", "x": 1, "y": 1, "largura": 5, "comprimento": 4 }),
+        );
+        ok(
+            &mut app,
+            "criar_comodo",
+            json!({ "nome": "Cozinha", "x": "6", "y": 1, "largura": "3,5", "comprimento": 4 }),
+        );
+
+        let plan = app.plan_summary();
+        assert_eq!(plan["terreno"]["x"], 0.0);
+        assert_eq!(plan["terreno"]["y"], 0.0);
+        assert_eq!(plan["terreno"]["largura"], 12.0);
+        assert_eq!(plan["comodos"][0]["x"], 1.0);
+        assert_eq!(plan["comodos"][0]["y"], 1.0);
+        assert_eq!(plan["comodos"][0]["area_m2"], 20.0);
+        assert_eq!(plan["comodos"][1]["largura"], 3.5);
+        // Sala and Cozinha share the wall at x = 6.
+        assert_eq!(plan["paredes"].as_array().unwrap().len(), 7);
+        assert_eq!(plan["area_construida_m2"], 34.0);
+
+        // The wall along the bottom of the Sala lies at y = 1.
+        let walls = sala.structured.unwrap()["paredes"].clone();
+        let bottom = plan["paredes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|wall| {
+                walls.as_array().unwrap().contains(&wall["id"])
+                    && wall["inicio"]["y"] == 1.0
+                    && wall["fim"]["y"] == 1.0
+            })
+            .unwrap()["id"]
+            .clone();
+        let door = ok(
+            &mut app,
+            "inserir_abertura",
+            json!({ "parede_id": bottom, "tipo": "porta", "largura": 1.0 }),
+        );
+        let door_id = door.structured.unwrap()["id"].as_u64().unwrap();
+        let plan = app.plan_summary();
+        assert_eq!(plan["aberturas"][0]["tipo"], "porta");
+        assert_eq!(plan["aberturas"][0]["largura"], 1.0);
+        assert_eq!(plan["aberturas"][0]["centro"]["y"], 1.0);
+        assert_eq!(app.selection, Some(Selection::Opening(door_id)));
+        assert!(app.dirty && app.history.can_undo());
+    }
+
+    #[test]
+    fn failed_changes_leave_no_trace() {
+        let mut app = app();
+        ok(&mut app, "definir_terreno", json!({ "largura": 10, "comprimento": 10 }));
+        let before = app.project.clone();
+        let undo_depth = app.history.can_undo();
+        for (name, args) in [
+            ("criar_comodo", json!({ "nome": "Fora", "x": 8, "y": 8, "largura": 5, "comprimento": 5 })),
+            ("criar_comodo", json!({ "nome": "", "x": 1, "y": 1, "largura": 2, "comprimento": 2 })),
+            ("inserir_abertura", json!({ "parede_id": 999, "tipo": "porta" })),
+            ("editar_comodo", json!({ "id": "abc" })),
+            ("criar_parede", json!({ "x1": 0, "y1": 0, "x2": "muito", "y2": 0 })),
+            ("mover_elemento", json!({ "id": 12345, "dx": 1, "dy": 0 })),
+        ] {
+            let output = run(&mut app, name, args);
+            assert!(output.is_error, "{name} should fail");
+        }
+        assert_eq!(app.project, before);
+        assert_eq!(app.history.can_undo(), undo_depth);
+        assert!(app.message.starts_with("IA · "));
+    }
+
+    #[test]
+    fn opening_with_an_invalid_width_is_not_left_behind() {
+        let mut app = app();
+        let wall = ok(&mut app, "criar_parede", json!({ "x1": 0, "y1": 0, "x2": 6, "y2": 0 }));
+        let wall_id = wall.structured.unwrap()["id"].clone();
+        let output = run(
+            &mut app,
+            "inserir_abertura",
+            json!({ "parede_id": wall_id, "tipo": "janela", "largura": 9 }),
+        );
+        assert!(output.is_error);
+        assert!(app.project.openings.is_empty());
+    }
+
+    #[test]
+    fn edits_moves_deletes_and_undo() {
+        let mut app = app();
+        let room = ok(
+            &mut app,
+            "criar_comodo",
+            json!({ "nome": "Quarto", "x": 0, "y": 0, "largura": 3, "comprimento": 3 }),
+        );
+        let room_id = room.structured.unwrap()["id"].clone();
+        ok(
+            &mut app,
+            "editar_comodo",
+            json!({ "id": room_id, "nome": "Suíte", "largura": 4 }),
+        );
+        let plan = app.plan_summary();
+        assert_eq!(plan["comodos"][0]["nome"], "Suíte");
+        assert_eq!(plan["comodos"][0]["largura"], 4.0);
+        assert_eq!(plan["comodos"][0]["comprimento"], 3.0);
+
+        // A standalone wall moves up by 2 m in the assistant's coordinates.
+        let wall = ok(&mut app, "criar_parede", json!({ "x1": 10, "y1": 0, "x2": 10, "y2": 3 }));
+        let wall_id = wall.structured.unwrap()["id"].clone();
+        ok(&mut app, "mover_elemento", json!({ "id": wall_id, "dx": 0, "dy": 2 }));
+        let moved = app
+            .plan_summary()["paredes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|wall| wall["id"] == wall_id)
+            .unwrap()
+            .clone();
+        assert_eq!(moved["inicio"]["y"], 2.0);
+        assert_eq!(moved["fim"]["y"], 5.0);
+
+        ok(&mut app, "excluir_elemento", json!({ "id": wall_id }));
+        assert_eq!(app.project.walls.len(), 4);
+        ok(&mut app, "desfazer", json!({}));
+        assert_eq!(app.project.walls.len(), 5);
+        ok(&mut app, "refazer", json!({ "passos": 3 }));
+        assert_eq!(app.project.walls.len(), 4);
+        assert!(run(&mut app, "refazer", json!({})).is_error);
+    }
+
+    #[test]
+    fn new_project_respects_unsaved_changes() {
+        let mut app = app();
+        ok(&mut app, "criar_parede", json!({ "x1": 0, "y1": 0, "x2": 3, "y2": 0 }));
+        assert!(run(&mut app, "novo_projeto", json!({})).is_error);
+        assert_eq!(app.project.walls.len(), 1);
+        ok(
+            &mut app,
+            "novo_projeto",
+            json!({ "nome": "Casa nova", "descartar_alteracoes": true }),
+        );
+        assert!(app.project.walls.is_empty());
+        assert_eq!(app.project.name, "Casa nova");
+    }
+
+    #[test]
+    fn saves_exports_reopens_and_pictures_the_plan() {
+        let folder = std::env::temp_dir().join(format!("trazo-mcp-{}", std::process::id()));
+        let mut app = app();
+        ok(
+            &mut app,
+            "criar_comodo",
+            json!({ "nome": "Sala", "x": 0, "y": 0, "largura": 4, "comprimento": 3 }),
+        );
+        let project_path = folder.join("casa");
+        ok(
+            &mut app,
+            "salvar_projeto",
+            json!({ "caminho": project_path.display().to_string() }),
+        );
+        let saved = folder.join("casa.json");
+        assert!(saved.is_file());
+        assert!(!app.dirty);
+        let pdf = folder.join("casa.pdf");
+        ok(
+            &mut app,
+            "exportar_planta",
+            json!({ "formato": "PDF", "caminho": pdf.display().to_string() }),
+        );
+        assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF"));
+
+        ok(&mut app, "novo_projeto", json!({}));
+        ok(
+            &mut app,
+            "abrir_projeto",
+            json!({ "caminho": saved.display().to_string() }),
+        );
+        assert_eq!(app.project.rooms.len(), 1);
+
+        let picture = ok(&mut app, "imagem_da_planta", json!({ "tamanho_max": 300 }));
+        assert!(picture.image_png.unwrap().starts_with(b"\x89PNG"));
+        let _ = std::fs::remove_dir_all(folder);
+    }
+
+    #[test]
+    fn file_names_are_made_safe_and_unique() {
+        assert_eq!(file_stem("Casa: Jardim/2"), "Casa- Jardim-2");
+        assert_eq!(file_stem("  ..  "), "planta");
+        let folder = std::env::temp_dir().join(format!("trazo-unique-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let first = folder.join("planta.pdf");
+        std::fs::write(&first, b"x").unwrap();
+        assert_eq!(unique_path(first.clone()), folder.join("planta (2).pdf"));
+        let _ = std::fs::remove_dir_all(folder);
+        assert!(resolve_path("casa", "json").ends_with("Trazo/casa.json") || resolve_path("casa", "json").ends_with("Trazo\\casa.json"));
+    }
+}
