@@ -139,6 +139,9 @@ impl FloorPlanApp {
         let world = pointer.map(|position| view.to_world(position));
         self.cursor_world = world;
         let snapped = world.map(|point| {
+            if self.tool == Tool::Measure {
+                return self.measure_snap(point, self.draft_start()).0;
+            }
             let point = self.snap(point, self.draft_start());
             if matches!(self.tool, Tool::Room | Tool::Wall)
                 && let Some(terrain) = &self.project.terrain
@@ -210,7 +213,10 @@ impl FloorPlanApp {
             }
         }
 
-        let creation_tool = matches!(self.tool, Tool::Wall | Tool::Room | Tool::Terrain);
+        let creation_tool = matches!(
+            self.tool,
+            Tool::Wall | Tool::Room | Tool::Terrain | Tool::Measure
+        );
         if creation_tool
             && response.drag_started_by(PointerButton::Primary)
             && self.creation_state == CreationState::Idle
@@ -239,6 +245,7 @@ impl FloorPlanApp {
                         Tool::Terrain => {
                             (start.x - point.x).abs() >= 0.25 && (start.y - point.y).abs() >= 0.25
                         }
+                        Tool::Measure => start.distance(point) >= 0.03,
                         _ => false,
                     };
                     if has_dragged {
@@ -260,7 +267,7 @@ impl FloorPlanApp {
             && let Some(point) = snapped
         {
             match self.tool {
-                Tool::Wall | Tool::Room | Tool::Terrain => match self.creation_state {
+                Tool::Wall | Tool::Room | Tool::Terrain | Tool::Measure => match self.creation_state {
                     CreationState::Idle => {
                         self.creation_state = CreationState::WaitingSecondPoint { start: point };
                         self.message =
@@ -322,13 +329,18 @@ impl FloorPlanApp {
             },
         );
         self.paint_view_aids(&painter, view);
+        if self.tool == Tool::Measure
+            && let (Some(start), Some(end)) = (self.draft_start(), snapped)
+        {
+            canvas::paint_measurement(&painter, view, start, end);
+        }
 
         if let Some(position) = pointer
             && !panning
         {
             let drawing = matches!(
                 self.tool,
-                Tool::Wall | Tool::Room | Tool::Terrain | Tool::Fixture(_)
+                Tool::Wall | Tool::Room | Tool::Terrain | Tool::Fixture(_) | Tool::Measure
             ) || opening_target;
             if drawing {
                 ui.ctx().set_cursor_icon(egui::CursorIcon::None);
@@ -337,6 +349,12 @@ impl FloorPlanApp {
             if matches!(self.tool, Tool::Wall | Tool::Room | Tool::Terrain)
                 && let Some(point) = snapped
                 && let Some(kind) = self.snap_kind(point)
+            {
+                overlay::paint_snap_marker(&painter, view.to_screen(point), kind);
+            }
+            if self.tool == Tool::Measure
+                && let Some(raw) = world
+                && let (point, Some(kind)) = self.measure_snap(raw, self.draft_start())
             {
                 overlay::paint_snap_marker(&painter, view.to_screen(point), kind);
             }
@@ -551,7 +569,114 @@ impl FloorPlanApp {
         }
     }
 
+    /// Where the ruler lands for the pointer at `point`: on the corners and
+    /// faces that matter on site (wall corners and faces with their real
+    /// thickness, door and window jambs, fixtures, the terrain), else on a
+    /// 5 cm grid. F8 keeps it horizontal or vertical.
+    pub(super) fn measure_snap(&self, point: Point, start: Option<Point>) -> (Point, Option<SnapKind>) {
+        let threshold = (12.0 / self.scale).clamp(0.03, 0.4);
+        let mut best: Option<(Point, f32)> = None;
+        let mut consider = |candidate: Point| {
+            let distance = candidate.distance(point);
+            if distance < threshold && best.is_none_or(|(_, closest)| distance < closest) {
+                best = Some((candidate, distance));
+            }
+        };
+        let offset = |p: Point, a: (f32, f32), ka: f32, b: (f32, f32), kb: f32| {
+            Point::new(p.x + a.0 * ka + b.0 * kb, p.y + a.1 * ka + b.1 * kb)
+        };
+        let mut faces = Vec::new();
+        for wall in &self.project.walls {
+            let length = wall.length();
+            if length < 1e-4 {
+                continue;
+            }
+            let half = WALL_THICKNESS_METERS / 2.0;
+            let along = ((wall.end.x - wall.start.x) / length, (wall.end.y - wall.start.y) / length);
+            let normal = (-along.1, along.0);
+            for (end, outward) in [(wall.start, -1.0), (wall.end, 1.0)] {
+                consider(end);
+                for side in [-1.0, 1.0] {
+                    consider(offset(end, normal, side * half, along, 0.0));
+                    consider(offset(end, along, outward * half, normal, side * half));
+                }
+            }
+            // The nearest point on either face, for clear spans.
+            let (foot, t) = crate::domain::geometry::nearest_point_on_segment(point, wall.start, wall.end);
+            if (0.0..=1.0).contains(&t) {
+                let side = (point.x - foot.x) * normal.0 + (point.y - foot.y) * normal.1;
+                if side.abs() > 1e-6 {
+                    faces.push(offset(foot, normal, side.signum() * half, along, 0.0));
+                }
+            }
+        }
+        for opening in &self.project.openings {
+            let (Some(center), Some(wall)) = (
+                self.opening_center(opening.id),
+                self.project.walls.iter().find(|wall| wall.id == opening.wall_id),
+            ) else {
+                continue;
+            };
+            let length = wall.length().max(1e-4);
+            let along = ((wall.end.x - wall.start.x) / length, (wall.end.y - wall.start.y) / length);
+            let normal = (-along.1, along.0);
+            for end in [-1.0, 1.0] {
+                for side in [-1.0, 0.0, 1.0] {
+                    consider(offset(
+                        center,
+                        along,
+                        end * opening.width() / 2.0,
+                        normal,
+                        side * WALL_THICKNESS_METERS / 2.0,
+                    ));
+                }
+            }
+        }
+        for fixture in &self.project.fixtures {
+            let (hw, hd) = (fixture.width / 2.0, fixture.depth / 2.0);
+            for (x, y) in [(-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd)] {
+                consider(fixture.to_world(Point::new(x, y)));
+            }
+        }
+        if let Some(terrain) = &self.project.terrain {
+            for corner in [
+                terrain.min,
+                Point::new(terrain.max.x, terrain.min.y),
+                terrain.max,
+                Point::new(terrain.min.x, terrain.max.y),
+            ] {
+                consider(corner);
+            }
+        }
+        let (mut result, kind) = if let Some((corner, _)) = best {
+            (corner, Some(SnapKind::Endpoint))
+        } else if let Some(face) = faces
+            .into_iter()
+            .filter(|face| face.distance(point) < threshold)
+            .min_by(|a, b| a.distance(point).total_cmp(&b.distance(point)))
+        {
+            (face, Some(SnapKind::Face))
+        } else if self.snap_enabled {
+            (point.snapped_to(0.05), Some(SnapKind::Grid))
+        } else {
+            (point, None)
+        };
+        if self.ortho_enabled
+            && let Some(start) = start
+        {
+            if (result.x - start.x).abs() >= (result.y - start.y).abs() {
+                result.y = start.y;
+            } else {
+                result.x = start.x;
+            }
+        }
+        (result, kind)
+    }
+
     fn paint_view_aids(&self, painter: &egui::Painter, view: ViewTransform) {
+        for (start, end) in &self.measurements {
+            canvas::paint_measurement(painter, view, *start, *end);
+        }
         self.paint_view_label(painter, view.rect);
         overlay::paint_scale_bar(painter, view);
         overlay::paint_north_arrow(painter, view.rect);
@@ -687,6 +812,35 @@ mod tests {
             app.pick(Point::new(3.0, half + 0.3)),
             Some(Selection::Fixture(app.project.fixtures[0].id))
         );
+    }
+
+    #[test]
+    fn measuring_snaps_to_faces_and_corners_and_changes_nothing() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        app.project
+            .add_wall(Point::new(0.0, 0.0), Point::new(4.0, 0.0));
+        app.project
+            .add_wall(Point::new(0.0, 3.0), Point::new(4.0, 3.0));
+        app.set_tool(Tool::Measure);
+        let half = WALL_THICKNESS_METERS / 2.0;
+
+        let (near, kind) = app.measure_snap(Point::new(2.0, half + 0.01), None);
+        assert_eq!(kind, Some(SnapKind::Face));
+        assert!((near.y - half).abs() < 1e-5);
+        let (far, _) = app.measure_snap(Point::new(2.0, 3.0 - half - 0.01), Some(near));
+        assert!((far.y - (3.0 - half)).abs() < 1e-5);
+        let (corner, kind) = app.measure_snap(Point::new(4.05, half - 0.01), None);
+        assert_eq!(kind, Some(SnapKind::Endpoint));
+        assert!((corner.x - (4.0 + half)).abs() < 1e-5);
+
+        let before = app.project.clone();
+        app.complete_creation(near, far);
+        assert_eq!(app.measurements.len(), 1);
+        assert_eq!(app.project, before);
+        assert!(!app.history.can_undo() && !app.dirty);
+        // The clear span between the faces.
+        assert!(app.message.contains(&crate::domain::geometry::format_meters(3.0 - 2.0 * half)));
     }
 
     #[test]

@@ -272,6 +272,7 @@ impl FloorPlanApp {
                 Tool::Opening(OpeningKind::SaloonDoor),
             ),
             (Icon::Gap, "Vão livre", "", Tool::Opening(OpeningKind::Gap)),
+            (Icon::Ruler, "Medir distâncias", "M", Tool::Measure),
         ];
         for (index, (icon, label, key, tool)) in entries.into_iter().enumerate() {
             if index == 1 || index == 4 {

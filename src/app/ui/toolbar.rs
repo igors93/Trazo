@@ -154,6 +154,13 @@ impl FloorPlanApp {
                 "Selecionar",
                 "Selecionar e mover elementos da planta (V)",
             );
+            self.tool_button(
+                ui,
+                Tool::Measure,
+                Icon::Ruler,
+                "Medir",
+                "Régua: mede entre dois pontos sem alterar nada (M)",
+            );
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Construir", |ui| {

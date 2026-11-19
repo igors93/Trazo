@@ -208,6 +208,7 @@ impl FloorPlanApp {
                             (&["C"], "Cômodo"),
                             (&["R"], "Porta"),
                             (&["J"], "Janela"),
+                            (&["M"], "Medir (régua)"),
                         ],
                     );
                     shortcut_group(

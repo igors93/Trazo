@@ -175,6 +175,8 @@ pub enum SnapKind {
     Endpoint,
     /// A grid intersection.
     Grid,
+    /// A point on the face of a wall.
+    Face,
 }
 
 /// The marker of the point a click will use: a square on wall ends, as in
@@ -193,6 +195,19 @@ pub fn paint_snap_marker(painter: &Painter, position: Pos2, kind: SnapKind) {
         }
         SnapKind::Grid => {
             painter.circle(position, 3.6, theme::ACCENT, Stroke::new(1.5, Color32::WHITE));
+        }
+        SnapKind::Face => {
+            let diamond = vec![
+                position + vec2(0.0, -6.5),
+                position + vec2(6.5, 0.0),
+                position + vec2(0.0, 6.5),
+                position + vec2(-6.5, 0.0),
+            ];
+            painter.add(Shape::convex_polygon(
+                diamond,
+                theme::ACCENT.gamma_multiply(0.15),
+                Stroke::new(1.8, theme::ACCENT),
+            ));
         }
     }
 }

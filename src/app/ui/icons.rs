@@ -47,6 +47,7 @@ pub enum Icon {
     Ai,
     SaloonDoor,
     Gap,
+    Ruler,
     /// The plan symbol of a fixture, as the ribbon shows it.
     Fixture(FixtureKind),
 }
@@ -418,6 +419,14 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
             pen.fill(&[(2.0, 10.0), (6.0, 10.0), (6.0, 14.0), (2.0, 14.0)], ink);
             pen.fill(&[(18.0, 10.0), (22.0, 10.0), (22.0, 14.0), (18.0, 14.0)], ink);
             pen.dashed(&[(6.5, 12.0), (17.5, 12.0)], 2.2, 1.6, acc_s);
+        }
+        Icon::Ruler => {
+            pen.fill(&[(2.5, 8.0), (21.5, 8.0), (21.5, 16.0), (2.5, 16.0)], soft);
+            pen.rect(2.5, 8.0, 21.5, 16.0, ink_s);
+            for (i, x) in [6.0f32, 9.5, 13.0, 16.5].into_iter().enumerate() {
+                let depth = if i % 2 == 0 { 12.5 } else { 11.0 };
+                pen.accent_line(&[(x, 8.0), (x, depth)]);
+            }
         }
         Icon::Fixture(_) => {}
         Icon::Ai => {

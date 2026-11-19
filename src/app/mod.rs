@@ -59,6 +59,8 @@ enum Tool {
     Opening(OpeningKind),
     /// Places counters, sinks, stoves, bathroom fittings...
     Fixture(FixtureKind),
+    /// Measures between two points without touching the project.
+    Measure,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -143,6 +145,8 @@ pub struct FloorPlanApp {
     fixture_turns: u8,
     fixture_width_text: String,
     fixture_depth_text: String,
+    /// Distances measured with the ruler in this session (never saved).
+    measurements: Vec<(Point, Point)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -222,6 +226,7 @@ impl FloorPlanApp {
             fixture_turns: 0,
             fixture_width_text: String::new(),
             fixture_depth_text: String::new(),
+            measurements: Vec::new(),
         }
     }
 
@@ -341,6 +346,9 @@ impl FloorPlanApp {
             Tool::Fixture(_) => {
                 "Clique para posicionar. Perto de uma parede o objeto encosta nela; G gira."
             }
+            Tool::Measure => {
+                "Clique em dois pontos para medir. Encaixa em cantos, faces e batentes; nada é alterado."
+            }
         }
         .to_owned();
     }
@@ -420,6 +428,7 @@ impl FloorPlanApp {
 
     fn new_project(&mut self) {
         recovery::clear();
+        self.measurements.clear();
         self.project = Project::default();
         self.history.clear();
         self.file_path = None;
@@ -455,6 +464,7 @@ impl FloorPlanApp {
         match project_file::load(path) {
             Ok((project, warnings)) => {
                 recovery::clear();
+                self.measurements.clear();
                 self.project = project;
                 self.history.clear();
                 self.file_path = Some(path.to_path_buf());
@@ -555,6 +565,19 @@ impl FloorPlanApp {
                 } else {
                     self.message = "Dimensões do cômodo muito pequenas. Mínimo 0,50 m.".to_owned();
                 }
+            }
+            Tool::Measure => {
+                self.measurements.push((start, end));
+                let (dx, dy) = ((end.x - start.x).abs(), (end.y - start.y).abs());
+                self.message = format!(
+                    "Medida: {}{}. Meça de novo ou Esc para limpar.",
+                    crate::domain::geometry::format_meters(start.distance(end)),
+                    if dx > 0.005 && dy > 0.005 {
+                        format!(" (Δx {:.2} · Δy {:.2})", dx, dy).replace('.', ",")
+                    } else {
+                        String::new()
+                    }
+                );
             }
             _ => {}
         }
@@ -1290,6 +1313,7 @@ impl FloorPlanApp {
                 (Key::C, Tool::Room),
                 (Key::R, Tool::Opening(OpeningKind::Door)),
                 (Key::J, Tool::Opening(OpeningKind::Window)),
+                (Key::M, Tool::Measure),
             ]
             .into_iter()
             .find_map(|(key, tool)| plain(key).then_some(tool));
@@ -1339,6 +1363,12 @@ impl FloorPlanApp {
                 self.show_help = false;
                 self.show_mcp_dialog = false;
                 self.mcp_feedback = None;
+            } else if self.tool == Tool::Measure
+                && self.draft_start().is_none()
+                && !self.measurements.is_empty()
+            {
+                self.measurements.clear();
+                self.message = "Medidas apagadas.".to_owned();
             } else if self.draft_start().is_none()
                 && self.pending_room.is_none()
                 && self.selection.is_some()

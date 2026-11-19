@@ -18,6 +18,7 @@ pub(super) fn tool_icon(tool: Tool) -> Icon {
         Tool::Opening(OpeningKind::SaloonDoor) => Icon::SaloonDoor,
         Tool::Opening(OpeningKind::Gap) => Icon::Gap,
         Tool::Fixture(kind) => Icon::Fixture(kind),
+        Tool::Measure => Icon::Ruler,
     }
 }
 
@@ -32,6 +33,7 @@ pub(super) fn tool_name(tool: Tool) -> &'static str {
         Tool::Opening(OpeningKind::SaloonDoor) => "Porta vai-e-vem",
         Tool::Opening(OpeningKind::Gap) => "Vão livre",
         Tool::Fixture(kind) => kind.label(),
+        Tool::Measure => "Medir",
     }
 }
 
@@ -144,12 +146,30 @@ impl FloorPlanApp {
                     );
                 }
                 Tool::Move => self.selection_options(ui),
+                Tool::Measure => {
+                    caption(ui, "Medidas");
+                    chip(ui, &self.measurements.len().to_string());
+                    if ui
+                        .add_enabled_ui(!self.measurements.is_empty(), |ui| {
+                            secondary_button(ui, "Limpar medidas")
+                        })
+                        .inner
+                        .clicked()
+                    {
+                        self.measurements.clear();
+                    }
+                    divider(ui);
+                    caption(
+                        ui,
+                        "Clique em dois pontos. Encaixa em cantos, faces e batentes. F8 trava na horizontal/vertical; Esc limpa.",
+                    );
+                }
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                if matches!(tool, Tool::Wall | Tool::Room | Tool::Terrain) {
-                    if tool == Tool::Wall
+                if matches!(tool, Tool::Wall | Tool::Room | Tool::Terrain | Tool::Measure) {
+                    if matches!(tool, Tool::Wall | Tool::Measure)
                         && toggle_pill(
                             ui,
                             "Orto",

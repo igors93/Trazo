@@ -134,6 +134,43 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
     }
 }
 
+/// A measured distance: a dimension line with architectural ticks and its
+/// length (plus Δx and Δy when it runs at an angle).
+pub fn paint_measurement(painter: &Painter, view: ViewTransform, start: Point, end: Point) {
+    let (a, b) = (view.to_screen(start), view.to_screen(end));
+    let length = a.distance(b);
+    let color = theme::ACCENT_STRONG;
+    painter.line_segment([a, b], Stroke::new(1.6, color));
+    for point in [a, b] {
+        painter.circle_filled(point, 2.6, color);
+    }
+    if length < 1.0 {
+        return;
+    }
+    let along = (b - a) / length;
+    let normal = egui::vec2(-along.y, along.x);
+    let slash = (along + normal).normalized() * 6.0;
+    for point in [a, b] {
+        painter.line_segment([point - slash, point + slash], Stroke::new(2.0, color));
+    }
+    let (dx, dy) = ((end.x - start.x).abs(), (end.y - start.y).abs());
+    let mut text = format_meters(start.distance(end));
+    if dx > 0.005 && dy > 0.005 {
+        text.push_str(&format!("\nΔx {dx:.2} · Δy {dy:.2}").replace('.', ","));
+    }
+    let galley = painter.layout(text, theme::strong(12.0), color, f32::INFINITY);
+    let center = a.lerp(b, 0.5) - normal * (galley.size().y / 2.0 + 10.0);
+    let badge = Rect::from_center_size(center, galley.size() + egui::vec2(12.0, 6.0));
+    painter.rect(
+        badge,
+        4.0,
+        Color32::WHITE,
+        Stroke::new(1.0, theme::ACCENT_RING),
+        egui::StrokeKind::Inside,
+    );
+    painter.galley(badge.min + egui::vec2(6.0, 3.0), galley, color);
+}
+
 /// A property line: long dash, short dash.
 fn dash_dot(painter: &Painter, points: &[Pos2], stroke: Stroke) {
     painter.extend(Shape::dashed_line_with_offset(
