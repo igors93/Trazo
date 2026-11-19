@@ -23,6 +23,13 @@ pub enum PendingAction {
     CloseApp,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RibbonTab {
+    Architecture,
+    View,
+    Output,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Tool {
     Wall,
@@ -83,6 +90,18 @@ pub struct FloorPlanApp {
     room_height_text: String,
     opening_width_text: String,
     message: String,
+    ribbon_tab: RibbonTab,
+    ribbon_collapsed: bool,
+    show_grid: bool,
+    ortho_enabled: bool,
+    show_browser: bool,
+    show_properties: bool,
+    show_help: bool,
+    browser_filter: String,
+    browser_hover: Option<Selection>,
+    cursor_world: Option<Point>,
+    zoom_target: Option<(Point, Point)>,
+    window_title: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -130,6 +149,18 @@ impl FloorPlanApp {
             } else {
                 "Selecione uma ferramenta ou clique em um elemento para começar.".to_owned()
             },
+            ribbon_tab: RibbonTab::Architecture,
+            ribbon_collapsed: false,
+            show_grid: true,
+            ortho_enabled: false,
+            show_browser: true,
+            show_properties: true,
+            show_help: false,
+            browser_filter: String::new(),
+            browser_hover: None,
+            cursor_world: None,
+            zoom_target: None,
+            window_title: String::new(),
         }
     }
 
@@ -454,28 +485,163 @@ impl FloorPlanApp {
     fn fit_view(&mut self, rect: egui::Rect) {
         self.fit_pending = false;
         if let Some((min, max)) = self.project.bounds() {
-            let width = (max.x - min.x).max(0.25);
-            let height = (max.y - min.y).max(0.25);
-            self.scale = ((rect.width() - 100.0).max(80.0) / width)
-                .min((rect.height() - 100.0).max(80.0) / height)
-                .clamp(3.0, 240.0);
-            self.pan = egui::vec2(
-                -(min.x + max.x) * self.scale / 2.0,
-                -(min.y + max.y) * self.scale / 2.0,
-            );
+            self.fit_bounds(rect, min, max, 240.0);
         } else {
             self.pan = egui::Vec2::ZERO;
             self.scale = 60.0;
         }
     }
 
+    /// Centres the box `min`–`max` in `rect` at the largest scale that shows
+    /// it whole, never above `max_scale`.
+    fn fit_bounds(&mut self, rect: egui::Rect, min: Point, max: Point, max_scale: f32) {
+        let width = (max.x - min.x).max(0.25);
+        let height = (max.y - min.y).max(0.25);
+        self.scale = ((rect.width() - 100.0).max(80.0) / width)
+            .min((rect.height() - 100.0).max(80.0) / height)
+            .clamp(3.0, max_scale);
+        self.pan = egui::vec2(
+            -(min.x + max.x) * self.scale / 2.0,
+            -(min.y + max.y) * self.scale / 2.0,
+        );
+    }
+
     fn prepare_canvas_view(&mut self, rect: egui::Rect) {
         if self.fit_pending {
             self.fit_view(rect);
+        } else if let Some((min, max)) = self.zoom_target.take() {
+            self.fit_bounds(rect, min, max, 120.0);
         } else if let Some(previous_center) = self.last_canvas_center {
             self.pan += previous_center - rect.center();
         }
         self.last_canvas_center = Some(rect.center());
+    }
+
+    /// Zooms by `factor` around the centre of the view.
+    fn zoom_by(&mut self, factor: f32) {
+        let scale = (self.scale * factor).clamp(3.0, 240.0);
+        self.pan *= scale / self.scale;
+        self.scale = scale;
+    }
+
+    fn zoom_percent(&self) -> f32 {
+        self.scale / 60.0 * 100.0
+    }
+
+    /// The box an element occupies, for zooming to it.
+    fn selection_bounds(&self, selection: Selection) -> Option<(Point, Point)> {
+        let span = |points: &[Point]| {
+            let mut min = points[0];
+            let mut max = points[0];
+            for point in points {
+                min = Point::new(min.x.min(point.x), min.y.min(point.y));
+                max = Point::new(max.x.max(point.x), max.y.max(point.y));
+            }
+            (
+                Point::new(min.x - 0.75, min.y - 0.75),
+                Point::new(max.x + 0.75, max.y + 0.75),
+            )
+        };
+        match selection {
+            Selection::Wall(id) => {
+                let wall = self.project.walls.iter().find(|wall| wall.id == id)?;
+                Some(span(&[wall.start, wall.end]))
+            }
+            Selection::Room(id) => {
+                let room = self.project.rooms.iter().find(|room| room.id == id)?;
+                let (min, max) = self.project.room_bounds(room)?;
+                Some(span(&[min, max]))
+            }
+            Selection::Terrain(_) => {
+                let terrain = self.project.terrain.as_ref()?;
+                Some(span(&[terrain.min, terrain.max]))
+            }
+            Selection::Opening(id) => {
+                let opening = self.project.openings.iter().find(|o| o.id == id)?;
+                let wall = self
+                    .project
+                    .walls
+                    .iter()
+                    .find(|wall| wall.id == opening.wall_id)?;
+                let center = Point::new(
+                    wall.start.x + (wall.end.x - wall.start.x) * opening.t,
+                    wall.start.y + (wall.end.y - wall.start.y) * opening.t,
+                );
+                let half = opening.width() / 2.0 + 1.0;
+                Some(span(&[
+                    Point::new(center.x - half, center.y - half),
+                    Point::new(center.x + half, center.y + half),
+                ]))
+            }
+        }
+    }
+
+    fn selection_message(selection: Option<Selection>) -> &'static str {
+        match selection {
+            Some(Selection::Opening(_)) => {
+                "Abertura selecionada. Arraste ao longo da parede ou altere a largura no painel."
+            }
+            Some(Selection::Wall(_)) => {
+                "Parede selecionada. Arraste para mover ou altere o comprimento no painel."
+            }
+            Some(Selection::Room(_)) => {
+                "Cômodo selecionado. Arraste para mover ou altere as medidas no painel."
+            }
+            Some(Selection::Terrain(_)) => {
+                "Terreno selecionado. Ajuste as medidas ou arraste para mover."
+            }
+            None => "Clique em um elemento para selecionar.",
+        }
+    }
+
+    /// Selects an element from outside the canvas (the project browser),
+    /// switching to the selection tool.
+    fn select(&mut self, selection: Selection) {
+        if self.tool != Tool::Move {
+            self.set_tool(Tool::Move);
+        }
+        self.cancel_creation();
+        self.selection = Some(selection);
+        self.sync_inspector_fields();
+        self.message = Self::selection_message(self.selection).to_owned();
+    }
+
+    fn zoom_to_selection(&mut self, selection: Selection) {
+        if let Some(bounds) = self.selection_bounds(selection) {
+            self.zoom_target = Some(bounds);
+        }
+    }
+
+    fn toggle_snap(&mut self) {
+        self.snap_enabled = !self.snap_enabled;
+        self.message = if self.snap_enabled {
+            "Encaixe ativado: grade de 0,25 m e extremidades de paredes."
+        } else {
+            "Encaixe desativado."
+        }
+        .to_owned();
+    }
+
+    fn toggle_ortho(&mut self) {
+        self.ortho_enabled = !self.ortho_enabled;
+        self.message = if self.ortho_enabled {
+            "Modo orto ativado: paredes apenas horizontais ou verticais."
+        } else {
+            "Modo orto desativado."
+        }
+        .to_owned();
+    }
+
+    fn toggle_grid(&mut self) {
+        self.show_grid = !self.show_grid;
+    }
+
+    fn document_name(&self) -> String {
+        self.file_path
+            .as_ref()
+            .and_then(|path| path.file_name())
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "Sem título".to_owned())
     }
 
     fn create_terrain_from_dimensions(&mut self) {
@@ -752,11 +918,21 @@ impl FloorPlanApp {
     fn handle_shortcuts(&mut self, context: &egui::Context) {
         // Canvas and toolbar widgets can hold focus without editing text.
         let editing_text = context.text_edit_focused();
+        let modal_open =
+            self.pending_room.is_some() || self.pending_action.is_some() || self.show_help;
         let actions = context.input(|input| {
             let pressed = |key: Key| {
                 input.events.iter().any(|event| {
                     matches!(event, egui::Event::Key { key: event_key, pressed: true, repeat: false, .. } if *event_key == key)
                 })
+            };
+            let plain = |key: Key| {
+                !editing_text
+                    && !modal_open
+                    && input.events.iter().any(|event| {
+                        matches!(event, egui::Event::Key { key: event_key, pressed: true, repeat: false, modifiers, .. }
+                            if *event_key == key && modifiers.is_none())
+                    })
             };
             let shortcut = |key: Key, shift: bool| {
                 input.events.iter().any(|event| {
@@ -764,34 +940,116 @@ impl FloorPlanApp {
                         if *event_key == key && (modifiers.command || modifiers.ctrl) && modifiers.shift == shift)
                 })
             };
-            (
-                shortcut(Key::S, false),
-                shortcut(Key::O, false),
-                shortcut(Key::Z, false) && !editing_text,
-                (shortcut(Key::Y, false) || shortcut(Key::Z, true)) && !editing_text,
-                pressed(Key::Escape),
-                pressed(Key::Delete) && !editing_text,
-            )
+            let tool = [
+                (Key::V, Tool::Move),
+                (Key::T, Tool::Terrain),
+                (Key::P, Tool::Wall),
+                (Key::C, Tool::Room),
+                (Key::R, Tool::Opening(OpeningKind::Door)),
+                (Key::J, Tool::Opening(OpeningKind::Window)),
+            ]
+            .into_iter()
+            .find_map(|(key, tool)| plain(key).then_some(tool));
+            ShortcutActions {
+                save: shortcut(Key::S, false),
+                open: shortcut(Key::O, false),
+                new: shortcut(Key::N, false),
+                undo: shortcut(Key::Z, false) && !editing_text,
+                redo: (shortcut(Key::Y, false) || shortcut(Key::Z, true)) && !editing_text,
+                escape: pressed(Key::Escape),
+                delete: pressed(Key::Delete) && !editing_text,
+                tool,
+                fit: plain(Key::F),
+                snap: pressed(Key::F3),
+                grid: pressed(Key::F7),
+                ortho: pressed(Key::F8),
+                help: pressed(Key::F1),
+            }
         });
-        if actions.0 {
+        if actions.save {
             self.save();
         }
-        if actions.1 {
+        if actions.open {
             self.request_open();
         }
-        if actions.2 {
+        if actions.new {
+            self.request_new_project();
+        }
+        if actions.undo {
             self.undo();
         }
-        if actions.3 {
+        if actions.redo {
             self.redo();
         }
-        if actions.4 {
-            self.cancel_creation();
-            self.pending_room = None;
-            self.message = "Ação cancelada.".to_owned();
+        if actions.escape {
+            if self.show_help {
+                self.show_help = false;
+            } else if self.draft_start().is_none()
+                && self.pending_room.is_none()
+                && self.selection.is_some()
+            {
+                self.selection = None;
+                self.message = "Seleção limpa.".to_owned();
+            } else {
+                self.cancel_creation();
+                self.pending_room = None;
+                self.message = "Ação cancelada.".to_owned();
+            }
         }
-        if actions.5 {
+        if actions.delete {
             self.delete_selection();
+        }
+        if let Some(tool) = actions.tool {
+            self.set_tool(tool);
+            if tool == Tool::Terrain {
+                self.sync_terrain_fields();
+            }
+        }
+        if actions.fit {
+            self.fit_view_requested();
+        }
+        if actions.snap {
+            self.toggle_snap();
+        }
+        if actions.grid {
+            self.toggle_grid();
+        }
+        if actions.ortho {
+            self.toggle_ortho();
+        }
+        if actions.help {
+            self.show_help = !self.show_help;
+        }
+    }
+}
+
+struct ShortcutActions {
+    save: bool,
+    open: bool,
+    new: bool,
+    undo: bool,
+    redo: bool,
+    escape: bool,
+    delete: bool,
+    tool: Option<Tool>,
+    fit: bool,
+    snap: bool,
+    grid: bool,
+    ortho: bool,
+    help: bool,
+}
+
+impl FloorPlanApp {
+    /// Keeps the window title in step with the document and its state.
+    fn update_window_title(&mut self, context: &egui::Context) {
+        let title = format!(
+            "{}{} — Trazo",
+            if self.dirty { "• " } else { "" },
+            self.document_name()
+        );
+        if title != self.window_title {
+            context.send_viewport_cmd(egui::ViewportCommand::Title(title.clone()));
+            self.window_title = title;
         }
     }
 }

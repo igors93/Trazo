@@ -1,159 +1,334 @@
-use super::super::FloorPlanApp;
-use eframe::egui::{self, Align, Color32, RichText, Ui};
+use super::super::{FloorPlanApp, RibbonTab, Tool, theme::*};
+use super::icons::{self, Icon};
+use super::widgets::{MENU_WIDTH, icon_button, menu_check, menu_item, menu_separator, tip};
+use crate::domain::model::OpeningKind;
+use eframe::egui::{
+    self, Align, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Style, Ui, vec2,
+};
+
+fn menu_bar_style(style: &mut Style) {
+    egui::containers::menu::menu_style(style);
+    style.spacing.button_padding = vec2(9.0, 5.0);
+    style.spacing.item_spacing.x = 2.0;
+    style.visuals.widgets.hovered.weak_bg_fill = ACCENT_SOFTER;
+    style.visuals.widgets.open.weak_bg_fill = ACCENT_SOFT;
+    style.visuals.widgets.active.weak_bg_fill = ACCENT_SOFT;
+}
 
 impl FloorPlanApp {
     pub(super) fn menu_bar(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
-            ui.label(
-                RichText::new("Trazo")
-                    .strong()
-                    .size(16.0)
-                    .color(Color32::from_rgb(19, 122, 111)),
-            );
-            ui.add_space(12.0);
-            ui.menu_button("Arquivo", |ui| {
-                if ui.button("Nova planta").clicked() {
-                    self.request_new_project();
-                    ui.close();
-                }
-                if ui.button("Abrir...                 Ctrl+O").clicked() {
-                    self.request_open();
-                    ui.close();
-                }
-                if ui.button("Salvar                  Ctrl+S").clicked() {
-                    self.save();
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button("Exportar imagem PNG...").clicked() {
-                    self.export_png();
-                    ui.close();
-                }
-                if ui.button("Exportar PDF...").clicked() {
-                    self.export_pdf();
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button("Sair").clicked() {
-                    self.request_close(ui.ctx());
-                    ui.close();
-                }
-            });
-            ui.menu_button("Editar", |ui| {
-                if ui
-                    .add_enabled(
-                        self.history.can_undo(),
-                        egui::Button::new("Desfazer            Ctrl+Z"),
-                    )
-                    .clicked()
-                {
-                    self.undo();
-                    ui.close();
-                }
-                if ui
-                    .add_enabled(
-                        self.history.can_redo(),
-                        egui::Button::new("Refazer            Ctrl+Y"),
-                    )
-                    .clicked()
-                {
-                    self.redo();
-                    ui.close();
-                }
-                ui.separator();
-                if ui
-                    .add_enabled(
-                        self.selection.is_some(),
-                        egui::Button::new("Excluir seleção     Delete"),
-                    )
-                    .clicked()
-                {
-                    self.delete_selection();
-                    ui.close();
-                }
-            });
-            ui.menu_button("Exibir", |ui| {
-                if ui.button("Enquadrar tudo").clicked() {
-                    self.fit_view_requested();
-                    ui.close();
-                }
-                if ui.button("Ampliar").clicked() {
-                    self.scale = (self.scale * 1.2).min(240.0);
-                    ui.close();
-                }
-                if ui.button("Reduzir").clicked() {
-                    self.scale = (self.scale / 1.2).max(3.0);
-                    ui.close();
-                }
-                ui.separator();
-                ui.checkbox(&mut self.snap_enabled, "Encaixe magnético");
-            });
+        egui::MenuBar::new().style(menu_bar_style).ui(ui, |ui| {
+            ui.set_min_height(28.0);
+            let (logo, _) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::hover());
+            icons::paint_logo(ui.painter(), logo);
+            ui.add_space(4.0);
+            ui.label(RichText::new("Trazo").font(strong(14.5)).color(TEXT));
+            ui.add_space(10.0);
+
+            ui.menu_button("Arquivo", |ui| self.file_menu(ui));
+            ui.menu_button("Editar", |ui| self.edit_menu(ui));
+            ui.menu_button("Exibir", |ui| self.view_menu(ui));
+            ui.menu_button("Desenhar", |ui| self.draw_menu(ui));
             ui.menu_button("Ajuda", |ui| {
-                ui.label("Dicas rápidas:");
-                ui.label("• Selecionar (V): clique para selecionar paredes, cômodos, aberturas ou terreno.");
-                ui.label("• Parede, Cômodo e Terreno: clique e arraste ou clique em dois pontos.");
-                ui.label("• Porta e Janela: clique ou arraste para uma parede.");
-                ui.label("• Roda do mouse: zoom. Botão do meio: mover a vista.");
-                ui.label("• Delete: excluir seleção. Esc: cancelar ação.");
+                ui.set_width(MENU_WIDTH);
+                if menu_item(ui, Some(Icon::Keyboard), "Atalhos e guia rápido", "F1").clicked()
+                {
+                    self.show_help = true;
+                    ui.close();
+                }
             });
 
-            ui.add_space(8.0);
-            ui.separator();
-            ui.add_space(8.0);
+            ui.add_space(6.0);
+            separator(ui);
+            ui.add_space(4.0);
 
-            if ui
-                .add(
-                    egui::Button::new(RichText::new("Salvar").size(12.0))
-                )
-                .on_hover_text("Salvar projeto atual (Ctrl+S)")
-                .clicked()
-            {
+            // Quick access toolbar.
+            if icon_button(ui, Icon::New, "Nova planta (Ctrl+N)", false).clicked() {
+                self.request_new_project();
+            }
+            if icon_button(ui, Icon::Open, "Abrir projeto (Ctrl+O)", false).clicked() {
+                self.request_open();
+            }
+            if icon_button(ui, Icon::Save, "Salvar projeto (Ctrl+S)", false).clicked() {
                 self.save();
             }
-
-            ui.menu_button("Exportar", |ui| {
-                if ui.button("Exportar imagem PNG...").clicked() {
-                    self.export_png();
-                    ui.close();
-                }
-                if ui.button("Exportar PDF...").clicked() {
-                    self.export_pdf();
-                    ui.close();
-                }
-            });
+            separator(ui);
+            if ui
+                .add_enabled_ui(self.history.can_undo(), |ui| {
+                    icon_button(ui, Icon::Undo, "Desfazer (Ctrl+Z)", false)
+                })
+                .inner
+                .clicked()
+            {
+                self.undo();
+            }
+            if ui
+                .add_enabled_ui(self.history.can_redo(), |ui| {
+                    icon_button(ui, Icon::Redo, "Refazer (Ctrl+Y)", false)
+                })
+                .inner
+                .clicked()
+            {
+                self.redo();
+            }
 
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
-                if self.dirty {
-                    ui.label(
-                        RichText::new("● Não salvo")
-                            .size(11.5)
-                            .strong()
-                            .color(Color32::from_rgb(205, 105, 35)),
-                    );
-                } else {
-                    ui.label(
-                        RichText::new("✓ Salvo")
-                            .size(11.5)
-                            .color(Color32::from_rgb(45, 140, 125)),
-                    );
-                }
-                ui.add_space(8.0);
-                if ui
-                    .add(
-                        egui::TextEdit::singleline(&mut self.project.name)
-                            .hint_text("Nome do projeto")
-                            .desired_width(175.0),
-                    )
-                    .changed()
-                {
-                    self.dirty = true;
-                }
-                ui.label(
-                    RichText::new("Projeto:")
-                        .size(12.0)
-                        .color(Color32::from_rgb(115, 133, 140)),
-                );
+                let export = export_button(ui);
+                egui::Popup::menu(&export).show(|ui| self.export_menu(ui));
+                ui.add_space(10.0);
+                self.document_chip(ui);
             });
         });
     }
+
+    fn document_chip(&mut self, ui: &mut Ui) {
+        let name = if self.project.name.trim().is_empty() {
+            "Sem nome".to_owned()
+        } else {
+            self.project.name.trim().to_owned()
+        };
+        let file = self.document_name();
+        let title = ui
+            .painter()
+            .layout_no_wrap(name, strong(12.5), TEXT);
+        let detail = ui
+            .painter()
+            .layout_no_wrap(file, regular(12.0), MUTED);
+        let width = 16.0 + 18.0 + title.size().x + 8.0 + detail.size().x + 22.0;
+        let (rect, response) = ui.allocate_exact_size(vec2(width, 26.0), Sense::hover());
+        let painter = ui.painter();
+        painter.rect(
+            rect,
+            13,
+            PANEL_ALT,
+            Stroke::new(1.0, BORDER),
+            StrokeKind::Inside,
+        );
+        icons::paint(
+            painter,
+            Rect::from_center_size(Pos2::new(rect.left() + 18.0, rect.center().y), vec2(15.0, 15.0)),
+            Icon::Plan,
+            TEXT_2,
+            ACCENT,
+        );
+        let mut x = rect.left() + 32.0;
+        let title_width = title.size().x;
+        painter.galley(
+            Pos2::new(x, rect.center().y - title.size().y / 2.0),
+            title,
+            TEXT,
+        );
+        x += title_width + 8.0;
+        painter.galley(
+            Pos2::new(x, rect.center().y - detail.size().y / 2.0),
+            detail,
+            MUTED,
+        );
+        let (dot, text) = if self.dirty {
+            (WARNING, "Alterações não salvas")
+        } else {
+            (SUCCESS, "Todas as alterações foram salvas")
+        };
+        painter.circle_filled(Pos2::new(rect.right() - 12.0, rect.center().y), 3.5, dot);
+        tip(response, text);
+    }
+
+    fn file_menu(&mut self, ui: &mut Ui) {
+        ui.set_width(MENU_WIDTH);
+        if menu_item(ui, Some(Icon::New), "Nova planta", "Ctrl+N").clicked() {
+            self.request_new_project();
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::Open), "Abrir...", "Ctrl+O").clicked() {
+            self.request_open();
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::Save), "Salvar", "Ctrl+S").clicked() {
+            self.save();
+            ui.close();
+        }
+        menu_separator(ui);
+        if menu_item(ui, Some(Icon::ExportImage), "Exportar imagem PNG...", "").clicked() {
+            self.export_png();
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::ExportPdf), "Exportar PDF...", "").clicked() {
+            self.export_pdf();
+            ui.close();
+        }
+        menu_separator(ui);
+        if menu_item(ui, Some(Icon::Close), "Sair", "Alt+F4").clicked() {
+            self.request_close(ui.ctx());
+            ui.close();
+        }
+    }
+
+    fn edit_menu(&mut self, ui: &mut Ui) {
+        ui.set_width(MENU_WIDTH);
+        if ui
+            .add_enabled_ui(self.history.can_undo(), |ui| {
+                menu_item(ui, Some(Icon::Undo), "Desfazer", "Ctrl+Z")
+            })
+            .inner
+            .clicked()
+        {
+            self.undo();
+            ui.close();
+        }
+        if ui
+            .add_enabled_ui(self.history.can_redo(), |ui| {
+                menu_item(ui, Some(Icon::Redo), "Refazer", "Ctrl+Y")
+            })
+            .inner
+            .clicked()
+        {
+            self.redo();
+            ui.close();
+        }
+        menu_separator(ui);
+        if ui
+            .add_enabled_ui(self.selection.is_some(), |ui| {
+                menu_item(ui, Some(Icon::Delete), "Excluir seleção", "Delete")
+            })
+            .inner
+            .clicked()
+        {
+            self.delete_selection();
+            ui.close();
+        }
+        if ui
+            .add_enabled_ui(self.selection.is_some(), |ui| {
+                menu_item(ui, None, "Limpar seleção", "Esc")
+            })
+            .inner
+            .clicked()
+        {
+            self.selection = None;
+            ui.close();
+        }
+    }
+
+    fn view_menu(&mut self, ui: &mut Ui) {
+        ui.set_width(MENU_WIDTH);
+        if menu_item(ui, Some(Icon::ZoomFit), "Enquadrar tudo", "F").clicked() {
+            self.fit_view_requested();
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::ZoomIn), "Ampliar", "Roda ↑").clicked() {
+            self.zoom_by(1.25);
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::ZoomOut), "Reduzir", "Roda ↓").clicked() {
+            self.zoom_by(0.8);
+            ui.close();
+        }
+        if ui
+            .add_enabled_ui(self.selection.is_some(), |ui| {
+                menu_item(ui, Some(Icon::Search), "Aproximar da seleção", "")
+            })
+            .inner
+            .clicked()
+            && let Some(selection) = self.selection
+        {
+            self.zoom_to_selection(selection);
+            ui.close();
+        }
+        menu_separator(ui);
+        if menu_check(ui, "Grade", "F7", self.show_grid).clicked() {
+            self.toggle_grid();
+        }
+        if menu_check(ui, "Encaixe magnético", "F3", self.snap_enabled).clicked() {
+            self.toggle_snap();
+        }
+        if menu_check(ui, "Modo orto", "F8", self.ortho_enabled).clicked() {
+            self.toggle_ortho();
+        }
+        menu_separator(ui);
+        if menu_check(ui, "Navegador do projeto", "", self.show_browser).clicked() {
+            self.show_browser = !self.show_browser;
+        }
+        if menu_check(ui, "Propriedades", "", self.show_properties).clicked() {
+            self.show_properties = !self.show_properties;
+        }
+    }
+
+    fn draw_menu(&mut self, ui: &mut Ui) {
+        ui.set_width(MENU_WIDTH);
+        let entries = [
+            (Icon::Select, "Selecionar", "V", Tool::Move),
+            (Icon::Terrain, "Terreno", "T", Tool::Terrain),
+            (Icon::Wall, "Parede", "P", Tool::Wall),
+            (Icon::Room, "Cômodo", "C", Tool::Room),
+            (Icon::Door, "Porta", "R", Tool::Opening(OpeningKind::Door)),
+            (Icon::Window, "Janela", "J", Tool::Opening(OpeningKind::Window)),
+        ];
+        for (index, (icon, label, key, tool)) in entries.into_iter().enumerate() {
+            if index == 1 || index == 4 {
+                menu_separator(ui);
+            }
+            if menu_item(ui, Some(icon), label, key).clicked() {
+                self.set_tool(tool);
+                if tool == Tool::Terrain {
+                    self.sync_terrain_fields();
+                }
+                self.ribbon_tab = RibbonTab::Architecture;
+                ui.close();
+            }
+        }
+    }
+
+    fn export_menu(&mut self, ui: &mut Ui) {
+        ui.set_width(MENU_WIDTH);
+        if menu_item(ui, Some(Icon::ExportImage), "Imagem PNG...", "").clicked() {
+            self.export_png();
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::ExportPdf), "Documento PDF...", "").clicked() {
+            self.export_pdf();
+            ui.close();
+        }
+    }
+}
+
+fn separator(ui: &mut Ui) {
+    let (rect, _) = ui.allocate_exact_size(vec2(9.0, 22.0), Sense::hover());
+    ui.painter().line_segment(
+        [
+            Pos2::new(rect.center().x, rect.top() + 2.0),
+            Pos2::new(rect.center().x, rect.bottom() - 2.0),
+        ],
+        Stroke::new(1.0, BORDER_STRONG),
+    );
+}
+
+/// The call to action at the right of the menu bar.
+fn export_button(ui: &mut Ui) -> egui::Response {
+    let label = ui
+        .painter()
+        .layout_no_wrap("Exportar".to_owned(), strong(12.5), egui::Color32::WHITE);
+    let (rect, response) = ui.allocate_exact_size(
+        vec2(label.size().x + 44.0, 26.0),
+        Sense::click(),
+    );
+    let painter = ui.painter();
+    let fill = if response.is_pointer_button_down_on() || response.hovered() {
+        ACCENT_STRONG
+    } else {
+        ACCENT
+    };
+    painter.rect_filled(rect, 6, fill);
+    icons::paint(
+        painter,
+        Rect::from_center_size(Pos2::new(rect.left() + 16.0, rect.center().y), vec2(15.0, 15.0)),
+        Icon::Export,
+        egui::Color32::WHITE,
+        egui::Color32::WHITE,
+    );
+    painter.galley(
+        Pos2::new(rect.left() + 30.0, rect.center().y - label.size().y / 2.0),
+        label,
+        egui::Color32::WHITE,
+    );
+    tip(response, "Exportar a planta em imagem PNG ou documento PDF")
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
 }

@@ -1,5 +1,6 @@
-use eframe::egui::{self, Color32, Painter, Pos2, Rect, Stroke, Vec2};
+use eframe::egui::{self, Color32, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 
+use crate::app::theme;
 use crate::domain::{
     geometry::{GRID_METERS, Point, WALL_THICKNESS_METERS, format_meters},
     model::{OpeningKind, Project, Wall},
@@ -8,6 +9,7 @@ use crate::domain::{
 use super::Selection;
 
 mod labels;
+pub mod overlay;
 use labels::{paint_preview_measure, paint_room_labels, paint_terrain_label, paint_wall_labels};
 
 #[derive(Clone, Copy)]
@@ -35,42 +37,89 @@ pub enum Preview {
     Terrain(Point, Point),
 }
 
-pub fn paint(
-    painter: &Painter,
-    view: ViewTransform,
-    project: &Project,
-    selection: Option<Selection>,
-    preview: Option<Preview>,
-) {
-    painter.rect_filled(view.rect, 0.0, Color32::from_rgb(248, 250, 251));
-    paint_grid(painter, view);
+/// What the canvas shows besides the project itself.
+#[derive(Clone, Copy, Default)]
+pub struct PaintOptions {
+    pub selection: Option<Selection>,
+    /// The element under the pointer, highlighted before it is picked.
+    pub hover: Option<Selection>,
+    pub preview: Option<Preview>,
+    pub show_grid: bool,
+}
+
+/// A property line: long dash, short dash.
+fn dash_dot(painter: &Painter, points: &[Pos2], stroke: Stroke) {
+    painter.extend(Shape::dashed_line_with_offset(
+        points,
+        stroke,
+        &[14.0, 2.5],
+        &[4.0, 4.0],
+        0.0,
+    ));
+}
+
+pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options: PaintOptions) {
+    let PaintOptions {
+        selection,
+        hover,
+        preview,
+        show_grid,
+    } = options;
+    painter.rect_filled(view.rect, 0.0, theme::CANVAS);
+    if show_grid {
+        paint_grid(painter, view);
+    }
 
     if let Some(terrain) = &project.terrain {
         let rect = Rect::from_two_pos(view.to_screen(terrain.min), view.to_screen(terrain.max));
         let selected = selection == Some(Selection::Terrain(terrain.id));
+        let hovered = hover == Some(Selection::Terrain(terrain.id));
         painter.rect_filled(
             rect,
             0.0,
             if selected {
-                Color32::from_rgb(227, 239, 255)
+                theme::TERRAIN_FILL_SELECTED
             } else {
-                Color32::from_rgb(239, 246, 252)
+                theme::TERRAIN_FILL
             },
         );
-        painter.rect_stroke(
-            rect,
-            0.0,
-            Stroke::new(2.0, Color32::from_rgb(79, 124, 169)),
-            egui::StrokeKind::Inside,
+        let (width, color) = if selected {
+            (2.2, theme::SELECTION)
+        } else if hovered {
+            (2.0, theme::HOVER)
+        } else {
+            (1.6, theme::TERRAIN_LINE)
+        };
+        dash_dot(
+            painter,
+            &[
+                rect.left_top(),
+                rect.right_top(),
+                rect.right_bottom(),
+                rect.left_bottom(),
+                rect.left_top(),
+            ],
+            Stroke::new(width, color),
         );
+        for corner in [
+            rect.left_top(),
+            rect.right_top(),
+            rect.right_bottom(),
+            rect.left_bottom(),
+        ] {
+            painter.circle_filled(corner, 3.0, color);
+        }
     }
 
     for room in &project.rooms {
         let selected = selection == Some(Selection::Room(room.id));
+        let hovered = hover == Some(Selection::Room(room.id));
         let fill_color = if selected {
-            Color32::from_rgb(212, 243, 237)
+            theme::ROOM_FILL_SELECTED
+        } else if hovered {
+            theme::ROOM_FILL_HOVER
         } else {
-            Color32::from_rgb(234, 247, 244)
+            theme::ROOM_FILL
         };
 
         if let Some(poly) = project.room_polygon(room) {
@@ -90,18 +139,26 @@ pub fn paint(
             painter.rect_stroke(
                 rect,
                 0.0,
-                Stroke::new(1.0, Color32::from_rgba_unmultiplied(215, 80, 60, 120)),
+                Stroke::new(1.0, Color32::from_rgba_unmultiplied(204, 63, 51, 120)),
                 egui::StrokeKind::Inside,
             );
         }
     }
 
     for wall in &project.walls {
-        let selected = selection == Some(Selection::Wall(wall.id))
-            || project.rooms.iter().any(|room| {
-                selection == Some(Selection::Room(room.id)) && room.wall_ids.contains(&wall.id)
-            });
-        paint_wall(painter, view, wall, project, selected, selection);
+        let in_room = |target: Option<Selection>| {
+            project.rooms.iter().any(|room| {
+                target == Some(Selection::Room(room.id)) && room.wall_ids.contains(&wall.id)
+            })
+        };
+        let tone = if selection == Some(Selection::Wall(wall.id)) || in_room(selection) {
+            WallTone::Selected
+        } else if hover == Some(Selection::Wall(wall.id)) || in_room(hover) {
+            WallTone::Hovered
+        } else {
+            WallTone::Normal
+        };
+        paint_wall(painter, view, wall, project, tone, selection, hover);
     }
 
     let mut occupied = Vec::new();
@@ -114,152 +171,192 @@ pub fn paint(
         && project.terrain.is_none()
         && preview.is_none()
     {
-        let center = view.rect.center();
-        let box_rect = Rect::from_center_size(center, egui::vec2(400.0, 84.0));
-        painter.rect_filled(
-            box_rect,
-            8.0,
-            Color32::from_rgba_unmultiplied(255, 255, 255, 230),
-        );
-        painter.rect_stroke(
-            box_rect,
-            8.0,
-            Stroke::new(1.0, Color32::from_rgb(210, 224, 228)),
-            egui::StrokeKind::Inside,
-        );
-        painter.text(
-            center - egui::vec2(0.0, 12.0),
-            egui::Align2::CENTER_CENTER,
-            "Comece criando um terreno ou desenhe livremente.",
-            egui::FontId::proportional(15.0),
-            Color32::from_rgb(32, 68, 78),
-        );
-        painter.text(
-            center + egui::vec2(0.0, 16.0),
-            egui::Align2::CENTER_CENTER,
-            "Use as ferramentas Terreno, Parede ou Cômodo na barra superior.",
-            egui::FontId::proportional(12.5),
-            Color32::from_rgb(105, 128, 136),
-        );
+        paint_empty_state(painter, view.rect);
     }
 
     if let Some(preview) = preview {
-        match preview {
-            Preview::Wall(a, b) => {
-                let valid = a.distance(b) >= 0.24
-                    && project
-                        .terrain
-                        .as_ref()
-                        .is_none_or(|t| t.contains(a) && t.contains(b));
-                let color = if valid {
-                    Color32::from_rgb(40, 176, 158)
-                } else {
-                    Color32::from_rgb(215, 80, 60)
-                };
+        paint_preview(painter, view, project, preview, &occupied);
+    }
+}
+
+fn paint_empty_state(painter: &Painter, area: Rect) {
+    let card = Rect::from_center_size(area.center(), egui::vec2(460.0, 132.0));
+    if !area.contains_rect(card) {
+        return;
+    }
+    let shadow = egui::Shadow {
+        offset: [0, 6],
+        blur: 24,
+        spread: 0,
+        color: Color32::from_rgba_unmultiplied(22, 50, 92, 30),
+    };
+    painter.add(shadow.as_shape(card, 10));
+    painter.rect(
+        card,
+        10.0,
+        theme::PANEL,
+        Stroke::new(1.0, theme::BORDER),
+        egui::StrokeKind::Inside,
+    );
+    let icon = Rect::from_center_size(
+        Pos2::new(card.left() + 44.0, card.center().y - 14.0),
+        egui::vec2(34.0, 34.0),
+    );
+    painter.rect_filled(icon.expand(6.0), 9.0, theme::ACCENT_SOFT);
+    crate::app::ui::icons::paint(
+        painter,
+        icon,
+        crate::app::ui::icons::Icon::Plan,
+        theme::ACCENT_TEXT,
+        theme::ACCENT,
+    );
+    let left = card.left() + 84.0;
+    painter.text(
+        Pos2::new(left, card.top() + 30.0),
+        egui::Align2::LEFT_CENTER,
+        "Comece seu projeto",
+        theme::strong(16.0),
+        theme::TEXT,
+    );
+    painter.text(
+        Pos2::new(left, card.top() + 56.0),
+        egui::Align2::LEFT_CENTER,
+        "Crie um terreno com medidas exatas ou desenhe",
+        theme::regular(13.0),
+        theme::TEXT_2,
+    );
+    painter.text(
+        Pos2::new(left, card.top() + 74.0),
+        egui::Align2::LEFT_CENTER,
+        "paredes e cômodos diretamente na grade.",
+        theme::regular(13.0),
+        theme::TEXT_2,
+    );
+    painter.text(
+        Pos2::new(left, card.top() + 104.0),
+        egui::Align2::LEFT_CENTER,
+        "Terreno  T    ·    Parede  P    ·    Cômodo  C    ·    Ajuda  F1",
+        theme::regular(11.5),
+        theme::MUTED,
+    );
+}
+
+fn paint_preview(
+    painter: &Painter,
+    view: ViewTransform,
+    project: &Project,
+    preview: Preview,
+    occupied: &[Rect],
+) {
+    let valid_color = theme::ACCENT;
+    let invalid_color = theme::DANGER;
+    match preview {
+        Preview::Wall(a, b) => {
+            let valid = a.distance(b) >= 0.24
+                && project
+                    .terrain
+                    .as_ref()
+                    .is_none_or(|t| t.contains(a) && t.contains(b));
+            let color = if valid { valid_color } else { invalid_color };
+            painter.line_segment(
+                [view.to_screen(a), view.to_screen(b)],
+                Stroke::new(
+                    wall_stroke_width(view.scale),
+                    color.gamma_multiply(0.85),
+                ),
+            );
+            painter.circle_filled(view.to_screen(a), 3.5, color);
+            painter.circle_filled(view.to_screen(b), 4.5, color);
+            let midpoint = view.to_screen(a).lerp(view.to_screen(b), 0.5);
+            paint_preview_measure(
+                painter,
+                midpoint + egui::vec2(0.0, -22.0),
+                view.rect,
+                view.to_screen(b),
+                &format_meters(a.distance(b)),
+                view.rect,
+                occupied,
+            );
+        }
+        Preview::Room(a, b) => {
+            let w = (b.x - a.x).abs();
+            let h = (b.y - a.y).abs();
+            let min = Point::new(a.x.min(b.x), a.y.min(b.y));
+            let max = Point::new(a.x.max(b.x), a.y.max(b.y));
+            let valid = w >= 0.5
+                && h >= 0.5
+                && project
+                    .terrain
+                    .as_ref()
+                    .is_none_or(|t| t.contains(min) && t.contains(max));
+            let color = if valid { valid_color } else { invalid_color };
+            let rect = Rect::from_two_pos(view.to_screen(a), view.to_screen(b));
+            painter.rect_filled(rect, 0.0, color.gamma_multiply(0.10));
+            let corners = [
+                rect.left_top(),
+                rect.right_top(),
+                rect.right_bottom(),
+                rect.left_bottom(),
+            ];
+            for index in 0..4 {
                 painter.line_segment(
-                    [view.to_screen(a), view.to_screen(b)],
-                    Stroke::new(wall_stroke_width(view.scale), color),
-                );
-                painter.circle_filled(view.to_screen(b), 5.0, color);
-                let midpoint = view.to_screen(a).lerp(view.to_screen(b), 0.5);
-                paint_preview_measure(
-                    painter,
-                    midpoint + egui::vec2(0.0, -22.0),
-                    view.rect,
-                    view.to_screen(b),
-                    &format_meters(a.distance(b)),
-                    view.rect,
-                    &occupied,
+                    [corners[index], corners[(index + 1) % 4]],
+                    Stroke::new(wall_stroke_width(view.scale), color.gamma_multiply(0.85)),
                 );
             }
-            Preview::Room(a, b) => {
-                let w = (b.x - a.x).abs();
-                let h = (b.y - a.y).abs();
-                let area = w * h;
-                let min = Point::new(a.x.min(b.x), a.y.min(b.y));
-                let max = Point::new(a.x.max(b.x), a.y.max(b.y));
-                let valid = w >= 0.5
-                    && h >= 0.5
-                    && project
-                        .terrain
-                        .as_ref()
-                        .is_none_or(|t| t.contains(min) && t.contains(max));
-                let color = if valid {
-                    Color32::from_rgb(40, 176, 158)
-                } else {
-                    Color32::from_rgb(215, 80, 60)
-                };
-                let fill_color = if valid {
-                    Color32::from_rgba_unmultiplied(40, 176, 158, 30)
-                } else {
-                    Color32::from_rgba_unmultiplied(215, 80, 60, 30)
-                };
-                let rect = Rect::from_two_pos(view.to_screen(a), view.to_screen(b));
-                painter.rect_filled(rect, 0.0, fill_color);
-                let corners = [
+            paint_preview_measure(
+                painter,
+                rect.center(),
+                rect.shrink(wall_stroke_width(view.scale) / 2.0 + 4.0),
+                view.to_screen(b),
+                &format!(
+                    "{} × {} · {:.2} m²",
+                    format_meters(w),
+                    format_meters(h),
+                    w * h
+                )
+                .replace('.', ","),
+                view.rect,
+                occupied,
+            );
+        }
+        Preview::Terrain(a, b) => {
+            let w = (b.x - a.x).abs();
+            let h = (b.y - a.y).abs();
+            let valid = w >= 0.25 && h >= 0.25;
+            let color = if valid {
+                theme::TERRAIN_LINE
+            } else {
+                invalid_color
+            };
+            let rect = Rect::from_two_pos(view.to_screen(a), view.to_screen(b));
+            painter.rect_filled(rect, 0.0, color.gamma_multiply(0.10));
+            dash_dot(
+                painter,
+                &[
                     rect.left_top(),
                     rect.right_top(),
                     rect.right_bottom(),
                     rect.left_bottom(),
-                ];
-                for index in 0..4 {
-                    painter.line_segment(
-                        [corners[index], corners[(index + 1) % 4]],
-                        Stroke::new(wall_stroke_width(view.scale), color),
-                    );
-                }
-                paint_preview_measure(
-                    painter,
-                    rect.center(),
-                    rect.shrink(wall_stroke_width(view.scale) / 2.0 + 4.0),
-                    view.to_screen(b),
-                    &format!(
-                        "{} × {} · {:.2} m²",
-                        format_meters(w),
-                        format_meters(h),
-                        area
-                    )
-                    .replace('.', ","),
-                    view.rect,
-                    &occupied,
-                );
-            }
-            Preview::Terrain(a, b) => {
-                let w = (b.x - a.x).abs();
-                let h = (b.y - a.y).abs();
-                let valid = w >= 0.25 && h >= 0.25;
-                let color = if valid {
-                    Color32::from_rgb(79, 124, 169)
-                } else {
-                    Color32::from_rgb(215, 80, 60)
-                };
-                let rect = Rect::from_two_pos(view.to_screen(a), view.to_screen(b));
-                painter.rect_filled(
-                    rect,
-                    0.0,
-                    if valid {
-                        Color32::from_rgba_unmultiplied(78, 130, 183, 30)
-                    } else {
-                        Color32::from_rgba_unmultiplied(215, 80, 60, 30)
-                    },
-                );
-                painter.rect_stroke(rect, 0.0, Stroke::new(2.0, color), egui::StrokeKind::Inside);
-                paint_preview_measure(
-                    painter,
-                    rect.center(),
-                    rect.shrink(4.0),
-                    view.to_screen(b),
-                    &format!(
-                        "{} × {} · {:.2} m²",
-                        format_meters(w),
-                        format_meters(h),
-                        w * h
-                    )
-                    .replace('.', ","),
-                    view.rect,
-                    &occupied,
-                );
-            }
+                    rect.left_top(),
+                ],
+                Stroke::new(2.0, color),
+            );
+            paint_preview_measure(
+                painter,
+                rect.center(),
+                rect.shrink(4.0),
+                view.to_screen(b),
+                &format!(
+                    "{} × {} · {:.2} m²",
+                    format_meters(w),
+                    format_meters(h),
+                    w * h
+                )
+                .replace('.', ","),
+                view.rect,
+                occupied,
+            );
         }
     }
 }
@@ -272,48 +369,67 @@ fn paint_grid(painter: &Painter, view: ViewTransform) {
     } else {
         GRID_METERS
     };
+    let major_every = if step >= 5.0 { 25.0 } else { 1.0 };
     let first = view.to_world(view.rect.left_top());
     let last = view.to_world(view.rect.right_bottom());
     let start_x = (first.x / step).floor() as i32;
     let end_x = (last.x / step).ceil() as i32;
     let start_y = (first.y / step).floor() as i32;
     let end_y = (last.y / step).ceil() as i32;
+    let color = |value: f32| {
+        if (value / major_every).fract().abs() < 0.001
+            || (value / major_every).fract().abs() > 0.999
+        {
+            theme::GRID_MAJOR
+        } else {
+            theme::GRID_MINOR
+        }
+    };
     for index in start_x..=end_x {
-        let x = view.to_screen(Point::new(index as f32 * step, 0.0)).x;
-        let major = (index as f32 * step).rem_euclid(1.0) < 0.001;
+        let value = index as f32 * step;
+        let x = view.to_screen(Point::new(value, 0.0)).x;
         painter.line_segment(
             [
                 Pos2::new(x, view.rect.top()),
                 Pos2::new(x, view.rect.bottom()),
             ],
-            Stroke::new(
-                1.0,
-                if major {
-                    Color32::from_rgb(216, 227, 231)
-                } else {
-                    Color32::from_rgb(235, 241, 242)
-                },
-            ),
+            Stroke::new(1.0, color(value)),
         );
     }
     for index in start_y..=end_y {
-        let y = view.to_screen(Point::new(0.0, index as f32 * step)).y;
-        let major = (index as f32 * step).rem_euclid(1.0) < 0.001;
+        let value = index as f32 * step;
+        let y = view.to_screen(Point::new(0.0, value)).y;
         painter.line_segment(
             [
                 Pos2::new(view.rect.left(), y),
                 Pos2::new(view.rect.right(), y),
             ],
-            Stroke::new(
-                1.0,
-                if major {
-                    Color32::from_rgb(216, 227, 231)
-                } else {
-                    Color32::from_rgb(235, 241, 242)
-                },
-            ),
+            Stroke::new(1.0, color(value)),
         );
     }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum WallTone {
+    Normal,
+    Hovered,
+    Selected,
+}
+
+/// Paints a straight run of wall from `from` to `to` with square ends, so
+/// walls meeting at a corner close it without a notch.
+fn wall_run(painter: &Painter, from: Pos2, to: Pos2, width: f32, color: Color32) {
+    let along = to - from;
+    if along.length() < 0.01 {
+        return;
+    }
+    let direction = along.normalized();
+    let normal = egui::vec2(-direction.y, direction.x) * (width / 2.0);
+    painter.add(Shape::convex_polygon(
+        vec![from + normal, to + normal, to - normal, from - normal],
+        color,
+        Stroke::NONE,
+    ));
 }
 
 fn paint_wall(
@@ -321,8 +437,9 @@ fn paint_wall(
     view: ViewTransform,
     wall: &Wall,
     project: &Project,
-    selected: bool,
+    tone: WallTone,
     selection: Option<Selection>,
+    hover: Option<Selection>,
 ) {
     let a = view.to_screen(wall.start);
     let b = view.to_screen(wall.end);
@@ -330,10 +447,11 @@ fn paint_wall(
     let normal = egui::vec2(-direction.y, direction.x);
     let screen_length = a.distance(b);
     let wall_width = wall_stroke_width(view.scale);
-    let color = if selected {
-        Color32::from_rgb(36, 160, 147)
-    } else {
-        Color32::from_rgb(36, 53, 75)
+    let cap = direction * (wall_width / 2.0);
+    let color = match tone {
+        WallTone::Selected => theme::SELECTION,
+        WallTone::Hovered => theme::HOVER,
+        WallTone::Normal => theme::WALL,
     };
     let mut openings: Vec<_> = project
         .openings
@@ -342,78 +460,146 @@ fn paint_wall(
         .collect();
     openings.sort_by(|left, right| left.t.total_cmp(&right.t));
     let mut cursor = 0.0;
+    let mut run_start = a - cap;
     for opening in openings {
         let op_selected = selection == Some(Selection::Opening(opening.id));
+        let op_hovered = hover == Some(Selection::Opening(opening.id));
         let half = opening.width() * view.scale / 2.0;
         let center = opening.t * screen_length;
         let left = center - half;
         let right = center + half;
-        painter.line_segment(
-            [a + direction * cursor, a + direction * left],
-            Stroke::new(wall_width, color),
+        if left > cursor {
+            wall_run(painter, run_start, a + direction * left, wall_width, color);
+        }
+        let start = a + direction * left;
+        let end = a + direction * right;
+        let op_color = if op_selected {
+            theme::SELECTION
+        } else if op_hovered {
+            theme::HOVER
+        } else {
+            Color32::TRANSPARENT
+        };
+        let jamb = Stroke::new(
+            1.2,
+            if op_color == Color32::TRANSPARENT {
+                color
+            } else {
+                op_color
+            },
         );
-        if op_selected {
-            let op_pos = a + direction * center;
-            painter.circle_stroke(
-                op_pos,
-                (half + 4.0).max(12.0),
-                Stroke::new(2.5, Color32::from_rgb(230, 130, 40)),
-            );
+        let half_wall = wall_width / 2.0;
+        for point in [start, end] {
+            painter.line_segment([point - normal * half_wall, point + normal * half_wall], jamb);
         }
         match opening.kind {
             OpeningKind::Door => {
-                let hinge = a + direction * left;
-                let door_color = if op_selected {
-                    Color32::from_rgb(230, 130, 40)
+                let leaf_color = if op_color == Color32::TRANSPARENT {
+                    theme::WALL
                 } else {
-                    Color32::from_rgb(32, 171, 151)
+                    op_color
                 };
+                let leaf = half * 2.0;
                 painter.line_segment(
-                    [hinge, hinge + normal * (half * 2.0)],
-                    Stroke::new(2.5, door_color),
+                    [start, start + normal * leaf],
+                    Stroke::new(2.2, leaf_color),
                 );
-                let mut arc = Vec::new();
-                for step in 0..=16 {
-                    let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 16.0;
-                    arc.push(
-                        hinge
-                            + direction * (theta.sin() * half * 2.0)
-                            + normal * (theta.cos() * half * 2.0),
-                    );
-                }
-                painter.add(egui::Shape::line(
+                let arc: Vec<Pos2> = (0..=20)
+                    .map(|step| {
+                        let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 20.0;
+                        start + direction * (theta.sin() * leaf) + normal * (theta.cos() * leaf)
+                    })
+                    .collect();
+                painter.add(Shape::line(
                     arc,
                     Stroke::new(
                         1.0,
-                        if op_selected {
-                            Color32::from_rgb(240, 160, 80)
+                        if op_color == Color32::TRANSPARENT {
+                            theme::DOOR_ARC
                         } else {
-                            Color32::from_rgb(111, 199, 185)
+                            op_color
                         },
                     ),
                 ));
+                if op_color != Color32::TRANSPARENT {
+                    outline_opening(
+                        painter,
+                        start,
+                        end,
+                        direction,
+                        normal,
+                        -(half_wall + 4.0),
+                        leaf + 4.0,
+                        op_color,
+                    );
+                }
             }
             OpeningKind::Window => {
-                let start = a + direction * left;
-                let end = a + direction * right;
-                let window_color = if op_selected {
-                    Color32::from_rgb(230, 130, 40)
+                let window_color = if op_color == Color32::TRANSPARENT {
+                    theme::WINDOW
                 } else {
-                    Color32::from_rgb(35, 163, 190)
+                    op_color
                 };
-                painter.line_segment(
-                    [start - normal * 3.0, end - normal * 3.0],
-                    Stroke::new(2.5, window_color),
-                );
-                painter.line_segment(
-                    [start + normal * 3.0, end + normal * 3.0],
-                    Stroke::new(2.5, window_color),
-                );
+                let offset = (half_wall - 0.5).max(2.5);
+                painter.add(Shape::convex_polygon(
+                    vec![
+                        start + normal * offset,
+                        end + normal * offset,
+                        end - normal * offset,
+                        start - normal * offset,
+                    ],
+                    window_color.gamma_multiply(0.12),
+                    Stroke::NONE,
+                ));
+                for side in [-1.0, 1.0] {
+                    painter.line_segment(
+                        [start + normal * offset * side, end + normal * offset * side],
+                        Stroke::new(1.6, window_color),
+                    );
+                }
+                painter.line_segment([start, end], Stroke::new(1.0, window_color));
+                if op_color != Color32::TRANSPARENT {
+                    outline_opening(
+                        painter,
+                        start,
+                        end,
+                        direction,
+                        normal,
+                        -(half_wall + 4.0),
+                        half_wall + 4.0,
+                        op_color,
+                    );
+                }
             }
         }
         cursor = right;
+        run_start = end;
     }
-    painter.line_segment([a + direction * cursor, b], Stroke::new(wall_width, color));
+    wall_run(painter, run_start, b + cap, wall_width, color);
+}
+
+/// A dashed frame around a selected or hovered opening.
+#[allow(clippy::too_many_arguments)]
+fn outline_opening(
+    painter: &Painter,
+    start: Pos2,
+    end: Pos2,
+    direction: Vec2,
+    normal: Vec2,
+    near: f32,
+    far: f32,
+    color: Color32,
+) {
+    let start = start - direction * 4.0;
+    let end = end + direction * 4.0;
+    let corners = [
+        start + normal * near,
+        end + normal * near,
+        end + normal * far,
+        start + normal * far,
+        start + normal * near,
+    ];
+    painter.extend(Shape::dashed_line(&corners, Stroke::new(1.2, color), 4.0, 3.0));
 }
 
 fn wall_stroke_width(scale: f32) -> f32 {

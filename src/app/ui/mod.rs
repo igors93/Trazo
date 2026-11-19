@@ -1,13 +1,17 @@
-use eframe::egui::{self, Color32, Ui};
+use eframe::egui::{self, Margin, Ui};
 
+mod browser;
 mod dialogs;
 mod header;
-mod icons;
+pub(super) mod icons;
 mod inspector;
+mod options_bar;
 mod status_bar;
 mod toolbar;
+mod view;
+mod widgets;
 
-use super::FloorPlanApp;
+use super::{FloorPlanApp, theme};
 
 impl FloorPlanApp {
     pub(super) fn show_layout(&mut self, ui: &mut Ui) {
@@ -19,47 +23,65 @@ impl FloorPlanApp {
         }
 
         self.handle_shortcuts(&context);
+        self.update_window_title(&context);
+        self.browser_hover = None;
 
         egui::Panel::top("menu_bar")
+            .show_separator_line(false)
             .frame(
                 egui::Frame::new()
-                    .fill(Color32::from_rgb(248, 250, 251))
-                    .inner_margin(egui::Margin::symmetric(15, 5)),
+                    .fill(theme::PANEL)
+                    .inner_margin(Margin::symmetric(10, 3)),
             )
             .show(ui, |ui| self.menu_bar(ui));
 
-        egui::Panel::top("tool_ribbon")
+        egui::Panel::top("ribbon")
+            .show_separator_line(false)
+            .frame(egui::Frame::new().fill(theme::PANEL))
+            .show(ui, |ui| self.ribbon(ui));
+
+        egui::Panel::top("options_bar")
             .frame(
                 egui::Frame::new()
-                    .fill(Color32::from_rgb(239, 244, 245))
-                    .inner_margin(egui::Margin::symmetric(14, 8)),
+                    .fill(theme::PANEL)
+                    .inner_margin(Margin::symmetric(10, 3)),
             )
-            .show(ui, |ui| self.ribbon(ui));
+            .show(ui, |ui| self.options_bar(ui));
 
         egui::Panel::bottom("status")
             .frame(
                 egui::Frame::new()
-                    .fill(Color32::from_rgb(231, 239, 241))
-                    .inner_margin(egui::Margin::symmetric(16, 7)),
+                    .fill(theme::BAND)
+                    .inner_margin(Margin::symmetric(10, 2)),
             )
             .show(ui, |ui| self.status_bar(ui));
 
-        if self.inspector_visible() {
-            egui::Panel::right("terrain_inspector")
-                .resizable(false)
-                .exact_size(260.0)
-                .frame(
-                    egui::Frame::new()
-                        .fill(Color32::from_rgb(250, 252, 253))
-                        .inner_margin(egui::Margin::symmetric(16, 16)),
-                )
+        if self.show_browser {
+            egui::Panel::left("project_browser")
+                .resizable(true)
+                .default_size(232.0)
+                .size_range(190.0..=420.0)
+                .frame(egui::Frame::new().fill(theme::PANEL))
+                .show(ui, |ui| self.project_browser(ui));
+        }
+
+        if self.show_properties {
+            egui::Panel::right("properties")
+                .resizable(true)
+                .default_size(288.0)
+                .size_range(250.0..=480.0)
+                .frame(egui::Frame::new().fill(theme::PANEL))
                 .show(ui, |ui| self.show_inspector(ui));
         }
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(Color32::from_rgb(248, 250, 251)))
-            .show(ui, |ui| self.canvas(ui));
+            .frame(egui::Frame::new().fill(theme::BAND))
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+                self.canvas(ui);
+            });
         self.room_name_dialog(ui);
         self.unsaved_changes_dialog(&context);
+        self.help_dialog(&context);
     }
 }

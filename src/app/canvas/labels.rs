@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use eframe::egui::{self, Color32, FontId, Painter, Pos2, Rect};
+use eframe::egui::{self, Color32, FontId, Painter, Pos2, Rect, Stroke, StrokeKind};
+
+use crate::app::theme;
 
 use crate::domain::{geometry::format_meters, model::Project};
 
@@ -38,7 +40,7 @@ fn paint_measure(
     occupied: &[Rect],
 ) -> bool {
     let font = FontId::proportional(13.0);
-    let galley = painter.layout_no_wrap(value.to_owned(), font, Color32::from_rgb(24, 105, 98));
+    let galley = painter.layout_no_wrap(value.to_owned(), font, theme::ACCENT_TEXT);
     let rect = Rect::from_center_size(position, galley.size() + egui::vec2(16.0, 8.0));
     if !rect_inside(rect, bounds)
         || occupied
@@ -47,7 +49,7 @@ fn paint_measure(
     {
         return false;
     }
-    paint_badge(painter, rect, galley, Color32::from_rgb(24, 105, 98));
+    paint_badge(painter, rect, galley, theme::ACCENT_TEXT);
     true
 }
 
@@ -57,8 +59,8 @@ pub(super) fn paint_room_labels(
     project: &Project,
     occupied: &mut Vec<Rect>,
 ) {
-    let name_color = Color32::from_rgb(39, 70, 79);
-    let measure_color = Color32::from_rgb(100, 121, 129);
+    let name_color = theme::TEXT;
+    let measure_color = theme::MUTED;
     for room in &project.rooms {
         let Some((min, max)) = project.room_bounds(room) else {
             continue;
@@ -145,7 +147,7 @@ pub(super) fn paint_wall_labels(
             Some(Rect::from_two_pos(view.to_screen(min), view.to_screen(max)))
         })
         .collect();
-    let color = Color32::from_rgb(88, 108, 121);
+    let color = theme::TEXT_2;
     for wall in &project.walls {
         // Room dimensions are shown centrally; show an individual wall only when selected.
         if project
@@ -209,7 +211,7 @@ pub(super) fn paint_terrain_label(
     let Some(terrain) = &project.terrain else {
         return;
     };
-    let color = Color32::from_rgb(54, 90, 123);
+    let color = theme::TERRAIN_LINE;
     let label = format!("Terreno · {:.2} m²", terrain.area()).replace('.', ",");
     let Some(galley) = fit_text(
         painter,
@@ -298,7 +300,13 @@ fn paint_centered_galley(
 }
 
 fn paint_badge(painter: &Painter, rect: Rect, galley: Arc<egui::Galley>, color: Color32) {
-    painter.rect_filled(rect, 5.0, Color32::WHITE);
+    painter.rect(
+        rect,
+        4.0,
+        Color32::WHITE,
+        Stroke::new(1.0, theme::BORDER),
+        StrokeKind::Inside,
+    );
     painter.galley(rect.min + egui::vec2(8.0, 4.0), galley, color);
 }
 
