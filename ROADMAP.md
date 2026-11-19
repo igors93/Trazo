@@ -144,7 +144,7 @@ O #12 é o mais importante deste grupo. Dois quartos separados por uma parede: o
 | 31 | Textos, notas, chamadas, linhas de chamada e símbolos | P1 | 2 | Feito |
 | 32 | Hachuras e padrões gráficos por material | P1 | 2 | Feito |
 | 33 | Modelos de planta baixa, implantação e detalhamento | P1 | 3 | — |
-| 34 | Quadros de áreas, esquadrias, ambientes e materiais configuráveis | P1 | 2 | Parcial |
+| 34 | Quadros de áreas, esquadrias, ambientes e materiais configuráveis | P1 | 2 | Feito |
 | 35 | Cortes, fachadas, detalhes e referências entre desenhos | P2 | 4 | — |
 | 36 | Conjunto de pranchas com revisões e controle de documentação | P2 | 4 | — |
 | 37 | Estilos de documentação baseados nas normas brasileiras | P1 | 2 | — |

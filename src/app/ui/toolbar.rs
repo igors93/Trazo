@@ -593,6 +593,20 @@ impl FloorPlanApp {
             {
                 self.active_doc_dialog = super::super::DocDialog::Sheet;
             }
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::Info,
+                    "Quadros",
+                    self.active_doc_dialog == super::super::DocDialog::Schedules,
+                    false,
+                ),
+                "Configurar e visualizar quadros de áreas, esquadrias, ambientes e materiais",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Schedules;
+            }
         });
     }
 

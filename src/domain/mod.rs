@@ -11,6 +11,7 @@ pub mod layers;
 pub mod masonry;
 pub mod model;
 pub mod notes;
+pub mod schedules;
 pub mod setbacks;
 pub mod sheet;
 pub mod snap;

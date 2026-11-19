@@ -76,6 +76,10 @@ pub struct Project {
     #[serde(default)]
     pub sheet: super::sheet::SheetLayout,
 
+    /// Configuration for architectural area, openings, rooms and materials schedules.
+    #[serde(default)]
+    pub schedules: super::schedules::ScheduleConfig,
+
     next_id: u64,
 }
 
@@ -119,6 +123,8 @@ impl Default for Project {
             notes: Vec::new(),
 
             sheet: super::sheet::SheetLayout::default(),
+
+            schedules: super::schedules::ScheduleConfig::default(),
 
             next_id: 1,
         }

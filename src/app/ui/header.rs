@@ -275,6 +275,10 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::Notes;
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Export), "Quadros técnicos...", "").clicked() {
+            self.active_doc_dialog = super::super::DocDialog::Schedules;
+            ui.close();
+        }
     }
 
     pub(super) fn osnap_menu(&mut self, ui: &mut Ui) {

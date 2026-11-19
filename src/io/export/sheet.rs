@@ -537,8 +537,102 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
     if tb.show_scale_bar {
         write_scale_bar(&mut svg, frame_x + 4.0, frame_y + frame_h - 8.0, mm_per_m);
     }
+    if project.schedules.include_on_sheet {
+        write_schedules_on_sheet(&mut svg, project, frame_x, frame_y, frame_w, frame_h);
+    }
     svg.push_str("</svg>");
     svg
+}
+
+fn write_schedules_on_sheet(
+    svg: &mut String,
+    project: &Project,
+    frame_x: f64,
+    frame_y: f64,
+    frame_w: f64,
+    frame_h: f64,
+) {
+    let tables = crate::domain::schedules::active_schedules(project, &project.schedules);
+    if tables.is_empty() {
+        return;
+    }
+    let table_w = 88.0_f64.min(frame_w * 0.42);
+    let x = frame_x + frame_w - table_w - 3.0;
+    let title_block_h = if project.sheet.title_block.show_title_block {
+        44.0_f64.min(frame_h * 0.35) + 4.0
+    } else {
+        12.0
+    };
+    let max_bottom = frame_y + frame_h - title_block_h;
+    let mut cursor_y = frame_y + 26.0;
+    let row_h = 3.8;
+
+    let _ = writeln!(svg, "<g id=\"quadros\">");
+    for table in &tables {
+        let total_rows = 2 + table.rows.len() + usize::from(table.footer.is_some());
+        let h = total_rows as f64 * row_h + 1.5;
+        if cursor_y + h > max_bottom {
+            break;
+        }
+        let cols = table.headers.len().max(1);
+        let col_w = table_w / cols as f64;
+        let _ = writeln!(
+            svg,
+            "<rect x=\"{x:.2}\" y=\"{cursor_y:.2}\" width=\"{table_w:.2}\" height=\"{h:.2}\" fill=\"#ffffff\" stroke=\"#1d2836\" stroke-width=\"0.24\"/>\n\
+             <rect x=\"{x:.2}\" y=\"{cursor_y:.2}\" width=\"{table_w:.2}\" height=\"{row_h:.2}\" fill=\"#edf2f7\" stroke=\"#1d2836\" stroke-width=\"0.20\"/>\n\
+             <text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"2.1\" font-weight=\"700\" fill=\"#1d2836\">{}</text>",
+            x + 1.8,
+            cursor_y + 2.8,
+            escaped(&table.title)
+        );
+        let mut y = cursor_y + row_h;
+        // Headers
+        for (i, header) in table.headers.iter().enumerate() {
+            let _ = writeln!(
+                svg,
+                "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.7\" font-weight=\"700\" fill=\"#3b4e63\">{}</text>",
+                x + 1.5 + i as f64 * col_w,
+                y + 2.7,
+                escaped(header)
+            );
+        }
+        y += row_h;
+        let _ = writeln!(
+            svg,
+            "<line x1=\"{x:.2}\" y1=\"{y:.2}\" x2=\"{:.2}\" y2=\"{y:.2}\" stroke=\"#b8c4d0\" stroke-width=\"0.16\"/>",
+            x + table_w
+        );
+        for row in &table.rows {
+            for (i, cell) in row.iter().enumerate() {
+                let _ = writeln!(
+                    svg,
+                    "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.65\" fill=\"#1d2836\">{}</text>",
+                    x + 1.5 + i as f64 * col_w,
+                    y + 2.7,
+                    escaped(cell)
+                );
+            }
+            y += row_h;
+        }
+        if let Some(footer) = &table.footer {
+            let _ = writeln!(
+                svg,
+                "<line x1=\"{x:.2}\" y1=\"{y:.2}\" x2=\"{:.2}\" y2=\"{y:.2}\" stroke=\"#1d2836\" stroke-width=\"0.18\"/>",
+                x + table_w
+            );
+            for (i, cell) in footer.iter().enumerate() {
+                let _ = writeln!(
+                    svg,
+                    "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.7\" font-weight=\"700\" fill=\"#1d2836\">{}</text>",
+                    x + 1.5 + i as f64 * col_w,
+                    y + 2.7,
+                    escaped(cell)
+                );
+            }
+        }
+        cursor_y += h + 3.0;
+    }
+    svg.push_str("</g>\n");
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -844,6 +938,8 @@ mod tests {
         assert!(markup.contains("id=\"legenda\""));
         assert!(markup.contains("id=\"norte\""));
         assert!(markup.contains("id=\"escala-grafica\""));
+        assert!(markup.contains("id=\"quadros\""));
+        assert!(markup.contains("Quadro de Áreas"));
         assert!(markup.contains("01/01"));
     }
 }
