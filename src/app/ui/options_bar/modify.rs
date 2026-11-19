@@ -68,6 +68,40 @@ impl FloorPlanApp {
             );
             return;
         }
+        if kind == ModifyKind::Split {
+            let at_point = self.split_parts <= 1;
+            if toggle_pill(
+                ui,
+                "No ponto clicado",
+                at_point,
+                "Corta a parede ou o desenho em dois onde você clicar",
+            )
+            .clicked()
+            {
+                self.split_parts = 1;
+            }
+            if toggle_pill(
+                ui,
+                "Em partes iguais",
+                !at_point,
+                "Corta a parede ou o desenho clicado em partes do mesmo comprimento",
+            )
+            .clicked()
+                && at_point
+            {
+                self.split_parts = 2;
+            }
+            if !at_point {
+                caption(ui, "Partes");
+                ui.add(egui::DragValue::new(&mut self.split_parts).range(2..=100));
+            }
+            divider(ui);
+            caption(
+                ui,
+                "Paredes mantêm cômodos, portas e janelas; o corte não passa por uma abertura.",
+            );
+            return;
+        }
         caption(
             ui,
             match kind {

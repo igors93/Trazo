@@ -6,17 +6,21 @@ use super::geometry::{
     JOIN_TOLERANCE, Point, distance_to_segment, nearest_point_on_segment, round_to_resolution,
 };
 
+mod arrange;
 mod auto_rooms;
 mod drawings;
 mod elements;
 mod fragment;
+mod groups;
 mod modify;
 mod rooms;
 mod shared_walls;
 mod site;
 mod vertices;
 use super::masonry::{self, Masonry};
+pub use arrange::{Alignment, Axis, MAX_COPIES};
 pub use fragment::Fragment;
+pub use groups::Group;
 
 /// Versão mais recente do formato `.trazo` gravado em disco.
 pub const CURRENT_PROJECT_VERSION: u32 = 2;
@@ -95,6 +99,9 @@ pub struct Project {
     /// Multi-sheet documentation set with revision history and control.
     #[serde(default, skip_serializing_if = "super::sheet_set::SheetSet::is_empty")]
     pub sheet_set: super::sheet_set::SheetSet,
+    /// Elements picked and moved together.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<Group>,
 
     next_id: u64,
 }
@@ -147,6 +154,7 @@ impl Default for Project {
             views: super::views::ProjectViews::default(),
 
             sheet_set: super::sheet_set::SheetSet::default(),
+            groups: Vec::new(),
 
             next_id: 1,
         }
@@ -1208,6 +1216,9 @@ impl Project {
             warnings.push(format!("{dropped} desenhos inválidos foram removidos."));
         }
         max_id = max_id.max(highest);
+        for group in &self.groups {
+            max_id = max_id.max(group.id);
+        }
         if self.next_id <= max_id {
             self.next_id = max_id + 1;
         }
@@ -1219,6 +1230,14 @@ impl Project {
             warnings.push(format!(
                 "{} paredes duplicadas foram unificadas.",
                 orig_walls - self.walls.len()
+            ));
+        }
+
+        // 5. Groups only hold elements that exist.
+        let dissolved = self.prune_groups();
+        if dissolved > 0 {
+            warnings.push(format!(
+                "{dissolved} grupos sem elementos suficientes foram desfeitos."
             ));
         }
 

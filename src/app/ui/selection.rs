@@ -184,6 +184,77 @@ impl FloorPlanApp {
                 ACCENT,
             );
         });
+        // The group the selection is, with its name.
+        if let Some(group) = self.selected_group() {
+            let mut rename = false;
+            let mut ungroup = false;
+            section(ui, "multi_selection_group", "Grupo", |ui| {
+                ui.horizontal(|ui| {
+                    let field = ui.add(
+                        eframe::egui::TextEdit::singleline(&mut self.group_name_text)
+                            .desired_width(150.0)
+                            .hint_text("Nome do grupo"),
+                    );
+                    rename = field.lost_focus()
+                        && ui.input(|input| input.key_pressed(eframe::egui::Key::Enter));
+                    ungroup = secondary_button(ui, "Desagrupar").clicked();
+                });
+                ui.add_space(4.0);
+                hint(
+                    ui,
+                    Icon::Info,
+                    "Um clique seleciona o grupo todo; Ctrl+clique seleciona só um elemento.",
+                    ACCENT,
+                );
+            });
+            if rename {
+                let previous = self.project.clone();
+                match self.project.rename_group(group, &self.group_name_text) {
+                    Ok(()) => {
+                        self.record_change(previous);
+                        self.message =
+                            format!("Grupo renomeado para \"{}\".", self.group_name_text.trim());
+                    }
+                    Err(error) => self.message = error,
+                }
+            }
+            if ungroup {
+                self.ungroup_selection();
+            }
+        }
+        let mut arrange = None;
+        section(ui, "multi_selection_arrange", "Organizar", |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for (index, (label, hint)) in [
+                    (
+                        "Unir",
+                        "Paredes em linha ou desenhos que se tocam pelas pontas (U)",
+                    ),
+                    ("Agrupar", "Um clique passa a pegar todos juntos (Ctrl+G)"),
+                    (
+                        "Repetir...",
+                        "Cópias em linhas e colunas, ou em volta de um centro",
+                    ),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    if secondary_button(ui, label).on_hover_text(hint).clicked() {
+                        arrange = Some(index);
+                    }
+                }
+                let align = secondary_button(ui, "Alinhar ▾");
+                eframe::egui::Popup::menu(&align).show(|ui| self.align_menu_items(ui));
+                let distribute = secondary_button(ui, "Distribuir ▾");
+                eframe::egui::Popup::menu(&distribute).show(|ui| self.distribute_menu_items(ui));
+            });
+        });
+        match arrange {
+            Some(0) => self.join_selection(),
+            Some(1) => self.group_selection(),
+            Some(2) => self.open_repeat_dialog(),
+            _ => {}
+        }
         let mut action = None;
         section(ui, "multi_selection_modify", "Modificar", |ui| {
             ui.horizontal_wrapped(|ui| {

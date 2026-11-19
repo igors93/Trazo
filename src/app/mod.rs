@@ -234,6 +234,12 @@ pub struct FloorPlanApp {
     /// Turning and mirroring make copies, keeping the originals.
     modify_keep: bool,
     offset_distance_text: String,
+    /// Dividing: 1 cuts where clicked, 2 or more into equal parts.
+    split_parts: u32,
+    /// The "Repetir" dialog, while open.
+    repeat_form: Option<tools::RepeatForm>,
+    /// The name of the selected group, as typed in the properties panel.
+    group_name_text: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -348,6 +354,9 @@ impl FloorPlanApp {
             modify_target: None,
             modify_keep: false,
             offset_distance_text: "0,15".to_owned(),
+            split_parts: 1,
+            repeat_form: None,
+            group_name_text: String::new(),
         };
         app.sync_masonry_fields();
         app
@@ -1571,6 +1580,8 @@ impl FloorPlanApp {
     }
 
     fn record_change(&mut self, previous: Project) {
+        // Deleted elements leave their groups (a group of one goes).
+        self.project.prune_groups();
         if previous == self.project {
             return;
         }
@@ -1643,6 +1654,12 @@ impl FloorPlanApp {
     pub fn sync_inspector_fields(&mut self) {
         self.sync_terrain_fields();
         self.sync_masonry_fields();
+        if let Some(group) = self
+            .selected_group()
+            .and_then(|id| self.project.groups.iter().find(|group| group.id == id))
+        {
+            self.group_name_text = group.name.clone();
+        }
         match self.selection {
             Some(Selection::Fixture(id)) => {
                 if let Some(fixture) = self.project.fixtures.iter().find(|f| f.id == id) {
@@ -1893,8 +1910,11 @@ impl FloorPlanApp {
             || self.pending_action.is_some()
             || self.show_help
             || self.show_mcp_dialog
-            || self.active_doc_dialog != DocDialog::None;
-        let blocking_dialog = self.pending_room.is_some() || self.pending_action.is_some();
+            || self.active_doc_dialog != DocDialog::None
+            || self.repeat_form.is_some();
+        let blocking_dialog = self.pending_room.is_some()
+            || self.pending_action.is_some()
+            || self.repeat_form.is_some();
 
         // Capture direct CAD numeric input typed while a drawing tool is active.
         if !editing_text && !modal_open && self.supports_numeric_input() {
@@ -2023,6 +2043,9 @@ impl FloorPlanApp {
                     matches!(event, egui::Event::Paste(_) | egui::Event::PasteImage(_))
                 }) || (shortcut(Key::V, false) && !editing_text && free),
                 duplicate: shortcut(Key::D, false) && !editing_text && free,
+                group: shortcut(Key::G, false) && !editing_text && free,
+                ungroup: shortcut(Key::G, true) && !editing_text && free,
+                join: plain(Key::U),
                 rotate_back: shifted(Key::G),
                 mirror_left_right: plain(Key::H),
                 mirror_up_down: shifted(Key::H),
@@ -2032,7 +2055,9 @@ impl FloorPlanApp {
                 undo: shortcut(Key::Z, false) && !editing_text && free,
                 redo: (shortcut(Key::Y, false) || shortcut(Key::Z, true)) && !editing_text && free,
                 select_all: shortcut(Key::A, false) && !editing_text && free,
-                escape: pressed(Key::Escape) && self.pending_action.is_none(),
+                escape: pressed(Key::Escape)
+                    && self.pending_action.is_none()
+                    && self.repeat_form.is_none(),
                 delete: pressed(Key::Delete) && !editing_text && !typing_numeric && free,
                 tool,
                 nudge,
@@ -2086,6 +2111,15 @@ impl FloorPlanApp {
         }
         if actions.paste {
             self.paste();
+        }
+        if actions.group {
+            self.group_selection();
+        }
+        if actions.ungroup {
+            self.ungroup_selection();
+        }
+        if actions.join {
+            self.join_selection();
         }
         if actions.duplicate {
             self.duplicate_selection();
@@ -2206,6 +2240,9 @@ struct ShortcutActions {
     cut: bool,
     paste: bool,
     duplicate: bool,
+    group: bool,
+    ungroup: bool,
+    join: bool,
     rotate_back: bool,
     mirror_left_right: bool,
     mirror_up_down: bool,

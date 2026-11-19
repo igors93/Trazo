@@ -252,6 +252,10 @@ impl FloorPlanApp {
                             (&["O"], "Deslocar (offset)"),
                             (&["A"], "Aparar"),
                             (&["E"], "Estender"),
+                            (&["D"], "Dividir (no ponto ou em partes)"),
+                            (&["U"], "Unir paredes ou desenhos"),
+                            (&["Ctrl", "G"], "Agrupar (Shift: desagrupar)"),
+                            (&["Ctrl", "Clique"], "Um elemento só de um grupo"),
                         ],
                     );
                     shortcut_group(

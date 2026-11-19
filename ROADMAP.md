@@ -102,7 +102,7 @@ IA para analisar, propor e revisar, com as decisões sempre nas mãos de quem pr
 | 03 | Encaixe avançado: ponto médio, interseção, perpendicular, tangente, centro, prolongamento | P0 | 1 | Feito |
 | 04 | Digitar distância, ângulo, coordenadas e medidas durante o desenho | P0 | 1 | Feito |
 | 05 | Copiar, colar, espelhar, girar, deslocar (offset), aparar e estender | P0 | 1 | Feito |
-| 06 | Dividir, unir, alinhar, distribuir, agrupar e repetir objetos | P1 | 3 | — |
+| 06 | Dividir, unir, alinhar, distribuir, agrupar e repetir objetos | P1 | 3 | Feito |
 | 07 | Entidades CAD genéricas: linha, polilinha, arco, círculo, retângulo, spline | P1 | 2 | Feito |
 | 08 | Restrições: paralelismo, perpendicularidade, coincidência, distâncias fixas | P1 | 3 | — |
 | 09 | Seleção múltipla, por janela, por cruzamento e por filtros | P1 | 1 | Feito |

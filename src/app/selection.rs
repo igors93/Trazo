@@ -218,12 +218,14 @@ impl FloorPlanApp {
             self.after_selection_change();
             return;
         }
-        let items = self.project.elements_in_box(
+        let picked = self.project.elements_in_box(
             start,
             end,
             selection_box.crossing(),
             self.selection_filter,
         );
+        // Groups come whole.
+        let items = self.project.with_whole_groups(&picked);
         let mut all = if selection_box.additive {
             self.selected()
         } else {

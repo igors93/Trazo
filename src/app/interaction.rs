@@ -329,12 +329,12 @@ impl FloorPlanApp {
                         button: PointerButton::Primary,
                         pressed: true,
                         modifiers,
-                    } if on_canvas(*pos) => Some((*pos, modifiers.shift)),
+                    } if on_canvas(*pos) => Some((*pos, modifiers.shift, modifiers.command)),
                     _ => None,
                 })
             });
-            if let Some((position, shift)) = pressed {
-                self.begin_item_drag_with(view.to_world(position), shift);
+            if let Some((position, shift, alone)) = pressed {
+                self.begin_item_drag_with(view.to_world(position), shift, alone);
             }
             let primary_down = ui.input(|input| input.pointer.primary_down());
             if primary_down && let Some(point) = world {
@@ -499,6 +499,18 @@ impl FloorPlanApp {
             },
         );
         self.paint_view_aids(&painter, view);
+        // Selected groups show their extent and name.
+        for group in &self.project.groups {
+            if group.members.iter().all(|member| self.is_selected(*member))
+                && let Some((low, high)) = self.project.elements_bounds(&group.members)
+            {
+                overlay::paint_group_frame(
+                    &painter,
+                    egui::Rect::from_two_pos(view.to_screen(low), view.to_screen(high)),
+                    &group.name,
+                );
+            }
+        }
         if let Some(selection_box) = self.box_select
             && selection_box.start.distance(selection_box.end) >= self.screen_metres(4.0)
         {
@@ -782,15 +794,16 @@ impl FloorPlanApp {
     /// and gets ready to drag it.
     #[cfg(test)]
     pub(super) fn begin_item_drag(&mut self, point: Point) {
-        self.begin_item_drag_with(point, false);
+        self.begin_item_drag_with(point, false, false);
     }
 
     /// A press with the selection tool. On a grip it edits that vertex; on
-    /// an element it selects it (Shift adds it or takes it out) and gets
-    /// ready to drag it, with the rest of the selection when it is part of
-    /// it; on empty space, or on a terrain that is not selected, it starts
-    /// a selection box.
-    pub(super) fn begin_item_drag_with(&mut self, point: Point, shift: bool) {
+    /// an element it selects it — with its whole group unless `alone`
+    /// (Ctrl) — and gets ready to drag it, with the rest of the selection
+    /// when it is part of it; Shift adds it or takes it out. On empty
+    /// space, or on a terrain that is not selected, it starts a selection
+    /// box.
+    pub(super) fn begin_item_drag_with(&mut self, point: Point, shift: bool, alone: bool) {
         self.item_drag = None;
         self.vertex_drag = None;
         self.drag_initial_project = None;
@@ -816,14 +829,41 @@ impl FloorPlanApp {
             }
             Some(item) => item,
         };
+        // A grouped element brings its group along, the clicked one last
+        // (it becomes the primary one).
+        let members = if alone {
+            vec![item]
+        } else {
+            let mut members: Vec<Selection> = self
+                .project
+                .with_whole_groups(&[item])
+                .into_iter()
+                .filter(|member| *member != item)
+                .collect();
+            members.push(item);
+            members
+        };
         if shift {
-            self.toggle_selection(item);
+            if members.len() == 1 {
+                self.toggle_selection(item);
+            } else {
+                let mut all = self.selected();
+                if members.iter().all(|member| all.contains(member)) {
+                    all.retain(|kept| !members.contains(kept));
+                } else {
+                    all.extend(members);
+                }
+                self.set_selection_set(all);
+                self.after_selection_change();
+            }
             return;
         }
-        let group = self.is_multi_selection() && self.is_selected(item);
-        if !group {
+        if alone {
             self.set_selection(Some(item));
+        } else if !(self.is_multi_selection() && self.is_selected(item)) {
+            self.set_selection_set(members);
         }
+        let group = self.is_multi_selection() && self.is_selected(item);
         // An opening keeps the spot where it was grabbed instead of jumping
         // so that its centre sits under the pointer.
         let grab_offset = match item {

@@ -27,6 +27,13 @@ pub enum Glyph {
     Offset,
     Trim,
     Extend,
+    Split,
+    Join,
+    Group,
+    Ungroup,
+    Repeat,
+    AlignLeft,
+    Distribute,
 }
 
 /// Paints `glyph` with `pen`; `soft` fills, `thin` draws details.
@@ -165,6 +172,65 @@ pub(super) fn paint(pen: &Pen, glyph: Glyph, soft: Color32, thin: Stroke) {
             pen.dashed(&[(10.0, 12.0), (20.0, 12.0)], 1.8, 1.8, thin);
             pen.polyline(&[(14.5, 9.0), (17.5, 12.0), (14.5, 15.0)], accent);
             vertex(20.0, 12.0);
+        }
+        Glyph::Split => {
+            pen.polyline(&[(3.0, 14.0), (10.5, 14.0)], ink);
+            pen.polyline(&[(13.5, 14.0), (21.0, 14.0)], ink);
+            vertex(10.5, 14.0);
+            vertex(13.5, 14.0);
+            pen.polyline(&[(12.0, 4.0), (12.0, 10.0)], accent);
+            pen.polyline(&[(9.5, 7.5), (12.0, 10.0), (14.5, 7.5)], accent);
+        }
+        Glyph::Join => {
+            pen.polyline(&[(3.0, 14.0), (21.0, 14.0)], ink);
+            vertex(3.0, 14.0);
+            vertex(21.0, 14.0);
+            pen.polyline(&[(6.0, 7.0), (10.0, 7.0)], accent);
+            pen.polyline(&[(18.0, 7.0), (14.0, 7.0)], accent);
+            pen.polyline(&[(8.5, 5.0), (10.5, 7.0), (8.5, 9.0)], accent);
+            pen.polyline(&[(15.5, 5.0), (13.5, 7.0), (15.5, 9.0)], accent);
+        }
+        Glyph::Group | Glyph::Ungroup => {
+            pen.dashed(
+                &[
+                    (2.5, 2.5),
+                    (21.5, 2.5),
+                    (21.5, 21.5),
+                    (2.5, 21.5),
+                    (2.5, 2.5),
+                ],
+                2.0,
+                1.6,
+                if glyph == Glyph::Group { accent } else { thin },
+            );
+            pen.fill(&[(6.0, 6.0), (12.0, 6.0), (12.0, 12.0), (6.0, 12.0)], soft);
+            pen.rect(6.0, 6.0, 12.0, 12.0, ink);
+            pen.circle(15.0, 15.0, 3.5, ink);
+            if glyph == Glyph::Ungroup {
+                pen.polyline(&[(16.0, 3.5), (21.0, 8.5)], accent);
+                pen.polyline(&[(21.0, 3.5), (16.0, 8.5)], accent);
+            }
+        }
+        Glyph::Repeat => {
+            for (x, y) in [(3.5, 4.0), (13.5, 4.0), (3.5, 14.0), (13.5, 14.0)] {
+                let shade = if (x, y) == (3.5, 4.0) { ink } else { accent };
+                pen.rect(x, y, x + 7.0, y + 6.0, shade);
+            }
+            pen.fill(&[(3.5, 4.0), (10.5, 4.0), (10.5, 10.0), (3.5, 10.0)], soft);
+        }
+        Glyph::AlignLeft => {
+            pen.polyline(&[(4.0, 3.0), (4.0, 21.0)], accent);
+            pen.fill(&[(6.5, 5.5), (18.0, 5.5), (18.0, 10.0), (6.5, 10.0)], soft);
+            pen.rect(6.5, 5.5, 18.0, 10.0, ink);
+            pen.rect(6.5, 13.5, 13.0, 18.5, ink);
+        }
+        Glyph::Distribute => {
+            pen.polyline(&[(3.0, 4.0), (3.0, 20.0)], accent);
+            pen.polyline(&[(21.0, 4.0), (21.0, 20.0)], accent);
+            pen.fill(&[(9.5, 7.0), (14.5, 7.0), (14.5, 17.0), (9.5, 17.0)], soft);
+            pen.rect(9.5, 7.0, 14.5, 17.0, ink);
+            pen.dashed(&[(4.5, 12.0), (8.5, 12.0)], 1.5, 1.2, thin);
+            pen.dashed(&[(15.5, 12.0), (19.5, 12.0)], 1.5, 1.2, thin);
         }
     }
 }

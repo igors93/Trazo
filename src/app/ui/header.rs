@@ -201,6 +201,10 @@ impl FloorPlanApp {
         self.clipboard_menu_items(ui);
         menu_separator(ui);
         self.transform_menu_items(ui);
+        ui.menu_button("Organizar", |ui| {
+            ui.set_width(MENU_WIDTH);
+            self.arrange_menu_items(ui);
+        });
         menu_separator(ui);
         self.selection_menu_items(ui);
         menu_separator(ui);

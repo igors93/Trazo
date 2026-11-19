@@ -189,6 +189,11 @@ impl FloorPlanApp {
                 ui.set_width(MENU_WIDTH);
                 self.transform_menu_items(ui);
             });
+            let arrange = menu_submenu(ui, Icon::Glyph(super::Glyph::Group), "Organizar");
+            egui::containers::menu::SubMenu::new().show(ui, &arrange, |ui| {
+                ui.set_width(MENU_WIDTH);
+                self.arrange_menu_items(ui);
+            });
             let delete = if multi { "Excluir todos" } else { "Excluir" };
             if menu_item(ui, Some(Icon::Delete), delete, "Delete").clicked() {
                 self.delete_selection();

@@ -26,10 +26,12 @@ pub(in crate::app) enum ModifyKind {
     Trim,
     /// Run an open end up to the next edge.
     Extend,
+    /// Cut a wall or drawing at a point, or into equal parts.
+    Split,
 }
 
 impl ModifyKind {
-    pub(in crate::app) const ALL: [ModifyKind; 7] = [
+    pub(in crate::app) const ALL: [ModifyKind; 8] = [
         ModifyKind::Move,
         ModifyKind::Copy,
         ModifyKind::Rotate,
@@ -37,6 +39,7 @@ impl ModifyKind {
         ModifyKind::Offset,
         ModifyKind::Trim,
         ModifyKind::Extend,
+        ModifyKind::Split,
     ];
 
     pub(in crate::app) fn label(self) -> &'static str {
@@ -48,6 +51,7 @@ impl ModifyKind {
             ModifyKind::Offset => "Deslocar",
             ModifyKind::Trim => "Aparar",
             ModifyKind::Extend => "Estender",
+            ModifyKind::Split => "Dividir",
         }
     }
 
@@ -60,6 +64,7 @@ impl ModifyKind {
             ModifyKind::Offset => Glyph::Offset,
             ModifyKind::Trim => Glyph::Trim,
             ModifyKind::Extend => Glyph::Extend,
+            ModifyKind::Split => Glyph::Split,
         }
     }
 
@@ -70,6 +75,7 @@ impl ModifyKind {
             ModifyKind::Offset => Some((Key::O, "O")),
             ModifyKind::Trim => Some((Key::A, "A")),
             ModifyKind::Extend => Some((Key::E, "E")),
+            ModifyKind::Split => Some((Key::D, "D")),
             _ => None,
         }
     }
@@ -108,6 +114,9 @@ impl ModifyKind {
             }
             ModifyKind::Extend => {
                 "Clique perto da ponta a estender; ela vai até a próxima parede, desenho ou divisa."
+            }
+            ModifyKind::Split => {
+                "Clique na parede ou desenho onde dividir, ou escolha dividir em partes iguais na barra de opções."
             }
         }
     }
@@ -430,6 +439,30 @@ impl FloorPlanApp {
                             "Ponta estendida. Clique em outra ou Esc."
                         }
                         .to_owned();
+                    }
+                    Err(error) => self.message = error,
+                }
+            }
+            ModifyKind::Split => {
+                let Some(target) = self.pick_editable(point) else {
+                    self.message = "Clique sobre uma parede ou um desenho 2D.".to_owned();
+                    return;
+                };
+                let parts = self.split_parts.max(1) as usize;
+                let previous = self.project.clone();
+                let result = if parts >= 2 {
+                    self.project.divide_element(target, parts)
+                } else {
+                    self.project.split_element(target, point)
+                };
+                match result {
+                    Ok(pieces) => {
+                        self.record_change(previous);
+                        self.revalidate_selection();
+                        self.message = format!(
+                            "Dividido em {} partes. Clique em outro ou Esc.",
+                            pieces.len()
+                        );
                     }
                     Err(error) => self.message = error,
                 }

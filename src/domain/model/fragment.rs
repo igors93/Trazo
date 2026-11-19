@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{Opening, Project, Room, Wall};
+use super::{Group, Opening, Project, Room, Wall};
 use crate::domain::drawing::Drawing;
 use crate::domain::element::Element;
 use crate::domain::fixtures::Fixture;
@@ -20,6 +20,8 @@ pub struct Fragment {
     pub openings: Vec<Opening>,
     pub fixtures: Vec<Fixture>,
     pub drawings: Vec<Drawing>,
+    /// Groups whose members all came along (by their original ids).
+    pub groups: Vec<Group>,
 }
 
 impl Fragment {
@@ -123,6 +125,25 @@ impl Project {
                 _ => None,
             })
             .collect();
+        let rooms: Vec<Room> = self
+            .rooms
+            .iter()
+            .filter(|room| room.wall_ids.iter().all(|id| walls.contains(id)))
+            .cloned()
+            .collect();
+        let included = |member: &Element| match member {
+            Element::Wall(id) => walls.contains(id),
+            Element::Room(id) => rooms.iter().any(|room| room.id == *id),
+            Element::Fixture(id) => fixtures.contains(id),
+            Element::Drawing(id) => drawings.contains(id),
+            _ => false,
+        };
+        let groups: Vec<Group> = self
+            .groups
+            .iter()
+            .filter(|group| group.members.iter().all(included))
+            .cloned()
+            .collect();
         Fragment {
             walls: self
                 .walls
@@ -130,12 +151,8 @@ impl Project {
                 .filter(|wall| walls.contains(&wall.id))
                 .cloned()
                 .collect(),
-            rooms: self
-                .rooms
-                .iter()
-                .filter(|room| room.wall_ids.iter().all(|id| walls.contains(id)))
-                .cloned()
-                .collect(),
+            rooms,
+            groups,
             openings: self
                 .openings
                 .iter()
@@ -189,6 +206,11 @@ impl Project {
             tx.walls.push(Wall { id, ..wall.clone() });
         }
         let mut created = Vec::new();
+        // Old element → its copy, to rebuild the copied groups.
+        let mut copies: HashMap<Element, Element> = new_walls
+            .iter()
+            .map(|(old, new)| (Element::Wall(*old), Element::Wall(*new)))
+            .collect();
         let mut in_rooms: HashSet<u64> = HashSet::new();
         for room in &fragment.rooms {
             let wall_ids: Vec<u64> = room
@@ -204,6 +226,7 @@ impl Project {
                 ..room.clone()
             });
             created.push(Element::Room(id));
+            copies.insert(Element::Room(room.id), Element::Room(id));
         }
         // Walls outside the copied rooms, in the order they were copied.
         let mut loose: Vec<u64> = new_walls
@@ -228,6 +251,7 @@ impl Project {
             let id = tx.id();
             tx.fixtures.push(Fixture { id, ..*fixture });
             created.push(Element::Fixture(id));
+            copies.insert(Element::Fixture(fixture.id), Element::Fixture(id));
         }
         for drawing in &fragment.drawings {
             drawing.shape.validate()?;
@@ -238,6 +262,23 @@ impl Project {
                 layer_id: drawing.layer_id,
             });
             created.push(Element::Drawing(id));
+            copies.insert(Element::Drawing(drawing.id), Element::Drawing(id));
+        }
+        // Groups copied whole are groups again.
+        for group in &fragment.groups {
+            let members: Vec<Element> = group
+                .members
+                .iter()
+                .filter_map(|member| copies.get(member).copied())
+                .collect();
+            if members.len() >= 2 {
+                let id = tx.id();
+                tx.groups.push(Group {
+                    id,
+                    name: group.name.clone(),
+                    members,
+                });
+            }
         }
         *self = tx;
         Ok(created)

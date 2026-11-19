@@ -8,8 +8,70 @@ use super::Glyph;
 use super::icons::Icon;
 use super::widgets::{MENU_WIDTH, menu_item};
 use crate::app::tools::ModifyKind;
+use crate::domain::model::{Alignment, Axis};
 
 impl FloorPlanApp {
+    /// The six alignments.
+    pub(in crate::app) fn align_menu_items(&mut self, ui: &mut Ui) {
+        ui.set_width(MENU_WIDTH);
+        for alignment in Alignment::ALL {
+            if menu_item(ui, None, alignment.label(), "").clicked() {
+                self.align_selection(alignment);
+                ui.close();
+            }
+        }
+    }
+
+    /// Distribute across or down.
+    pub(in crate::app) fn distribute_menu_items(&mut self, ui: &mut Ui) {
+        ui.set_width(MENU_WIDTH);
+        for axis in [Axis::Horizontal, Axis::Vertical] {
+            if menu_item(ui, Some(Icon::Glyph(Glyph::Distribute)), axis.label(), "").clicked() {
+                self.distribute_selection(axis);
+                ui.close();
+            }
+        }
+    }
+
+    /// Join, group, ungroup, align, distribute and repeat.
+    pub(in crate::app) fn arrange_menu_items(&mut self, ui: &mut Ui) {
+        let selected = self.selection.is_some();
+        let several = self.is_multi_selection();
+        let grouped = self
+            .selected()
+            .iter()
+            .any(|item| self.project.group_of(*item).is_some());
+        let entries = [
+            (Glyph::Join, "Unir", "U", several, 0),
+            (Glyph::Group, "Agrupar", "Ctrl+G", several, 1),
+            (Glyph::Ungroup, "Desagrupar", "Ctrl+Shift+G", grouped, 2),
+            (Glyph::Repeat, "Repetir...", "", selected, 3),
+        ];
+        for (glyph, label, keys, enabled, action) in entries {
+            if ui
+                .add_enabled_ui(enabled, |ui| {
+                    menu_item(ui, Some(Icon::Glyph(glyph)), label, keys)
+                })
+                .inner
+                .clicked()
+            {
+                match action {
+                    0 => self.join_selection(),
+                    1 => self.group_selection(),
+                    2 => self.ungroup_selection(),
+                    _ => self.open_repeat_dialog(),
+                }
+                ui.close();
+            }
+        }
+        ui.add_enabled_ui(several, |ui| {
+            ui.menu_button("Alinhar", |ui| self.align_menu_items(ui));
+        });
+        ui.add_enabled_ui(self.selection_count() >= 3, |ui| {
+            ui.menu_button("Distribuir", |ui| self.distribute_menu_items(ui));
+        });
+    }
+
     /// Copy, cut, paste and duplicate.
     pub(in crate::app) fn clipboard_menu_items(&mut self, ui: &mut Ui) {
         let selected = self.selection.is_some();

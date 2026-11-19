@@ -355,6 +355,37 @@ pub fn paint_vertex_grip(painter: &Painter, position: Pos2, active: bool) {
     painter.rect_stroke(rect, 1.5, stroke, StrokeKind::Middle);
 }
 
+/// A dashed frame around a selected group, with its name on the top edge.
+pub fn paint_group_frame(painter: &Painter, rect: Rect, name: &str) {
+    let rect = rect.expand(6.0);
+    let corners = [
+        rect.left_top(),
+        rect.right_top(),
+        rect.right_bottom(),
+        rect.left_bottom(),
+        rect.left_top(),
+    ];
+    painter.extend(Shape::dashed_line(
+        &corners,
+        Stroke::new(1.2, theme::ACCENT.gamma_multiply(0.8)),
+        5.0,
+        3.0,
+    ));
+    let galley = painter.layout_no_wrap(name.to_owned(), theme::regular(11.0), theme::ACCENT_TEXT);
+    let badge = Rect::from_min_size(
+        rect.left_top() + vec2(6.0, -galley.size().y - 6.0),
+        galley.size() + vec2(10.0, 4.0),
+    );
+    painter.rect(
+        badge,
+        3.0,
+        Color32::WHITE,
+        Stroke::new(1.0, theme::ACCENT_RING),
+        StrokeKind::Inside,
+    );
+    painter.galley(badge.min + vec2(5.0, 2.0), galley, theme::ACCENT_TEXT);
+}
+
 /// The selection box between `start` and `end`: a blue window with a solid
 /// edge (whole elements inside) or, drawn right to left, a green crossing
 /// box with a dashed edge (whatever it touches).

@@ -1,7 +1,7 @@
 //! The "Editar" ribbon tab: clipboard, transforms (move, copy, turn,
 //! mirror), offset, trim and extend, and the selection commands.
 
-use eframe::egui::Ui;
+use eframe::egui::{self, Ui};
 
 use crate::app::tools::ModifyKind;
 use crate::app::ui::Glyph;
@@ -145,6 +145,85 @@ impl FloorPlanApp {
             for kind in [ModifyKind::Offset, ModifyKind::Trim, ModifyKind::Extend] {
                 self.modify_button(ui, kind);
             }
+        });
+        vertical_divider(ui, 72.0);
+        ribbon_panel(ui, "Organizar", |ui| {
+            self.modify_button(ui, ModifyKind::Split);
+            let several = self.is_multi_selection();
+            let grouped = self
+                .selected()
+                .iter()
+                .any(|item| self.project.group_of(*item).is_some());
+            ribbon_stack(ui, |ui| {
+                if ui
+                    .add_enabled_ui(several, |ui| {
+                        tip(
+                            ribbon_small(ui, Icon::Glyph(Glyph::Join), "Unir", false),
+                            "Une paredes em linha que se tocam, ou desenhos que se tocam pelas pontas (U)",
+                        )
+                    })
+                    .inner
+                    .clicked()
+                {
+                    self.join_selection();
+                }
+                if ui
+                    .add_enabled_ui(several, |ui| {
+                        tip(
+                            ribbon_small(ui, Icon::Glyph(Glyph::Group), "Agrupar", false),
+                            "Agrupa a seleção: um clique pega o grupo todo, Ctrl+clique um elemento só (Ctrl+G)",
+                        )
+                    })
+                    .inner
+                    .clicked()
+                {
+                    self.group_selection();
+                }
+                if ui
+                    .add_enabled_ui(grouped, |ui| {
+                        tip(
+                            ribbon_small(ui, Icon::Glyph(Glyph::Ungroup), "Desagrupar", false),
+                            "Desfaz os grupos da seleção (Ctrl+Shift+G)",
+                        )
+                    })
+                    .inner
+                    .clicked()
+                {
+                    self.ungroup_selection();
+                }
+            });
+            ribbon_stack(ui, |ui| {
+                let align = ui
+                    .add_enabled_ui(several, |ui| {
+                        tip(
+                            ribbon_small(ui, Icon::Glyph(Glyph::AlignLeft), "Alinhar ▾", false),
+                            "Alinha pelas bordas ou pelo centro da seleção",
+                        )
+                    })
+                    .inner;
+                egui::Popup::menu(&align).show(|ui| self.align_menu_items(ui));
+                let distribute = ui
+                    .add_enabled_ui(self.selection_count() >= 3, |ui| {
+                        tip(
+                            ribbon_small(ui, Icon::Glyph(Glyph::Distribute), "Distribuir ▾", false),
+                            "Espaços iguais entre três ou mais elementos",
+                        )
+                    })
+                    .inner;
+                egui::Popup::menu(&distribute).show(|ui| self.distribute_menu_items(ui));
+                if ui
+                    .add_enabled_ui(selected, |ui| {
+                        tip(
+                            ribbon_small(ui, Icon::Glyph(Glyph::Repeat), "Repetir...", false),
+                            "Cópias em linhas e colunas, ou em volta de um centro",
+                        )
+                    })
+                    .inner
+                    .clicked()
+                {
+                    self.open_repeat_dialog();
+                }
+            });
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Seleção", |ui| {

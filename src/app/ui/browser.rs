@@ -7,6 +7,8 @@ use eframe::egui::{self, Align2, Margin, Pos2, Rect, RichText, Sense, Stroke, Ui
 /// One element row of the browser.
 struct Row {
     selection: Selection,
+    /// For a group's row, its members (selected together).
+    members: Vec<Selection>,
     label: String,
     value: String,
 }
@@ -26,6 +28,7 @@ impl FloorPlanApp {
             .iter()
             .map(|terrain| Row {
                 selection: Selection::Terrain(terrain.id),
+                members: Vec::new(),
                 label: "Terreno".to_owned(),
                 value: format!("{:.2} m²", terrain.area()).replace('.', ","),
             })
@@ -35,6 +38,7 @@ impl FloorPlanApp {
             .iter()
             .map(|room| Row {
                 selection: Selection::Room(room.id),
+                members: Vec::new(),
                 label: room.display_name().to_owned(),
                 value: project
                     .room_area(room)
@@ -48,6 +52,7 @@ impl FloorPlanApp {
             .enumerate()
             .map(|(index, wall)| Row {
                 selection: Selection::Wall(wall.id),
+                members: Vec::new(),
                 label: format!("Parede {:02}", index + 1),
                 value: format_meters(wall.length()),
             })
@@ -60,6 +65,7 @@ impl FloorPlanApp {
                 .enumerate()
                 .map(|(index, opening)| Row {
                     selection: Selection::Opening(opening.id),
+                    members: Vec::new(),
                     label: format!("{} {:02}", opening.kind.label(), index + 1),
                     value: format_meters(opening.width()),
                 })
@@ -70,6 +76,7 @@ impl FloorPlanApp {
             .iter()
             .map(|fixture| Row {
                 selection: Selection::Fixture(fixture.id),
+                members: Vec::new(),
                 label: fixture.kind.label().to_owned(),
                 value: format!("{:.2} × {:.2}", fixture.width, fixture.depth).replace('.', ","),
             })
@@ -126,8 +133,26 @@ impl FloorPlanApp {
                     .iter()
                     .map(|drawing| Row {
                         selection: Selection::Drawing(drawing.id),
+                        members: Vec::new(),
                         label: drawing.shape.label().to_owned(),
                         value: format_meters(drawing.shape.length()),
+                    })
+                    .collect(),
+            },
+            Group {
+                key: "groups",
+                title: "Grupos",
+                icon: Icon::Glyph(super::Glyph::Group),
+                rows: project
+                    .groups
+                    .iter()
+                    .filter_map(|group| {
+                        Some(Row {
+                            selection: *group.members.last()?,
+                            members: group.members.clone(),
+                            label: group.name.clone(),
+                            value: format!("{} itens", group.members.len()),
+                        })
                     })
                     .collect(),
             },
@@ -378,7 +403,11 @@ impl FloorPlanApp {
     fn browser_row(&mut self, ui: &mut Ui, icon: Icon, row: &Row) {
         let (rect, response) =
             ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::click());
-        let selected = self.is_selected(row.selection);
+        let selected = if row.members.is_empty() {
+            self.is_selected(row.selection)
+        } else {
+            row.members.iter().all(|member| self.is_selected(*member))
+        };
         let painter = ui.painter();
         if selected {
             painter.rect_filled(rect, 0, ACCENT_SOFT);
@@ -428,6 +457,15 @@ impl FloorPlanApp {
                 "Clique para selecionar · Shift ou Ctrl+clique soma ou retira · duplo clique para aproximar",
             );
         let adding = ui.input(|input| input.modifiers.shift || input.modifiers.command);
+        // A group's row selects its members together.
+        if !row.members.is_empty() {
+            if response.double_clicked() {
+                self.zoom_to_selection(row.selection);
+            } else if response.clicked() {
+                self.select_many(row.members.clone(), adding);
+            }
+            return;
+        }
         if response.double_clicked() {
             if !self.is_selected(row.selection) {
                 self.select(row.selection);

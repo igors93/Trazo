@@ -12,6 +12,7 @@ mod layers;
 mod modify_menu;
 mod notes;
 mod options_bar;
+mod repeat;
 mod schedules;
 mod selection;
 mod sheet;
@@ -95,6 +96,7 @@ impl FloorPlanApp {
         self.room_name_dialog(ui);
         self.unsaved_changes_dialog(&context);
         self.help_dialog(&context);
+        self.repeat_dialog(&context);
         self.connect_dialog(&context);
         self.layers_dialog(&context);
         self.dimensions_dialog(&context);

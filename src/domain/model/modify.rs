@@ -15,10 +15,10 @@ use crate::domain::geometry::{
 use crate::domain::offset::offset_shape;
 
 /// How close to an end a crossing still counts as the end (0,1 mm).
-const END_TOLERANCE: f64 = 1e-4;
+pub(super) const END_TOLERANCE: f64 = 1e-4;
 /// The shortest piece of drawing kept after trimming (a millimetre).
-const MIN_PIECE: f64 = 1e-3;
-const MIN_WALL_LENGTH: f64 = 0.25;
+pub(super) const MIN_PIECE: f64 = 1e-3;
+pub(super) const MIN_WALL_LENGTH: f64 = 0.25;
 
 /// The stretch between the crossings `cuts` (positions along a path of
 /// length `total`) around `at`.
@@ -37,7 +37,7 @@ fn span_around(cuts: &[f64], at: f64, total: f64) -> (f64, f64) {
 }
 
 /// Positions along a path of its points, from 0 at the first.
-fn running_lengths(points: &[Point]) -> Vec<f64> {
+pub(super) fn running_lengths(points: &[Point]) -> Vec<f64> {
     let mut lengths = Vec::with_capacity(points.len());
     let mut total = 0.0;
     for (index, point) in points.iter().enumerate() {
@@ -50,7 +50,7 @@ fn running_lengths(points: &[Point]) -> Vec<f64> {
 }
 
 /// The point at position `s` along the path.
-fn point_along(points: &[Point], lengths: &[f64], s: f64) -> Point {
+pub(super) fn point_along(points: &[Point], lengths: &[f64], s: f64) -> Point {
     for i in 1..points.len() {
         if s <= lengths[i] || i == points.len() - 1 {
             let span = lengths[i] - lengths[i - 1];
@@ -66,7 +66,7 @@ fn point_along(points: &[Point], lengths: &[f64], s: f64) -> Point {
 }
 
 /// The part of the path from position `from` to `to`.
-fn sub_path(points: &[Point], lengths: &[f64], from: f64, to: f64) -> Vec<Point> {
+pub(super) fn sub_path(points: &[Point], lengths: &[f64], from: f64, to: f64) -> Vec<Point> {
     let mut piece = vec![point_along(points, lengths, from).rounded()];
     for (point, length) in points.iter().zip(lengths) {
         if *length > from + END_TOLERANCE && *length < to - END_TOLERANCE {
@@ -78,7 +78,7 @@ fn sub_path(points: &[Point], lengths: &[f64], from: f64, to: f64) -> Vec<Point>
 }
 
 /// Where along the path its nearest point to `at` lies.
-fn position_on(points: &[Point], lengths: &[f64], at: Point) -> f64 {
+pub(super) fn position_on(points: &[Point], lengths: &[f64], at: Point) -> f64 {
     let mut best = (f64::INFINITY, 0.0);
     for i in 1..points.len() {
         let (foot, t) = nearest_point_on_segment(at, points[i - 1], points[i]);
