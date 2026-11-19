@@ -136,6 +136,24 @@ impl FloorPlanApp {
                 self.rotate_fixture_or_next();
                 ui.close();
             }
+            let is_door = match selection {
+                Selection::Opening(id) => self
+                    .project
+                    .openings
+                    .iter()
+                    .any(|opening| opening.id == id && opening.kind.is_door()),
+                _ => false,
+            };
+            if is_door {
+                if menu_item(ui, Some(Icon::Door), "Abrir para o outro lado", "I").clicked() {
+                    self.flip_selected_door(true, false);
+                    ui.close();
+                }
+                if menu_item(ui, Some(Icon::Undo), "Trocar lado da dobradiça", "Shift+I").clicked() {
+                    self.flip_selected_door(false, true);
+                    ui.close();
+                }
+            }
             if menu_item(ui, Some(Icon::Delete), "Excluir", "Delete").clicked() {
                 self.delete_selection();
                 ui.close();

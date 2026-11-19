@@ -229,6 +229,8 @@ impl FloorPlanApp {
                             (&["Setas"], "Mover seleção 0,25 m"),
                             (&["Shift", "Setas"], "Mover seleção 1 m"),
                             (&["G"], "Girar objeto 90°"),
+                            (&["I"], "Porta: abrir para o outro lado"),
+                            (&["Shift", "I"], "Porta: trocar a dobradiça"),
                             (&["Esc"], "Cancelar ação ou limpar seleção"),
                         ],
                     );

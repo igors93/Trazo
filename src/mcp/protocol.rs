@@ -327,11 +327,13 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "editar_abertura",
             title: "Editar porta ou janela",
-            description: "Muda a largura e/ou a posição de uma porta ou janela ao longo da sua parede.",
+            description: "Muda a largura e/ou a posição de uma porta ou janela ao longo da sua parede, ou inverte o lado para onde a porta abre e o lado da dobradiça.",
             properties: json!({
                 "id": id_of("da porta ou janela"),
                 "largura": number("Opcional: nova largura em metros."),
                 "posicao": number("Opcional: novo centro ao longo da parede, de 0 a 1."),
+                "inverter_lado": boolean("Opcional: a porta passa a abrir para o outro lado da parede."),
+                "inverter_dobradica": boolean("Opcional: a dobradiça vai para o outro batente."),
             }),
             required: &["id"],
             read_only: false,

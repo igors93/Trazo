@@ -847,6 +847,33 @@ impl FloorPlanApp {
         }
     }
 
+    /// I / Shift+I: the selected door opens to the other side of its wall
+    /// or turns on the other jamb.
+    fn flip_selected_door(&mut self, side: bool, hinge: bool) {
+        let Some(Selection::Opening(id)) = self.selection else {
+            self.message = "Selecione uma porta para inverter.".to_owned();
+            return;
+        };
+        let is_door = self
+            .project
+            .openings
+            .iter()
+            .any(|opening| opening.id == id && opening.kind.is_door());
+        if !is_door {
+            self.message = "Só portas mudam de lado.".to_owned();
+            return;
+        }
+        let previous = self.project.clone();
+        self.project.flip_opening(id, side, hinge);
+        self.record_change(previous);
+        self.message = match (side, hinge) {
+            (true, false) => "Porta abrindo para o outro lado da parede.",
+            (false, true) => "Dobradiça da porta trocada de lado.",
+            _ => "Porta invertida.",
+        }
+        .to_owned();
+    }
+
     /// Applies the width and depth typed in the properties panel.
     fn apply_fixture_size(&mut self, id: u64) {
         let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
@@ -1177,9 +1204,18 @@ impl FloorPlanApp {
     fn add_opening_at(&mut self, point: Point, kind: OpeningKind) {
         if let Some((wall_id, t)) = self.project.nearest_wall(point, 0.35) {
             let previous = self.project.clone();
-            if self.project.add_opening(wall_id, kind, t).is_some() {
+            if let Some(id) = self.project.add_opening(wall_id, kind, t) {
+                // Doors open towards the side of the wall that was clicked.
+                self.project.swing_towards(id, point);
                 self.record_change(previous);
-                self.message = format!("{} adicionada à parede.", kind.label());
+                self.message = if kind.is_door() {
+                    format!(
+                        "{} adicionada, abrindo para o lado clicado. I inverte o lado; Shift+I, a dobradiça.",
+                        kind.label()
+                    )
+                } else {
+                    format!("{} adicionada à parede.", kind.label())
+                };
             } else {
                 self.message = "Sem espaço suficiente nesta parede.".to_owned();
             }
@@ -1269,6 +1305,13 @@ impl FloorPlanApp {
                 tool,
                 nudge,
                 rotate: plain(Key::G),
+                flip_side: plain(Key::I),
+                flip_hinge: !editing_text
+                    && !modal_open
+                    && input.events.iter().any(|event| {
+                        matches!(event, egui::Event::Key { key: Key::I, pressed: true, repeat: false, modifiers, .. }
+                            if modifiers.shift && !modifiers.ctrl && !modifiers.command && !modifiers.alt)
+                    }),
                 fit: plain(Key::F),
                 snap: pressed(Key::F3) && free,
                 grid: pressed(Key::F7) && free,
@@ -1317,6 +1360,9 @@ impl FloorPlanApp {
         if actions.rotate {
             self.rotate_fixture_or_next();
         }
+        if actions.flip_side || actions.flip_hinge {
+            self.flip_selected_door(actions.flip_side, actions.flip_hinge);
+        }
         if let Some(tool) = actions.tool {
             self.set_tool(tool);
             if tool == Tool::Terrain {
@@ -1352,6 +1398,8 @@ struct ShortcutActions {
     tool: Option<Tool>,
     nudge: Option<Point>,
     rotate: bool,
+    flip_side: bool,
+    flip_hinge: bool,
     fit: bool,
     snap: bool,
     grid: bool,
@@ -1597,6 +1645,30 @@ mod tests {
         app.persist_settings();
         assert_eq!(app.saved_settings, app.current_settings());
         assert!(!app.saved_settings.show_grid && app.saved_settings.ortho_enabled);
+    }
+
+    #[test]
+    fn doors_open_towards_the_click_and_flip_with_i() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        app.project
+            .add_wall(Point::new(0.0, 0.0), Point::new(4.0, 0.0));
+        // The leaf swings along (-dy, dx) = (0, 1) by default: below the wall.
+        app.add_opening_at(Point::new(2.0, 0.3), OpeningKind::Door);
+        assert!(!app.project.openings[0].flip_side);
+        app.add_opening_at(Point::new(3.2, -0.3), OpeningKind::Window);
+        app.project.openings.clear();
+        app.add_opening_at(Point::new(2.0, -0.3), OpeningKind::Door);
+        let door = app.project.openings[0].id;
+        assert!(app.project.openings[0].flip_side);
+
+        app.selection = Some(Selection::Opening(door));
+        press(&mut app, &context, Key::I, egui::Modifiers::NONE);
+        assert!(!app.project.openings[0].flip_side);
+        press(&mut app, &context, Key::I, egui::Modifiers::SHIFT);
+        assert!(app.project.openings[0].flip_hinge);
+        app.undo();
+        assert!(!app.project.openings[0].flip_hinge);
     }
 
     #[test]

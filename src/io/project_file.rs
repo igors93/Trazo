@@ -233,6 +233,8 @@ mod tests {
             kind: OpeningKind::Door,
             t: 0.5,
             width: None,
+            flip_side: false,
+            flip_hinge: false,
         });
         // Opening on valid wall
         project.add_opening(w1, OpeningKind::Window, 0.5);

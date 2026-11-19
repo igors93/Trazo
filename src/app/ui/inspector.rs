@@ -446,6 +446,34 @@ impl FloorPlanApp {
             );
         });
 
+        if opening.kind.is_door() {
+            let mut flip = (false, false);
+            section(ui, "opening_swing", "Abertura da folha", |ui| {
+                grid(ui, "opening_swing_grid", |ui| {
+                    property_label(ui, "Lado");
+                    ui.horizontal(|ui| {
+                        property_value(ui, if opening.flip_side { "Invertido" } else { "Padrão" });
+                        flip.0 = secondary_button(ui, "Inverter (I)").clicked();
+                    });
+                    ui.end_row();
+                    if opening.kind == OpeningKind::Door {
+                        property_label(ui, "Dobradiça");
+                        ui.horizontal(|ui| {
+                            property_value(
+                                ui,
+                                if opening.flip_hinge { "Lado do fim" } else { "Lado do início" },
+                            );
+                            flip.1 = secondary_button(ui, "Trocar (Shift+I)").clicked();
+                        });
+                        ui.end_row();
+                    }
+                });
+            });
+            if flip.0 || flip.1 {
+                self.flip_selected_door(flip.0, flip.1);
+            }
+        }
+
         let delete_label = match opening.kind {
             OpeningKind::Door => "Excluir porta",
             OpeningKind::Window => "Excluir janela",

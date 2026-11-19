@@ -234,6 +234,12 @@ pub struct Opening {
     pub t: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub width: Option<f32>,
+    /// The leaf swings to the other side of the wall.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flip_side: bool,
+    /// The hinge is on the jamb towards the wall's end instead of its start.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flip_hinge: bool,
 }
 
 impl Opening {
@@ -1080,8 +1086,47 @@ impl Project {
             kind,
             t,
             width: width.map(|_| size),
+            flip_side: false,
+            flip_hinge: false,
         });
         Some(id)
+    }
+
+    /// Turns a door the other way: to the other side of the wall (`side`)
+    /// and/or with its hinge on the other jamb (`hinge`).
+    pub fn flip_opening(&mut self, id: u64, side: bool, hinge: bool) -> bool {
+        let Some(opening) = self.openings.iter_mut().find(|opening| opening.id == id) else {
+            return false;
+        };
+        if side {
+            opening.flip_side = !opening.flip_side;
+        }
+        if hinge {
+            opening.flip_hinge = !opening.flip_hinge;
+        }
+        true
+    }
+
+    /// Makes a door swing towards the side of its wall where `point` is.
+    pub fn swing_towards(&mut self, id: u64, point: Point) {
+        let Some(wall_id) = self
+            .openings
+            .iter()
+            .find(|opening| opening.id == id)
+            .map(|opening| opening.wall_id)
+        else {
+            return;
+        };
+        let Some(wall) = self.walls.iter().find(|wall| wall.id == wall_id) else {
+            return;
+        };
+        let length = wall.length().max(1e-4);
+        let (dx, dy) = ((wall.end.x - wall.start.x) / length, (wall.end.y - wall.start.y) / length);
+        // The leaf swings along (-dy, dx) unless flipped.
+        let side = (point.x - wall.start.x) * -dy + (point.y - wall.start.y) * dx;
+        if let Some(opening) = self.openings.iter_mut().find(|opening| opening.id == id) {
+            opening.flip_side = side < 0.0;
+        }
     }
 
     pub fn nearest_opening(&self, point: Point, max_distance: f32) -> Option<u64> {
@@ -2059,6 +2104,8 @@ mod tests {
             kind: OpeningKind::Door,
             t: 0.20,
             width: None,
+            flip_side: false,
+            flip_hinge: false,
         });
 
         project.deduplicate_walls();
@@ -2118,6 +2165,8 @@ mod tests {
             kind: OpeningKind::Door,
             t: 0.5,
             width: Some(0.70),
+            flip_side: false,
+            flip_hinge: false,
         });
         // 0.90 + 0.16 = 1.06 > 1.00 => should fail with wall too short / abertura maior que a parede
         let err_short = project.update_opening_width(short_door, 0.90);

@@ -789,8 +789,10 @@ impl FloorPlanApp {
         self.require(id, |selection| matches!(selection, Selection::Opening(_)), "porta ou janela")?;
         let width = number(args, "largura")?;
         let position = number(args, "posicao")?;
-        if width.is_none() && position.is_none() {
-            return Err("Informe largura ou posicao.".to_owned());
+        let flip_side = flag(args, "inverter_lado");
+        let flip_hinge = flag(args, "inverter_dobradica");
+        if width.is_none() && position.is_none() && !flip_side && !flip_hinge {
+            return Err("Informe largura, posicao, inverter_lado ou inverter_dobradica.".to_owned());
         }
         if position.is_some_and(|position| !(0.0..=1.0).contains(&position)) {
             return Err("'posicao' é uma fração de 0 a 1 ao longo da parede.".to_owned());
@@ -814,6 +816,9 @@ impl FloorPlanApp {
                 if !project.move_opening_along_wall(id, target) {
                     return Err("Não há espaço para a abertura nessa posição.".to_owned());
                 }
+            }
+            if flip_side || flip_hinge {
+                project.flip_opening(id, flip_side, flip_hinge);
             }
             Ok(Change::new(format!("Abertura {id} atualizada.")).select(Selection::Opening(id)))
         })
@@ -922,6 +927,8 @@ impl FloorPlanApp {
                         OpeningKind::Gap => "vao_livre",
                     },
                     "parede_id": opening.wall_id,
+                    "lado_invertido": opening.flip_side,
+                    "dobradica_no_fim": opening.flip_hinge,
                     "posicao": round(opening.t),
                     "largura": round(opening.width()),
                     "centro": self.opening_center(opening.id).map(xy),

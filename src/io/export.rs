@@ -108,13 +108,28 @@ fn document(project: &Project) -> SvgDocument {
             );
             match opening.kind {
                 OpeningKind::Door => {
+                    let leaf = half * 2.0;
+                    let side = if opening.flip_side { -1.0 } else { 1.0 };
+                    let (hinge, along) = if opening.flip_hinge {
+                        (right, -1.0)
+                    } else {
+                        (left, 1.0)
+                    };
+                    let arc = (0..=20)
+                        .map(|step| {
+                            let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 20.0;
+                            format!(
+                                "{:.1},{:.1}",
+                                hinge + along * theta.sin() * leaf,
+                                side * theta.cos() * leaf
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ");
                     let _ = writeln!(
                         svg,
-                        "<line x1=\"{left:.1}\" y1=\"0\" x2=\"{left:.1}\" y2=\"{:.1}\" stroke=\"#1d2836\" stroke-width=\"3\"/><path d=\"M {left:.1} {:.1} A {:.1} {:.1} 0 0 0 {right:.1} 0\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.5\"/>",
-                        half * 2.0,
-                        half * 2.0,
-                        half * 2.0,
-                        half * 2.0
+                        "<line x1=\"{hinge:.1}\" y1=\"0\" x2=\"{hinge:.1}\" y2=\"{:.1}\" stroke=\"#1d2836\" stroke-width=\"3\"/><polyline points=\"{arc}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.5\"/>",
+                        side * leaf
                     );
                 }
                 OpeningKind::SaloonDoor => {
@@ -132,12 +147,14 @@ fn document(project: &Project) -> SvgDocument {
                             .collect::<Vec<_>>()
                             .join(" ")
                     };
+                    let side = if opening.flip_side { -1.0 } else { 1.0 };
                     for (hinge, toward) in [(left, 1.0), (right, -1.0)] {
                         let _ = writeln!(
                             svg,
-                            "<line x1=\"{hinge:.1}\" y1=\"0\" x2=\"{hinge:.1}\" y2=\"{half:.1}\" stroke=\"#1d2836\" stroke-width=\"3\"/><polyline points=\"{}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.5\"/><polyline points=\"{}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.5\" stroke-dasharray=\"5 4\"/>",
-                            quarter(hinge, toward, 1.0),
-                            quarter(hinge, toward, -1.0)
+                            "<line x1=\"{hinge:.1}\" y1=\"0\" x2=\"{hinge:.1}\" y2=\"{:.1}\" stroke=\"#1d2836\" stroke-width=\"3\"/><polyline points=\"{}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.5\"/><polyline points=\"{}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.5\" stroke-dasharray=\"5 4\"/>",
+                            side * half,
+                            quarter(hinge, toward, side),
+                            quarter(hinge, toward, -side)
                         );
                     }
                 }

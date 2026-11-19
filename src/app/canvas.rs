@@ -602,14 +602,17 @@ fn paint_wall(
                     op_color
                 };
                 let leaf = half * 2.0;
-                painter.line_segment(
-                    [start, start + normal * leaf],
-                    Stroke::new(2.2, leaf_color),
-                );
+                let side = if opening.flip_side { -normal } else { normal };
+                let (hinge, along) = if opening.flip_hinge {
+                    (end, -direction)
+                } else {
+                    (start, direction)
+                };
+                painter.line_segment([hinge, hinge + side * leaf], Stroke::new(2.2, leaf_color));
                 let arc: Vec<Pos2> = (0..=20)
                     .map(|step| {
                         let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 20.0;
-                        start + direction * (theta.sin() * leaf) + normal * (theta.cos() * leaf)
+                        hinge + along * (theta.sin() * leaf) + side * (theta.cos() * leaf)
                     })
                     .collect();
                 painter.add(Shape::line(
@@ -629,7 +632,7 @@ fn paint_wall(
                         start,
                         end,
                         direction,
-                        normal,
+                        side,
                         -(half_wall + 4.0),
                         leaf + 4.0,
                         op_color,
@@ -653,7 +656,8 @@ fn paint_wall(
                         [hinge, hinge + normal * half],
                         Stroke::new(2.0, leaf_color),
                     );
-                    for side in [1.0, -1.0] {
+                    let flip = if opening.flip_side { -1.0 } else { 1.0 };
+                    for side in [flip, -flip] {
                         let arc: Vec<Pos2> = (0..=12)
                             .map(|step| {
                                 let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 12.0;
@@ -662,7 +666,7 @@ fn paint_wall(
                                     + normal * (side * theta.cos() * half)
                             })
                             .collect();
-                        if side > 0.0 {
+                        if side == flip {
                             painter.add(Shape::line(arc, Stroke::new(1.0, arc_color)));
                         } else {
                             painter.extend(Shape::dashed_line(
