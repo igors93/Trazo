@@ -114,6 +114,10 @@ pub struct FloorPlanApp {
     polygon_draft: Vec<Point>,
     /// Points clicked with a drawing tool.
     draw_points: Vec<Point>,
+    /// Direct numeric input typed while drawing (e.g. `3,47`, `3,5<45`, `3x4`, `1,5;2,0`).
+    draft_input: String,
+    /// Last snapped canvas point, used as aiming direction for numeric input.
+    draft_aim: Option<Point>,
     drawing_radius_text: String,
     room_name: String,
     room_dialog_focus: bool,
@@ -215,6 +219,8 @@ impl FloorPlanApp {
             pending_room: None,
             polygon_draft: Vec::new(),
             draw_points: Vec::new(),
+            draft_input: String::new(),
+            draft_aim: None,
             drawing_radius_text: String::new(),
             room_name: String::new(),
             room_dialog_focus: false,
@@ -367,6 +373,7 @@ impl FloorPlanApp {
         self.creation_state = CreationState::Idle;
         self.polygon_draft.clear();
         self.draw_points.clear();
+        self.draft_input.clear();
     }
 
     /// Ends an element drag in progress, keeping what it moved as one undo
@@ -387,6 +394,7 @@ impl FloorPlanApp {
         self.creation_state = CreationState::Idle;
         self.polygon_draft.clear();
         self.draw_points.clear();
+        self.draft_input.clear();
         self.selection = None;
         self.message = match tool {
             Tool::Wall => "Clique em dois pontos para desenhar uma parede.",
@@ -1497,6 +1505,58 @@ impl FloorPlanApp {
         }
     }
 
+    pub(super) fn supports_numeric_input(&self) -> bool {
+        matches!(
+            self.tool,
+            Tool::Wall
+                | Tool::Room
+                | Tool::RoomPolygon
+                | Tool::Terrain
+                | Tool::Measure
+                | Tool::Draw(_)
+        )
+    }
+
+    pub(super) fn apply_canvas_point(&mut self, point: Point) {
+        match self.tool {
+            Tool::Wall | Tool::Room | Tool::Terrain | Tool::Measure => match self.creation_state {
+                CreationState::Idle => {
+                    self.creation_state = CreationState::WaitingSecondPoint { start: point };
+                    self.message =
+                        "Clique no segundo ponto ou digite a medida (ex.: 3,47 · 3,5<45 · 3x4) e Enter."
+                            .to_owned();
+                }
+                CreationState::WaitingSecondPoint { start } | CreationState::Dragging { start } => {
+                    self.complete_creation(start, point);
+                    self.creation_state = CreationState::Idle;
+                }
+            },
+            Tool::RoomPolygon => self.add_polygon_point(point),
+            Tool::Draw(kind) => self.add_draw_point(kind, point),
+            _ => {}
+        }
+    }
+
+    fn commit_numeric_input(&mut self) {
+        let raw = self.draft_input.trim().to_owned();
+        let Some(spec) = tools::numeric_input::parse_numeric_input(&raw) else {
+            self.message = format!(
+                "Entrada \"{raw}\" inválida. Use ex.: 3,47 · 3,5<45 · 3,5x4,0 · @2;1 · 1,5;2,0"
+            );
+            return;
+        };
+        let start = self.draft_start();
+        let aim = self.draft_aim.or(self.cursor_world);
+        let Some(point) = spec.resolve(start, aim) else {
+            self.message =
+                "Defina o primeiro ponto (ou digite coordenadas X;Y) antes da distância ou ângulo."
+                    .to_owned();
+            return;
+        };
+        self.draft_input.clear();
+        self.apply_canvas_point(point);
+    }
+
     fn handle_shortcuts(&mut self, context: &egui::Context) {
         // Canvas and toolbar widgets can hold focus without editing text.
         let editing_text = context.text_edit_focused();
@@ -1507,6 +1567,33 @@ impl FloorPlanApp {
             || self.show_help
             || self.show_mcp_dialog;
         let blocking_dialog = self.pending_room.is_some() || self.pending_action.is_some();
+
+        // Capture direct CAD numeric input typed while a drawing tool is active.
+        if !editing_text && !modal_open && self.supports_numeric_input() {
+            let typed: Vec<char> = context.input(|input| {
+                if input.modifiers.ctrl || input.modifiers.command || input.modifiers.alt {
+                    return Vec::new();
+                }
+                input
+                    .events
+                    .iter()
+                    .filter_map(|event| match event {
+                        egui::Event::Text(text) => Some(text.chars().collect::<Vec<_>>()),
+                        _ => None,
+                    })
+                    .flatten()
+                    .collect()
+            });
+            for ch in typed {
+                if self.draft_input.chars().count() < 32
+                    && tools::numeric_input::accepts_char(ch, !self.draft_input.is_empty())
+                {
+                    self.draft_input.push(ch);
+                }
+            }
+        }
+        let typing_numeric = !self.draft_input.is_empty();
+
         let actions = context.input(|input| {
             let pressed = |key: Key| {
                 input.events.iter().any(|event| {
@@ -1516,9 +1603,18 @@ impl FloorPlanApp {
             let plain = |key: Key| {
                 !editing_text
                     && !modal_open
+                    && !typing_numeric
                     && input.events.iter().any(|event| {
                         matches!(event, egui::Event::Key { key: event_key, pressed: true, repeat: false, modifiers, .. }
                             if *event_key == key && modifiers.is_none())
+                    })
+            };
+            let key_unmodified = |key: Key, allow_repeat: bool| {
+                !editing_text
+                    && !modal_open
+                    && input.events.iter().any(|event| {
+                        matches!(event, egui::Event::Key { key: event_key, pressed: true, repeat, modifiers, .. }
+                            if *event_key == key && modifiers.is_none() && (allow_repeat || !repeat))
                     })
             };
             let shortcut = |key: Key, shift: bool| {
@@ -1569,7 +1665,7 @@ impl FloorPlanApp {
             .into_iter()
             .find_map(|(key, tool)| plain(key).then_some(tool))
             .or_else(|| {
-                (!editing_text && !modal_open)
+                (!editing_text && !modal_open && !typing_numeric)
                     .then(|| Self::drafting_shortcut(input))
                     .flatten()
             });
@@ -1581,13 +1677,14 @@ impl FloorPlanApp {
                 undo: shortcut(Key::Z, false) && !editing_text && free,
                 redo: (shortcut(Key::Y, false) || shortcut(Key::Z, true)) && !editing_text && free,
                 escape: pressed(Key::Escape) && self.pending_action.is_none(),
-                delete: pressed(Key::Delete) && !editing_text && free,
+                delete: pressed(Key::Delete) && !editing_text && !typing_numeric && free,
                 tool,
                 nudge,
                 rotate: plain(Key::G),
                 flip_side: plain(Key::I),
                 flip_hinge: !editing_text
                     && !modal_open
+                    && !typing_numeric
                     && input.events.iter().any(|event| {
                         matches!(event, egui::Event::Key { key: Key::I, pressed: true, repeat: false, modifiers, .. }
                             if modifiers.shift && !modifiers.ctrl && !modifiers.command && !modifiers.alt)
@@ -1595,6 +1692,8 @@ impl FloorPlanApp {
                 fit: plain(Key::F),
                 finish_polygon: plain(Key::Enter),
                 undo_point: plain(Key::Backspace),
+                numeric_commit: typing_numeric && key_unmodified(Key::Enter, false),
+                numeric_backspace: typing_numeric && key_unmodified(Key::Backspace, true),
                 snap: pressed(Key::F3) && free,
                 grid: pressed(Key::F7) && free,
                 ortho: pressed(Key::F8) && free,
@@ -1621,6 +1720,9 @@ impl FloorPlanApp {
                 self.show_help = false;
                 self.show_mcp_dialog = false;
                 self.mcp_feedback = None;
+            } else if !self.draft_input.is_empty() {
+                self.draft_input.clear();
+                self.message = "Entrada numérica limpa.".to_owned();
             } else if self.tool == Tool::Measure
                 && self.draft_start().is_none()
                 && !self.measurements.is_empty()
@@ -1638,6 +1740,12 @@ impl FloorPlanApp {
                 self.pending_room = None;
                 self.message = "Ação cancelada.".to_owned();
             }
+        }
+        if actions.numeric_backspace {
+            self.draft_input.pop();
+        }
+        if actions.numeric_commit {
+            self.commit_numeric_input();
         }
         if actions.delete {
             self.delete_selection();
@@ -1707,6 +1815,8 @@ struct ShortcutActions {
     fit: bool,
     finish_polygon: bool,
     undo_point: bool,
+    numeric_commit: bool,
+    numeric_backspace: bool,
     snap: bool,
     grid: bool,
     ortho: bool,
@@ -2456,5 +2566,32 @@ mod tests {
         app.creation_state = CreationState::Idle;
         assert_eq!(app.project.walls.len(), 2);
         assert_eq!(app.creation_state(), CreationState::Idle);
+    }
+
+    #[test]
+    fn typing_distance_and_polar_during_drawing_creates_exact_walls() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        app.set_tool(Tool::Wall);
+
+        // First point via absolute coordinates `1;2`.
+        app.draft_input = "1;2".to_owned();
+        app.commit_numeric_input();
+        assert_eq!(app.draft_start(), Some(Point::new(1.0, 2.0)));
+        assert!(app.draft_input.is_empty());
+
+        // Second point via distance `3,47` aiming right.
+        app.draft_aim = Some(Point::new(5.0, 2.0));
+        app.draft_input = "3,47".to_owned();
+        app.commit_numeric_input();
+        assert_eq!(app.project.walls.len(), 1);
+        assert!((app.project.walls[0].length() - 3.47).abs() < 1e-4);
+
+        // Escape clears typed input before cancelling the draft.
+        app.apply_canvas_point(Point::new(0.0, 0.0));
+        app.draft_input = "4,5<45".to_owned();
+        press(&mut app, &context, Key::Escape, egui::Modifiers::NONE);
+        assert!(app.draft_input.is_empty());
+        assert_eq!(app.draft_start(), Some(Point::new(0.0, 0.0)));
     }
 }

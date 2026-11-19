@@ -268,9 +268,10 @@ impl FloorPlanApp {
                         "Vista e precisão",
                         &[
                             (&["F"], "Enquadrar tudo"),
-                            (&["F3"], "Encaixe magnético"),
+                            (&["F3"], "Encaixe magnético (OSNAP)"),
                             (&["F7"], "Mostrar grade"),
                             (&["F8"], "Modo orto"),
+                            (&["3,47"], "Digitar distância, ângulo (3<45), medidas (3x4) ou X;Y"),
                             (&["F1"], "Esta ajuda"),
                         ],
                     );

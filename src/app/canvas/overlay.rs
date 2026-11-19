@@ -287,6 +287,56 @@ pub fn paint_snap_marker(painter: &Painter, position: Pos2, kind: SnapKind) {
     }
 }
 
+/// Floating CAD command badge showing what the user is typing directly on the
+/// canvas (distance, angle, dimensions or coordinates) and how it parses.
+pub fn paint_numeric_input_hud(
+    painter: &Painter,
+    canvas_rect: Rect,
+    anchor: Option<Pos2>,
+    typed: &str,
+    summary: &str,
+    valid: bool,
+) {
+    let input_galley =
+        painter.layout_no_wrap(format!("{typed}│"), theme::strong(13.5), theme::TEXT);
+    let hint_color = if valid {
+        theme::ACCENT_TEXT
+    } else {
+        theme::WARNING
+    };
+    let hint_galley = painter.layout_no_wrap(summary.to_owned(), theme::regular(11.5), hint_color);
+    let width = input_galley.size().x.max(hint_galley.size().x) + 20.0;
+    let height = input_galley.size().y + hint_galley.size().y + 14.0;
+    let preferred = anchor
+        .map(|pos| pos + vec2(18.0, 20.0))
+        .unwrap_or_else(|| Pos2::new(canvas_rect.left() + 20.0, canvas_rect.top() + 20.0));
+    let min_x = preferred.x.clamp(
+        canvas_rect.left() + 12.0,
+        (canvas_rect.right() - width - 12.0).max(canvas_rect.left() + 12.0),
+    );
+    let min_y = preferred.y.clamp(
+        canvas_rect.top() + 12.0,
+        (canvas_rect.bottom() - height - 12.0).max(canvas_rect.top() + 12.0),
+    );
+    let badge = Rect::from_min_size(Pos2::new(min_x, min_y), vec2(width, height));
+    paint_floating_plate(painter, badge);
+    painter.rect_stroke(
+        badge,
+        8.0,
+        Stroke::new(
+            1.2,
+            if valid {
+                theme::ACCENT_RING
+            } else {
+                theme::WARNING
+            },
+        ),
+        StrokeKind::Inside,
+    );
+    painter.galley(badge.min + vec2(10.0, 6.0), input_galley, theme::TEXT);
+    painter.galley(badge.min + vec2(10.0, 6.0 + 18.0), hint_galley, hint_color);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

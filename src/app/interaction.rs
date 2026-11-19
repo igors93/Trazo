@@ -10,7 +10,7 @@ use crate::domain::{
     geometry::{POINT_TOLERANCE, Point},
     snap::{SnapResult, find_snap},
 };
-use eframe::egui::{self, Key, PointerButton, Sense};
+use eframe::egui::{self, PointerButton, Sense};
 
 impl FloorPlanApp {
     fn snap(&self, point: Point, start: Option<Point>) -> Point {
@@ -249,6 +249,7 @@ impl FloorPlanApp {
             });
             result
         });
+        self.draft_aim = snapped;
 
         if let Some(corners) = &self.pending_room {
             // Keep the drawn room on screen while it is named.
@@ -363,25 +364,14 @@ impl FloorPlanApp {
             && response.clicked_by(PointerButton::Primary)
             && let Some(point) = snapped
         {
+            self.draft_input.clear();
             match self.tool {
-                Tool::Wall | Tool::Room | Tool::Terrain | Tool::Measure => {
-                    match self.creation_state {
-                        CreationState::Idle => {
-                            self.creation_state =
-                                CreationState::WaitingSecondPoint { start: point };
-                            self.message =
-                                "Agora clique no segundo ponto para concluir. Esc cancela."
-                                    .to_owned();
-                        }
-                        CreationState::WaitingSecondPoint { start } => {
-                            self.complete_creation(start, point);
-                            self.creation_state = CreationState::Idle;
-                        }
-                        CreationState::Dragging { .. } => {}
-                    }
-                }
-                Tool::RoomPolygon => self.add_polygon_point(point),
-                Tool::Draw(kind) => self.add_draw_point(kind, point),
+                Tool::Wall
+                | Tool::Room
+                | Tool::Terrain
+                | Tool::Measure
+                | Tool::RoomPolygon
+                | Tool::Draw(_) => self.apply_canvas_point(point),
                 Tool::Opening(kind) => self.add_opening_at(point, kind),
                 Tool::Fixture(kind) => {
                     if let Some(raw) = world {
@@ -401,11 +391,14 @@ impl FloorPlanApp {
             self.finish_drawing(kind, false);
         }
 
-        if ui.input(|input| input.key_pressed(Key::Escape)) {
-            self.cancel_creation();
-        }
+        let numeric_spec = (!self.draft_input.is_empty())
+            .then(|| super::tools::numeric_input::parse_numeric_input(&self.draft_input))
+            .flatten();
+        let numeric_point =
+            numeric_spec.and_then(|spec| spec.resolve(self.draft_start(), snapped.or(world)));
+        let preview_cursor = numeric_point.or(snapped);
 
-        let preview = match (self.draft_start(), snapped, self.tool) {
+        let preview = match (self.draft_start(), preview_cursor, self.tool) {
             (Some(start), Some(end), Tool::Wall) => Some(Preview::Wall(start, end)),
             (Some(start), Some(end), Tool::Room) => Some(Preview::Room(start, end)),
             (Some(start), Some(end), Tool::Terrain) => Some(Preview::Terrain(start, end)),
@@ -443,15 +436,15 @@ impl FloorPlanApp {
         );
         self.paint_view_aids(&painter, view);
         if self.tool == Tool::RoomPolygon && !self.polygon_draft.is_empty() {
-            canvas::paint_polygon_draft(&painter, view, &self.polygon_draft, snapped, false);
+            canvas::paint_polygon_draft(&painter, view, &self.polygon_draft, preview_cursor, false);
         }
         if let Tool::Draw(kind) = self.tool {
-            let draft = Self::shape_from(kind, &self.draw_points, snapped, false)
+            let draft = Self::shape_from(kind, &self.draw_points, preview_cursor, false)
                 .filter(|_| !self.draw_points.is_empty());
             canvas::paint_draw_draft(&painter, view, draft.as_ref(), &self.draw_points);
         }
         if self.tool == Tool::Measure
-            && let (Some(start), Some(end)) = (self.draft_start(), snapped)
+            && let (Some(start), Some(end)) = (self.draft_start(), preview_cursor)
         {
             canvas::paint_measurement(&painter, view, start, end);
         }
@@ -513,6 +506,35 @@ impl FloorPlanApp {
                     crate::app::theme::ACCENT_TEXT,
                 );
             }
+        }
+
+        if !self.draft_input.is_empty() {
+            if let Some(target) = numeric_point {
+                overlay::paint_snap_marker(&painter, view.to_screen(target), SnapKind::Endpoint);
+            }
+            let (summary, valid) = match (numeric_spec, numeric_point) {
+                (Some(spec), Some(_)) => (
+                    format!("{} · Enter confirma · Esc limpa", spec.describe()),
+                    true,
+                ),
+                (Some(spec), None) if spec.requires_start() => (
+                    "Clique no 1º ponto ou digite X;Y (ex.: 1,5;2,0)".to_owned(),
+                    false,
+                ),
+                _ => (
+                    "Ex.: 3,47 · 3,5<45 · <30 · 3,5x4,0 · @2;1 · 1,5;2,0".to_owned(),
+                    false,
+                ),
+            };
+            let anchor = numeric_point.map(|pt| view.to_screen(pt)).or(pointer);
+            overlay::paint_numeric_input_hud(
+                &painter,
+                rect,
+                anchor,
+                &self.draft_input,
+                &summary,
+                valid,
+            );
         }
 
         self.canvas_navigation(ui, navigation);
