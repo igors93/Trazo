@@ -168,7 +168,8 @@ impl FloorPlanApp {
                     if !filter.is_empty() && rows.is_empty() {
                         continue;
                     }
-                    let open = self.group_header(ui, group.key, group.title, group.icon, rows.len());
+                    let open =
+                        self.group_header(ui, group.key, group.title, group.icon, rows.len());
                     if open {
                         if rows.is_empty() {
                             ui.add_space(2.0);
@@ -207,9 +208,7 @@ impl FloorPlanApp {
                         .frame(egui::Frame::NONE)
                         .desired_width(width),
                 );
-                if has_text
-                    && icon_button_small(ui, Icon::Close, "Limpar filtro").clicked()
-                {
+                if has_text && icon_button_small(ui, Icon::Close, "Limpar filtro").clicked() {
                     self.browser_filter.clear();
                 }
             });
@@ -229,7 +228,10 @@ impl FloorPlanApp {
             );
             icons::paint(
                 painter,
-                Rect::from_center_size(Pos2::new(rect.left() + 46.0, rect.center().y), vec2(14.0, 14.0)),
+                Rect::from_center_size(
+                    Pos2::new(rect.left() + 46.0, rect.center().y),
+                    vec2(14.0, 14.0),
+                ),
                 Icon::Plan,
                 TEXT_2,
                 ACCENT,
@@ -253,7 +255,14 @@ impl FloorPlanApp {
     }
 
     /// A group's title row; returns whether the group is open.
-    fn group_header(&mut self, ui: &mut Ui, key: &str, title: &str, icon: Icon, count: usize) -> bool {
+    fn group_header(
+        &mut self,
+        ui: &mut Ui,
+        key: &str,
+        title: &str,
+        icon: Icon,
+        count: usize,
+    ) -> bool {
         let id = ui.make_persistent_id(("browser_group", key));
         // Walls are the longest list; they start folded.
         let mut open = ui.data_mut(|data| *data.get_temp_mut_or(id, key != "walls"));
@@ -269,7 +278,10 @@ impl FloorPlanApp {
         }
         icons::paint(
             painter,
-            Rect::from_center_size(Pos2::new(rect.left() + 14.0, rect.center().y), vec2(12.0, 12.0)),
+            Rect::from_center_size(
+                Pos2::new(rect.left() + 14.0, rect.center().y),
+                vec2(12.0, 12.0),
+            ),
             if open {
                 Icon::ChevronDown
             } else {
@@ -280,7 +292,10 @@ impl FloorPlanApp {
         );
         icons::paint(
             painter,
-            Rect::from_center_size(Pos2::new(rect.left() + 32.0, rect.center().y), vec2(16.0, 16.0)),
+            Rect::from_center_size(
+                Pos2::new(rect.left() + 32.0, rect.center().y),
+                vec2(16.0, 16.0),
+            ),
             icon,
             TEXT_2,
             ACCENT,
@@ -300,7 +315,10 @@ impl FloorPlanApp {
         );
         painter.rect_filled(pill, 8, BAND);
         painter.galley(
-            Pos2::new(pill.center().x - galley.size().x / 2.0, pill.center().y - galley.size().y / 2.0),
+            Pos2::new(
+                pill.center().x - galley.size().x / 2.0,
+                pill.center().y - galley.size().y / 2.0,
+            ),
             galley,
             MUTED,
         );
@@ -328,7 +346,10 @@ impl FloorPlanApp {
         }
         icons::paint(
             painter,
-            Rect::from_center_size(Pos2::new(rect.left() + 46.0, rect.center().y), vec2(14.0, 14.0)),
+            Rect::from_center_size(
+                Pos2::new(rect.left() + 46.0, rect.center().y),
+                vec2(14.0, 14.0),
+            ),
             icon,
             if selected { ACCENT_TEXT } else { MUTED },
             if selected { ACCENT } else { FAINT },
@@ -336,7 +357,10 @@ impl FloorPlanApp {
         let value = painter.layout_no_wrap(row.value.clone(), regular(11.5), MUTED);
         let value_width = value.size().x;
         painter.galley(
-            Pos2::new(rect.right() - 12.0 - value_width, rect.center().y - value.size().y / 2.0),
+            Pos2::new(
+                rect.right() - 12.0 - value_width,
+                rect.center().y - value.size().y / 2.0,
+            ),
             value,
             MUTED,
         );

@@ -198,7 +198,9 @@ fn document(project: &Project) -> SvgDocument {
         );
         for shape in fixture.symbol() {
             let weight = match &shape {
-                SymbolShape::Polyline { weight, .. } | SymbolShape::Circle { weight, .. } => *weight,
+                SymbolShape::Polyline { weight, .. } | SymbolShape::Circle { weight, .. } => {
+                    *weight
+                }
             };
             let (color, width) = match weight {
                 Weight::Outline => ("#3b4e63", 2.0),
@@ -217,7 +219,11 @@ fn document(project: &Project) -> SvgDocument {
                         .collect::<Vec<_>>()
                         .join(" ");
                     let element = if closed { "polygon" } else { "polyline" };
-                    let dash = if dashed { " stroke-dasharray=\"6 4\"" } else { "" };
+                    let dash = if dashed {
+                        " stroke-dasharray=\"6 4\""
+                    } else {
+                        ""
+                    };
                     let _ = writeln!(
                         svg,
                         "<{element} points=\"{points}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{width}\"{dash}/>"
@@ -246,18 +252,33 @@ fn document(project: &Project) -> SvgDocument {
             (top - 58.0, vec![dims.min.x, dims.max.x]),
         ] {
             let xs: Vec<f32> = stations.iter().map(|x| x_of(*x)).collect();
-            let _ = writeln!(svg, "<line x1=\"{:.1}\" y1=\"{row:.1}\" x2=\"{:.1}\" y2=\"{row:.1}\" {style}/>", xs[0], xs[xs.len() - 1]);
+            let _ = writeln!(
+                svg,
+                "<line x1=\"{:.1}\" y1=\"{row:.1}\" x2=\"{:.1}\" y2=\"{row:.1}\" {style}/>",
+                xs[0],
+                xs[xs.len() - 1]
+            );
             for x in &xs {
                 let _ = writeln!(
                     svg,
                     "<line x1=\"{x:.1}\" y1=\"{:.1}\" x2=\"{x:.1}\" y2=\"{:.1}\" {style}/><line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#3b4e63\" stroke-width=\"1.5\"/>",
-                    row - 6.0, row + 10.0, x - 4.0, row + 4.0, x + 4.0, row - 4.0
+                    row - 6.0,
+                    row + 10.0,
+                    x - 4.0,
+                    row + 4.0,
+                    x + 4.0,
+                    row - 4.0
                 );
             }
             for (pair, span) in stations.windows(2).zip(xs.windows(2)) {
                 let value = centimetres(pair[1] - pair[0]);
                 if value.len() as f32 * 7.0 + 4.0 <= span[1] - span[0] {
-                    let _ = writeln!(svg, "<text x=\"{:.1}\" y=\"{:.1}\" {text}>{value}</text>", (span[0] + span[1]) / 2.0, row - 4.0);
+                    let _ = writeln!(
+                        svg,
+                        "<text x=\"{:.1}\" y=\"{:.1}\" {text}>{value}</text>",
+                        (span[0] + span[1]) / 2.0,
+                        row - 4.0
+                    );
                 }
             }
         }
@@ -266,19 +287,32 @@ fn document(project: &Project) -> SvgDocument {
             (left - 58.0, vec![dims.min.y, dims.max.y]),
         ] {
             let ys: Vec<f32> = stations.iter().map(|y| y_of(*y)).collect();
-            let _ = writeln!(svg, "<line x1=\"{column:.1}\" y1=\"{:.1}\" x2=\"{column:.1}\" y2=\"{:.1}\" {style}/>", ys[0], ys[ys.len() - 1]);
+            let _ = writeln!(
+                svg,
+                "<line x1=\"{column:.1}\" y1=\"{:.1}\" x2=\"{column:.1}\" y2=\"{:.1}\" {style}/>",
+                ys[0],
+                ys[ys.len() - 1]
+            );
             for y in &ys {
                 let _ = writeln!(
                     svg,
                     "<line x1=\"{:.1}\" y1=\"{y:.1}\" x2=\"{:.1}\" y2=\"{y:.1}\" {style}/><line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#3b4e63\" stroke-width=\"1.5\"/>",
-                    column - 6.0, column + 10.0, column - 4.0, y + 4.0, column + 4.0, y - 4.0
+                    column - 6.0,
+                    column + 10.0,
+                    column - 4.0,
+                    y + 4.0,
+                    column + 4.0,
+                    y - 4.0
                 );
             }
             for (pair, span) in stations.windows(2).zip(ys.windows(2)) {
                 let value = centimetres(pair[1] - pair[0]);
                 if value.len() as f32 * 7.0 + 4.0 <= span[1] - span[0] {
                     let (x, y) = (column - 4.0, (span[0] + span[1]) / 2.0);
-                    let _ = writeln!(svg, "<text x=\"{x:.1}\" y=\"{y:.1}\" transform=\"rotate(-90 {x:.1} {y:.1})\" {text}>{value}</text>");
+                    let _ = writeln!(
+                        svg,
+                        "<text x=\"{x:.1}\" y=\"{y:.1}\" transform=\"rotate(-90 {x:.1} {y:.1})\" {text}>{value}</text>"
+                    );
                 }
             }
         }

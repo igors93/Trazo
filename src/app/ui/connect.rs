@@ -14,7 +14,8 @@ fn step_title(ui: &mut Ui, number: usize, title: &str, subtitle: &str) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
         let (badge, _) = ui.allocate_exact_size(vec2(24.0, 24.0), Sense::hover());
-        ui.painter().circle_filled(badge.center(), 12.0, ACCENT_SOFT);
+        ui.painter()
+            .circle_filled(badge.center(), 12.0, ACCENT_SOFT);
         ui.painter().text(
             badge.center(),
             egui::Align2::CENTER_CENTER,

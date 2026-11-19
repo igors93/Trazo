@@ -53,10 +53,20 @@ pub enum Icon {
 }
 
 /// Draws a fixture's plan symbol fitted in `rect`.
-fn paint_fixture_icon(painter: &Painter, rect: Rect, kind: FixtureKind, ink: Color32, accent: Color32) {
+fn paint_fixture_icon(
+    painter: &Painter,
+    rect: Rect,
+    kind: FixtureKind,
+    ink: Color32,
+    accent: Color32,
+) {
     let (width, depth) = kind.default_size();
     // Tables draw chairs beyond their top.
-    let reach_y = if kind == FixtureKind::Table { depth + 0.9 } else { depth };
+    let reach_y = if kind == FixtureKind::Table {
+        depth + 0.9
+    } else {
+        depth
+    };
     let scale = (rect.width() * 0.86 / width).min(rect.height() * 0.86 / reach_y);
     let at = |x: f32, y: f32| rect.center() + vec2(x * scale, y * scale);
     for shape in fixtures::symbol(kind, width, depth) {
@@ -145,7 +155,8 @@ impl Pen<'_> {
     }
 
     fn dot(&self, x: f32, y: f32, r: f32, color: Color32) {
-        self.painter.circle_filled(self.p(x, y), r * self.scale, color);
+        self.painter
+            .circle_filled(self.p(x, y), r * self.scale, color);
     }
 
     /// An arc around (x, y); angles in radians, clockwise on screen from +x.
@@ -214,7 +225,13 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
         Icon::Terrain => {
             pen.fill(&[(3.5, 5.0), (20.5, 5.0), (20.5, 19.0), (3.5, 19.0)], soft);
             pen.dashed(
-                &[(3.5, 5.0), (20.5, 5.0), (20.5, 19.0), (3.5, 19.0), (3.5, 5.0)],
+                &[
+                    (3.5, 5.0),
+                    (20.5, 5.0),
+                    (20.5, 19.0),
+                    (3.5, 19.0),
+                    (3.5, 5.0),
+                ],
                 3.2,
                 1.8,
                 acc_s,
@@ -232,7 +249,14 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
         }
         Icon::Room => {
             pen.fill(&[(4.0, 4.0), (20.0, 4.0), (20.0, 20.0), (4.0, 20.0)], soft);
-            pen.line(&[(9.0, 20.0), (4.0, 20.0), (4.0, 4.0), (20.0, 4.0), (20.0, 20.0), (15.0, 20.0)]);
+            pen.line(&[
+                (9.0, 20.0),
+                (4.0, 20.0),
+                (4.0, 4.0),
+                (20.0, 4.0),
+                (20.0, 20.0),
+                (15.0, 20.0),
+            ]);
             pen.accent_line(&[(9.0, 20.0), (9.0, 14.0)]);
             pen.arc(9.0, 20.0, 6.0, -FRAC_PI_2, 0.0, thin);
         }
@@ -269,18 +293,52 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
             pen.line(&path);
         }
         Icon::New => {
-            pen.line(&[(14.0, 3.0), (6.0, 3.0), (6.0, 21.0), (18.0, 21.0), (18.0, 7.0), (14.0, 3.0), (14.0, 7.0), (18.0, 7.0)]);
+            pen.line(&[
+                (14.0, 3.0),
+                (6.0, 3.0),
+                (6.0, 21.0),
+                (18.0, 21.0),
+                (18.0, 7.0),
+                (14.0, 3.0),
+                (14.0, 7.0),
+                (18.0, 7.0),
+            ]);
             pen.accent_line(&[(12.0, 10.5), (12.0, 17.5)]);
             pen.accent_line(&[(8.5, 14.0), (15.5, 14.0)]);
         }
         Icon::Open => {
-            pen.line(&[(3.0, 19.0), (3.0, 5.0), (9.0, 5.0), (11.0, 7.5), (19.0, 7.5), (19.0, 10.5)]);
-            pen.fill(&[(3.0, 19.0), (6.0, 11.0), (22.0, 11.0), (19.0, 19.0)], soft);
-            pen.closed(&[(3.0, 19.0), (6.0, 11.0), (22.0, 11.0), (19.0, 19.0)], acc_s);
+            pen.line(&[
+                (3.0, 19.0),
+                (3.0, 5.0),
+                (9.0, 5.0),
+                (11.0, 7.5),
+                (19.0, 7.5),
+                (19.0, 10.5),
+            ]);
+            pen.fill(
+                &[(3.0, 19.0), (6.0, 11.0), (22.0, 11.0), (19.0, 19.0)],
+                soft,
+            );
+            pen.closed(
+                &[(3.0, 19.0), (6.0, 11.0), (22.0, 11.0), (19.0, 19.0)],
+                acc_s,
+            );
         }
         Icon::Save => {
-            pen.closed(&[(3.5, 3.5), (16.5, 3.5), (20.5, 7.5), (20.5, 20.5), (3.5, 20.5)], ink_s);
-            pen.fill(&[(7.5, 13.5), (16.5, 13.5), (16.5, 20.5), (7.5, 20.5)], soft);
+            pen.closed(
+                &[
+                    (3.5, 3.5),
+                    (16.5, 3.5),
+                    (20.5, 7.5),
+                    (20.5, 20.5),
+                    (3.5, 20.5),
+                ],
+                ink_s,
+            );
+            pen.fill(
+                &[(7.5, 13.5), (16.5, 13.5), (16.5, 20.5), (7.5, 20.5)],
+                soft,
+            );
             pen.accent_line(&[(7.5, 20.5), (7.5, 13.5), (16.5, 13.5), (16.5, 20.5)]);
             pen.line(&[(7.5, 3.5), (7.5, 8.0), (14.5, 8.0), (14.5, 3.5)]);
         }
@@ -292,11 +350,26 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
         Icon::ExportImage => {
             pen.rect(3.0, 4.0, 21.0, 20.0, ink_s);
             pen.fill(&[(3.5, 18.5), (9.0, 12.0), (13.0, 16.0)], soft);
-            pen.accent_line(&[(3.5, 18.5), (9.0, 12.0), (13.0, 16.0), (16.0, 13.0), (20.5, 18.0)]);
+            pen.accent_line(&[
+                (3.5, 18.5),
+                (9.0, 12.0),
+                (13.0, 16.0),
+                (16.0, 13.0),
+                (20.5, 18.0),
+            ]);
             pen.dot(8.5, 8.8, 1.9, accent);
         }
         Icon::ExportPdf => {
-            pen.line(&[(14.0, 3.0), (6.0, 3.0), (6.0, 21.0), (18.0, 21.0), (18.0, 7.0), (14.0, 3.0), (14.0, 7.0), (18.0, 7.0)]);
+            pen.line(&[
+                (14.0, 3.0),
+                (6.0, 3.0),
+                (6.0, 21.0),
+                (18.0, 21.0),
+                (18.0, 7.0),
+                (14.0, 3.0),
+                (14.0, 7.0),
+                (18.0, 7.0),
+            ]);
             pen.accent_line(&[(9.0, 11.5), (15.0, 11.5)]);
             pen.accent_line(&[(9.0, 14.5), (15.0, 14.5)]);
             pen.accent_line(&[(9.0, 17.5), (13.0, 17.5)]);
@@ -332,7 +405,10 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
             pen.line(&[(5.5, 3.5), (10.0, 3.5)]);
             pen.line(&[(14.0, 3.5), (18.5, 3.5)]);
             pen.fill(&[(5.5, 3.5), (10.0, 3.5), (10.0, 7.5), (5.5, 7.5)], accent);
-            pen.fill(&[(14.0, 3.5), (18.5, 3.5), (18.5, 7.5), (14.0, 7.5)], accent);
+            pen.fill(
+                &[(14.0, 3.5), (18.5, 3.5), (18.5, 7.5), (14.0, 7.5)],
+                accent,
+            );
         }
         Icon::Ortho => {
             pen.line(&[(5.0, 3.5), (5.0, 19.0), (20.5, 19.0)]);
@@ -349,7 +425,13 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
         }
         Icon::Center => {
             pen.dashed(
-                &[(3.5, 3.5), (20.5, 3.5), (20.5, 20.5), (3.5, 20.5), (3.5, 3.5)],
+                &[
+                    (3.5, 3.5),
+                    (20.5, 3.5),
+                    (20.5, 20.5),
+                    (3.5, 20.5),
+                    (3.5, 3.5),
+                ],
                 2.6,
                 1.8,
                 ink_s,
@@ -417,7 +499,10 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
         }
         Icon::Gap => {
             pen.fill(&[(2.0, 10.0), (6.0, 10.0), (6.0, 14.0), (2.0, 14.0)], ink);
-            pen.fill(&[(18.0, 10.0), (22.0, 10.0), (22.0, 14.0), (18.0, 14.0)], ink);
+            pen.fill(
+                &[(18.0, 10.0), (22.0, 10.0), (22.0, 14.0), (18.0, 14.0)],
+                ink,
+            );
             pen.dashed(&[(6.5, 12.0), (17.5, 12.0)], 2.2, 1.6, acc_s);
         }
         Icon::Ruler => {

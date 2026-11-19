@@ -38,9 +38,8 @@ pub fn claude_desktop_config_path() -> Option<PathBuf> {
     if cfg!(windows) {
         std::env::var_os("APPDATA").map(|folder| PathBuf::from(folder).join("Claude"))
     } else if cfg!(target_os = "macos") {
-        std::env::var_os("HOME").map(|home| {
-            PathBuf::from(home).join("Library/Application Support/Claude")
-        })
+        std::env::var_os("HOME")
+            .map(|home| PathBuf::from(home).join("Library/Application Support/Claude"))
     } else {
         std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config/Claude"))
     }
@@ -122,7 +121,10 @@ mod tests {
         );
         let snippet: Value =
             serde_json::from_str(&claude_desktop_snippet(Path::new(r"C:\Apps\trazo.exe"))).unwrap();
-        assert_eq!(snippet["mcpServers"]["trazo"]["command"], r"C:\Apps\trazo.exe");
+        assert_eq!(
+            snippet["mcpServers"]["trazo"]["command"],
+            r"C:\Apps\trazo.exe"
+        );
         assert_eq!(snippet["mcpServers"]["trazo"]["args"][0], "--mcp-stdio");
     }
 

@@ -58,7 +58,11 @@ pub fn handle_text(text: &str, run: &mut ToolRunner) -> Option<String> {
 /// Answers one JSON-RPC message; `None` for notifications and responses.
 pub fn handle_message(message: &Value, run: &mut ToolRunner) -> Option<Value> {
     let Some(object) = message.as_object() else {
-        return Some(error_response(Value::Null, -32600, "Mensagem JSON-RPC inválida"));
+        return Some(error_response(
+            Value::Null,
+            -32600,
+            "Mensagem JSON-RPC inválida",
+        ));
     };
     let id = object.get("id").cloned().filter(|id| !id.is_null());
     let Some(method) = object.get("method").and_then(Value::as_str) else {
@@ -509,11 +513,17 @@ mod tests {
         assert_eq!(unique.len(), names.len());
         for tool in &tools {
             let name = tool["name"].as_str().unwrap();
-            assert!(name.chars().all(|c| c.is_ascii_lowercase() || c == '_'), "{name}");
+            assert!(
+                name.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+                "{name}"
+            );
             assert_eq!(tool["inputSchema"]["type"], "object");
             for required in tool["inputSchema"]["required"].as_array().unwrap() {
                 let key = required.as_str().unwrap();
-                assert!(tool["inputSchema"]["properties"].get(key).is_some(), "{name}.{key}");
+                assert!(
+                    tool["inputSchema"]["properties"].get(key).is_some(),
+                    "{name}.{key}"
+                );
             }
         }
         assert!(is_read_only("obter_planta") && !is_read_only("criar_comodo"));
@@ -537,15 +547,24 @@ mod tests {
         let unknown = json!({
             "jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": { "name": "apagar_disco" }
         });
-        assert_eq!(handle_message(&unknown, &mut run).unwrap()["error"]["code"], -32602);
-        assert_eq!(seen, vec![("criar_comodo".to_owned(), json!({ "nome": "Sala" }))]);
+        assert_eq!(
+            handle_message(&unknown, &mut run).unwrap()["error"]["code"],
+            -32602
+        );
+        assert_eq!(
+            seen,
+            vec![("criar_comodo".to_owned(), json!({ "nome": "Sala" }))]
+        );
     }
 
     #[test]
     fn notifications_batches_and_bad_json_are_handled() {
         let mut run = no_tools;
         assert_eq!(
-            handle_text(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#, &mut run),
+            handle_text(
+                r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#,
+                &mut run
+            ),
             None
         );
         let batch = handle_text(
@@ -563,7 +582,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(unknown["error"]["code"], -32601);
-        let listed = handle_message(&json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" }), &mut run).unwrap();
+        let listed = handle_message(
+            &json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" }),
+            &mut run,
+        )
+        .unwrap();
         assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 21);
     }
 }

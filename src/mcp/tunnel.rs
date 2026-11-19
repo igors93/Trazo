@@ -46,8 +46,14 @@ impl Tunnel {
         let state = Arc::new(Mutex::new(TunnelState::Starting));
         // cloudflared logs to stderr; read both streams so neither fills up.
         let streams: Vec<Box<dyn std::io::Read + Send>> = [
-            child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-            child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+            child
+                .stderr
+                .take()
+                .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+            child
+                .stdout
+                .take()
+                .map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
         ]
         .into_iter()
         .flatten()
@@ -121,8 +127,7 @@ pub fn tunnel_url(line: &str) -> Option<String> {
         .take_while(|c| !c.is_whitespace() && *c != '|' && *c != '"')
         .collect();
     let host = url.trim_start_matches("https://");
-    (host.ends_with(".trycloudflare.com") && host.len() > ".trycloudflare.com".len())
-        .then_some(url)
+    (host.ends_with(".trycloudflare.com") && host.len() > ".trycloudflare.com".len()).then_some(url)
 }
 
 /// `cloudflared` on the PATH or where its installers put it.
@@ -133,7 +138,11 @@ pub fn find_cloudflared() -> Option<PathBuf> {
         "cloudflared"
     };
     let on_path: Vec<PathBuf> = std::env::var_os("PATH")
-        .map(|paths| std::env::split_paths(&paths).map(|dir| dir.join(name)).collect())
+        .map(|paths| {
+            std::env::split_paths(&paths)
+                .map(|dir| dir.join(name))
+                .collect()
+        })
         .unwrap_or_default();
     let mut known = Vec::new();
     if cfg!(windows) {
@@ -223,7 +232,10 @@ mod tests {
     fn a_dropped_watch_without_an_address_reports_failure() {
         let state = Mutex::new(TunnelState::Starting);
         let log = "ERR failed to connect\nERR giving up\n";
-        watch_output(Box::new(std::io::Cursor::new(log.as_bytes().to_vec())), &state);
+        watch_output(
+            Box::new(std::io::Cursor::new(log.as_bytes().to_vec())),
+            &state,
+        );
         match state.into_inner().unwrap() {
             TunnelState::Failed(message) => assert!(message.contains("giving up")),
             other => panic!("{other:?}"),
@@ -234,7 +246,10 @@ mod tests {
     fn an_address_in_the_log_makes_the_tunnel_ready() {
         let state = Mutex::new(TunnelState::Starting);
         let log = "INF starting\nINF |  https://a-b-c.trycloudflare.com  |\nINF registered\n";
-        watch_output(Box::new(std::io::Cursor::new(log.as_bytes().to_vec())), &state);
+        watch_output(
+            Box::new(std::io::Cursor::new(log.as_bytes().to_vec())),
+            &state,
+        );
         assert_eq!(
             state.into_inner().unwrap(),
             TunnelState::Ready("https://a-b-c.trycloudflare.com".to_owned())

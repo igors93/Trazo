@@ -74,10 +74,18 @@ mod tests {
             .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Quarto")
             .unwrap();
         let dims = building_dimensions(&project).unwrap();
-        let spans: Vec<String> = dims.xs.windows(2).map(|w| centimetres(w[1] - w[0])).collect();
+        let spans: Vec<String> = dims
+            .xs
+            .windows(2)
+            .map(|w| centimetres(w[1] - w[0]))
+            .collect();
         assert_eq!(spans, ["12", "388", "12"]);
         assert_eq!(centimetres(dims.max.x - dims.min.x), "412");
-        let spans: Vec<String> = dims.ys.windows(2).map(|w| centimetres(w[1] - w[0])).collect();
+        let spans: Vec<String> = dims
+            .ys
+            .windows(2)
+            .map(|w| centimetres(w[1] - w[0]))
+            .collect();
         assert_eq!(spans, ["12", "288", "12"]);
         assert_eq!(centimetres(0.125), "12,5");
         assert!(building_dimensions(&Project::default()).is_none());

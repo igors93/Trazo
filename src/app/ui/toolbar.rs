@@ -1,10 +1,10 @@
 use super::super::{FloorPlanApp, RibbonTab, Selection, Tool, theme::*};
-use crate::domain::fixtures::FixtureKind;
 use super::icons::Icon;
 use super::widgets::{
     icon_button_sized, ribbon_button, ribbon_panel, ribbon_small, ribbon_stack, tip,
     vertical_divider,
 };
+use crate::domain::fixtures::FixtureKind;
 use crate::domain::model::OpeningKind;
 use eframe::egui::{self, Margin, PointerButton, Pos2, Sense, Stroke, Ui, vec2};
 
@@ -66,10 +66,8 @@ impl FloorPlanApp {
                 let font = if active { strong(13.0) } else { regular(13.0) };
                 let color = if active { ACCENT_TEXT } else { TEXT_2 };
                 let galley = ui.painter().layout_no_wrap(label.to_owned(), font, color);
-                let (rect, response) = ui.allocate_exact_size(
-                    vec2(galley.size().x + 26.0, 27.0),
-                    Sense::click(),
-                );
+                let (rect, response) =
+                    ui.allocate_exact_size(vec2(galley.size().x + 26.0, 27.0), Sense::click());
                 let painter = ui.painter();
                 if active && !self.ribbon_collapsed {
                     painter.rect_filled(
@@ -198,7 +196,10 @@ impl FloorPlanApp {
             ribbon_stack(ui, |ui| {
                 if ui
                     .add_enabled_ui(self.history.can_undo(), |ui| {
-                        tip(ribbon_small(ui, Icon::Undo, "Desfazer", false), "Desfazer (Ctrl+Z)")
+                        tip(
+                            ribbon_small(ui, Icon::Undo, "Desfazer", false),
+                            "Desfazer (Ctrl+Z)",
+                        )
                     })
                     .inner
                     .clicked()
@@ -207,7 +208,10 @@ impl FloorPlanApp {
                 }
                 if ui
                     .add_enabled_ui(self.history.can_redo(), |ui| {
-                        tip(ribbon_small(ui, Icon::Redo, "Refazer", false), "Refazer (Ctrl+Y)")
+                        tip(
+                            ribbon_small(ui, Icon::Redo, "Refazer", false),
+                            "Refazer (Ctrl+Y)",
+                        )
                     })
                     .inner
                     .clicked()
@@ -293,7 +297,13 @@ impl FloorPlanApp {
         )
         .replace('.', ",");
         if tip(
-            ribbon_button(ui, Icon::Fixture(kind), label, self.tool == Tool::Fixture(kind), false),
+            ribbon_button(
+                ui,
+                Icon::Fixture(kind),
+                label,
+                self.tool == Tool::Fixture(kind),
+                false,
+            ),
             &hint,
         )
         .clicked()
@@ -434,7 +444,13 @@ impl FloorPlanApp {
                 self.show_browser = !self.show_browser;
             }
             if tip(
-                ribbon_button(ui, Icon::PanelRight, "Propriedades", self.show_properties, false),
+                ribbon_button(
+                    ui,
+                    Icon::PanelRight,
+                    "Propriedades",
+                    self.show_properties,
+                    false,
+                ),
                 "Mostrar ou ocultar o painel de propriedades",
             )
             .clicked()

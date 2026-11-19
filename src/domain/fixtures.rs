@@ -256,7 +256,10 @@ pub fn symbol(kind: FixtureKind, width: f32, depth: f32) -> Vec<SymbolShape> {
     let outline = rect(-hw, -hd, hw, hd, Outline);
     let small = width.min(depth);
     match kind {
-        FixtureKind::Counter => vec![outline, line(&[(-hw, hd - 0.05), (hw, hd - 0.05)], false, Detail)],
+        FixtureKind::Counter => vec![
+            outline,
+            line(&[(-hw, hd - 0.05), (hw, hd - 0.05)], false, Detail),
+        ],
         FixtureKind::KitchenSink => {
             let basin_w = (hw - 0.1).clamp(0.08, 0.3);
             vec![
@@ -299,7 +302,11 @@ pub fn symbol(kind: FixtureKind, width: f32, depth: f32) -> Vec<SymbolShape> {
         FixtureKind::Fridge => vec![
             outline,
             line(&[(-hw, hd - 0.06), (hw, hd - 0.06)], false, Detail),
-            line(&[(hw - 0.1, -hd + 0.08), (hw - 0.1, hd - 0.12)], false, Detail),
+            line(
+                &[(hw - 0.1, -hd + 0.08), (hw - 0.1, hd - 0.12)],
+                false,
+                Detail,
+            ),
         ],
         FixtureKind::Washbasin => {
             let basins = if width >= 0.9 { 2 } else { 1 };
@@ -322,7 +329,13 @@ pub fn symbol(kind: FixtureKind, width: f32, depth: f32) -> Vec<SymbolShape> {
             let tank = (depth * 0.28).clamp(0.08, 0.2);
             vec![
                 rect(-hw, -hd, hw, -hd + tank, Outline),
-                ellipse(0.0, (-hd + tank + hd) / 2.0, hw * 0.85, (depth - tank) / 2.0, Outline),
+                ellipse(
+                    0.0,
+                    (-hd + tank + hd) / 2.0,
+                    hw * 0.85,
+                    (depth - tank) / 2.0,
+                    Outline,
+                ),
             ]
         }
         FixtureKind::Shower => vec![
@@ -370,7 +383,10 @@ mod tests {
         let expected = [(10.0, 4.7), (10.3, 5.0), (10.0, 5.3), (9.7, 5.0)];
         for (turns, (x, y)) in expected.into_iter().enumerate() {
             let world = fixture(turns as u8).to_world(back);
-            assert!((world.x - x).abs() < 1e-5 && (world.y - y).abs() < 1e-5, "{turns}: {world:?}");
+            assert!(
+                (world.x - x).abs() < 1e-5 && (world.y - y).abs() < 1e-5,
+                "{turns}: {world:?}"
+            );
         }
         assert_eq!(fixture(1).extent(), (0.6, 2.0));
     }

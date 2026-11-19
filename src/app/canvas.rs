@@ -91,7 +91,11 @@ fn paint_dimensions(painter: &Painter, view: ViewTransform, project: &Project) -
                 painter.layout_no_wrap(centimetres(pair[1] - pair[0]), font.clone(), theme::TEXT_2);
             if galley.size().x + 4.0 <= span[1] - span[0] {
                 let at = Pos2::new((span[0] + span[1]) / 2.0, row - 3.0);
-                painter.galley(at - egui::vec2(galley.size().x / 2.0, galley.size().y), galley, theme::TEXT_2);
+                painter.galley(
+                    at - egui::vec2(galley.size().x / 2.0, galley.size().y),
+                    galley,
+                    theme::TEXT_2,
+                );
             }
         }
     }
@@ -106,13 +110,22 @@ fn paint_dimensions(painter: &Painter, view: ViewTransform, project: &Project) -
             .map(|y| view.to_screen(Point::new(0.0, *y)).y)
             .collect();
         painter.line_segment(
-            [Pos2::new(column, ys[0]), Pos2::new(column, *ys.last().unwrap())],
+            [
+                Pos2::new(column, ys[0]),
+                Pos2::new(column, *ys.last().unwrap()),
+            ],
             stroke,
         );
         for y in &ys {
-            painter.line_segment([Pos2::new(column - 5.0, *y), Pos2::new(column + 8.0, *y)], stroke);
             painter.line_segment(
-                [Pos2::new(column - 3.5, y + 3.5), Pos2::new(column + 3.5, y - 3.5)],
+                [Pos2::new(column - 5.0, *y), Pos2::new(column + 8.0, *y)],
+                stroke,
+            );
+            painter.line_segment(
+                [
+                    Pos2::new(column - 3.5, y + 3.5),
+                    Pos2::new(column + 3.5, y - 3.5),
+                ],
                 tick,
             );
         }
@@ -132,8 +145,14 @@ fn paint_dimensions(painter: &Painter, view: ViewTransform, project: &Project) -
     }
     let far = view.to_screen(dims.max);
     vec![
-        Rect::from_min_max(Pos2::new(corner.x, corner.y - 62.0), Pos2::new(far.x, corner.y - 16.0)),
-        Rect::from_min_max(Pos2::new(corner.x - 62.0, corner.y), Pos2::new(corner.x - 16.0, far.y)),
+        Rect::from_min_max(
+            Pos2::new(corner.x, corner.y - 62.0),
+            Pos2::new(far.x, corner.y - 16.0),
+        ),
+        Rect::from_min_max(
+            Pos2::new(corner.x - 62.0, corner.y),
+            Pos2::new(corner.x - 16.0, far.y),
+        ),
     ]
 }
 
@@ -206,16 +225,17 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
     }
     if fixture.kind.needs_label() {
         let (x, y) = fixture.extent();
-        let galley = painter.layout_no_wrap(
-            fixture.kind.label().to_owned(),
-            theme::regular(10.5),
-            ink,
-        );
+        let galley =
+            painter.layout_no_wrap(fixture.kind.label().to_owned(), theme::regular(10.5), ink);
         let room = egui::vec2(x * view.scale - 6.0, y * view.scale - 4.0);
         if galley.size().x <= room.x && galley.size().y <= room.y {
             let center = view.to_screen(fixture.center);
             let backing = Rect::from_center_size(center, galley.size() + egui::vec2(6.0, 2.0));
-            painter.rect_filled(backing, 2.0, Color32::from_rgba_unmultiplied(255, 255, 255, 215));
+            painter.rect_filled(
+                backing,
+                2.0,
+                Color32::from_rgba_unmultiplied(255, 255, 255, 215),
+            );
             painter.galley(center - galley.size() / 2.0, galley, ink);
         }
     }
@@ -724,7 +744,10 @@ fn paint_wall(
         );
         let half_wall = wall_width / 2.0;
         for point in [start, end] {
-            painter.line_segment([point - normal * half_wall, point + normal * half_wall], jamb);
+            painter.line_segment(
+                [point - normal * half_wall, point + normal * half_wall],
+                jamb,
+            );
         }
         match opening.kind {
             OpeningKind::Door => {
@@ -784,10 +807,8 @@ fn paint_wall(
                 };
                 // Two half leaves, hinged at each jamb, swinging both ways.
                 for (hinge, toward) in [(start, 1.0), (end, -1.0)] {
-                    painter.line_segment(
-                        [hinge, hinge + normal * half],
-                        Stroke::new(2.0, leaf_color),
-                    );
+                    painter
+                        .line_segment([hinge, hinge + normal * half], Stroke::new(2.0, leaf_color));
                     let flip = if opening.flip_side { -1.0 } else { 1.0 };
                     for side in [flip, -flip] {
                         let arc: Vec<Pos2> = (0..=12)
@@ -914,7 +935,12 @@ fn outline_opening(
         start + normal * far,
         start + normal * near,
     ];
-    painter.extend(Shape::dashed_line(&corners, Stroke::new(1.2, color), 4.0, 3.0));
+    painter.extend(Shape::dashed_line(
+        &corners,
+        Stroke::new(1.2, color),
+        4.0,
+        3.0,
+    ));
 }
 
 fn wall_stroke_width(scale: f32) -> f32 {

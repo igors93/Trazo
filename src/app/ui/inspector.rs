@@ -347,9 +347,8 @@ impl FloorPlanApp {
         section(ui, "room_identity", "Identificação", |ui| {
             grid(ui, "room_identity_grid", |ui| {
                 property_label(ui, "Nome");
-                let edit = ui.add(
-                    egui::TextEdit::singleline(&mut self.room_name_text).desired_width(150.0),
-                );
+                let edit = ui
+                    .add(egui::TextEdit::singleline(&mut self.room_name_text).desired_width(150.0));
                 submit |= edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
                 ui.end_row();
             });
@@ -375,7 +374,10 @@ impl FloorPlanApp {
                 ui.end_row();
                 if let Some((min, max)) = bounds {
                     property_label(ui, "Perímetro");
-                    property_value(ui, &format_meters(2.0 * ((max.x - min.x) + (max.y - min.y))));
+                    property_value(
+                        ui,
+                        &format_meters(2.0 * ((max.x - min.x) + (max.y - min.y))),
+                    );
                     ui.end_row();
                 }
             });
@@ -492,7 +494,14 @@ impl FloorPlanApp {
                 grid(ui, "opening_swing_grid", |ui| {
                     property_label(ui, "Lado");
                     ui.horizontal(|ui| {
-                        property_value(ui, if opening.flip_side { "Invertido" } else { "Padrão" });
+                        property_value(
+                            ui,
+                            if opening.flip_side {
+                                "Invertido"
+                            } else {
+                                "Padrão"
+                            },
+                        );
                         flip.0 = secondary_button(ui, "Inverter (I)").clicked();
                     });
                     ui.end_row();
@@ -501,7 +510,11 @@ impl FloorPlanApp {
                         ui.horizontal(|ui| {
                             property_value(
                                 ui,
-                                if opening.flip_hinge { "Lado do fim" } else { "Lado do início" },
+                                if opening.flip_hinge {
+                                    "Lado do fim"
+                                } else {
+                                    "Lado do início"
+                                },
                             );
                             flip.1 = secondary_button(ui, "Trocar (Shift+I)").clicked();
                         });
@@ -668,7 +681,12 @@ impl FloorPlanApp {
     }
 
     fn project_inspector(&mut self, ui: &mut Ui) {
-        type_card(ui, Icon::Plan, "Planta baixa · Térreo", "Propriedades do projeto");
+        type_card(
+            ui,
+            Icon::Plan,
+            "Planta baixa · Térreo",
+            "Propriedades do projeto",
+        );
 
         section(ui, "project_identity", "Identificação", |ui| {
             grid(ui, "project_identity_grid", |ui| {
@@ -720,7 +738,11 @@ impl FloorPlanApp {
                     ui.end_row();
                 }
                 property_label(ui, "Área construída");
-                ui.label(RichText::new(area(built)).font(strong(13.0)).color(ACCENT_TEXT));
+                ui.label(
+                    RichText::new(area(built))
+                        .font(strong(13.0))
+                        .color(ACCENT_TEXT),
+                );
                 ui.end_row();
                 property_label(ui, "Terreno");
                 property_value(
@@ -753,7 +775,8 @@ impl FloorPlanApp {
             grid(ui, "project_masonry_grid", |ui| {
                 property_label(ui, "Material atual");
                 ui.add(
-                    egui::Label::new(RichText::new(self.project.masonry.label()).color(TEXT)).wrap(),
+                    egui::Label::new(RichText::new(self.project.masonry.label()).color(TEXT))
+                        .wrap(),
                 );
                 ui.end_row();
                 property_label(ui, "Parede acabada");
@@ -768,9 +791,13 @@ impl FloorPlanApp {
                 ui.end_row();
                 property_label(ui, "Blocos (estim.)");
                 ui.label(
-                    RichText::new(format!("{:.0} + 5% = {:.0}", blocks, (blocks * 1.05).ceil()))
-                        .font(strong(13.0))
-                        .color(ACCENT_TEXT),
+                    RichText::new(format!(
+                        "{:.0} + 5% = {:.0}",
+                        blocks,
+                        (blocks * 1.05).ceil()
+                    ))
+                    .font(strong(13.0))
+                    .color(ACCENT_TEXT),
                 );
                 ui.end_row();
             });

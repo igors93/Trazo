@@ -16,9 +16,7 @@ const RIBBON_ROW: f32 = 54.0;
 
 /// The tooltip shows whether or not the widget is enabled.
 pub fn tip(response: Response, text: &str) -> Response {
-    response
-        .on_hover_text(text)
-        .on_disabled_hover_text(text)
+    response.on_hover_text(text).on_disabled_hover_text(text)
 }
 
 /// Ink and accent tones of an icon for a control's state.
@@ -199,7 +197,10 @@ pub fn ribbon_small(ui: &mut Ui, icon: Icon, label: &str, selected: bool) -> Res
     let (ink, accent) = tones(enabled, selected);
     icons::paint(
         painter,
-        Rect::from_center_size(Pos2::new(rect.left() + 13.0, rect.center().y), vec2(16.0, 16.0)),
+        Rect::from_center_size(
+            Pos2::new(rect.left() + 13.0, rect.center().y),
+            vec2(16.0, 16.0),
+        ),
         icon,
         ink,
         accent,
@@ -228,11 +229,7 @@ pub fn ribbon_panel<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R)
             ui.set_min_height(RIBBON_ROW);
             add(ui)
         });
-        let width = row
-            .response
-            .rect
-            .width()
-            .max(title_galley.size().x + 16.0);
+        let width = row.response.rect.width().max(title_galley.size().x + 16.0);
         let (rect, _) = ui.allocate_exact_size(vec2(width, 17.0), Sense::hover());
         ui.painter().galley(
             Pos2::new(
@@ -281,7 +278,10 @@ fn menu_row(
     }
     paint_slot(
         painter,
-        Rect::from_center_size(Pos2::new(rect.left() + 15.0, rect.center().y), vec2(16.0, 16.0)),
+        Rect::from_center_size(
+            Pos2::new(rect.left() + 15.0, rect.center().y),
+            vec2(16.0, 16.0),
+        ),
         enabled,
     );
     painter.text(
@@ -359,11 +359,11 @@ pub fn menu_separator(ui: &mut Ui) {
 pub fn primary_button(ui: &mut Ui, label: &str) -> Response {
     let enabled = ui.is_enabled();
     let response = ui.add(
-        egui::Button::new(
-            RichText::new(label)
-                .font(strong(13.0))
-                .color(if enabled { Color32::WHITE } else { FAINT }),
-        )
+        egui::Button::new(RichText::new(label).font(strong(13.0)).color(if enabled {
+            Color32::WHITE
+        } else {
+            FAINT
+        }))
         .fill(if enabled { ACCENT } else { BAND })
         .stroke(Stroke::new(
             1.0,
@@ -423,8 +423,7 @@ pub fn panel_header(ui: &mut Ui, title: &str, trailing: &str) -> Rect {
 pub fn section(ui: &mut Ui, id_salt: &str, title: &str, body: impl FnOnce(&mut Ui)) {
     let id = ui.make_persistent_id(("property_section", id_salt));
     let mut open = ui.data_mut(|data| *data.get_temp_mut_or(id, true));
-    let (rect, response) =
-        ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::click());
     let response = response.on_hover_cursor(egui::CursorIcon::PointingHand);
     if response.clicked() {
         open = !open;
@@ -448,7 +447,10 @@ pub fn section(ui: &mut Ui, id_salt: &str, title: &str, body: impl FnOnce(&mut U
     }
     icons::paint(
         painter,
-        Rect::from_center_size(Pos2::new(rect.left() + 14.0, rect.center().y), vec2(13.0, 13.0)),
+        Rect::from_center_size(
+            Pos2::new(rect.left() + 14.0, rect.center().y),
+            vec2(13.0, 13.0),
+        ),
         if open {
             Icon::ChevronDown
         } else {
@@ -585,9 +587,11 @@ pub fn code_block(ui: &mut Ui, code: &str) -> bool {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
                     copy = ui
                         .add(
-                            egui::Button::new(RichText::new("Copiar").size(12.0).color(ACCENT_TEXT))
-                                .corner_radius(5)
-                                .min_size(vec2(64.0, 24.0)),
+                            egui::Button::new(
+                                RichText::new("Copiar").size(12.0).color(ACCENT_TEXT),
+                            )
+                            .corner_radius(5)
+                            .min_size(vec2(64.0, 24.0)),
                         )
                         .on_hover_cursor(egui::CursorIcon::PointingHand)
                         .clicked();
@@ -609,9 +613,7 @@ pub fn hint(ui: &mut Ui, icon: Icon, text: &str, tone: Color32) {
             ui.horizontal_top(|ui| {
                 let (rect, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
                 icons::paint(ui.painter(), rect, icon, tone, tone);
-                ui.add(
-                    egui::Label::new(RichText::new(text).size(12.0).color(TEXT_2)).wrap(),
-                );
+                ui.add(egui::Label::new(RichText::new(text).size(12.0).color(TEXT_2)).wrap());
             });
         });
 }

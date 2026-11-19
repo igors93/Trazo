@@ -2,9 +2,7 @@ use super::super::{FloorPlanApp, RibbonTab, Tool, theme::*};
 use super::icons::{self, Icon};
 use super::widgets::{MENU_WIDTH, icon_button, menu_check, menu_item, menu_separator, tip};
 use crate::domain::model::OpeningKind;
-use eframe::egui::{
-    self, Align, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Style, Ui, vec2,
-};
+use eframe::egui::{self, Align, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Style, Ui, vec2};
 
 fn menu_bar_style(style: &mut Style) {
     egui::containers::menu::menu_style(style);
@@ -31,8 +29,7 @@ impl FloorPlanApp {
             ui.menu_button("Desenhar", |ui| self.draw_menu(ui));
             ui.menu_button("Ajuda", |ui| {
                 ui.set_width(MENU_WIDTH);
-                if menu_item(ui, Some(Icon::Keyboard), "Atalhos e guia rápido", "F1").clicked()
-                {
+                if menu_item(ui, Some(Icon::Keyboard), "Atalhos e guia rápido", "F1").clicked() {
                     self.show_help = true;
                     ui.close();
                 }
@@ -92,12 +89,8 @@ impl FloorPlanApp {
             self.project.name.trim().to_owned()
         };
         let file = self.document_name();
-        let title = ui
-            .painter()
-            .layout_no_wrap(name, strong(12.5), TEXT);
-        let detail = ui
-            .painter()
-            .layout_no_wrap(file, regular(12.0), MUTED);
+        let title = ui.painter().layout_no_wrap(name, strong(12.5), TEXT);
+        let detail = ui.painter().layout_no_wrap(file, regular(12.0), MUTED);
         let width = 16.0 + 18.0 + title.size().x + 8.0 + detail.size().x + 22.0;
         let (rect, response) = ui.allocate_exact_size(vec2(width, 26.0), Sense::hover());
         let painter = ui.painter();
@@ -110,7 +103,10 @@ impl FloorPlanApp {
         );
         icons::paint(
             painter,
-            Rect::from_center_size(Pos2::new(rect.left() + 18.0, rect.center().y), vec2(15.0, 15.0)),
+            Rect::from_center_size(
+                Pos2::new(rect.left() + 18.0, rect.center().y),
+                vec2(15.0, 15.0),
+            ),
             Icon::Plan,
             TEXT_2,
             ACCENT,
@@ -267,7 +263,12 @@ impl FloorPlanApp {
             (Icon::Wall, "Parede", "P", Tool::Wall),
             (Icon::Room, "Cômodo", "C", Tool::Room),
             (Icon::Door, "Porta", "R", Tool::Opening(OpeningKind::Door)),
-            (Icon::Window, "Janela", "J", Tool::Opening(OpeningKind::Window)),
+            (
+                Icon::Window,
+                "Janela",
+                "J",
+                Tool::Opening(OpeningKind::Window),
+            ),
             (
                 Icon::SaloonDoor,
                 "Porta vai-e-vem",
@@ -318,13 +319,11 @@ fn separator(ui: &mut Ui) {
 
 /// The call to action at the right of the menu bar.
 fn export_button(ui: &mut Ui) -> egui::Response {
-    let label = ui
-        .painter()
-        .layout_no_wrap("Exportar".to_owned(), strong(12.5), egui::Color32::WHITE);
-    let (rect, response) = ui.allocate_exact_size(
-        vec2(label.size().x + 44.0, 26.0),
-        Sense::click(),
-    );
+    let label =
+        ui.painter()
+            .layout_no_wrap("Exportar".to_owned(), strong(12.5), egui::Color32::WHITE);
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(label.size().x + 44.0, 26.0), Sense::click());
     let painter = ui.painter();
     let fill = if response.is_pointer_button_down_on() || response.hovered() {
         ACCENT_STRONG
@@ -334,7 +333,10 @@ fn export_button(ui: &mut Ui) -> egui::Response {
     painter.rect_filled(rect, 6, fill);
     icons::paint(
         painter,
-        Rect::from_center_size(Pos2::new(rect.left() + 16.0, rect.center().y), vec2(15.0, 15.0)),
+        Rect::from_center_size(
+            Pos2::new(rect.left() + 16.0, rect.center().y),
+            vec2(15.0, 15.0),
+        ),
         Icon::Export,
         egui::Color32::WHITE,
         egui::Color32::WHITE,

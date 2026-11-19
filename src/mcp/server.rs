@@ -93,9 +93,8 @@ fn respond(mut request: Request, calls: &mpsc::Sender<ToolCall>, wake: &dyn Fn()
                 )
             } else {
                 let body = decode_body(bytes);
-                let mut run = |name: &str, arguments: &Value| {
-                    run_in_app(calls, wake, name, arguments)
-                };
+                let mut run =
+                    |name: &str, arguments: &Value| run_in_app(calls, wake, name, arguments);
                 match protocol::handle_text(&body, &mut run) {
                     Some(answer) if wants_event_stream(&accept) => text_response(
                         200,
@@ -138,8 +137,13 @@ fn respond(mut request: Request, calls: &mpsc::Sender<ToolCall>, wake: &dyn Fn()
 /// Bodies should be UTF-8, but command-line tools on Windows often send
 /// accented text as Latin-1; that is read as such instead of failing.
 fn decode_body(bytes: Vec<u8>) -> String {
-    String::from_utf8(bytes)
-        .unwrap_or_else(|error| error.into_bytes().iter().map(|&byte| byte as char).collect())
+    String::from_utf8(bytes).unwrap_or_else(|error| {
+        error
+            .into_bytes()
+            .iter()
+            .map(|&byte| byte as char)
+            .collect()
+    })
 }
 
 /// Clients send `Accept: application/json, text/event-stream`; one that
@@ -232,8 +236,12 @@ mod tests {
             "params": { "protocolVersion": "2025-06-18", "capabilities": {}, "clientInfo": { "name": "t", "version": "1" } }
         })
         .to_string();
-        let (status, content_type, body) =
-            http(port, "POST", "application/json, text/event-stream", &initialize);
+        let (status, content_type, body) = http(
+            port,
+            "POST",
+            "application/json, text/event-stream",
+            &initialize,
+        );
         assert_eq!(status, 200);
         assert_eq!(content_type, "application/json");
         let body: Value = serde_json::from_str(&body).unwrap();
@@ -282,7 +290,8 @@ mod tests {
         let (sender, receiver) = mpsc::channel::<ToolCall>();
         drop(receiver);
         let port = start(0, sender, || {}).unwrap();
-        let call = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"obter_planta"}}"#;
+        let call =
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"obter_planta"}}"#;
         let (_, _, body) = http(port, "POST", "application/json", call);
         let body: Value = serde_json::from_str(&body).unwrap();
         assert_eq!(body["result"]["isError"], true);

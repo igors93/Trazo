@@ -78,10 +78,7 @@ mod tests {
     use super::*;
 
     fn temp_path(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "trazo-settings-{name}-{}.json",
-            std::process::id()
-        ))
+        std::env::temp_dir().join(format!("trazo-settings-{name}-{}.json", std::process::id()))
     }
 
     #[test]

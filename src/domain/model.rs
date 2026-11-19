@@ -1211,7 +1211,10 @@ impl Project {
             return;
         };
         let length = wall.length().max(1e-4);
-        let (dx, dy) = ((wall.end.x - wall.start.x) / length, (wall.end.y - wall.start.y) / length);
+        let (dx, dy) = (
+            (wall.end.x - wall.start.x) / length,
+            (wall.end.y - wall.start.y) / length,
+        );
         // The leaf swings along (-dy, dx) unless flipped.
         let side = (point.x - wall.start.x) * -dy + (point.y - wall.start.y) * dx;
         if let Some(opening) = self.openings.iter_mut().find(|opening| opening.id == id) {
@@ -1989,7 +1992,12 @@ mod tests {
         let door = project
             .add_opening_sized(short, OpeningKind::Door, 0.5, Some(0.7))
             .unwrap();
-        let width = project.openings.iter().find(|o| o.id == door).unwrap().width();
+        let width = project
+            .openings
+            .iter()
+            .find(|o| o.id == door)
+            .unwrap()
+            .width();
         assert!((width - 0.7).abs() < 1e-6);
         assert!(
             project

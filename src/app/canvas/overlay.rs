@@ -14,7 +14,10 @@ pub const NAVIGATION_BUTTON: f32 = 30.0;
 pub fn navigation_rect(rect: Rect) -> Rect {
     let height = NAVIGATION_BUTTONS as f32 * NAVIGATION_BUTTON + 9.0 + 8.0;
     Rect::from_min_size(
-        Pos2::new(rect.right() - 12.0 - (NAVIGATION_BUTTON + 6.0), rect.top() + 12.0),
+        Pos2::new(
+            rect.right() - 12.0 - (NAVIGATION_BUTTON + 6.0),
+            rect.top() + 12.0,
+        ),
         vec2(NAVIGATION_BUTTON + 6.0, height),
     )
 }
@@ -194,7 +197,12 @@ pub fn paint_snap_marker(painter: &Painter, position: Pos2, kind: SnapKind) {
             );
         }
         SnapKind::Grid => {
-            painter.circle(position, 3.6, theme::ACCENT, Stroke::new(1.5, Color32::WHITE));
+            painter.circle(
+                position,
+                3.6,
+                theme::ACCENT,
+                Stroke::new(1.5, Color32::WHITE),
+            );
         }
         SnapKind::Face => {
             let diamond = vec![

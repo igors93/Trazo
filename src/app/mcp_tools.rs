@@ -69,9 +69,12 @@ fn required_number(args: &Value, key: &str) -> Result<f32, String> {
 
 fn element_id(args: &Value, key: &str) -> Result<u64, String> {
     let id = match args.get(key) {
-        Some(Value::Number(number)) => number
-            .as_u64()
-            .or_else(|| number.as_f64().filter(|v| v.fract() == 0.0 && *v >= 0.0).map(|v| v as u64)),
+        Some(Value::Number(number)) => number.as_u64().or_else(|| {
+            number
+                .as_f64()
+                .filter(|v| v.fract() == 0.0 && *v >= 0.0)
+                .map(|v| v as u64)
+        }),
         Some(Value::String(text)) => text.trim().parse::<u64>().ok(),
         _ => None,
     };
@@ -101,7 +104,9 @@ fn text(args: &Value, key: &str) -> Option<String> {
 fn flag(args: &Value, key: &str) -> bool {
     match args.get(key) {
         Some(Value::Bool(value)) => *value,
-        Some(Value::String(text)) => matches!(text.trim().to_lowercase().as_str(), "true" | "sim" | "1"),
+        Some(Value::String(text)) => {
+            matches!(text.trim().to_lowercase().as_str(), "true" | "sim" | "1")
+        }
         _ => false,
     }
 }
@@ -178,9 +183,16 @@ fn file_stem(name: &str) -> String {
 }
 
 fn ensure_parent(path: &Path) -> Result<(), String> {
-    if let Some(parent) = path.parent().filter(|parent| !parent.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| format!("Não foi possível criar a pasta {}: {error}", parent.display()))?;
+    if let Some(parent) = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+    {
+        std::fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "Não foi possível criar a pasta {}: {error}",
+                parent.display()
+            )
+        })?;
     }
     Ok(())
 }
@@ -251,7 +263,9 @@ impl FloorPlanApp {
                 Ok(ToolOutput::ok(text).with_structured(summary))
             }
             "imagem_da_planta" => {
-                let side = number(args, "tamanho_max")?.unwrap_or(1024.0).clamp(256.0, 2048.0);
+                let side = number(args, "tamanho_max")?
+                    .unwrap_or(1024.0)
+                    .clamp(256.0, 2048.0);
                 let png = export::png_preview(&self.project, side as u32)?;
                 Ok(ToolOutput::ok(format!(
                     "Imagem da planta \"{}\" com {} cômodos, {} paredes e {} aberturas.",
@@ -270,14 +284,17 @@ impl FloorPlanApp {
             "editar_parede" => {
                 let id = element_id(args, "id")?;
                 let length = required_number(args, "comprimento")?;
-                self.require(id, |selection| matches!(selection, Selection::Wall(_)), "parede")?;
+                self.require(
+                    id,
+                    |selection| matches!(selection, Selection::Wall(_)),
+                    "parede",
+                )?;
                 self.apply_change(None, |project| {
                     project.resize_wall_length(id, length)?;
-                    Ok(Change::new(format!(
-                        "Parede {id} agora tem {}.",
-                        format_meters(length)
-                    ))
-                    .select(Selection::Wall(id)))
+                    Ok(
+                        Change::new(format!("Parede {id} agora tem {}.", format_meters(length)))
+                            .select(Selection::Wall(id)),
+                    )
                 })
             }
             "editar_abertura" => self.tool_edit_opening(args),
@@ -345,12 +362,15 @@ impl FloorPlanApp {
                     return Err("Não há terreno: crie um com definir_terreno.".to_owned());
                 }
                 if !self.project.content_fits_terrain() {
-                    return Err("A planta não cabe no terreno; aumente o terreno primeiro.".to_owned());
+                    return Err(
+                        "A planta não cabe no terreno; aumente o terreno primeiro.".to_owned()
+                    );
                 }
-                let output = self.apply_change(Some("A planta já está centralizada."), |project| {
-                    project.center_content_on_terrain();
-                    Ok(Change::new("Planta centralizada no terreno."))
-                })?;
+                let output =
+                    self.apply_change(Some("A planta já está centralizada."), |project| {
+                        project.center_content_on_terrain();
+                        Ok(Change::new("Planta centralizada no terreno."))
+                    })?;
                 self.fit_view_requested();
                 Ok(output)
             }
@@ -395,8 +415,10 @@ impl FloorPlanApp {
                 };
                 ensure_parent(&path)?;
                 if self.write_project(path.clone()) {
-                    Ok(ToolOutput::ok(format!("Projeto salvo em {}", path.display()))
-                        .with_structured(json!({ "caminho": path.display().to_string() })))
+                    Ok(
+                        ToolOutput::ok(format!("Projeto salvo em {}", path.display()))
+                            .with_structured(json!({ "caminho": path.display().to_string() })),
+                    )
                 } else {
                     Err(self.message.clone())
                 }
@@ -418,8 +440,10 @@ impl FloorPlanApp {
                 } else {
                     export::png(&self.project, &path)?;
                 }
-                Ok(ToolOutput::ok(format!("Planta exportada em {}", path.display()))
-                    .with_structured(json!({ "caminho": path.display().to_string() })))
+                Ok(
+                    ToolOutput::ok(format!("Planta exportada em {}", path.display()))
+                        .with_structured(json!({ "caminho": path.display().to_string() })),
+                )
             }
             _ => Err(format!("Ferramenta desconhecida: {name}")),
         }
@@ -479,7 +503,11 @@ impl FloorPlanApp {
             Ok(Selection::Opening(id))
         } else if project.fixtures.iter().any(|fixture| fixture.id == id) {
             Ok(Selection::Fixture(id))
-        } else if project.terrain.as_ref().is_some_and(|terrain| terrain.id == id) {
+        } else if project
+            .terrain
+            .as_ref()
+            .is_some_and(|terrain| terrain.id == id)
+        {
             Ok(Selection::Terrain(id))
         } else {
             Err(format!(
@@ -519,7 +547,9 @@ impl FloorPlanApp {
         let width = required_number(args, "largura")?;
         let length = required_number(args, "comprimento")?;
         if width < 0.25 || length < 0.25 {
-            return Err("O terreno precisa ter pelo menos 0,25 m de largura e de comprimento.".to_owned());
+            return Err(
+                "O terreno precisa ter pelo menos 0,25 m de largura e de comprimento.".to_owned(),
+            );
         }
         let (min, max) = match (number(args, "x")?, number(args, "y")?) {
             (Some(x), Some(y)) => (to_model(x, y + length), to_model(x + width, y)),
@@ -570,7 +600,9 @@ impl FloorPlanApp {
         let width = required_number(args, "largura")?;
         let length = required_number(args, "comprimento")?;
         if width < 0.5 || length < 0.5 {
-            return Err("O cômodo precisa ter pelo menos 0,50 m de largura e de comprimento.".to_owned());
+            return Err(
+                "O cômodo precisa ter pelo menos 0,50 m de largura e de comprimento.".to_owned(),
+            );
         }
         self.apply_change(None, |project| {
             let id = project
@@ -628,7 +660,9 @@ impl FloorPlanApp {
         };
         let position = number(args, "posicao")?.unwrap_or(0.5);
         if !(0.0..=1.0).contains(&position) {
-            return Err("'posicao' é uma fração de 0 a 1 ao longo da parede (0,5 = meio).".to_owned());
+            return Err(
+                "'posicao' é uma fração de 0 a 1 ao longo da parede (0,5 = meio).".to_owned(),
+            );
         }
         let width = number(args, "largura")?;
         if let Some(width) = width
@@ -641,7 +675,11 @@ impl FloorPlanApp {
                 format_meters(kind.max_width())
             ));
         }
-        self.require(wall_id, |selection| matches!(selection, Selection::Wall(_)), "parede")?;
+        self.require(
+            wall_id,
+            |selection| matches!(selection, Selection::Wall(_)),
+            "parede",
+        )?;
         self.apply_change(None, |project| {
             let id = project.add_opening_sized(wall_id, kind, position, width).ok_or(format!(
                 "Não há espaço para a {} nessa posição: ela não pode sobrepor outra abertura nem ficar perto demais das pontas da parede.",
@@ -669,10 +707,7 @@ impl FloorPlanApp {
             material = crate::domain::masonry::Masonry::presets()
                 .into_iter()
                 .find(|preset| preset.name.to_lowercase() == name.to_lowercase())
-                .unwrap_or(crate::domain::masonry::Masonry {
-                    name,
-                    ..material
-                });
+                .unwrap_or(crate::domain::masonry::Masonry { name, ..material });
         }
         let cm = |key: &str| number(args, key).map(|value| value.map(|cm| cm / 100.0));
         if let Some(width) = cm("largura_bloco_cm")? {
@@ -708,7 +743,11 @@ impl FloorPlanApp {
             Ok(Change::new(format!(
                 "Alvenaria: {label}, parede acabada de {}{}.",
                 format_meters(thickness),
-                if all { ", aplicada a todas as paredes" } else { " para as novas paredes" }
+                if all {
+                    ", aplicada a todas as paredes"
+                } else {
+                    " para as novas paredes"
+                }
             )))
         })?;
         self.sync_masonry_fields();
@@ -767,7 +806,11 @@ impl FloorPlanApp {
 
     fn tool_edit_fixture(&mut self, args: &Value) -> Result<ToolOutput, String> {
         let id = element_id(args, "id")?;
-        self.require(id, |selection| matches!(selection, Selection::Fixture(_)), "objeto")?;
+        self.require(
+            id,
+            |selection| matches!(selection, Selection::Fixture(_)),
+            "objeto",
+        )?;
         let current = self
             .project
             .fixtures
@@ -784,9 +827,14 @@ impl FloorPlanApp {
             return Err("Informe x, y, rotacao, largura ou profundidade.".to_owned());
         }
         let (cx, cy) = from_model(current.center);
-        let center = (x.is_some() || y.is_some()).then(|| to_model(x.unwrap_or(cx), y.unwrap_or(cy)));
-        let size = (width.is_some() || depth.is_some())
-            .then(|| (width.unwrap_or(current.width), depth.unwrap_or(current.depth)));
+        let center =
+            (x.is_some() || y.is_some()).then(|| to_model(x.unwrap_or(cx), y.unwrap_or(cy)));
+        let size = (width.is_some() || depth.is_some()).then(|| {
+            (
+                width.unwrap_or(current.width),
+                depth.unwrap_or(current.depth),
+            )
+        });
         self.apply_change(None, |project| {
             project.update_fixture(id, center, size, turns)?;
             Ok(Change::new(format!("Objeto {id} atualizado.")).select(Selection::Fixture(id)))
@@ -795,7 +843,11 @@ impl FloorPlanApp {
 
     fn tool_edit_room(&mut self, args: &Value) -> Result<ToolOutput, String> {
         let id = element_id(args, "id")?;
-        self.require(id, |selection| matches!(selection, Selection::Room(_)), "cômodo")?;
+        self.require(
+            id,
+            |selection| matches!(selection, Selection::Room(_)),
+            "cômodo",
+        )?;
         let name = text(args, "nome");
         let width = number(args, "largura")?;
         let length = number(args, "comprimento")?;
@@ -833,19 +885,26 @@ impl FloorPlanApp {
                     ))
                 })
                 .unwrap_or_default();
-            Ok(Change::new(format!("Cômodo {id} atualizado: {summary}.")).select(Selection::Room(id)))
+            Ok(Change::new(format!("Cômodo {id} atualizado: {summary}."))
+                .select(Selection::Room(id)))
         })
     }
 
     fn tool_edit_opening(&mut self, args: &Value) -> Result<ToolOutput, String> {
         let id = element_id(args, "id")?;
-        self.require(id, |selection| matches!(selection, Selection::Opening(_)), "porta ou janela")?;
+        self.require(
+            id,
+            |selection| matches!(selection, Selection::Opening(_)),
+            "porta ou janela",
+        )?;
         let width = number(args, "largura")?;
         let position = number(args, "posicao")?;
         let flip_side = flag(args, "inverter_lado");
         let flip_hinge = flag(args, "inverter_dobradica");
         if width.is_none() && position.is_none() && !flip_side && !flip_hinge {
-            return Err("Informe largura, posicao, inverter_lado ou inverter_dobradica.".to_owned());
+            return Err(
+                "Informe largura, posicao, inverter_lado ou inverter_dobradica.".to_owned(),
+            );
         }
         if position.is_some_and(|position| !(0.0..=1.0).contains(&position)) {
             return Err("'posicao' é uma fração de 0 a 1 ao longo da parede.".to_owned());
@@ -859,7 +918,9 @@ impl FloorPlanApp {
                     .openings
                     .iter()
                     .find(|opening| opening.id == id)
-                    .and_then(|opening| project.walls.iter().find(|wall| wall.id == opening.wall_id))
+                    .and_then(|opening| {
+                        project.walls.iter().find(|wall| wall.id == opening.wall_id)
+                    })
                     .cloned()
                     .ok_or("A parede dessa abertura não existe.")?;
                 let target = Point::new(
@@ -1067,7 +1128,11 @@ mod tests {
     #[test]
     fn builds_a_plan_in_the_assistants_coordinates() {
         let mut app = app();
-        ok(&mut app, "definir_terreno", json!({ "largura": 12, "comprimento": 25 }));
+        ok(
+            &mut app,
+            "definir_terreno",
+            json!({ "largura": 12, "comprimento": 25 }),
+        );
         let sala = ok(
             &mut app,
             "criar_comodo",
@@ -1139,7 +1204,10 @@ mod tests {
         assert_eq!(placed["rotacao"], 270);
         let half = round(crate::domain::masonry::LEGACY_THICKNESS / 2.0);
         assert!((placed["centro"]["x"].as_f64().unwrap() - (half + 0.3)).abs() < 1e-3);
-        assert_eq!(plan["espessura_parede_m"], round(crate::domain::masonry::LEGACY_THICKNESS));
+        assert_eq!(
+            plan["espessura_parede_m"],
+            round(crate::domain::masonry::LEGACY_THICKNESS)
+        );
 
         ok(
             &mut app,
@@ -1149,8 +1217,22 @@ mod tests {
         let edited = &app.plan_summary()["objetos"][0];
         assert_eq!(edited["largura"], 1.2);
         assert_eq!(edited["rotacao"], 90);
-        assert!(run(&mut app, "inserir_objeto", json!({ "tipo": "piscina", "x": 1, "y": 1 })).is_error);
-        assert!(run(&mut app, "editar_objeto", json!({ "id": grill_id, "rotacao": 45 })).is_error);
+        assert!(
+            run(
+                &mut app,
+                "inserir_objeto",
+                json!({ "tipo": "piscina", "x": 1, "y": 1 })
+            )
+            .is_error
+        );
+        assert!(
+            run(
+                &mut app,
+                "editar_objeto",
+                json!({ "id": grill_id, "rotacao": 45 })
+            )
+            .is_error
+        );
 
         let wall = plan["paredes"]
             .as_array()
@@ -1164,7 +1246,10 @@ mod tests {
             "inserir_abertura",
             json!({ "parede_id": wall, "tipo": "porta_vai_e_vem", "largura": 0.7 }),
         );
-        assert_eq!(app.plan_summary()["aberturas"][0]["tipo"], "porta_vai_e_vem");
+        assert_eq!(
+            app.plan_summary()["aberturas"][0]["tipo"],
+            "porta_vai_e_vem"
+        );
         ok(&mut app, "excluir_elemento", json!({ "id": grill_id }));
         assert!(app.project.fixtures.is_empty());
 
@@ -1189,22 +1274,44 @@ mod tests {
             .unwrap()
             .id;
         assert_eq!(app.plan_summary()["aberturas"][1]["tipo"], "vao_livre");
-        assert_eq!(app.project.nearest_opening(Point::new(4.9, -3.6), 0.2), Some(gap));
-        assert_eq!(app.project.nearest_opening(Point::new(2.5, -2.0), 0.2), None);
+        assert_eq!(
+            app.project.nearest_opening(Point::new(4.9, -3.6), 0.2),
+            Some(gap)
+        );
+        assert_eq!(
+            app.project.nearest_opening(Point::new(2.5, -2.0), 0.2),
+            None
+        );
     }
 
     #[test]
     fn failed_changes_leave_no_trace() {
         let mut app = app();
-        ok(&mut app, "definir_terreno", json!({ "largura": 10, "comprimento": 10 }));
+        ok(
+            &mut app,
+            "definir_terreno",
+            json!({ "largura": 10, "comprimento": 10 }),
+        );
         let before = app.project.clone();
         let undo_depth = app.history.can_undo();
         for (name, args) in [
-            ("criar_comodo", json!({ "nome": "Fora", "x": 8, "y": 8, "largura": 5, "comprimento": 5 })),
-            ("criar_comodo", json!({ "nome": "", "x": 1, "y": 1, "largura": 2, "comprimento": 2 })),
-            ("inserir_abertura", json!({ "parede_id": 999, "tipo": "porta" })),
+            (
+                "criar_comodo",
+                json!({ "nome": "Fora", "x": 8, "y": 8, "largura": 5, "comprimento": 5 }),
+            ),
+            (
+                "criar_comodo",
+                json!({ "nome": "", "x": 1, "y": 1, "largura": 2, "comprimento": 2 }),
+            ),
+            (
+                "inserir_abertura",
+                json!({ "parede_id": 999, "tipo": "porta" }),
+            ),
             ("editar_comodo", json!({ "id": "abc" })),
-            ("criar_parede", json!({ "x1": 0, "y1": 0, "x2": "muito", "y2": 0 })),
+            (
+                "criar_parede",
+                json!({ "x1": 0, "y1": 0, "x2": "muito", "y2": 0 }),
+            ),
             ("mover_elemento", json!({ "id": 12345, "dx": 1, "dy": 0 })),
         ] {
             let output = run(&mut app, name, args);
@@ -1218,7 +1325,11 @@ mod tests {
     #[test]
     fn opening_with_an_invalid_width_is_not_left_behind() {
         let mut app = app();
-        let wall = ok(&mut app, "criar_parede", json!({ "x1": 0, "y1": 0, "x2": 6, "y2": 0 }));
+        let wall = ok(
+            &mut app,
+            "criar_parede",
+            json!({ "x1": 0, "y1": 0, "x2": 6, "y2": 0 }),
+        );
         let wall_id = wall.structured.unwrap()["id"].clone();
         let output = run(
             &mut app,
@@ -1249,11 +1360,18 @@ mod tests {
         assert_eq!(plan["comodos"][0]["comprimento"], 3.0);
 
         // A standalone wall moves up by 2 m in the assistant's coordinates.
-        let wall = ok(&mut app, "criar_parede", json!({ "x1": 10, "y1": 0, "x2": 10, "y2": 3 }));
+        let wall = ok(
+            &mut app,
+            "criar_parede",
+            json!({ "x1": 10, "y1": 0, "x2": 10, "y2": 3 }),
+        );
         let wall_id = wall.structured.unwrap()["id"].clone();
-        ok(&mut app, "mover_elemento", json!({ "id": wall_id, "dx": 0, "dy": 2 }));
-        let moved = app
-            .plan_summary()["paredes"]
+        ok(
+            &mut app,
+            "mover_elemento",
+            json!({ "id": wall_id, "dx": 0, "dy": 2 }),
+        );
+        let moved = app.plan_summary()["paredes"]
             .as_array()
             .unwrap()
             .iter()
@@ -1275,7 +1393,11 @@ mod tests {
     #[test]
     fn new_project_respects_unsaved_changes() {
         let mut app = app();
-        ok(&mut app, "criar_parede", json!({ "x1": 0, "y1": 0, "x2": 3, "y2": 0 }));
+        ok(
+            &mut app,
+            "criar_parede",
+            json!({ "x1": 0, "y1": 0, "x2": 3, "y2": 0 }),
+        );
         assert!(run(&mut app, "novo_projeto", json!({})).is_error);
         assert_eq!(app.project.walls.len(), 1);
         ok(
@@ -1336,6 +1458,9 @@ mod tests {
         std::fs::write(&first, b"x").unwrap();
         assert_eq!(unique_path(first.clone()), folder.join("planta (2).pdf"));
         let _ = std::fs::remove_dir_all(folder);
-        assert!(resolve_path("casa", "json").ends_with("Trazo/casa.json") || resolve_path("casa", "json").ends_with("Trazo\\casa.json"));
+        assert!(
+            resolve_path("casa", "json").ends_with("Trazo/casa.json")
+                || resolve_path("casa", "json").ends_with("Trazo\\casa.json")
+        );
     }
 }

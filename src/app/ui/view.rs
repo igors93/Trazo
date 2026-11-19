@@ -5,8 +5,7 @@ use super::super::{FloorPlanApp, RibbonTab, Selection, Tool, canvas::overlay, th
 use super::icons::{self, Icon};
 use super::options_bar::{tool_icon, tool_name};
 use super::widgets::{
-    MENU_WIDTH, caps_galley, icon_button_sized, menu_check, menu_item, menu_separator,
-    menu_submenu,
+    MENU_WIDTH, caps_galley, icon_button_sized, menu_check, menu_item, menu_separator, menu_submenu,
 };
 use crate::domain::{geometry::format_meters, model::OpeningKind};
 use eframe::egui::{self, Pos2, Rect, Sense, Stroke, Ui, UiBuilder, vec2};
@@ -14,11 +13,7 @@ use eframe::egui::{self, Pos2, Rect, Sense, Stroke, Ui, UiBuilder, vec2};
 impl FloorPlanApp {
     /// The view's name at the top left of the plan, on a light plate.
     pub(in crate::app) fn paint_view_label(&self, painter: &egui::Painter, rect: Rect) {
-        let title = painter.layout_no_wrap(
-            "Planta baixa · Térreo".to_owned(),
-            strong(12.5),
-            TEXT,
-        );
+        let title = painter.layout_no_wrap("Planta baixa · Térreo".to_owned(), strong(12.5), TEXT);
         let detail = painter.layout_no_wrap(
             format!("{} · metros", tool_name(self.tool)),
             regular(11.5),
@@ -34,7 +29,10 @@ impl FloorPlanApp {
         overlay::paint_floating_plate(painter, plate);
         icons::paint(
             painter,
-            Rect::from_center_size(Pos2::new(plate.left() + 16.0, plate.center().y), vec2(15.0, 15.0)),
+            Rect::from_center_size(
+                Pos2::new(plate.left() + 16.0, plate.center().y),
+                vec2(15.0, 15.0),
+            ),
             Icon::Plan,
             TEXT_2,
             ACCENT,
@@ -47,7 +45,10 @@ impl FloorPlanApp {
         );
         let x = plate.left() + 30.0 + title_width + 10.0;
         painter.line_segment(
-            [Pos2::new(x, plate.top() + 7.0), Pos2::new(x, plate.bottom() - 7.0)],
+            [
+                Pos2::new(x, plate.top() + 7.0),
+                Pos2::new(x, plate.bottom() - 7.0),
+            ],
             Stroke::new(1.0, BORDER),
         );
         icons::paint(
@@ -87,7 +88,11 @@ impl FloorPlanApp {
                 .iter()
                 .find(|opening| opening.id == id)
                 .map(|opening| {
-                    format!("{} · {}", opening.kind.label(), format_meters(opening.width()))
+                    format!(
+                        "{} · {}",
+                        opening.kind.label(),
+                        format_meters(opening.width())
+                    )
                 })
                 .unwrap_or_else(|| "Abertura".to_owned()),
             Selection::Terrain(_) => "Terreno".to_owned(),
@@ -149,7 +154,8 @@ impl FloorPlanApp {
                     self.flip_selected_door(true, false);
                     ui.close();
                 }
-                if menu_item(ui, Some(Icon::Undo), "Trocar lado da dobradiça", "Shift+I").clicked() {
+                if menu_item(ui, Some(Icon::Undo), "Trocar lado da dobradiça", "Shift+I").clicked()
+                {
                     self.flip_selected_door(false, true);
                     ui.close();
                 }
@@ -173,7 +179,12 @@ impl FloorPlanApp {
                 (Icon::Wall, "Parede", "P", Tool::Wall),
                 (Icon::Room, "Cômodo", "C", Tool::Room),
                 (Icon::Door, "Porta", "R", Tool::Opening(OpeningKind::Door)),
-                (Icon::Window, "Janela", "J", Tool::Opening(OpeningKind::Window)),
+                (
+                    Icon::Window,
+                    "Janela",
+                    "J",
+                    Tool::Opening(OpeningKind::Window),
+                ),
             ] {
                 if menu_item(ui, Some(icon), label, key).clicked() {
                     self.set_tool(tool);

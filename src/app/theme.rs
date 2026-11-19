@@ -90,7 +90,10 @@ fn install_fonts(context: &egui::Context) {
     let mut fonts = FontDefinitions::default();
     let mut load = |name: &str, candidates: &[&str]| -> bool {
         for path in candidates {
-            if let Some(bytes) = std::fs::read(path).ok().filter(|bytes| is_usable_font(bytes)) {
+            if let Some(bytes) = std::fs::read(path)
+                .ok()
+                .filter(|bytes| is_usable_font(bytes))
+            {
                 fonts
                     .font_data
                     .insert(name.to_owned(), Arc::new(FontData::from_owned(bytes)));
@@ -125,10 +128,7 @@ fn install_fonts(context: &egui::Context) {
         ],
     );
 
-    let proportional = fonts
-        .families
-        .entry(FontFamily::Proportional)
-        .or_default();
+    let proportional = fonts.families.entry(FontFamily::Proportional).or_default();
     if regular {
         proportional.insert(0, "ui-regular".to_owned());
     }
@@ -241,12 +241,7 @@ fn style() -> egui::Style {
 
     let widgets = &mut visuals.widgets;
     widgets.noninteractive = widget(PANEL, Stroke::new(1.0, BORDER), TEXT, 0.0);
-    widgets.inactive = widget(
-        rgb(0xF7FAFE),
-        Stroke::new(1.0, BORDER_STRONG),
-        TEXT,
-        0.0,
-    );
+    widgets.inactive = widget(rgb(0xF7FAFE), Stroke::new(1.0, BORDER_STRONG), TEXT, 0.0);
     widgets.hovered = widget(ACCENT_SOFTER, Stroke::new(1.0, ACCENT_RING), TEXT, 0.0);
     widgets.active = widget(ACCENT_SOFT, Stroke::new(1.0, ACCENT), ACCENT_TEXT, 0.0);
     widgets.open = widget(ACCENT_SOFTER, Stroke::new(1.0, ACCENT_RING), TEXT, 0.0);

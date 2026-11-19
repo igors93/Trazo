@@ -99,9 +99,11 @@ impl FloorPlanApp {
         if !self.snap_enabled {
             return None;
         }
-        let on_endpoint = self.project.walls.iter().any(|wall| {
-            wall.start.distance(point) < 1e-4 || wall.end.distance(point) < 1e-4
-        });
+        let on_endpoint = self
+            .project
+            .walls
+            .iter()
+            .any(|wall| wall.start.distance(point) < 1e-4 || wall.end.distance(point) < 1e-4);
         Some(if on_endpoint {
             SnapKind::Endpoint
         } else {
@@ -308,18 +310,22 @@ impl FloorPlanApp {
             && let Some(point) = snapped
         {
             match self.tool {
-                Tool::Wall | Tool::Room | Tool::Terrain | Tool::Measure => match self.creation_state {
-                    CreationState::Idle => {
-                        self.creation_state = CreationState::WaitingSecondPoint { start: point };
-                        self.message =
-                            "Agora clique no segundo ponto para concluir. Esc cancela.".to_owned();
+                Tool::Wall | Tool::Room | Tool::Terrain | Tool::Measure => {
+                    match self.creation_state {
+                        CreationState::Idle => {
+                            self.creation_state =
+                                CreationState::WaitingSecondPoint { start: point };
+                            self.message =
+                                "Agora clique no segundo ponto para concluir. Esc cancela."
+                                    .to_owned();
+                        }
+                        CreationState::WaitingSecondPoint { start } => {
+                            self.complete_creation(start, point);
+                            self.creation_state = CreationState::Idle;
+                        }
+                        CreationState::Dragging { .. } => {}
                     }
-                    CreationState::WaitingSecondPoint { start } => {
-                        self.complete_creation(start, point);
-                        self.creation_state = CreationState::Idle;
-                    }
-                    CreationState::Dragging { .. } => {}
-                },
+                }
                 Tool::Opening(kind) => self.add_opening_at(point, kind),
                 Tool::Fixture(kind) => {
                     if let Some(raw) = world {
@@ -587,10 +593,7 @@ impl FloorPlanApp {
             Selection::Terrain(id) => self.project.move_terrain(id, delta),
             Selection::Fixture(id) => self.project.move_fixture(id, delta),
             Selection::Opening(id) => {
-                let target = Point::new(
-                    point.x - drag.grab_offset.x,
-                    point.y - drag.grab_offset.y,
-                );
+                let target = Point::new(point.x - drag.grab_offset.x, point.y - drag.grab_offset.y);
                 self.project.move_opening_along_wall(id, target);
             }
         }
@@ -615,7 +618,11 @@ impl FloorPlanApp {
     /// faces that matter on site (wall corners and faces with their real
     /// thickness, door and window jambs, fixtures, the terrain), else on a
     /// 5 cm grid. F8 keeps it horizontal or vertical.
-    pub(super) fn measure_snap(&self, point: Point, start: Option<Point>) -> (Point, Option<SnapKind>) {
+    pub(super) fn measure_snap(
+        &self,
+        point: Point,
+        start: Option<Point>,
+    ) -> (Point, Option<SnapKind>) {
         let threshold = (12.0 / self.scale).clamp(0.03, 0.4);
         let mut best: Option<(Point, f32)> = None;
         let mut consider = |candidate: Point| {
@@ -634,7 +641,10 @@ impl FloorPlanApp {
                 continue;
             }
             let half = wall.thickness() / 2.0;
-            let along = ((wall.end.x - wall.start.x) / length, (wall.end.y - wall.start.y) / length);
+            let along = (
+                (wall.end.x - wall.start.x) / length,
+                (wall.end.y - wall.start.y) / length,
+            );
             let normal = (-along.1, along.0);
             for (end, outward) in [(wall.start, -1.0), (wall.end, 1.0)] {
                 consider(end);
@@ -644,7 +654,8 @@ impl FloorPlanApp {
                 }
             }
             // The nearest point on either face, for clear spans.
-            let (foot, t) = crate::domain::geometry::nearest_point_on_segment(point, wall.start, wall.end);
+            let (foot, t) =
+                crate::domain::geometry::nearest_point_on_segment(point, wall.start, wall.end);
             if (0.0..=1.0).contains(&t) {
                 let side = (point.x - foot.x) * normal.0 + (point.y - foot.y) * normal.1;
                 if side.abs() > 1e-6 {
@@ -655,12 +666,18 @@ impl FloorPlanApp {
         for opening in &self.project.openings {
             let (Some(center), Some(wall)) = (
                 self.opening_center(opening.id),
-                self.project.walls.iter().find(|wall| wall.id == opening.wall_id),
+                self.project
+                    .walls
+                    .iter()
+                    .find(|wall| wall.id == opening.wall_id),
             ) else {
                 continue;
             };
             let length = wall.length().max(1e-4);
-            let along = ((wall.end.x - wall.start.x) / length, (wall.end.y - wall.start.y) / length);
+            let along = (
+                (wall.end.x - wall.start.x) / length,
+                (wall.end.y - wall.start.y) / length,
+            );
             let normal = (-along.1, along.0);
             for end in [-1.0, 1.0] {
                 for side in [-1.0, 0.0, 1.0] {
@@ -744,7 +761,10 @@ mod tests {
         assert_eq!(mostly_down, Point::new(0.0, -2.6));
 
         app.ortho_enabled = false;
-        assert_eq!(app.snap(Point::new(3.0, 0.9), Some(start)), Point::new(3.0, 0.9));
+        assert_eq!(
+            app.snap(Point::new(3.0, 0.9), Some(start)),
+            Point::new(3.0, 0.9)
+        );
     }
 
     #[test]
@@ -883,7 +903,10 @@ mod tests {
         assert_eq!(app.project, before);
         assert!(!app.history.can_undo() && !app.dirty);
         // The clear span between the faces.
-        assert!(app.message.contains(&crate::domain::geometry::format_meters(3.0 - 2.0 * half)));
+        assert!(
+            app.message
+                .contains(&crate::domain::geometry::format_meters(3.0 - 2.0 * half))
+        );
     }
 
     #[test]
@@ -923,7 +946,10 @@ mod tests {
         let mut app = FloorPlanApp::new(&context);
         app.project
             .add_wall(Point::new(0.0, 0.0), Point::new(3.0, 0.0));
-        assert_eq!(app.snap_kind(Point::new(3.0, 0.0)), Some(SnapKind::Endpoint));
+        assert_eq!(
+            app.snap_kind(Point::new(3.0, 0.0)),
+            Some(SnapKind::Endpoint)
+        );
         assert_eq!(app.snap_kind(Point::new(1.25, 2.0)), Some(SnapKind::Grid));
         app.snap_enabled = false;
         assert_eq!(app.snap_kind(Point::new(3.0, 0.0)), None);
@@ -940,13 +966,22 @@ mod tests {
             .project
             .add_opening(wall, crate::domain::model::OpeningKind::Door, 0.5)
             .unwrap();
-        let door_wall = app.project.walls.iter().find(|w| w.id == wall).unwrap().clone();
+        let door_wall = app
+            .project
+            .walls
+            .iter()
+            .find(|w| w.id == wall)
+            .unwrap()
+            .clone();
         let middle = Point::new(
             (door_wall.start.x + door_wall.end.x) / 2.0,
             (door_wall.start.y + door_wall.end.y) / 2.0,
         );
         assert_eq!(app.pick(middle), Some(Selection::Opening(door)));
-        assert!(matches!(app.pick(Point::new(2.0, 2.0)), Some(Selection::Room(_))));
+        assert!(matches!(
+            app.pick(Point::new(2.0, 2.0)),
+            Some(Selection::Room(_))
+        ));
         assert_eq!(app.pick(Point::new(40.0, 40.0)), None);
     }
 }

@@ -250,9 +250,7 @@ impl FloorPlanApp {
 
     /// Starts the MCP server. A busy port (another Trazo window, say) only
     /// leaves MCP off; the editor works as usual.
-    fn start_mcp(
-        context: &egui::Context,
-    ) -> (Option<mpsc::Receiver<ToolCall>>, McpStatus) {
+    fn start_mcp(context: &egui::Context) -> (Option<mpsc::Receiver<ToolCall>>, McpStatus) {
         let (sender, receiver) = mpsc::channel();
         let waker = context.clone();
         match mcp::server::start(mcp::port(), sender, move || waker.request_repaint()) {
@@ -961,7 +959,14 @@ impl FloorPlanApp {
 
     /// Reads the brick or block typed in centimetres.
     fn apply_masonry_fields(&mut self) {
-        let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok().map(|cm| cm / 100.0);
+        let parse = |value: &str| {
+            value
+                .trim()
+                .replace(',', ".")
+                .parse::<f32>()
+                .ok()
+                .map(|cm| cm / 100.0)
+        };
         let (Some(width), Some(length), Some(joint), Some(plaster)) = (
             parse(&self.masonry_width_text),
             parse(&self.masonry_length_text),
@@ -997,7 +1002,11 @@ impl FloorPlanApp {
         self.record_change(previous);
         self.message = format!(
             "{} construída(s) com {}.",
-            if only.is_some() { "Parede" } else { "Todas as paredes" },
+            if only.is_some() {
+                "Parede"
+            } else {
+                "Todas as paredes"
+            },
             material.label()
         );
     }
@@ -1033,7 +1042,10 @@ impl FloorPlanApp {
             return;
         };
         let previous = self.project.clone();
-        match self.project.update_fixture(id, None, Some((width, depth)), None) {
+        match self
+            .project
+            .update_fixture(id, None, Some((width, depth)), None)
+        {
             Ok(()) => {
                 self.record_change(previous);
                 self.sync_inspector_fields();
@@ -1602,7 +1614,12 @@ impl eframe::App for FloorPlanApp {
 mod tests {
     use super::*;
 
-    fn press(app: &mut FloorPlanApp, context: &egui::Context, key: Key, modifiers: egui::Modifiers) {
+    fn press(
+        app: &mut FloorPlanApp,
+        context: &egui::Context,
+        key: Key,
+        modifiers: egui::Modifiers,
+    ) {
         // Press and release, so a later press of the same key is not a repeat.
         let event = |pressed| egui::Event::Key {
             key,
@@ -1759,7 +1776,10 @@ mod tests {
             .project
             .add_wall(Point::new(0.0, 0.0), Point::new(6.0, 0.0))
             .unwrap();
-        let door = app.project.add_opening(wall, OpeningKind::Door, 0.5).unwrap();
+        let door = app
+            .project
+            .add_opening(wall, OpeningKind::Door, 0.5)
+            .unwrap();
         app.selection = Some(Selection::Opening(door));
 
         app.nudge_selection(Point::new(1.0, 0.0));

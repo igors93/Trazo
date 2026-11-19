@@ -1,10 +1,7 @@
 use super::super::{FloorPlanApp, Selection, Tool, theme::*};
 use super::icons::{self, Icon};
 use super::widgets::{danger_button, primary_button, secondary_button, tip, toggle_pill};
-use crate::domain::{
-    geometry::format_meters,
-    model::OpeningKind,
-};
+use crate::domain::{geometry::format_meters, model::OpeningKind};
 use eframe::egui::{self, Key, Pos2, Rect, RichText, Sense, Stroke, Ui, vec2};
 
 pub(super) fn tool_icon(tool: Tool) -> Icon {
@@ -225,13 +222,25 @@ impl FloorPlanApp {
             .on_hover_text(hint)
         };
         caption(ui, "Bloco");
-        let width = field(ui, &mut self.masonry_width_text, "Largura do bloco (cm): a espessura bruta");
+        let width = field(
+            ui,
+            &mut self.masonry_width_text,
+            "Largura do bloco (cm): a espessura bruta",
+        );
         caption(ui, "×");
-        let length = field(ui, &mut self.masonry_length_text, "Comprimento do bloco (cm): o módulo da parede");
+        let length = field(
+            ui,
+            &mut self.masonry_length_text,
+            "Comprimento do bloco (cm): o módulo da parede",
+        );
         caption(ui, "cm  Junta");
         let joint = field(ui, &mut self.masonry_joint_text, "Junta de argamassa (cm)");
         caption(ui, "Reboco");
-        let plaster = field(ui, &mut self.masonry_plaster_text, "Reboco em cada face (cm)");
+        let plaster = field(
+            ui,
+            &mut self.masonry_plaster_text,
+            "Reboco em cada face (cm)",
+        );
         let typed = [width, length, joint, plaster]
             .iter()
             .any(|response| response.lost_focus());
@@ -241,7 +250,9 @@ impl FloorPlanApp {
         caption(ui, "=");
         chip(
             ui,
-            &format!("parede {:.1} cm", current.thickness() * 100.0).replace(".0 ", " ").replace('.', ","),
+            &format!("parede {:.1} cm", current.thickness() * 100.0)
+                .replace(".0 ", " ")
+                .replace('.', ","),
         )
         .on_hover_text("Espessura acabada: bloco + reboco nas duas faces");
     }
@@ -362,10 +373,20 @@ impl FloorPlanApp {
         ui.label(RichText::new(label).font(strong(13.0)).color(TEXT));
         chip(ui, &detail);
         divider(ui);
-        if tip(secondary_button(ui, "Aproximar"), "Aproximar a vista deste elemento").clicked() {
+        if tip(
+            secondary_button(ui, "Aproximar"),
+            "Aproximar a vista deste elemento",
+        )
+        .clicked()
+        {
             self.zoom_to_selection(selection);
         }
-        if tip(danger_button(ui, "Excluir"), "Excluir o elemento selecionado (Delete)").clicked() {
+        if tip(
+            danger_button(ui, "Excluir"),
+            "Excluir o elemento selecionado (Delete)",
+        )
+        .clicked()
+        {
             self.delete_selection();
         }
     }

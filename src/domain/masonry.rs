@@ -77,7 +77,8 @@ impl Masonry {
     }
 
     pub fn valid(&self) -> bool {
-        let ok = |value: f32, low: f32, high: f32| value.is_finite() && (low..=high).contains(&value);
+        let ok =
+            |value: f32, low: f32, high: f32| value.is_finite() && (low..=high).contains(&value);
         ok(self.block_width, 0.04, 0.5)
             && ok(self.block_length, 0.05, 1.0)
             && ok(self.joint, 0.0, 0.05)
@@ -98,7 +99,11 @@ impl Masonry {
         let whole = ((length + self.joint) / module + 1e-4).floor().max(0.0);
         // What is left after the whole blocks holds one more joint and the cut piece.
         let rest = length - whole * module;
-        let cut = if rest > self.joint + 0.005 { rest - self.joint } else { 0.0 };
+        let cut = if rest > self.joint + 0.005 {
+            rest - self.joint
+        } else {
+            0.0
+        };
         (whole as u32, cut)
     }
 
@@ -117,7 +122,12 @@ impl Masonry {
                 format!("{value:.1}").replace('.', ",")
             }
         };
-        format!("{} · {} × {} cm", self.name, cm(self.block_width), cm(self.block_length))
+        format!(
+            "{} · {} × {} cm",
+            self.name,
+            cm(self.block_width),
+            cm(self.block_length)
+        )
     }
 }
 

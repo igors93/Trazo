@@ -32,9 +32,8 @@ pub fn run(port: u16) {
             Ok(_) => {}
         }
         let text = String::from_utf8_lossy(&line);
-        let mut forward = |name: &str, arguments: &Value| {
-            forward_tool(port, name, arguments, &launch_window)
-        };
+        let mut forward =
+            |name: &str, arguments: &Value| forward_tool(port, name, arguments, &launch_window);
         if let Some(answer) = handle_line(&text, &mut forward) {
             // One JSON message per line; serde_json writes no raw newlines.
             if writeln!(output, "{answer}").is_err() || output.flush().is_err() {
@@ -110,9 +109,11 @@ fn ensure_window(port: u16, launch: &dyn Fn() -> Result<(), String>) -> Result<(
             return Ok(());
         }
     }
-    Err("O Trazo foi aberto, mas o servidor MCP não respondeu a tempo. Veja se outra \
+    Err(
+        "O Trazo foi aberto, mas o servidor MCP não respondeu a tempo. Veja se outra \
          janela do Trazo ou outro programa está usando a porta."
-        .to_owned())
+            .to_owned(),
+    )
 }
 
 /// Opens a Trazo window that outlives this bridge: when the client stops
@@ -236,7 +237,11 @@ mod tests {
         let answer: Value = serde_json::from_str(&answer).unwrap();
         assert_eq!(answer["result"]["serverInfo"]["name"], "trazo");
         let tools: Value = serde_json::from_str(
-            &handle_line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#, &mut forward).unwrap(),
+            &handle_line(
+                r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
+                &mut forward,
+            )
+            .unwrap(),
         )
         .unwrap();
         assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 21);
@@ -252,7 +257,12 @@ mod tests {
             }
         });
         let port = server::start(0, sender, || {}).unwrap();
-        let result = forward_tool(port, "criar_comodo", &json!({ "nome": "Suíte" }), &no_launch);
+        let result = forward_tool(
+            port,
+            "criar_comodo",
+            &json!({ "nome": "Suíte" }),
+            &no_launch,
+        );
         assert_eq!(result["isError"], false);
         assert_eq!(result["content"][0]["text"], "criar_comodo \"Suíte\"");
     }
