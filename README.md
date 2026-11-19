@@ -15,7 +15,7 @@ The window opens maximized.
 A light, white and light-blue workspace laid out like CAD/BIM editors:
 
 - **Menu bar**: *Arquivo*, *Editar*, *Exibir*, *Desenhar* and *Ajuda*, each entry with its icon and shortcut; quick buttons for new, open, save, undo and redo; the project name with a dot that shows unsaved changes; and **Exportar** (PNG or PDF).
-- **Ribbon** with three tabs: *Arquitetura* (selection, terrain, walls, rooms, doors, windows, modify, drafting aids), *Vista* (navigation, grid, panels, help) and *Saída* (project files and export). Click the active tab, or the arrow at the right, to fold the ribbon and gain drawing space.
+- **Ribbon** with four tabs: *Arquitetura* (selection, terrain, walls, rooms, doors, windows, saloon doors, modify, drafting aids), *Interiores* (counters, sinks, stoves, wood stove, barbecue grill, fridge, washbasins, toilets, showers, tables and shelves), *Vista* (navigation, grid, panels, help) and *Saída* (project files, export and AI connection). Click the active tab, or the arrow at the right, to fold the ribbon and gain drawing space.
 - **Options bar**: the active tool and its settings, for example the terrain's exact width and length, wall thickness, or the default width of doors and windows.
 - **Project browser** (left): terrain, rooms, walls, doors and windows with their areas and lengths, a filter box, foldable groups, click to select and double-click to zoom to an element.
 - **Properties** (right): foldable sections for the selected element (dimensions, location, relations); with nothing selected, the project's area schedule, occupancy rate and view settings.
@@ -36,7 +36,8 @@ Grid, snapping, ortho mode, open panels and the folded ribbon are remembered bet
    - **Openings**: drag along the wall or set custom widths within the limits (doors: 0.60 m to 2.00 m; windows: 0.40 m to 4.00 m).
    - **Terrain**: resize, check the occupancy rate, or use **Centralizar planta**.
    - Move the selection with the arrow keys (0.25 m, or 1 m with `Shift`), and remove it with **Excluir** or `Delete`.
-6. Save projects (`.json`), export a high-resolution PNG or vector PDF, open existing files, or create new plans. Safe atomic file replacement with an automatic `.trazo.bak` backup, plus a background crash-recovery draft, protect your work.
+6. Furnish with the *Interiores* tab: near a straight wall, a fixture turns its back to the wall and stands against the face of the bricks (half the 0.12 m wall thickness off the wall's centre line). Fixtures can be dragged in 5 cm steps, nudged with the arrows, turned 90° with `G` and resized in Properties. A washbasin 0.90 m or wider becomes a double (shared) sink. **Porta vai-e-vem** adds double-acting saloon doors.
+7. Save projects (`.json`), export a high-resolution PNG or vector PDF, open existing files, or create new plans. Safe atomic file replacement with an automatic `.trazo.bak` backup, plus a background crash-recovery draft, protect your work.
 
 Drawing can be cancelled at any time with `Esc`, a right click, or by switching tools. Portuguese decimal commas are accepted in every field. Older project file schemas remain backward-compatible.
 
@@ -49,6 +50,7 @@ Drawing can be cancelled at any time with `Esc`, a right click, or by switching 
 | `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`) | Undo, redo |
 | `Delete` | Delete the selection |
 | Arrows / `Shift`+arrows | Move the selection 0.25 m / 1 m |
+| `G` | Turn the selected fixture (or the next one) 90° |
 | `Esc` | Cancel the current action, or clear the selection |
 | `F` | Zoom to fit the whole plan |
 | `F3` / `F7` / `F8` | Snapping, grid, ortho mode |
@@ -67,7 +69,7 @@ The server starts with the window at `http://127.0.0.1:7799/mcp` (streamable HTT
 | Claude Code | `claude mcp add --transport http trazo http://127.0.0.1:7799/mcp` |
 | ChatGPT, Claude on the web | They run in the cloud and need a public https address. **Abrir túnel** starts a free Cloudflare quick tunnel (`cloudflared`, installable from the same window with winget) and shows the connector address `https://….trycloudflare.com/mcp`; or run `cloudflared tunnel --url http://127.0.0.1:7799` yourself and add `/mcp`. Create a connector with it (in ChatGPT, in developer mode), with no authentication. |
 
-Tools: `obter_planta` (plan with ids, coordinates, sizes and areas), `imagem_da_planta` (a PNG preview), `definir_terreno`, `criar_comodo`, `criar_parede`, `inserir_abertura` (door or window), `editar_comodo`, `editar_parede`, `editar_abertura`, `mover_elemento`, `excluir_elemento`, `desfazer`, `refazer`, `centralizar_planta`, `novo_projeto`, `abrir_projeto`, `salvar_projeto` and `exportar_planta` (PDF or PNG). Coordinates are in meters with Y pointing up, as in the status bar. Files go to `Documents\Trazo` unless a full path is given.
+Tools: `obter_planta` (plan with ids, coordinates, sizes and areas), `imagem_da_planta` (a PNG preview), `definir_terreno`, `criar_comodo`, `criar_parede`, `inserir_abertura` (door, window or saloon door), `inserir_objeto` and `editar_objeto` (fixtures, optionally placed against the nearest wall), `editar_comodo`, `editar_parede`, `editar_abertura`, `mover_elemento`, `excluir_elemento`, `desfazer`, `refazer`, `centralizar_planta`, `novo_projeto`, `abrir_projeto`, `salvar_projeto` and `exportar_planta` (PDF or PNG). Coordinates are in meters with Y pointing up, as in the status bar. Files go to `Documents\Trazo` unless a full path is given.
 
 Each change runs on a copy of the project and is applied only if it succeeds, as one undo step; a failing tool explains why, so the assistant can correct itself. Opening a new or other project refuses to drop unsaved changes unless the assistant asks to discard them.
 
@@ -84,7 +86,8 @@ If Claude Desktop is using Trazo, close it before rebuilding (`cargo build --rel
 ## Structure
 
 - `src/domain/geometry.rs`: points, distances, projections, and robust polygon ear-clipping triangulation.
-- `src/domain/model.rs`: terrain, walls, rooms, openings, validation rules, and geometric operations.
+- `src/domain/model.rs`: terrain, walls, rooms, openings, fixtures, validation rules, and geometric operations.
+- `src/domain/fixtures.rs`: fixture kinds, sizes, rotation and their plan symbols, shared by the canvas, the export and the ribbon icons.
 - `src/domain/history.rs`: undo and redo stack with duplicate-state suppression.
 - `src/app/canvas.rs`: rendering grid, terrain, walls, rooms, openings, labels, hover and selection highlights, and live previews.
 - `src/app/canvas/overlay.rs`: drawing aids over the plan: graphic scale, north arrow, crosshair, snap markers.
