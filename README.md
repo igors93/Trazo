@@ -55,10 +55,31 @@ Drawing can be cancelled at any time with `Esc`, a right click, or by switching 
 | `F1` | Shortcuts and quick guide |
 | Mouse wheel / middle button / right button | Zoom at the cursor / pan / context menu |
 
+## Using Trazo from an AI assistant (MCP)
+
+Trazo includes a [Model Context Protocol](https://modelcontextprotocol.io) server, so ChatGPT, Claude and other MCP clients can read and edit the plan open on screen from plain instructions ("create a 12 × 20 m lot with a 6 × 5 m living room and a door on the left wall"). Everything the assistant does shows live in the window and can be undone with `Ctrl+Z`.
+
+The server starts with the window at `http://127.0.0.1:7799/mcp` (streamable HTTP transport). The **IA** switch in the status bar shows whether it is running; clicking it opens **Conectar uma IA**, which has everything below ready to copy. Keep Trazo open while the assistant works; only one Trazo window serves MCP at a time. Set `TRAZO_MCP_PORT` to use another port.
+
+| Client | How to connect |
+| --- | --- |
+| Claude Desktop | **Configurar Claude Desktop** in *Conectar uma IA* adds Trazo to `claude_desktop_config.json` (keeping your other settings, with a `.bak`), then restart Claude Desktop. Or add it yourself: `{"mcpServers": {"trazo": {"command": "<path>\\trazo.exe", "args": ["--mcp-stdio"]}}}`. In this mode Trazo opens its window by itself on the first tool call. |
+| Claude Code | `claude mcp add --transport http trazo http://127.0.0.1:7799/mcp` |
+| ChatGPT, Claude on the web | They run in the cloud and need a public https address. **Abrir túnel** starts a free Cloudflare quick tunnel (`cloudflared`, installable from the same window with winget) and shows the connector address `https://….trycloudflare.com/mcp`; or run `cloudflared tunnel --url http://127.0.0.1:7799` yourself and add `/mcp`. Create a connector with it (in ChatGPT, in developer mode), with no authentication. |
+
+Tools: `obter_planta` (plan with ids, coordinates, sizes and areas), `imagem_da_planta` (a PNG preview), `definir_terreno`, `criar_comodo`, `criar_parede`, `inserir_abertura` (door or window), `editar_comodo`, `editar_parede`, `editar_abertura`, `mover_elemento`, `excluir_elemento`, `desfazer`, `refazer`, `centralizar_planta`, `novo_projeto`, `abrir_projeto`, `salvar_projeto` and `exportar_planta` (PDF or PNG). Coordinates are in meters with Y pointing up, as in the status bar. Files go to `Documents\Trazo` unless a full path is given.
+
+Each change runs on a copy of the project and is applied only if it succeeds, as one undo step; a failing tool explains why, so the assistant can correct itself. Opening a new or other project refuses to drop unsaved changes unless the assistant asks to discard them.
+
+**Security.** For ease of use the server has no authentication. It only listens on this computer (`127.0.0.1`), but while a tunnel is open anyone who knows its address can read and edit the open plan, and save or export files. Close the tunnel when you are done; it also closes with Trazo.
+
+If Claude Desktop is using Trazo, close it before rebuilding (`cargo build --release`), since Windows locks the running `trazo.exe`.
+
 ## Files
 
 - Projects: any `.json` file you choose, saved atomically with a `.trazo.bak` backup.
 - Crash-recovery draft and interface preferences: `%LOCALAPPDATA%\Trazo\recovery.json` and `settings.json` (the system temporary folder when `LOCALAPPDATA` is not set).
+- Files saved or exported by an AI assistant without a full path: `Documents\Trazo`.
 
 ## Structure
 
@@ -68,10 +89,12 @@ Drawing can be cancelled at any time with `Esc`, a right click, or by switching 
 - `src/app/canvas.rs`: rendering grid, terrain, walls, rooms, openings, labels, hover and selection highlights, and live previews.
 - `src/app/canvas/overlay.rs`: drawing aids over the plan: graphic scale, north arrow, crosshair, snap markers.
 - `src/app/interaction.rs`: canvas mouse interactions, creation state machine, picking, dragging, snapping and the context menu trigger.
-- `src/app/ui/`: menu bar, ribbon, options bar, project browser, properties panel, status bar, view overlays, dialogs, icons and shared widgets.
+- `src/app/ui/`: menu bar, ribbon, options bar, project browser, properties panel, status bar, view overlays, dialogs (including *Conectar uma IA*), icons and shared widgets.
 - `src/app/theme.rs`: the white and light-blue theme, colours and system fonts.
 - `src/app/mod.rs`: application state, data protection flows, commands, and shortcuts.
 - `src/io/project_file.rs`: atomic project persistence with backup and backward-compatible deserialization.
 - `src/io/recovery.rs`: auto-save and draft recovery mechanism.
 - `src/io/settings.rs`: interface preferences kept between sessions.
-- `src/io/export.rs`: high-resolution PNG and vector PDF export via SVG rendering.
+- `src/io/export.rs`: high-resolution PNG and vector PDF export via SVG rendering, and PNG previews.
+- `src/mcp/`: the MCP server: `protocol.rs` (JSON-RPC and the tool catalogue), `server.rs` (HTTP endpoint inside the window), `bridge.rs` (`--mcp-stdio` for stdio clients), `clients.rs` (client setup) and `tunnel.rs` (public address for cloud assistants).
+- `src/app/mcp_tools.rs`: the tools themselves, run on the open project.
