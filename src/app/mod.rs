@@ -918,8 +918,11 @@ impl FloorPlanApp {
     fn handle_shortcuts(&mut self, context: &egui::Context) {
         // Canvas and toolbar widgets can hold focus without editing text.
         let editing_text = context.text_edit_focused();
+        // While a dialog is open, editing commands must not act on the
+        // project behind it; the dialog handles its own keys.
         let modal_open =
             self.pending_room.is_some() || self.pending_action.is_some() || self.show_help;
+        let blocking_dialog = self.pending_room.is_some() || self.pending_action.is_some();
         let actions = context.input(|input| {
             let pressed = |key: Key| {
                 input.events.iter().any(|event| {
@@ -950,20 +953,21 @@ impl FloorPlanApp {
             ]
             .into_iter()
             .find_map(|(key, tool)| plain(key).then_some(tool));
+            let free = !modal_open;
             ShortcutActions {
-                save: shortcut(Key::S, false),
-                open: shortcut(Key::O, false),
-                new: shortcut(Key::N, false),
-                undo: shortcut(Key::Z, false) && !editing_text,
-                redo: (shortcut(Key::Y, false) || shortcut(Key::Z, true)) && !editing_text,
-                escape: pressed(Key::Escape),
-                delete: pressed(Key::Delete) && !editing_text,
+                save: shortcut(Key::S, false) && free,
+                open: shortcut(Key::O, false) && free,
+                new: shortcut(Key::N, false) && free,
+                undo: shortcut(Key::Z, false) && !editing_text && free,
+                redo: (shortcut(Key::Y, false) || shortcut(Key::Z, true)) && !editing_text && free,
+                escape: pressed(Key::Escape) && self.pending_action.is_none(),
+                delete: pressed(Key::Delete) && !editing_text && free,
                 tool,
                 fit: plain(Key::F),
-                snap: pressed(Key::F3),
-                grid: pressed(Key::F7),
-                ortho: pressed(Key::F8),
-                help: pressed(Key::F1),
+                snap: pressed(Key::F3) && free,
+                grid: pressed(Key::F7) && free,
+                ortho: pressed(Key::F8) && free,
+                help: pressed(Key::F1) && !blocking_dialog,
             }
         });
         if actions.save {
@@ -1071,6 +1075,88 @@ impl eframe::App for FloorPlanApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn press(app: &mut FloorPlanApp, context: &egui::Context, key: Key, modifiers: egui::Modifiers) {
+        // Press and release, so a later press of the same key is not a repeat.
+        let event = |pressed| egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed,
+            repeat: false,
+            modifiers,
+        };
+        context.begin_pass(egui::RawInput {
+            events: vec![event(true), event(false)],
+            ..Default::default()
+        });
+        app.handle_shortcuts(context);
+        context.end_pass().textures_delta.clear();
+    }
+
+    #[test]
+    fn shortcuts_do_not_edit_the_project_behind_a_dialog() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let previous = app.project.clone();
+        let id = app
+            .project
+            .add_wall(Point::new(0.0, 0.0), Point::new(3.0, 0.0))
+            .unwrap();
+        app.record_change(previous);
+        app.selection = Some(Selection::Wall(id));
+        let ctrl = egui::Modifiers {
+            ctrl: true,
+            command: true,
+            ..Default::default()
+        };
+
+        // "Save changes?" is open: Delete, Esc and Ctrl+Z leave everything alone.
+        app.pending_action = Some(PendingAction::NewProject);
+        press(&mut app, &context, Key::Delete, egui::Modifiers::NONE);
+        press(&mut app, &context, Key::Escape, egui::Modifiers::NONE);
+        press(&mut app, &context, Key::Z, ctrl);
+        press(&mut app, &context, Key::P, egui::Modifiers::NONE);
+        assert_eq!(app.project.walls.len(), 1);
+        assert_eq!(app.selection, Some(Selection::Wall(id)));
+        assert_eq!(app.tool, Tool::Move);
+        assert_eq!(app.pending_action, Some(PendingAction::NewProject));
+
+        // The help is open: editing keys wait, Esc closes it.
+        app.pending_action = None;
+        app.show_help = true;
+        press(&mut app, &context, Key::Delete, egui::Modifiers::NONE);
+        press(&mut app, &context, Key::Z, ctrl);
+        assert_eq!(app.project.walls.len(), 1);
+        press(&mut app, &context, Key::Escape, egui::Modifiers::NONE);
+        assert!(!app.show_help);
+        assert_eq!(app.selection, Some(Selection::Wall(id)));
+
+        // With no dialog, the same keys work again.
+        press(&mut app, &context, Key::Delete, egui::Modifiers::NONE);
+        assert!(app.project.walls.is_empty());
+        press(&mut app, &context, Key::Z, ctrl);
+        assert_eq!(app.project.walls.len(), 1);
+    }
+
+    #[test]
+    fn letter_keys_pick_tools_and_escape_clears_the_selection() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        press(&mut app, &context, Key::P, egui::Modifiers::NONE);
+        assert_eq!(app.tool, Tool::Wall);
+        press(&mut app, &context, Key::J, egui::Modifiers::NONE);
+        assert_eq!(app.tool, Tool::Opening(OpeningKind::Window));
+        press(&mut app, &context, Key::V, egui::Modifiers::NONE);
+        assert_eq!(app.tool, Tool::Move);
+
+        let id = app
+            .project
+            .add_wall(Point::new(0.0, 0.0), Point::new(3.0, 0.0))
+            .unwrap();
+        app.selection = Some(Selection::Wall(id));
+        press(&mut app, &context, Key::Escape, egui::Modifiers::NONE);
+        assert_eq!(app.selection, None);
+    }
 
     #[test]
     fn ctrl_z_undoes_and_ctrl_y_restores_the_project() {
