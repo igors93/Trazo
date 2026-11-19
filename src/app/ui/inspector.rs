@@ -753,6 +753,24 @@ impl FloorPlanApp {
                         self.delete_selection();
                     }
                 });
+                if exists {
+                    ui.add_space(8.0);
+                    ui.horizontal_wrapped(|ui| {
+                        if secondary_button(ui, "Dividir verticalmente").clicked() {
+                            self.subdivide_terrain(true);
+                        }
+                        if secondary_button(ui, "Dividir horizontalmente").clicked() {
+                            self.subdivide_terrain(false);
+                        }
+                    });
+                    ui.add_space(6.0);
+                    hint(
+                        ui,
+                        Icon::Info,
+                        "Selecione o terreno e arraste seus vértices para criar divisas inclinadas.",
+                        ACCENT,
+                    );
+                }
                 if !exists {
                     ui.add_space(10.0);
                     hint(

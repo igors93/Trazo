@@ -198,15 +198,9 @@ impl Project {
         self.update_drawing(id, next)
     }
 
-    /// Four corners of the terrain in clockwise order: TL, TR, BR, BL.
-    pub fn terrain_corners(&self) -> Option<[Point; 4]> {
-        let t = self.terrain.as_ref()?;
-        Some([
-            t.min,
-            Point::new(t.max.x, t.min.y),
-            t.max,
-            Point::new(t.min.x, t.max.y),
-        ])
+    /// Editable boundary vertices, including legacy rectangle corners.
+    pub fn terrain_corners(&self) -> Option<Vec<Point>> {
+        Some(self.terrain.as_ref()?.outline())
     }
 
     /// Moves corner `corner` (0=TL, 1=TR, 2=BR, 3=BL) of the terrain to `to`,
@@ -219,35 +213,34 @@ impl Project {
         let Some(current) = self.terrain.as_ref() else {
             return Err("Nenhum terreno definido.".to_owned());
         };
-        let (mut min_x, mut min_y, mut max_x, mut max_y) =
-            (current.min.x, current.min.y, current.max.x, current.max.y);
-        match corner {
-            0 => {
-                min_x = target.x;
-                min_y = target.y;
-            }
-            1 => {
-                max_x = target.x;
-                min_y = target.y;
-            }
-            2 => {
-                max_x = target.x;
-                max_y = target.y;
-            }
-            3 => {
-                min_x = target.x;
-                max_y = target.y;
-            }
-            _ => return Err("Canto do terreno inválido.".to_owned()),
-        }
-        if max_x - min_x < MIN_WALL_LENGTH - POINT_TOLERANCE
-            || max_y - min_y < MIN_WALL_LENGTH - POINT_TOLERANCE
-        {
-            return Err("O terreno precisa ter pelo menos 0,25 m em cada lado.".to_owned());
-        }
         let mut next = current.clone();
-        next.min = Point::new(min_x, min_y).rounded();
-        next.max = Point::new(max_x, max_y).rounded();
+        let mut outline = next.outline();
+        let Some(vertex) = outline.get_mut(corner) else {
+            return Err("Canto do terreno inválido.".to_owned());
+        };
+        *vertex = target;
+        if !crate::domain::geometry::polygon_is_simple(&outline)
+            || crate::domain::geometry::polygon_area(&outline) < 0.25
+        {
+            return Err("A divisa não pode cruzar a si mesma nem ter menos de 0,25 m².".to_owned());
+        }
+        let min = outline
+            .iter()
+            .fold(Point::new(f64::INFINITY, f64::INFINITY), |value, point| {
+                Point::new(value.x.min(point.x), value.y.min(point.y))
+            });
+        let max = outline.iter().fold(
+            Point::new(f64::NEG_INFINITY, f64::NEG_INFINITY),
+            |value, point| Point::new(value.x.max(point.x), value.y.max(point.y)),
+        );
+        if max.x - min.x < MIN_WALL_LENGTH - POINT_TOLERANCE
+            || max.y - min.y < MIN_WALL_LENGTH - POINT_TOLERANCE
+        {
+            return Err("O terreno precisa ter pelo menos 0,25 m em cada direção.".to_owned());
+        }
+        next.min = min.rounded();
+        next.max = max.rounded();
+        next.vertices = outline;
 
         for wall in &self.walls {
             if !next.contains(wall.start) || !next.contains(wall.end) {
@@ -260,6 +253,7 @@ impl Project {
             }
         }
         self.terrain = Some(next);
+        self.lots.clear();
         Ok(())
     }
 }

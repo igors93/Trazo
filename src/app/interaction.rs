@@ -963,12 +963,7 @@ impl FloorPlanApp {
             }
         }
         if let Some(terrain) = &self.project.terrain {
-            for corner in [
-                terrain.min,
-                Point::new(terrain.max.x, terrain.min.y),
-                terrain.max,
-                Point::new(terrain.min.x, terrain.max.y),
-            ] {
+            for corner in terrain.outline() {
                 consider(corner);
             }
         }

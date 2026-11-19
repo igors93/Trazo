@@ -1384,6 +1384,36 @@ impl FloorPlanApp {
         }
     }
 
+    fn subdivide_terrain(&mut self, vertical: bool) {
+        let Some(terrain) = &self.project.terrain else {
+            self.message = "Defina o terreno antes de desmembrar.".to_owned();
+            return;
+        };
+        let margin = terrain.width().max(terrain.height()) + 1.0;
+        let (a, b) = if vertical {
+            let x = (terrain.min.x + terrain.max.x) / 2.0;
+            (
+                Point::new(x, terrain.min.y - margin),
+                Point::new(x, terrain.max.y + margin),
+            )
+        } else {
+            let y = (terrain.min.y + terrain.max.y) / 2.0;
+            (
+                Point::new(terrain.min.x - margin, y),
+                Point::new(terrain.max.x + margin, y),
+            )
+        };
+        let previous = self.project.clone();
+        match self.project.subdivide_terrain(a, b) {
+            Ok(_) => {
+                self.record_change(previous);
+                self.message =
+                    "Terreno desmembrado em dois lotes com áreas conservadas.".to_owned();
+            }
+            Err(error) => self.message = error,
+        }
+    }
+
     fn terrain_dimensions(&self) -> Option<(f64, f64)> {
         let parse = |value: &str| value.trim().replace(',', ".").parse::<f64>().ok();
         let (width, height) = (

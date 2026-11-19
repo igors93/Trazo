@@ -1004,6 +1004,8 @@ impl FloorPlanApp {
             let (x, y) = from_model(Point::new(terrain.min.x, terrain.max.y));
             json!({
                 "id": terrain.id,
+                "forma": if terrain.vertices.len() >= 3 { "poligono" } else { "retangulo" },
+                "divisas": terrain.outline().into_iter().map(xy).collect::<Vec<_>>(),
                 "x": round(x),
                 "y": round(y),
                 "largura": round(terrain.width()),

@@ -409,18 +409,26 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
     if project.category_visible(crate::domain::layers::LayerCategory::Terrain)
         && let Some(terrain) = &project.terrain
     {
-        let rect = Rect::from_two_pos(view.to_screen(terrain.min), view.to_screen(terrain.max));
+        let outline = terrain.outline();
+        let screen_outline: Vec<Pos2> =
+            outline.iter().map(|point| view.to_screen(*point)).collect();
         let selected = selection == Some(Selection::Terrain(terrain.id));
         let hovered = hover == Some(Selection::Terrain(terrain.id));
-        painter.rect_filled(
-            rect,
-            0.0,
-            if selected {
-                theme::TERRAIN_FILL_SELECTED
-            } else {
-                theme::TERRAIN_FILL
-            },
-        );
+        let fill = if selected {
+            theme::TERRAIN_FILL_SELECTED
+        } else {
+            theme::TERRAIN_FILL
+        };
+        for triangle in crate::domain::geometry::triangulate_polygon(&outline) {
+            painter.add(Shape::convex_polygon(
+                triangle
+                    .into_iter()
+                    .map(|point| view.to_screen(point))
+                    .collect(),
+                fill,
+                Stroke::NONE,
+            ));
+        }
         let (width, color) = if selected {
             (2.2, theme::SELECTION)
         } else if hovered {
@@ -428,24 +436,29 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         } else {
             (1.6, theme::TERRAIN_LINE)
         };
-        dash_dot(
-            painter,
-            &[
-                rect.left_top(),
-                rect.right_top(),
-                rect.right_bottom(),
-                rect.left_bottom(),
-                rect.left_top(),
-            ],
-            Stroke::new(width, color),
-        );
-        for corner in [
-            rect.left_top(),
-            rect.right_top(),
-            rect.right_bottom(),
-            rect.left_bottom(),
-        ] {
+        let mut closed = screen_outline.clone();
+        if let Some(first) = closed.first().copied() {
+            closed.push(first);
+        }
+        dash_dot(painter, &closed, Stroke::new(width, color));
+        for corner in screen_outline {
             painter.circle_filled(corner, 3.0, color);
+        }
+        for lot in &project.lots {
+            let mut points: Vec<Pos2> = lot
+                .vertices
+                .iter()
+                .map(|point| view.to_screen(*point))
+                .collect();
+            if let Some(first) = points.first().copied() {
+                points.push(first);
+            }
+            painter.extend(Shape::dashed_line(
+                &points,
+                Stroke::new(1.2, theme::TERRAIN_LINE),
+                7.0,
+                4.0,
+            ));
         }
     }
 

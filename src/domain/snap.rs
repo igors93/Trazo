@@ -290,16 +290,11 @@ fn collect_geometry(
     }
 
     if let Some(terrain) = &project.terrain {
-        let corners = [
-            terrain.min,
-            Point::new(terrain.max.x, terrain.min.y),
-            terrain.max,
-            Point::new(terrain.min.x, terrain.max.y),
-        ];
+        let corners = terrain.outline();
         endpoints.extend_from_slice(&corners);
-        for i in 0..4 {
+        for i in 0..corners.len() {
             let a = corners[i];
-            let b = corners[(i + 1) % 4];
+            let b = corners[(i + 1) % corners.len()];
             segments.push((a, b));
             midpoints.push(a.midpoint(b));
         }

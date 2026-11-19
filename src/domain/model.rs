@@ -9,8 +9,8 @@ use super::geometry::{
 mod auto_rooms;
 mod drawings;
 mod rooms;
-mod site;
 mod shared_walls;
+mod site;
 mod vertices;
 use super::masonry::{self, Masonry};
 
@@ -755,7 +755,7 @@ impl Project {
         }
     }
 
-    fn id(&mut self) -> u64 {
+    pub(crate) fn id(&mut self) -> u64 {
         let id = self.next_id;
 
         self.next_id += 1;
@@ -1035,6 +1035,7 @@ impl Project {
         self.normalize_precision();
         self.ensure_default_layers();
 
+        let mut discard_terrain = false;
         if let Some(terrain) = &mut self.terrain {
             if !terrain.min.is_finite() || !terrain.max.is_finite() {
                 return Err("O projeto contém coordenadas inválidas no terreno.".to_owned());
@@ -1047,14 +1048,15 @@ impl Project {
                 if (x1 - x0) < 0.25 || (y1 - y0) < 0.25 {
                     warnings
                         .push("Terreno com medidas nulas ou inválidas foi removido.".to_owned());
-                    self.terrain = None;
+                    discard_terrain = true;
                 } else {
                     terrain.min = Point::new(x0, y0);
                     terrain.max = Point::new(x1, y1);
                     warnings.push("Limites do terreno foram normalizados.".to_owned());
                 }
             }
-            if terrain.vertices.len() >= 3
+            if !discard_terrain
+                && terrain.vertices.len() >= 3
                 && (!super::geometry::polygon_is_simple(&terrain.vertices)
                     || terrain.vertices.iter().any(|point| !point.is_finite()))
             {
@@ -1065,6 +1067,10 @@ impl Project {
                         .to_owned(),
                 );
             }
+        }
+        if discard_terrain {
+            self.terrain = None;
+            self.lots.clear();
         }
 
         // 2. Referential integrity
