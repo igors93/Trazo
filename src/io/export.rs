@@ -556,6 +556,34 @@ fn document(project: &Project) -> SvgDocument {
                 }
             }
         }
+        // Section lines & detail callouts.
+        for section in &project.views.sections {
+            let (x1, y1) = point(section.start);
+            let (x2, y2) = point(section.end);
+            let tag = escaped(&section.label);
+            let _ = writeln!(
+                svg,
+                "<line x1=\"{x1:.1}\" y1=\"{y1:.1}\" x2=\"{x2:.1}\" y2=\"{y2:.1}\" stroke=\"#1c2b3c\" stroke-width=\"1.8\" stroke-dasharray=\"14 4 3 4\"/>\n\
+                 <circle cx=\"{x1:.1}\" cy=\"{y1:.1}\" r=\"10\" fill=\"#ffffff\" stroke=\"#1c2b3c\" stroke-width=\"1.5\"/><text x=\"{x1:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"10\" font-weight=\"700\" fill=\"#1c2b3c\" text-anchor=\"middle\">{tag}</text>\n\
+                 <circle cx=\"{x2:.1}\" cy=\"{y2:.1}\" r=\"10\" fill=\"#ffffff\" stroke=\"#1c2b3c\" stroke-width=\"1.5\"/><text x=\"{x2:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"10\" font-weight=\"700\" fill=\"#1c2b3c\" text-anchor=\"middle\">{tag}</text>",
+                y1 + 3.5,
+                y2 + 3.5
+            );
+        }
+        for detail in &project.views.details {
+            let (cx, cy) = point(detail.center);
+            let r = detail.radius * pixels_per_meter;
+            let tag = match &detail.target_sheet {
+                Some(s) => format!("{} ({s})", detail.label),
+                None => detail.label.clone(),
+            };
+            let _ = writeln!(
+                svg,
+                "<circle cx=\"{cx:.1}\" cy=\"{cy:.1}\" r=\"{r:.1}\" fill=\"none\" stroke=\"#c27803\" stroke-width=\"1.5\" stroke-dasharray=\"8 4\"/><text x=\"{cx:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"11\" font-weight=\"700\" fill=\"#c27803\" text-anchor=\"middle\">{}</text>",
+                cy - r - 6.0,
+                escaped(&tag)
+            );
+        }
     }
 
     let wall_width = base_wall_width;

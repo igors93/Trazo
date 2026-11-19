@@ -557,10 +557,37 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
                 NoteKind::Symbol(_) => {
                     let _ = writeln!(
                         svg,
-                        "<text x=\"{x:.2}\" y=\"{y:.2}\" font-family=\"Arial, sans-serif\" font-size=\"2.3\" font-weight=\"700\" fill=\"#1d2836\">{txt}</text>"
+                        "<text x=\"{x:.2}\" y=\"{y:.2}\" font-family=\"{font_family}\" font-size=\"2.3\" font-weight=\"700\" fill=\"{wall_color}\">{txt}</text>"
                     );
                 }
             }
+        }
+        for section in &project.views.sections {
+            let (x1, y1) = pt(section.start);
+            let (x2, y2) = pt(section.end);
+            let tag = escaped(&section.label);
+            let _ = writeln!(
+                svg,
+                "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{wall_color}\" stroke-width=\"0.35\" stroke-dasharray=\"5.0 1.4 0.9 1.4\"/>\n\
+                 <circle cx=\"{x1:.2}\" cy=\"{y1:.2}\" r=\"2.4\" fill=\"#ffffff\" stroke=\"{wall_color}\" stroke-width=\"0.30\"/><text x=\"{x1:.2}\" y=\"{:.2}\" font-family=\"{font_family}\" font-size=\"2.0\" font-weight=\"700\" fill=\"{wall_color}\" text-anchor=\"middle\">{tag}</text>\n\
+                 <circle cx=\"{x2:.2}\" cy=\"{y2:.2}\" r=\"2.4\" fill=\"#ffffff\" stroke=\"{wall_color}\" stroke-width=\"0.30\"/><text x=\"{x2:.2}\" y=\"{:.2}\" font-family=\"{font_family}\" font-size=\"2.0\" font-weight=\"700\" fill=\"{wall_color}\" text-anchor=\"middle\">{tag}</text>",
+                y1 + 0.7,
+                y2 + 0.7
+            );
+        }
+        for detail in &project.views.details {
+            let (cx, cy) = pt(detail.center);
+            let r = detail.radius * mm_per_m;
+            let tag = match &detail.target_sheet {
+                Some(s) => format!("{} ({s})", detail.label),
+                None => detail.label.clone(),
+            };
+            let _ = writeln!(
+                svg,
+                "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{r:.2}\" fill=\"none\" stroke=\"{wall_color}\" stroke-width=\"0.28\" stroke-dasharray=\"2.2 1.2\"/><text x=\"{cx:.2}\" y=\"{:.2}\" font-family=\"{font_family}\" font-size=\"2.2\" font-weight=\"700\" fill=\"{wall_color}\" text-anchor=\"middle\">{}</text>",
+                cy - r - 1.2,
+                escaped(&tag)
+            );
         }
     }
 

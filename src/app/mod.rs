@@ -43,6 +43,7 @@ enum DocDialog {
     Sheet,
     Schedules,
     Templates,
+    Views,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

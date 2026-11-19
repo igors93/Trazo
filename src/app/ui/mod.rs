@@ -17,6 +17,7 @@ mod status_bar;
 mod templates;
 mod toolbar;
 mod view;
+mod views;
 mod widgets;
 
 use super::{FloorPlanApp, theme};
@@ -98,5 +99,6 @@ impl FloorPlanApp {
         self.sheet_dialog(&context);
         self.schedules_dialog(&context);
         self.templates_dialog(&context);
+        self.views_dialog(&context);
     }
 }

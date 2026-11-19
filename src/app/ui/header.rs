@@ -283,6 +283,10 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::Schedules;
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Wall), "Cortes, fachadas e detalhes...", "").clicked() {
+            self.active_doc_dialog = super::super::DocDialog::Views;
+            ui.close();
+        }
     }
 
     pub(super) fn osnap_menu(&mut self, ui: &mut Ui) {

@@ -621,6 +621,20 @@ impl FloorPlanApp {
             {
                 self.active_doc_dialog = super::super::DocDialog::Schedules;
             }
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::Wall,
+                    "Vistas",
+                    self.active_doc_dialog == super::super::DocDialog::Views,
+                    false,
+                ),
+                "Criar e exportar cortes, fachadas e chamadas de detalhe com referências",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Views;
+            }
         });
     }
 

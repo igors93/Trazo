@@ -84,6 +84,10 @@ pub struct Project {
     #[serde(default)]
     pub doc_style: super::doc_style::DocStyle,
 
+    /// Architectural sections, facade elevations and detail callouts with sheet refs.
+    #[serde(default, skip_serializing_if = "super::views::ProjectViews::is_empty")]
+    pub views: super::views::ProjectViews,
+
     next_id: u64,
 }
 
@@ -131,6 +135,8 @@ impl Default for Project {
             schedules: super::schedules::ScheduleConfig::default(),
 
             doc_style: super::doc_style::DocStyle::default(),
+
+            views: super::views::ProjectViews::default(),
 
             next_id: 1,
         }
