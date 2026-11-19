@@ -198,50 +198,11 @@ impl FloorPlanApp {
                 })
             });
             if let Some(position) = pressed {
-                let point = view.to_world(position);
-                self.selection = self.pick(point);
-                self.item_drag = self.selection.map(|selection| ItemDrag {
-                    selection,
-                    last: if self.snap_enabled {
-                        point.snapped_to(0.25)
-                    } else {
-                        point
-                    },
-                    moved: false,
-                });
-                self.drag_initial_project = self.item_drag.as_ref().map(|_| self.project.clone());
-                self.message = Self::selection_message(self.selection).to_owned();
-                self.sync_inspector_fields();
+                self.begin_item_drag(view.to_world(position));
             }
             let primary_down = ui.input(|input| input.pointer.primary_down());
-            if primary_down && let (Some(point), Some(drag)) = (world, self.item_drag) {
-                let current = if self.snap_enabled {
-                    point.snapped_to(0.25)
-                } else {
-                    point
-                };
-                let delta = Point::new(current.x - drag.last.x, current.y - drag.last.y);
-                if delta.x != 0.0
-                    || delta.y != 0.0
-                    || matches!(drag.selection, Selection::Opening(_))
-                {
-                    match drag.selection {
-                        Selection::Wall(id) => self.project.move_wall(id, delta),
-                        Selection::Room(id) => {
-                            if !self.project.move_room(id, delta) {
-                                self.message = "Cômodo possui paredes compartilhadas. Mova as paredes individualmente para ajustar a planta.".to_owned();
-                            }
-                        }
-                        Selection::Terrain(id) => self.project.move_terrain(id, delta),
-                        Selection::Opening(id) => {
-                            self.project.move_opening_along_wall(id, point);
-                        }
-                    }
-                    if let Some(drag) = &mut self.item_drag {
-                        drag.last = current;
-                        drag.moved = true;
-                    }
-                }
+            if primary_down && let Some(point) = world {
+                self.drag_item_to(point);
             }
         }
 
@@ -392,6 +353,75 @@ impl FloorPlanApp {
         self.canvas_navigation(ui, navigation);
     }
 
+    /// Picks the element at `point` and gets ready to drag it.
+    pub(super) fn begin_item_drag(&mut self, point: Point) {
+        self.selection = self.pick(point);
+        self.item_drag = self.selection.map(|selection| {
+            // An opening keeps the spot where it was grabbed instead of
+            // jumping so that its centre sits under the pointer.
+            let grab_offset = match selection {
+                Selection::Opening(id) => self
+                    .opening_center(id)
+                    .map(|center| Point::new(point.x - center.x, point.y - center.y))
+                    .unwrap_or(Point::new(0.0, 0.0)),
+                _ => Point::new(0.0, 0.0),
+            };
+            ItemDrag {
+                selection,
+                last: self.drag_position(selection, point),
+                grab_offset,
+                moved: false,
+            }
+        });
+        self.drag_initial_project = self.item_drag.as_ref().map(|_| self.project.clone());
+        self.message = Self::selection_message(self.selection).to_owned();
+        self.sync_inspector_fields();
+    }
+
+    /// Walls, rooms and the terrain move in grid steps when snapping is on;
+    /// openings slide freely along their wall.
+    fn drag_position(&self, selection: Selection, point: Point) -> Point {
+        if self.snap_enabled && !matches!(selection, Selection::Opening(_)) {
+            point.snapped_to(0.25)
+        } else {
+            point
+        }
+    }
+
+    /// Moves the element being dragged as the pointer reaches `point`.
+    /// Nothing changes until the pointer actually moves, so a click only
+    /// selects.
+    pub(super) fn drag_item_to(&mut self, point: Point) {
+        let Some(drag) = self.item_drag else {
+            return;
+        };
+        let current = self.drag_position(drag.selection, point);
+        let delta = Point::new(current.x - drag.last.x, current.y - drag.last.y);
+        if delta.x == 0.0 && delta.y == 0.0 {
+            return;
+        }
+        match drag.selection {
+            Selection::Wall(id) => self.project.move_wall(id, delta),
+            Selection::Room(id) => {
+                if !self.project.move_room(id, delta) {
+                    self.message = "Cômodo possui paredes compartilhadas. Mova as paredes individualmente para ajustar a planta.".to_owned();
+                }
+            }
+            Selection::Terrain(id) => self.project.move_terrain(id, delta),
+            Selection::Opening(id) => {
+                let target = Point::new(
+                    point.x - drag.grab_offset.x,
+                    point.y - drag.grab_offset.y,
+                );
+                self.project.move_opening_along_wall(id, target);
+            }
+        }
+        if let Some(drag) = &mut self.item_drag {
+            drag.last = current;
+            drag.moved = true;
+        }
+    }
+
     /// The point a door or window will be placed at: where it is dropped
     /// when dragged from the ribbon, or the snapped click with the tool.
     /// The highlighted wall must be the one that point lands on.
@@ -441,6 +471,38 @@ mod tests {
         assert_eq!(app.opening_point(Some(raw), Some(snapped)), Some(snapped));
         app.opening_drag = Some(crate::domain::model::OpeningKind::Door);
         assert_eq!(app.opening_point(Some(raw), Some(snapped)), Some(raw));
+    }
+
+    #[test]
+    fn clicking_an_opening_off_centre_selects_it_without_moving_it() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let wall = app
+            .project
+            .add_wall(Point::new(0.0, 0.0), Point::new(6.0, 0.0))
+            .unwrap();
+        let door = app
+            .project
+            .add_opening(wall, crate::domain::model::OpeningKind::Door, 0.5)
+            .unwrap();
+        let before = app.project.clone();
+
+        // Grab the door 0,3 m right of its centre (3, 0) and release.
+        let grab = Point::new(3.3, 0.05);
+        app.begin_item_drag(grab);
+        assert_eq!(app.selection, Some(Selection::Opening(door)));
+        app.drag_item_to(grab);
+        app.commit_item_drag();
+        assert_eq!(app.project, before);
+        assert!(!app.dirty && !app.history.can_undo());
+
+        // Dragging 1 m keeps the grab offset: the centre moves 1 m, to 4 m.
+        app.begin_item_drag(grab);
+        app.drag_item_to(Point::new(4.3, 0.05));
+        app.commit_item_drag();
+        let center = app.opening_center(door).unwrap();
+        assert!((center.x - 4.0).abs() < 1e-3, "{center:?}");
+        assert!(app.dirty && app.history.can_undo());
     }
 
     #[test]

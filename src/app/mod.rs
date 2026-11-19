@@ -51,6 +51,8 @@ enum Selection {
 struct ItemDrag {
     selection: Selection,
     last: Point,
+    /// Where an opening was grabbed, relative to its centre.
+    grab_offset: Point,
     moved: bool,
 }
 
@@ -570,15 +572,7 @@ impl FloorPlanApp {
             }
             Selection::Opening(id) => {
                 let opening = self.project.openings.iter().find(|o| o.id == id)?;
-                let wall = self
-                    .project
-                    .walls
-                    .iter()
-                    .find(|wall| wall.id == opening.wall_id)?;
-                let center = Point::new(
-                    wall.start.x + (wall.end.x - wall.start.x) * opening.t,
-                    wall.start.y + (wall.end.y - wall.start.y) * opening.t,
-                );
+                let center = self.opening_center(id)?;
                 let half = opening.width() / 2.0 + 1.0;
                 Some(span(&[
                     Point::new(center.x - half, center.y - half),
@@ -586,6 +580,20 @@ impl FloorPlanApp {
                 ]))
             }
         }
+    }
+
+    /// The middle of an opening, on its wall's centre line.
+    fn opening_center(&self, id: u64) -> Option<Point> {
+        let opening = self.project.openings.iter().find(|o| o.id == id)?;
+        let wall = self
+            .project
+            .walls
+            .iter()
+            .find(|wall| wall.id == opening.wall_id)?;
+        Some(Point::new(
+            wall.start.x + (wall.end.x - wall.start.x) * opening.t,
+            wall.start.y + (wall.end.y - wall.start.y) * opening.t,
+        ))
     }
 
     fn selection_message(selection: Option<Selection>) -> &'static str {
@@ -1176,6 +1184,7 @@ mod tests {
         app.item_drag = Some(ItemDrag {
             selection: Selection::Wall(id),
             last: Point::new(2.0, 0.0),
+            grab_offset: Point::new(0.0, 0.0),
             moved: true,
         });
         app.project.move_wall(id, Point::new(2.0, 0.0));
