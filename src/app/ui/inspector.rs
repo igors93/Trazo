@@ -7,7 +7,7 @@ use super::widgets::{
     property_value, secondary_button, section,
 };
 use crate::domain::{
-    geometry::{Point, WALL_THICKNESS_METERS, format_meters},
+    geometry::{Point, format_meters},
     model::OpeningKind,
 };
 
@@ -214,10 +214,11 @@ impl FloorPlanApp {
             ui,
             Icon::Wall,
             "Parede",
-            &format!(
-                "Parede básica · {:.0} cm",
-                WALL_THICKNESS_METERS * 100.0
-            ),
+            &wall
+                .masonry
+                .as_ref()
+                .map(|material| material.label())
+                .unwrap_or_else(|| "Parede de 12 cm (sem material definido)".to_owned()),
         );
 
         let mut submit = false;
@@ -228,13 +229,14 @@ impl FloorPlanApp {
                 submit |= edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
                 ui.end_row();
                 property_label(ui, "Espessura");
-                property_value(ui, &format_meters(WALL_THICKNESS_METERS));
+                property_value(ui, &format_meters(wall.thickness()));
                 ui.end_row();
                 property_label(ui, "Ângulo");
                 let angle = (-(wall.end.y - wall.start.y))
                     .atan2(wall.end.x - wall.start.x)
                     .to_degrees()
-                    .rem_euclid(360.0);
+                    .rem_euclid(360.0)
+                    + 0.0;
                 property_value(ui, &format!("{angle:.1}°").replace('.', ","));
                 ui.end_row();
             });
@@ -249,6 +251,44 @@ impl FloorPlanApp {
                 ui.end_row();
             });
         });
+        let mut use_active = false;
+        section(ui, "wall_masonry", "Alvenaria", |ui| {
+            grid(ui, "wall_masonry_grid", |ui| {
+                if let Some(material) = &wall.masonry {
+                    property_label(ui, "Bloco");
+                    property_value(
+                        ui,
+                        &format!(
+                            "{:.1} × {:.1} cm, junta {:.1}",
+                            material.block_width * 100.0,
+                            material.block_length * 100.0,
+                            material.joint * 100.0
+                        )
+                        .replace(".0", "")
+                        .replace('.', ","),
+                    );
+                    ui.end_row();
+                    let (whole, cut) = material.course(wall.length());
+                    property_label(ui, "1ª fiada");
+                    property_value(
+                        ui,
+                        &if cut > 0.0 {
+                            format!("{whole} inteiros + 1 cortado de {:.0} cm", cut * 100.0)
+                        } else {
+                            format!("{whole} blocos inteiros")
+                        },
+                    );
+                    ui.end_row();
+                }
+            });
+            ui.add_space(6.0);
+            use_active = secondary_button(ui, "Usar o material atual nesta parede")
+                .on_hover_text(self.project.masonry.label())
+                .clicked();
+        });
+        if use_active {
+            self.apply_masonry_to_walls(Some(id));
+        }
         let rooms: Vec<String> = self
             .project
             .rooms
@@ -706,6 +746,51 @@ impl FloorPlanApp {
             .filter(|o| o.kind == OpeningKind::Door)
             .count();
         let windows = self.project.openings.len() - doors;
+        let (wall_area, blocks) = self.project.masonry_estimate();
+        let mut apply_all = false;
+        let mut height_submit = false;
+        section(ui, "project_masonry", "Alvenaria", |ui| {
+            grid(ui, "project_masonry_grid", |ui| {
+                property_label(ui, "Material atual");
+                ui.add(
+                    egui::Label::new(RichText::new(self.project.masonry.label()).color(TEXT)).wrap(),
+                );
+                ui.end_row();
+                property_label(ui, "Parede acabada");
+                property_value(ui, &format_meters(self.project.masonry.thickness()));
+                ui.end_row();
+                property_label(ui, "Pé-direito");
+                let height = metres_field(ui, &mut self.wall_height_text);
+                height_submit = height.lost_focus();
+                ui.end_row();
+                property_label(ui, "Área de parede");
+                property_value(ui, &area(wall_area));
+                ui.end_row();
+                property_label(ui, "Blocos (estim.)");
+                ui.label(
+                    RichText::new(format!("{:.0} + 5% = {:.0}", blocks, (blocks * 1.05).ceil()))
+                        .font(strong(13.0))
+                        .color(ACCENT_TEXT),
+                );
+                ui.end_row();
+            });
+            ui.add_space(6.0);
+            apply_all = secondary_button(ui, "Aplicar o material a todas as paredes").clicked();
+            ui.add_space(4.0);
+            hint(
+                ui,
+                Icon::Info,
+                "Estimativa: comprimento das paredes × pé-direito, menos portas e janelas. Troque o material na barra de opções da ferramenta Parede.",
+                ACCENT,
+            );
+        });
+        if apply_all {
+            self.apply_masonry_to_walls(None);
+        }
+        if height_submit {
+            self.apply_wall_height();
+        }
+
         section(ui, "project_elements", "Elementos", |ui| {
             grid(ui, "project_elements_grid", |ui| {
                 for (label, count) in [

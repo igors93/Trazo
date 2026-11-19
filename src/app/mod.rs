@@ -147,6 +147,13 @@ pub struct FloorPlanApp {
     fixture_depth_text: String,
     /// Distances measured with the ruler in this session (never saved).
     measurements: Vec<(Point, Point)>,
+    /// Walls and rooms follow the block module while drawn.
+    modulation_enabled: bool,
+    masonry_width_text: String,
+    masonry_length_text: String,
+    masonry_joint_text: String,
+    masonry_plaster_text: String,
+    wall_height_text: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -171,7 +178,7 @@ impl FloorPlanApp {
         } else {
             Self::start_mcp(context)
         };
-        Self {
+        let mut app = Self {
             project: recovered.unwrap_or_default(),
             history: History::new(),
             file_path: None,
@@ -227,7 +234,15 @@ impl FloorPlanApp {
             fixture_width_text: String::new(),
             fixture_depth_text: String::new(),
             measurements: Vec::new(),
-        }
+            modulation_enabled: preferences.modulation,
+            masonry_width_text: String::new(),
+            masonry_length_text: String::new(),
+            masonry_joint_text: String::new(),
+            masonry_plaster_text: String::new(),
+            wall_height_text: String::new(),
+        };
+        app.sync_masonry_fields();
+        app
     }
 
     /// Starts the MCP server. A busy port (another Trazo window, say) only
@@ -278,6 +293,7 @@ impl FloorPlanApp {
             show_browser: self.show_browser,
             show_properties: self.show_properties,
             ribbon_collapsed: self.ribbon_collapsed,
+            modulation: self.modulation_enabled,
         }
     }
 
@@ -447,6 +463,7 @@ impl FloorPlanApp {
         self.fit_pending = false;
         self.terrain_width_text = "5,00".to_owned();
         self.terrain_height_text = "10,00".to_owned();
+        self.sync_masonry_fields();
         self.message = "Nova planta criada.".to_owned();
     }
 
@@ -897,6 +914,110 @@ impl FloorPlanApp {
         .to_owned();
     }
 
+    /// The material fields show the active brick or block, in centimetres.
+    fn sync_masonry_fields(&mut self) {
+        let cm = |value: f32| {
+            let value = value * 100.0;
+            if (value - value.round()).abs() < 0.05 {
+                format!("{value:.0}")
+            } else {
+                format!("{value:.1}").replace('.', ",")
+            }
+        };
+        let material = &self.project.masonry;
+        self.masonry_width_text = cm(material.block_width);
+        self.masonry_length_text = cm(material.block_length);
+        self.masonry_joint_text = cm(material.joint);
+        self.masonry_plaster_text = cm(material.plaster);
+        self.wall_height_text = format!("{:.2}", self.project.wall_height).replace('.', ",");
+    }
+
+    /// Makes `material` the one new walls are built with (one undo step).
+    fn set_masonry(&mut self, material: crate::domain::masonry::Masonry) {
+        if !material.valid() {
+            self.message =
+                "Medidas de bloco inválidas: largura de 4 a 50 cm, comprimento de 5 a 100 cm, junta até 5 cm e reboco até 8 cm."
+                    .to_owned();
+            self.sync_masonry_fields();
+            return;
+        }
+        if material == self.project.masonry {
+            return;
+        }
+        let previous = self.project.clone();
+        self.project.masonry = material;
+        self.record_change(previous);
+        self.sync_masonry_fields();
+        self.message = format!(
+            "Novas paredes: {} (parede acabada de {}).",
+            self.project.masonry.label(),
+            crate::domain::geometry::format_meters(self.project.masonry.thickness())
+        );
+    }
+
+    /// Reads the brick or block typed in centimetres.
+    fn apply_masonry_fields(&mut self) {
+        let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok().map(|cm| cm / 100.0);
+        let (Some(width), Some(length), Some(joint), Some(plaster)) = (
+            parse(&self.masonry_width_text),
+            parse(&self.masonry_length_text),
+            parse(&self.masonry_joint_text),
+            parse(&self.masonry_plaster_text),
+        ) else {
+            self.message = "Informe as medidas do bloco em centímetros (ex.: 14 e 39).".to_owned();
+            return;
+        };
+        let mut material = self.project.masonry.clone();
+        let changed = (material.block_width - width).abs() > 1e-5
+            || (material.block_length - length).abs() > 1e-5;
+        material.block_width = width;
+        material.block_length = length;
+        material.joint = joint;
+        material.plaster = plaster;
+        if changed {
+            material.name = "Personalizado".to_owned();
+        }
+        self.set_masonry(material);
+    }
+
+    /// Builds the selected wall, or every wall, with the active material.
+    fn apply_masonry_to_walls(&mut self, only: Option<u64>) {
+        let material = self.project.masonry.clone();
+        let previous = self.project.clone();
+        match only {
+            Some(id) => {
+                self.project.set_wall_masonry(id, &material);
+            }
+            None => self.project.set_all_walls_masonry(&material),
+        }
+        self.record_change(previous);
+        self.message = format!(
+            "{} construída(s) com {}.",
+            if only.is_some() { "Parede" } else { "Todas as paredes" },
+            material.label()
+        );
+    }
+
+    fn apply_wall_height(&mut self) {
+        let Some(height) = self
+            .wall_height_text
+            .trim()
+            .replace(',', ".")
+            .parse::<f32>()
+            .ok()
+            .filter(|height| (1.5..=10.0).contains(height))
+        else {
+            self.message = "Pé-direito deve estar entre 1,50 e 10,00 m.".to_owned();
+            return;
+        };
+        if (height - self.project.wall_height).abs() < 1e-4 {
+            return;
+        }
+        let previous = self.project.clone();
+        self.project.wall_height = height;
+        self.record_change(previous);
+    }
+
     /// Applies the width and depth typed in the properties panel.
     fn apply_fixture_size(&mut self, id: u64) {
         let parse = |value: &str| value.trim().replace(',', ".").parse::<f32>().ok();
@@ -1079,6 +1200,7 @@ impl FloorPlanApp {
 
     pub fn sync_inspector_fields(&mut self) {
         self.sync_terrain_fields();
+        self.sync_masonry_fields();
         match self.selection {
             Some(Selection::Fixture(id)) => {
                 if let Some(fixture) = self.project.fixtures.iter().find(|f| f.id == id) {

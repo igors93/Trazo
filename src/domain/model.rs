@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use super::fixtures::{self, Fixture, FixtureKind};
 use super::geometry::{Point, nearest_point_on_segment};
+use super::masonry::{self, Masonry};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Project {
@@ -22,7 +23,19 @@ pub struct Project {
     #[serde(default)]
     pub fixtures: Vec<Fixture>,
 
+    /// The brick or block new walls are built with.
+    #[serde(default)]
+    pub masonry: Masonry,
+
+    /// Height of the walls (pé-direito), for quantity estimates.
+    #[serde(default = "default_wall_height")]
+    pub wall_height: f32,
+
     next_id: u64,
+}
+
+fn default_wall_height() -> f32 {
+    2.8
 }
 
 impl Default for Project {
@@ -42,6 +55,10 @@ impl Default for Project {
 
             fixtures: Vec::new(),
 
+            masonry: Masonry::default(),
+
+            wall_height: default_wall_height(),
+
             next_id: 1,
         }
     }
@@ -54,6 +71,11 @@ pub struct Wall {
     pub start: Point,
 
     pub end: Point,
+
+    /// What it is built with; walls from older files have none and keep
+    /// the old 12 cm thickness.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub masonry: Option<Masonry>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -87,6 +109,14 @@ impl Terrain {
 }
 
 impl Wall {
+    /// The finished thickness: block plus plaster.
+    pub fn thickness(&self) -> f32 {
+        self.masonry
+            .as_ref()
+            .map(Masonry::thickness)
+            .unwrap_or(masonry::LEGACY_THICKNESS)
+    }
+
     pub fn length(&self) -> f32 {
         self.start.distance(self.end)
     }
@@ -178,6 +208,16 @@ impl OpeningKind {
             Self::SaloonDoor => "Porta vai-e-vem",
 
             Self::Gap => "Vão livre",
+        }
+    }
+
+    /// Usual height of the opening; `None` for open spans, which reach the
+    /// top of the wall.
+    pub fn default_height(self) -> Option<f32> {
+        match self {
+            Self::Door | Self::SaloonDoor => Some(2.10),
+            Self::Window => Some(1.00),
+            Self::Gap => None,
         }
     }
 
@@ -415,6 +455,49 @@ impl Project {
         }
     }
 
+    /// Builds wall `id` with `material`.
+    pub fn set_wall_masonry(&mut self, id: u64, material: &Masonry) -> bool {
+        let Some(wall) = self.walls.iter_mut().find(|wall| wall.id == id) else {
+            return false;
+        };
+        wall.masonry = Some(material.clone());
+        true
+    }
+
+    /// Builds every wall with `material`.
+    pub fn set_all_walls_masonry(&mut self, material: &Masonry) {
+        for wall in &mut self.walls {
+            wall.masonry = Some(material.clone());
+        }
+    }
+
+    /// Wall face area (lengths × wall height, less door and window areas)
+    /// and the blocks it takes, each wall with its own material.
+    pub fn masonry_estimate(&self) -> (f32, f32) {
+        let mut area = 0.0;
+        let mut blocks = 0.0;
+        for wall in &self.walls {
+            let material = wall.masonry.as_ref().unwrap_or(&self.masonry);
+            let openings: f32 = self
+                .openings
+                .iter()
+                .filter(|opening| opening.wall_id == wall.id)
+                .map(|opening| {
+                    opening.width()
+                        * opening
+                            .kind
+                            .default_height()
+                            .unwrap_or(self.wall_height)
+                            .min(self.wall_height)
+                })
+                .sum();
+            let face = (wall.length() * self.wall_height - openings).max(0.0);
+            area += face;
+            blocks += face * material.blocks_per_square_metre();
+        }
+        (area, blocks)
+    }
+
     /// Whether `fixture` lies inside the terrain (or there is none).
     fn fixture_fits(&self, fixture: &Fixture) -> bool {
         let (low, high) = fixture.bounds();
@@ -568,7 +651,12 @@ impl Project {
 
         let id = self.id();
 
-        self.walls.push(Wall { id, start, end });
+        self.walls.push(Wall {
+            id,
+            start,
+            end,
+            masonry: Some(self.masonry.clone()),
+        });
 
         Some(id)
     }
@@ -602,11 +690,13 @@ impl Project {
         self.walls[wall_idx].end = split_point;
 
         let new_id = self.id();
+        let built_with = self.walls[wall_idx].masonry.clone();
 
         self.walls.push(Wall {
             id: new_id,
             start: split_point,
             end: old_end,
+            masonry: built_with,
         });
 
         for room in &mut self.rooms {
@@ -2088,12 +2178,14 @@ mod tests {
             id: w1,
             start: Point::new(0.0, 0.0),
             end: Point::new(10.0, 0.0),
+            masonry: None,
         });
         let w2 = project.id();
         project.walls.push(Wall {
             id: w2,
             start: Point::new(10.0, 0.0),
             end: Point::new(0.0, 0.0),
+            masonry: None,
         });
 
         // Opening on w2 at t = 0.20 (physically at x = 8.0m)

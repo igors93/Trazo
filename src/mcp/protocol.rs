@@ -283,6 +283,23 @@ fn catalogue() -> Vec<Tool> {
             destructive: false,
         },
         Tool {
+            name: "definir_alvenaria",
+            title: "Definir alvenaria",
+            description: "Escolhe o tijolo ou bloco das paredes: material (um dos prontos, como \"Bloco de concreto 14\" ou \"Tijolo cerâmico 6 furos (em pé)\"), e/ou largura e comprimento do bloco, junta e reboco em cm. A espessura da parede acabada é bloco + 2 × reboco, e o módulo (comprimento + junta) guia os comprimentos. Vale para as novas paredes, ou para todas com aplicar_em_todas. pe_direito (m) serve à estimativa de blocos.",
+            properties: json!({
+                "material": string("Opcional: nome de um material pronto, ou um nome para o personalizado."),
+                "largura_bloco_cm": number("Opcional: largura do bloco em cm (espessura bruta)."),
+                "comprimento_bloco_cm": number("Opcional: comprimento do bloco em cm."),
+                "junta_cm": number("Opcional: junta de argamassa em cm (padrão 1)."),
+                "reboco_cm": number("Opcional: reboco em cada face em cm (padrão 1,5)."),
+                "pe_direito": number("Opcional: pé-direito em metros, para a estimativa."),
+                "aplicar_em_todas": boolean("Aplica também às paredes já desenhadas."),
+            }),
+            required: &[],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
             name: "editar_objeto",
             title: "Editar objeto",
             description: "Muda posição (centro), rotação, largura ou profundidade de um objeto.",
@@ -485,7 +502,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 20);
+        assert_eq!(tools.len(), 21);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -547,6 +564,6 @@ mod tests {
         .unwrap();
         assert_eq!(unknown["error"]["code"], -32601);
         let listed = handle_message(&json!({ "jsonrpc": "2.0", "id": 3, "method": "tools/list" }), &mut run).unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 20);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 21);
     }
 }

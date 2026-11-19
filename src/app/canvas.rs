@@ -400,7 +400,7 @@ fn paint_preview(
             painter.line_segment(
                 [view.to_screen(a), view.to_screen(b)],
                 Stroke::new(
-                    wall_stroke_width(view.scale),
+                    wall_screen_width(view.scale, project.masonry.thickness()),
                     color.gamma_multiply(0.85),
                 ),
             );
@@ -440,7 +440,10 @@ fn paint_preview(
             for index in 0..4 {
                 painter.line_segment(
                     [corners[index], corners[(index + 1) % 4]],
-                    Stroke::new(wall_stroke_width(view.scale), color.gamma_multiply(0.85)),
+                    Stroke::new(
+                        wall_screen_width(view.scale, project.masonry.thickness()),
+                        color.gamma_multiply(0.85),
+                    ),
                 );
             }
             paint_preview_measure(
@@ -585,7 +588,7 @@ fn paint_wall(
     let direction = (b - a).normalized();
     let normal = egui::vec2(-direction.y, direction.x);
     let screen_length = a.distance(b);
-    let wall_width = wall_stroke_width(view.scale);
+    let wall_width = wall_screen_width(view.scale, wall.thickness());
     let cap = direction * (wall_width / 2.0);
     let color = match tone {
         WallTone::Selected => theme::SELECTION,
@@ -824,6 +827,11 @@ fn outline_opening(
 
 fn wall_stroke_width(scale: f32) -> f32 {
     (scale * WALL_THICKNESS_METERS).clamp(1.5, 10.0)
+}
+
+/// A wall drawn at its real thickness, never thinner than a hairline.
+fn wall_screen_width(scale: f32, thickness: f32) -> f32 {
+    (scale * thickness).max(1.5)
 }
 
 #[cfg(test)]

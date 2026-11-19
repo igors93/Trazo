@@ -7,7 +7,7 @@ use super::{
 };
 use crate::domain::{
     fixtures::{Fixture, FixtureKind},
-    geometry::{Point, WALL_THICKNESS_METERS},
+    geometry::Point,
 };
 use eframe::egui::{self, Key, PointerButton, Sense};
 
@@ -28,7 +28,47 @@ impl FloorPlanApp {
                 result.x = start.x;
             }
         }
+        if self.modulation_enabled
+            && let Some(start) = start
+            && !self.is_wall_end(result)
+        {
+            result = self.modular_point(start, result);
+        }
         result
+    }
+
+    fn is_wall_end(&self, point: Point) -> bool {
+        self.project
+            .walls
+            .iter()
+            .any(|wall| wall.start.distance(point) < 1e-4 || wall.end.distance(point) < 1e-4)
+    }
+
+    /// Rounds what is being drawn to whole half blocks of the active
+    /// material: a wall's length, or a room's width and length.
+    pub(super) fn modular_point(&self, start: Point, point: Point) -> Point {
+        let material = &self.project.masonry;
+        match self.tool {
+            Tool::Wall => {
+                let length = start.distance(point);
+                if length < 1e-4 {
+                    return point;
+                }
+                let modular = material.modular_length(length);
+                Point::new(
+                    start.x + (point.x - start.x) / length * modular,
+                    start.y + (point.y - start.y) / length * modular,
+                )
+            }
+            Tool::Room => {
+                let side = |from: f32, to: f32| {
+                    let span = to - from;
+                    from + span.signum() * material.modular_length(span.abs())
+                };
+                Point::new(side(start.x, point.x), side(start.y, point.y))
+            }
+            _ => point,
+        }
     }
 
     fn magnetic_snap(&self, point: Point, start: Option<Point>) -> Point {
@@ -482,7 +522,7 @@ impl FloorPlanApp {
             .nearest_wall(point, 0.8)
             .and_then(|(id, _)| self.project.walls.iter().find(|wall| wall.id == id));
         if let Some(wall) = wall {
-            let offset = WALL_THICKNESS_METERS / 2.0 + depth / 2.0;
+            let offset = wall.thickness() / 2.0 + depth / 2.0;
             if (wall.start.y - wall.end.y).abs() < 1e-3 {
                 let below = point.y > wall.start.y;
                 fixture.quarter_turns = if below { 0 } else { 2 };
@@ -591,7 +631,7 @@ impl FloorPlanApp {
             if length < 1e-4 {
                 continue;
             }
-            let half = WALL_THICKNESS_METERS / 2.0;
+            let half = wall.thickness() / 2.0;
             let along = ((wall.end.x - wall.start.x) / length, (wall.end.y - wall.start.y) / length);
             let normal = (-along.1, along.0);
             for (end, outward) in [(wall.start, -1.0), (wall.end, 1.0)] {
@@ -627,7 +667,7 @@ impl FloorPlanApp {
                         along,
                         end * opening.width() / 2.0,
                         normal,
-                        side * WALL_THICKNESS_METERS / 2.0,
+                        side * wall.thickness() / 2.0,
                     ));
                 }
             }
@@ -694,6 +734,7 @@ mod tests {
         app.set_tool(Tool::Wall);
         app.ortho_enabled = true;
         app.snap_enabled = false;
+        app.modulation_enabled = false;
         let start = Point::new(0.0, 0.0);
         let mostly_across = app.snap(Point::new(3.0, 0.9), Some(start));
         assert_eq!(mostly_across, Point::new(3.0, 0.0));
@@ -784,7 +825,7 @@ mod tests {
             .add_wall(Point::new(0.0, 0.0), Point::new(6.0, 0.0));
         app.project
             .add_wall(Point::new(0.0, 0.0), Point::new(0.0, 6.0));
-        let half = WALL_THICKNESS_METERS / 2.0;
+        let half = crate::domain::geometry::WALL_THICKNESS_METERS / 2.0;
 
         let below = app.fixture_placement(FixtureKind::KitchenSink, Point::new(3.02, 0.5));
         assert_eq!(below.quarter_turns, 0);
@@ -823,7 +864,7 @@ mod tests {
         app.project
             .add_wall(Point::new(0.0, 3.0), Point::new(4.0, 3.0));
         app.set_tool(Tool::Measure);
-        let half = WALL_THICKNESS_METERS / 2.0;
+        let half = crate::domain::geometry::WALL_THICKNESS_METERS / 2.0;
 
         let (near, kind) = app.measure_snap(Point::new(2.0, half + 0.01), None);
         assert_eq!(kind, Some(SnapKind::Face));
@@ -841,6 +882,37 @@ mod tests {
         assert!(!app.history.can_undo() && !app.dirty);
         // The clear span between the faces.
         assert!(app.message.contains(&crate::domain::geometry::format_meters(3.0 - 2.0 * half)));
+    }
+
+    #[test]
+    fn walls_and_rooms_follow_the_block_module() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        app.snap_enabled = false;
+        app.modulation_enabled = true;
+        app.project.masonry = crate::domain::masonry::Masonry::presets()
+            .into_iter()
+            .find(|material| material.name == "Bloco de concreto 14")
+            .unwrap();
+        app.set_tool(Tool::Wall);
+        // A 40 cm module: lengths in 20 cm steps.
+        let end = app.snap(Point::new(2.13, 0.0), Some(Point::new(0.0, 0.0)));
+        assert!((end.x - 2.2).abs() < 1e-4);
+        app.set_tool(Tool::Room);
+        let corner = app.snap(Point::new(3.07, 2.31), Some(Point::new(0.0, 0.0)));
+        assert!((corner.x - 3.0).abs() < 1e-4 && (corner.y - 2.4).abs() < 1e-4);
+
+        // New walls are built with the material and drawn at its thickness.
+        let id = app
+            .project
+            .add_wall(Point::new(0.0, 0.0), Point::new(2.2, 0.0))
+            .unwrap();
+        let wall = app.project.walls.iter().find(|wall| wall.id == id).unwrap();
+        assert!((wall.thickness() - (0.14 + 0.03)).abs() < 1e-5);
+        app.modulation_enabled = false;
+        app.set_tool(Tool::Wall);
+        let free = app.snap(Point::new(2.13, 0.0), Some(Point::new(0.0, 0.0)));
+        assert!((free.x - 2.13).abs() < 1e-4);
     }
 
     #[test]

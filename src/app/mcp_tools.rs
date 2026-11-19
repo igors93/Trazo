@@ -15,7 +15,7 @@ use super::{FloorPlanApp, OpenResult, Selection};
 use crate::{
     domain::{
         fixtures::FixtureKind,
-        geometry::{Point, WALL_THICKNESS_METERS, format_meters},
+        geometry::{Point, format_meters},
         model::{OpeningKind, Project},
     },
     io::export,
@@ -282,6 +282,7 @@ impl FloorPlanApp {
             }
             "editar_abertura" => self.tool_edit_opening(args),
             "inserir_objeto" => self.tool_insert_fixture(args),
+            "definir_alvenaria" => self.tool_masonry(args),
             "editar_objeto" => self.tool_edit_fixture(args),
             "mover_elemento" => self.tool_move(args),
             "excluir_elemento" => {
@@ -662,6 +663,58 @@ impl FloorPlanApp {
         })
     }
 
+    fn tool_masonry(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let mut material = self.project.masonry.clone();
+        if let Some(name) = text(args, "material") {
+            material = crate::domain::masonry::Masonry::presets()
+                .into_iter()
+                .find(|preset| preset.name.to_lowercase() == name.to_lowercase())
+                .unwrap_or(crate::domain::masonry::Masonry {
+                    name,
+                    ..material
+                });
+        }
+        let cm = |key: &str| number(args, key).map(|value| value.map(|cm| cm / 100.0));
+        if let Some(width) = cm("largura_bloco_cm")? {
+            material.block_width = width;
+        }
+        if let Some(length) = cm("comprimento_bloco_cm")? {
+            material.block_length = length;
+        }
+        if let Some(joint) = cm("junta_cm")? {
+            material.joint = joint;
+        }
+        if let Some(plaster) = cm("reboco_cm")? {
+            material.plaster = plaster;
+        }
+        if !material.valid() {
+            return Err("Medidas de bloco inválidas: largura de 4 a 50 cm, comprimento de 5 a 100 cm, junta até 5 cm e reboco até 8 cm.".to_owned());
+        }
+        let height = number(args, "pe_direito")?;
+        if height.is_some_and(|height| !(1.5..=10.0).contains(&height)) {
+            return Err("pe_direito deve estar entre 1,50 e 10,00 m.".to_owned());
+        }
+        let all = flag(args, "aplicar_em_todas");
+        let label = material.label();
+        let thickness = material.thickness();
+        let output = self.apply_change(None, |project| {
+            project.masonry = material.clone();
+            if all {
+                project.set_all_walls_masonry(&material);
+            }
+            if let Some(height) = height {
+                project.wall_height = height;
+            }
+            Ok(Change::new(format!(
+                "Alvenaria: {label}, parede acabada de {}{}.",
+                format_meters(thickness),
+                if all { ", aplicada a todas as paredes" } else { " para as novas paredes" }
+            )))
+        })?;
+        self.sync_masonry_fields();
+        Ok(output)
+    }
+
     fn tool_insert_fixture(&mut self, args: &Value) -> Result<ToolOutput, String> {
         let keys: Vec<&str> = FixtureKind::ALL.iter().map(|kind| kind.key()).collect();
         let kind = text(args, "tipo")
@@ -906,6 +959,8 @@ impl FloorPlanApp {
                     .collect();
                 json!({
                     "id": wall.id,
+                    "espessura": round(wall.thickness()),
+                    "material": wall.masonry.as_ref().map(|material| material.name.clone()),
                     "inicio": xy(wall.start),
                     "fim": xy(wall.end),
                     "comprimento": round(wall.length()),
@@ -959,7 +1014,16 @@ impl FloorPlanApp {
             .filter_map(|room| project.room_area(room))
             .sum();
         json!({
-            "espessura_parede_m": round(WALL_THICKNESS_METERS),
+            "espessura_parede_m": round(self.project.masonry.thickness()),
+            "alvenaria": {
+                "material": self.project.masonry.name,
+                "bloco_largura_cm": round(self.project.masonry.block_width * 100.0),
+                "bloco_comprimento_cm": round(self.project.masonry.block_length * 100.0),
+                "junta_cm": round(self.project.masonry.joint * 100.0),
+                "reboco_cm": round(self.project.masonry.plaster * 100.0),
+                "modulo_m": round(self.project.masonry.module()),
+                "pe_direito_m": round(self.project.wall_height),
+            },
             "objetos": fixtures,
             "projeto": {
                 "nome": project.name,
@@ -1073,9 +1137,9 @@ mod tests {
         let plan = app.plan_summary();
         let placed = &plan["objetos"][0];
         assert_eq!(placed["rotacao"], 270);
-        let half = round(WALL_THICKNESS_METERS / 2.0);
+        let half = round(crate::domain::masonry::LEGACY_THICKNESS / 2.0);
         assert!((placed["centro"]["x"].as_f64().unwrap() - (half + 0.3)).abs() < 1e-3);
-        assert_eq!(plan["espessura_parede_m"], round(WALL_THICKNESS_METERS));
+        assert_eq!(plan["espessura_parede_m"], round(crate::domain::masonry::LEGACY_THICKNESS));
 
         ok(
             &mut app,

@@ -17,6 +17,8 @@ pub struct Settings {
     pub show_browser: bool,
     pub show_properties: bool,
     pub ribbon_collapsed: bool,
+    /// Wall lengths and room sides follow the block module.
+    pub modulation: bool,
 }
 
 impl Default for Settings {
@@ -28,6 +30,7 @@ impl Default for Settings {
             show_browser: true,
             show_properties: true,
             ribbon_collapsed: false,
+            modulation: true,
         }
     }
 }

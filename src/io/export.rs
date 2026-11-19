@@ -80,7 +80,10 @@ fn document(project: &Project) -> SvgDocument {
             let _ = writeln!(svg, "<polygon points=\"{}\" fill=\"#eef5fd\"/>", points_str);
         }
     }
+    let base_wall_width = wall_width;
     for wall in &project.walls {
+        // Each wall at its own thickness (block plus plaster).
+        let wall_width = (pixels_per_meter * wall.thickness()).max(1.0);
         let (x, y) = point(wall.start);
         let length = wall.length() * pixels_per_meter;
         let angle = (wall.end.y - wall.start.y)
@@ -230,6 +233,7 @@ fn document(project: &Project) -> SvgDocument {
             }
         }
     }
+    let wall_width = base_wall_width;
     let mut occupied = labels::write_room_labels(&mut svg, project, &point, wall_width);
     labels::write_wall_labels(
         &mut svg,

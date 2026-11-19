@@ -2,7 +2,7 @@ use super::super::{FloorPlanApp, Selection, Tool, theme::*};
 use super::icons::{self, Icon};
 use super::widgets::{danger_button, primary_button, secondary_button, tip, toggle_pill};
 use crate::domain::{
-    geometry::{WALL_THICKNESS_METERS, format_meters},
+    geometry::format_meters,
     model::OpeningKind,
 };
 use eframe::egui::{self, Key, Pos2, Rect, RichText, Sense, Stroke, Ui, vec2};
@@ -52,7 +52,7 @@ fn caption(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).color(MUTED).size(12.0));
 }
 
-fn chip(ui: &mut Ui, text: &str) {
+fn chip(ui: &mut Ui, text: &str) -> egui::Response {
     egui::Frame::new()
         .fill(PANEL_ALT)
         .stroke(Stroke::new(1.0, BORDER))
@@ -60,7 +60,8 @@ fn chip(ui: &mut Ui, text: &str) {
         .inner_margin(egui::Margin::symmetric(8, 3))
         .show(ui, |ui| {
             ui.label(RichText::new(text).color(TEXT_2).size(12.0));
-        });
+        })
+        .response
 }
 
 impl FloorPlanApp {
@@ -95,18 +96,7 @@ impl FloorPlanApp {
 
             match tool {
                 Tool::Terrain => self.terrain_options(ui),
-                Tool::Wall => {
-                    caption(ui, "Espessura");
-                    chip(ui, &format_meters(WALL_THICKNESS_METERS));
-                    divider(ui);
-                    caption(ui, "Arraste ou clique no início e no fim da parede.");
-                }
-                Tool::Room => {
-                    caption(ui, "Mínimo");
-                    chip(ui, "0,50 × 0,50 m");
-                    divider(ui);
-                    caption(ui, "Arraste ou clique em dois cantos opostos; depois dê um nome.");
-                }
+                Tool::Wall | Tool::Room => self.masonry_options(ui),
                 Tool::Opening(kind) => {
                     caption(ui, "Largura padrão");
                     chip(ui, &format_meters(kind.default_width()));
@@ -169,6 +159,17 @@ impl FloorPlanApp {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 if matches!(tool, Tool::Wall | Tool::Room | Tool::Terrain | Tool::Measure) {
+                    if matches!(tool, Tool::Wall | Tool::Room)
+                        && toggle_pill(
+                            ui,
+                            "Modulação",
+                            self.modulation_enabled,
+                            "Comprimentos em múltiplos de meio bloco (bloco + junta)",
+                        )
+                        .clicked()
+                    {
+                        self.modulation_enabled = !self.modulation_enabled;
+                    }
                     if matches!(tool, Tool::Wall | Tool::Measure)
                         && toggle_pill(
                             ui,
@@ -194,6 +195,55 @@ impl FloorPlanApp {
                 }
             });
         });
+    }
+
+    /// The brick or block walls are drawn with, chosen while drawing.
+    fn masonry_options(&mut self, ui: &mut Ui) {
+        let current = self.project.masonry.clone();
+        caption(ui, "Material");
+        let mut chosen = None;
+        egui::ComboBox::from_id_salt("masonry_preset")
+            .width(200.0)
+            .selected_text(RichText::new(&current.name).size(12.0))
+            .show_ui(ui, |ui| {
+                for preset in crate::domain::masonry::Masonry::presets() {
+                    let selected = preset.name == current.name;
+                    if ui.selectable_label(selected, preset.label()).clicked() {
+                        chosen = Some(preset);
+                    }
+                }
+            });
+        if let Some(preset) = chosen {
+            self.set_masonry(preset);
+        }
+        let field = |ui: &mut Ui, text: &mut String, hint: &str| {
+            ui.add(
+                egui::TextEdit::singleline(text)
+                    .desired_width(34.0)
+                    .align(egui::Align2::RIGHT_CENTER),
+            )
+            .on_hover_text(hint)
+        };
+        caption(ui, "Bloco");
+        let width = field(ui, &mut self.masonry_width_text, "Largura do bloco (cm): a espessura bruta");
+        caption(ui, "×");
+        let length = field(ui, &mut self.masonry_length_text, "Comprimento do bloco (cm): o módulo da parede");
+        caption(ui, "cm  Junta");
+        let joint = field(ui, &mut self.masonry_joint_text, "Junta de argamassa (cm)");
+        caption(ui, "Reboco");
+        let plaster = field(ui, &mut self.masonry_plaster_text, "Reboco em cada face (cm)");
+        let typed = [width, length, joint, plaster]
+            .iter()
+            .any(|response| response.lost_focus());
+        if typed {
+            self.apply_masonry_fields();
+        }
+        caption(ui, "=");
+        chip(
+            ui,
+            &format!("parede {:.1} cm", current.thickness() * 100.0).replace(".0 ", " ").replace('.', ","),
+        )
+        .on_hover_text("Espessura acabada: bloco + reboco nas duas faces");
     }
 
     fn terrain_options(&mut self, ui: &mut Ui) {
