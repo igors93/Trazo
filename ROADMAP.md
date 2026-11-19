@@ -97,13 +97,13 @@ IA para analisar, propor e revisar, com as decisões sempre nas mãos de quem pr
 
 | # | Funcionalidade | Prioridade | Fase | Hoje |
 | --- | --- | --- | --- | --- |
-| 01 | Coordenadas e cálculos em `f64`, com tolerâncias controladas | P0 | 1 | — |
-| 02 | Cômodos poligonais (L, U, irregulares), desenhados clicando nos cantos | P0 | 1 | — |
+| 01 | Coordenadas e cálculos em `f64`, com tolerâncias controladas | P0 | 1 | Feito |
+| 02 | Cômodos poligonais (L, U, irregulares), desenhados clicando nos cantos | P0 | 1 | Feito |
 | 03 | Encaixe avançado: ponto médio, interseção, perpendicular, tangente, centro, prolongamento | P0 | 1 | Feito |
 | 04 | Digitar distância, ângulo, coordenadas e medidas durante o desenho | P0 | 1 | Feito |
 | 05 | Copiar, colar, espelhar, girar, deslocar (offset), aparar e estender | P0 | 1 | — |
 | 06 | Dividir, unir, alinhar, distribuir, agrupar e repetir objetos | P1 | 3 | — |
-| 07 | Entidades CAD genéricas: linha, polilinha, arco, círculo, retângulo, spline | P1 | 2 | — |
+| 07 | Entidades CAD genéricas: linha, polilinha, arco, círculo, retângulo, spline | P1 | 2 | Feito |
 | 08 | Restrições: paralelismo, perpendicularidade, coincidência, distâncias fixas | P1 | 3 | — |
 | 09 | Seleção múltipla, por janela, por cruzamento e por filtros | P1 | 1 | — |
 | 10 | Edição de vértices e manipulação direta da geometria | P1 | 1 | Feito |
@@ -114,7 +114,7 @@ O #10 foi antecipado para a Fase 1 porque cômodos poligonais (#02) só ficam ú
 
 | # | Funcionalidade | Prioridade | Fase | Hoje |
 | --- | --- | --- | --- | --- |
-| 11 | Encontros automáticos de paredes em L, T e X, em qualquer ângulo | P0 | 1 | Parcial |
+| 11 | Encontros automáticos de paredes em L, T e X, em qualquer ângulo | P0 | 1 | Feito |
 | 12 | Mover paredes compartilhadas atualizando os cômodos, aberturas e cotas ligados | P0 | 1 | Feito |
 | 13 | Paredes referenciadas pela face interna, externa ou pelo eixo | P0 | 1 | Feito |
 | 14 | Ambientes detectados automaticamente pelo fechamento das paredes | P1 | 3 | — |
