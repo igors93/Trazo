@@ -481,6 +481,20 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         }
     }
 
+    // Fill the calculated mitre patches before drawing the wall runs. This
+    // closes L/T/X meetings even when angles and wall thicknesses differ.
+    for junction in project.wall_junctions() {
+        painter.add(Shape::convex_polygon(
+            junction
+                .outline
+                .into_iter()
+                .map(|point| view.to_screen(point))
+                .collect(),
+            theme::WALL,
+            Stroke::NONE,
+        ));
+    }
+
     for wall in &project.walls {
         let in_room = |target: Option<Selection>| {
             project.rooms.iter().any(|room| {

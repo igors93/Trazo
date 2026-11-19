@@ -3,6 +3,7 @@ pub mod drawing;
 pub mod fixtures;
 pub mod geometry;
 pub mod history;
+pub mod junctions;
 pub mod masonry;
 pub mod model;
 pub mod snap;

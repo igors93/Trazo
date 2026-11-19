@@ -83,6 +83,22 @@ fn document(project: &Project) -> SvgDocument {
             let _ = writeln!(svg, "<polygon points=\"{}\" fill=\"#eef5fd\"/>", points_str);
         }
     }
+    for junction in project.wall_junctions() {
+        let points = junction
+            .outline
+            .into_iter()
+            .map(|corner| {
+                let (x, y) = point(corner);
+                format!("{x:.1},{y:.1}")
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        let _ = writeln!(
+            svg,
+            "<polygon points=\"{points}\" fill=\"#1d2836\" data-wall-junction=\"{:?}\"/>",
+            junction.kind
+        );
+    }
     let base_wall_width = wall_width;
     for wall in &project.walls {
         // Each wall at its own thickness (block plus plaster).
