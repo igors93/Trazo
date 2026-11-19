@@ -196,7 +196,7 @@ O objetivo declarado é usar o Trazo no dia a dia da obra. Estes itens vêm do t
 
 | # | Funcionalidade | Prioridade | Fase |
 | --- | --- | --- | --- |
-| 58 | CI no GitHub: `cargo fmt --check`, `clippy` e testes a cada push | P0 | paralelo |
+| 58 | CI no GitHub: `cargo fmt --check`, `clippy` e testes a cada push | P0 | paralelo — **Feito** |
 | 59 | Licença explícita no repositório | P0 | paralelo |
 | 60 | Testes de propriedade da geometria (interseções, polígonos, tolerâncias) | P1 | paralelo |
 | 61 | Testes de regressão visual da exportação PDF/PNG | P1 | paralelo |
