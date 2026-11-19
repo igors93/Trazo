@@ -155,6 +155,8 @@ pub struct FloorPlanApp {
     mcp_feedback: Option<(bool, String)>,
     /// The public tunnel for cloud assistants, while it runs.
     tunnel: Option<mcp::tunnel::Tunnel>,
+    /// Secret token required on requests coming through a public tunnel.
+    tunnel_token: mcp::server::TunnelToken,
     /// Rotation of the next fixture placed away from walls.
     fixture_turns: u8,
     fixture_width_text: String,
@@ -191,10 +193,11 @@ impl FloorPlanApp {
         } else {
             settings::load()
         };
+        let tunnel_token = mcp::server::TunnelToken::new();
         let (mcp_calls, mcp_status) = if cfg!(test) {
             (None, McpStatus::Off)
         } else {
-            Self::start_mcp(context)
+            Self::start_mcp(context, tunnel_token.clone())
         };
         let mut app = Self {
             project: recovered.unwrap_or_default(),
@@ -251,6 +254,7 @@ impl FloorPlanApp {
             show_mcp_dialog: false,
             mcp_feedback: None,
             tunnel: None,
+            tunnel_token,
             fixture_turns: 0,
             fixture_width_text: String::new(),
             fixture_depth_text: String::new(),
@@ -271,10 +275,15 @@ impl FloorPlanApp {
 
     /// Starts the MCP server. A busy port (another Trazo window, say) only
     /// leaves MCP off; the editor works as usual.
-    fn start_mcp(context: &egui::Context) -> (Option<mpsc::Receiver<ToolCall>>, McpStatus) {
+    fn start_mcp(
+        context: &egui::Context,
+        tunnel_token: mcp::server::TunnelToken,
+    ) -> (Option<mpsc::Receiver<ToolCall>>, McpStatus) {
         let (sender, receiver) = mpsc::channel();
         let waker = context.clone();
-        match mcp::server::start(mcp::port(), sender, move || waker.request_repaint()) {
+        match mcp::server::start_with_token(mcp::port(), sender, tunnel_token, move || {
+            waker.request_repaint()
+        }) {
             Ok(port) => (Some(receiver), McpStatus::Listening(port)),
             Err(error) => (None, McpStatus::Failed(error)),
         }
@@ -1725,8 +1734,9 @@ impl eframe::App for FloorPlanApp {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
-        // Closes the public tunnel with the app.
+        // Closes the public tunnel and revokes its secret token with the app.
         self.tunnel = None;
+        self.tunnel_token.clear();
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {

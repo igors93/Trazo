@@ -3,28 +3,37 @@
 //! "quick tunnel": `cloudflared` prints a random https://….trycloudflare.com
 //! address that forwards to this computer while it runs.
 
+use std::collections::hash_map::RandomState;
+use std::hash::{BuildHasher, Hasher};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
 
+use base64::Engine as _;
+
+use super::server::TunnelToken;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum TunnelState {
     Starting,
-    /// The public address, without the `/mcp` path.
+    /// The public address, without the `/mcp/<token>` path.
     Ready(String),
     Failed(String),
 }
 
-/// A running `cloudflared`; it stops when this is dropped.
+/// A running `cloudflared`; it stops and revokes its secret token when dropped.
 pub struct Tunnel {
     child: Child,
     state: Arc<Mutex<TunnelState>>,
+    token: String,
+    shared_token: TunnelToken,
 }
 
 impl Tunnel {
-    /// Starts a quick tunnel to `127.0.0.1:port`.
-    pub fn start(port: u16) -> Result<Self, String> {
+    /// Starts a quick tunnel to `127.0.0.1:port` and activates a fresh secret
+    /// token on `shared_token` so only holders of the full URL can call MCP.
+    pub fn start(port: u16, shared_token: TunnelToken) -> Result<Self, String> {
         let program = find_cloudflared().ok_or(
             "O cloudflared não está instalado. Clique em Instalar cloudflared e depois em Abrir túnel.",
         )?;
@@ -43,6 +52,8 @@ impl Tunnel {
         let mut child = command
             .spawn()
             .map_err(|error| format!("Não foi possível iniciar o cloudflared ({error})."))?;
+        let token = generate_token();
+        shared_token.set(Some(token.clone()));
         let state = Arc::new(Mutex::new(TunnelState::Starting));
         // cloudflared logs to stderr; read both streams so neither fills up.
         let streams: Vec<Box<dyn std::io::Read + Send>> = [
@@ -62,7 +73,17 @@ impl Tunnel {
             let state = Arc::clone(&state);
             std::thread::spawn(move || watch_output(stream, &state));
         }
-        Ok(Self { child, state })
+        Ok(Self {
+            child,
+            state,
+            token,
+            shared_token,
+        })
+    }
+
+    /// Full connector address including the per-session secret token.
+    pub fn connector_url(&self, base_address: &str) -> String {
+        format!("{}/mcp/{}", base_address.trim_end_matches('/'), self.token)
     }
 
     pub fn state(&mut self) -> TunnelState {
@@ -75,6 +96,7 @@ impl Tunnel {
         if let Ok(Some(status)) = self.child.try_wait()
             && !matches!(state, TunnelState::Failed(_))
         {
+            self.shared_token.clear();
             let failed = TunnelState::Failed(format!(
                 "O cloudflared foi encerrado ({status}). Verifique a conexão com a internet e tente de novo."
             ));
@@ -83,15 +105,74 @@ impl Tunnel {
             }
             return failed;
         }
+        if matches!(state, TunnelState::Failed(_)) {
+            self.shared_token.clear();
+        }
         state
     }
 }
 
 impl Drop for Tunnel {
     fn drop(&mut self) {
+        self.shared_token.clear();
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// Generates a URL-safe random token (192 bits of entropy, 32 characters).
+pub fn generate_token() -> String {
+    let mut bytes = [0u8; 24];
+    if !fill_os_random(&mut bytes) {
+        for chunk in bytes.chunks_mut(8) {
+            let mut hasher = RandomState::new().build_hasher();
+            hasher.write_usize(chunk.as_ptr() as usize);
+            let value = hasher.finish().to_le_bytes();
+            chunk.copy_from_slice(&value[..chunk.len()]);
+        }
+    }
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
+#[cfg(windows)]
+fn fill_os_random(buffer: &mut [u8]) -> bool {
+    #[link(name = "bcrypt")]
+    unsafe extern "system" {
+        fn BCryptGenRandom(
+            algorithm: *mut core::ffi::c_void,
+            buffer: *mut u8,
+            count: u32,
+            flags: u32,
+        ) -> i32;
+    }
+    const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
+    let Ok(len) = u32::try_from(buffer.len()) else {
+        return false;
+    };
+    // SAFETY: `buffer` is valid for `len` writable bytes and `algorithm` is null
+    // as required by BCRYPT_USE_SYSTEM_PREFERRED_RNG.
+    let status = unsafe {
+        BCryptGenRandom(
+            core::ptr::null_mut(),
+            buffer.as_mut_ptr(),
+            len,
+            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
+        )
+    };
+    status == 0
+}
+
+#[cfg(unix)]
+fn fill_os_random(buffer: &mut [u8]) -> bool {
+    use std::io::Read;
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut file| file.read_exact(buffer))
+        .is_ok()
+}
+
+#[cfg(not(any(windows, unix)))]
+fn fill_os_random(_buffer: &mut [u8]) -> bool {
+    false
 }
 
 fn watch_output(stream: Box<dyn std::io::Read + Send>, state: &Mutex<TunnelState>) {
@@ -253,6 +334,19 @@ mod tests {
         assert_eq!(
             state.into_inner().unwrap(),
             TunnelState::Ready("https://a-b-c.trycloudflare.com".to_owned())
+        );
+    }
+
+    #[test]
+    fn generated_tokens_are_url_safe_and_unique() {
+        let first = generate_token();
+        let second = generate_token();
+        assert_eq!(first.len(), 32);
+        assert_ne!(first, second);
+        assert!(
+            first
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
         );
     }
 }

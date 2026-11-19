@@ -47,7 +47,7 @@ impl FloorPlanApp {
                         .clicked()
                         && let Some(port) = port
                     {
-                        match Tunnel::start(port) {
+                        match Tunnel::start(port, self.tunnel_token.clone()) {
                             Ok(started) => {
                                 self.tunnel = Some(started);
                                 self.mcp_feedback = None;
@@ -84,14 +84,18 @@ impl FloorPlanApp {
             }
             Some(TunnelState::Ready(address)) => {
                 ui.label(
-                    RichText::new("Endereço do conector: cole no ChatGPT (modo desenvolvedor) ou no Claude na web, sem autenticação.")
+                    RichText::new("Endereço protegido por token automático: cole no ChatGPT (modo desenvolvedor) ou no Claude na web, sem configurar autenticação extra.")
                         .size(12.0)
                         .color(TEXT_2),
                 );
                 ui.add_space(4.0);
-                let connector = format!("{address}/mcp");
+                let connector = self
+                    .tunnel
+                    .as_ref()
+                    .map(|tunnel| tunnel.connector_url(&address))
+                    .unwrap_or_else(|| format!("{address}/mcp"));
                 if code_block(ui, &connector) {
-                    self.copy(ui, &connector, "Endereço do conector");
+                    self.copy(ui, &connector, "Endereço protegido do conector");
                 }
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
@@ -99,7 +103,7 @@ impl FloorPlanApp {
                         self.tunnel = None;
                     }
                     ui.label(
-                        RichText::new("O endereço muda a cada vez que o túnel é aberto e só funciona com o Trazo aberto.")
+                        RichText::new("Um novo token secreto é gerado cada vez que o túnel abre e revogado ao fechar.")
                             .size(11.5)
                             .color(MUTED),
                     );
@@ -114,7 +118,7 @@ impl FloorPlanApp {
                 if primary_button(ui, "Tentar de novo").clicked() {
                     self.tunnel = None;
                     if let Some(port) = port {
-                        match Tunnel::start(port) {
+                        match Tunnel::start(port, self.tunnel_token.clone()) {
                             Ok(started) => self.tunnel = Some(started),
                             Err(error) => self.mcp_feedback = Some((false, error)),
                         }
@@ -338,8 +342,9 @@ impl FloorPlanApp {
             .show(ui, |ui| {
                 self.tunnel_controls(ui, port);
                 ui.add_space(8.0);
+                let active_token = self.tunnel_token.current();
                 ui.label(
-                    RichText::new("Ou abra o túnel você mesmo num terminal e acrescente /mcp ao endereço que aparecer:")
+                    RichText::new("Ou abra o túnel manualmente num terminal e acrescente o caminho com token ao endereço que aparecer:")
                         .size(12.0)
                         .color(MUTED),
                 );
@@ -347,6 +352,35 @@ impl FloorPlanApp {
                 let command = clients::tunnel_command(port.unwrap_or_else(mcp::port));
                 if code_block(ui, &command) {
                     self.copy(ui, &command, "Comando do túnel");
+                }
+                if self.tunnel.is_none() {
+                    ui.add_space(4.0);
+                    match active_token {
+                        Some(token) => {
+                            let suffix = format!("/mcp/{token}");
+                            if code_block(ui, &suffix) {
+                                self.copy(ui, &suffix, "Caminho com token");
+                            }
+                            ui.add_space(4.0);
+                            ui.horizontal(|ui| {
+                                if secondary_button(ui, "Novo token").clicked() {
+                                    self.tunnel_token.set(Some(tunnel::generate_token()));
+                                    self.mcp_feedback = Some((true, "Novo token gerado.".to_owned()));
+                                }
+                                if secondary_button(ui, "Revogar token").clicked() {
+                                    self.tunnel_token.clear();
+                                    self.mcp_feedback = Some((true, "Token revogado.".to_owned()));
+                                }
+                            });
+                        }
+                        None => {
+                            if secondary_button(ui, "Gerar token para túnel manual").clicked() {
+                                self.tunnel_token.set(Some(tunnel::generate_token()));
+                                self.mcp_feedback =
+                                    Some((true, "Token para túnel manual ativado.".to_owned()));
+                            }
+                        }
+                    }
                 }
             });
         ui.add_space(14.0);

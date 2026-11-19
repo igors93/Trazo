@@ -7,13 +7,59 @@
 
 use std::io::Read;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use tiny_http::{Header, Method, Request, Response, ResponseBox, Server};
 
 use super::{ToolOutput, protocol};
+
+/// Shared secret token required on requests arriving through a public tunnel.
+/// Local requests (`127.0.0.1` / `localhost`, without proxy headers) continue
+/// to work on `/mcp` with no token.
+#[derive(Clone, Debug, Default)]
+pub struct TunnelToken(Arc<Mutex<Option<String>>>);
+
+impl TunnelToken {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn set(&self, token: Option<String>) {
+        if let Ok(mut guard) = self.0.lock() {
+            *guard = token;
+        }
+    }
+
+    pub fn clear(&self) {
+        self.set(None);
+    }
+
+    pub fn current(&self) -> Option<String> {
+        self.0.lock().ok().and_then(|guard| guard.clone())
+    }
+
+    pub fn matches(&self, candidate: &str) -> bool {
+        let Ok(guard) = self.0.lock() else {
+            return false;
+        };
+        guard
+            .as_deref()
+            .is_some_and(|expected| constant_time_eq(expected.as_bytes(), candidate.as_bytes()))
+    }
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (&a, &b) in left.iter().zip(right.iter()) {
+        diff |= a ^ b;
+    }
+    diff == 0
+}
 
 /// A tool call for the app, with where to send its `CallToolResult`.
 pub struct ToolCall {
@@ -37,6 +83,16 @@ pub fn start(
     calls: mpsc::Sender<ToolCall>,
     wake: impl Fn() + Send + 'static,
 ) -> Result<u16, String> {
+    start_with_token(port, calls, TunnelToken::new(), wake)
+}
+
+/// Starts the server with a shared `tunnel_token` protecting tunneled traffic.
+pub fn start_with_token(
+    port: u16,
+    calls: mpsc::Sender<ToolCall>,
+    tunnel_token: TunnelToken,
+    wake: impl Fn() + Send + 'static,
+) -> Result<u16, String> {
     let server = Server::http(("127.0.0.1", port))
         .map_err(|error| format!("a porta {port} não está disponível ({error})"))?;
     let port = server
@@ -49,7 +105,9 @@ pub fn start(
         .spawn(move || {
             for request in server.incoming_requests() {
                 // One bad request must never stop the server.
-                let _ = catch_unwind(AssertUnwindSafe(|| respond(request, &calls, &wake)));
+                let _ = catch_unwind(AssertUnwindSafe(|| {
+                    respond(request, &calls, &tunnel_token, &wake)
+                }));
             }
         })
         .map_err(|error| error.to_string())?;
@@ -77,50 +135,126 @@ fn text_response(status: u16, content_type: &str, body: String) -> ResponseBox {
         .boxed()
 }
 
-fn respond(mut request: Request, calls: &mpsc::Sender<ToolCall>, wake: &dyn Fn()) {
+fn is_local_host(host: &str) -> bool {
+    let trimmed = host.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    let name = if let Some(rest) = trimmed.strip_prefix('[') {
+        rest.split(']').next().unwrap_or("")
+    } else {
+        trimmed.split(':').next().unwrap_or("")
+    };
+    name.eq_ignore_ascii_case("localhost") || name == "127.0.0.1" || name == "::1"
+}
+
+/// True when the request came directly from this computer, not through a
+/// Cloudflare tunnel or another reverse proxy.
+fn is_local_request(request: &Request) -> bool {
+    const PROXY_HEADERS: [&str; 5] = [
+        "Cf-Connecting-Ip",
+        "Cf-Ray",
+        "X-Forwarded-For",
+        "X-Forwarded-Host",
+        "Forwarded",
+    ];
+    if PROXY_HEADERS
+        .iter()
+        .any(|name| !request_header(request, name).trim().is_empty())
+    {
+        return false;
+    }
+    is_local_host(&request_header(request, "Host"))
+}
+
+/// Extracts `<token>` from `/mcp/<token>` (ignoring query string and trailing `/`).
+fn extract_path_token(url: &str) -> Option<&str> {
+    let path = url.split('?').next().unwrap_or(url).trim_end_matches('/');
+    let rest = path.strip_prefix("/mcp/")?;
+    (!rest.is_empty() && !rest.contains('/')).then_some(rest)
+}
+
+fn is_authorized(request: &Request, tunnel_token: &TunnelToken) -> bool {
+    if is_local_request(request) {
+        return true;
+    }
+    extract_path_token(request.url()).is_some_and(|token| tunnel_token.matches(token))
+}
+
+fn respond(
+    mut request: Request,
+    calls: &mpsc::Sender<ToolCall>,
+    tunnel_token: &TunnelToken,
+    wake: &dyn Fn(),
+) {
     let accept = request_header(&request, "Accept");
-    let response = match request.method() {
-        Method::Options => Response::empty(204).boxed(),
-        Method::Post => {
-            let mut bytes = Vec::new();
-            let read = request.as_reader().take(MAX_BODY).read_to_end(&mut bytes);
-            if read.is_err() {
-                text_response(
-                    400,
-                    "application/json",
-                    protocol::error_response(Value::Null, -32700, "Corpo da requisição ilegível.")
-                        .to_string(),
+    let response = if matches!(request.method(), Method::Options) {
+        Response::empty(204).boxed()
+    } else if !is_authorized(&request, tunnel_token) {
+        match request.method() {
+            Method::Post => text_response(
+                403,
+                "application/json",
+                protocol::error_response(
+                    Value::Null,
+                    -32001,
+                    "Token do túnel inválido ou ausente. Copie o endereço completo em Conectar uma IA.",
                 )
-            } else {
-                let body = decode_body(bytes);
-                let mut run =
-                    |name: &str, arguments: &Value| run_in_app(calls, wake, name, arguments);
-                match protocol::handle_text(&body, &mut run) {
-                    Some(answer) if wants_event_stream(&accept) => text_response(
-                        200,
-                        "text/event-stream",
-                        format!("event: message\ndata: {answer}\n\n"),
-                    ),
-                    Some(answer) => text_response(200, "application/json", answer),
-                    // Only notifications: accepted, nothing to say.
-                    None => Response::empty(202).boxed(),
+                .to_string(),
+            ),
+            _ => text_response(
+                403,
+                "text/plain; charset=UTF-8",
+                "Acesso negado: o túnel do Trazo exige o endereço completo com token.\n".to_owned(),
+            ),
+        }
+    } else {
+        match request.method() {
+            Method::Post => {
+                let mut bytes = Vec::new();
+                let read = request.as_reader().take(MAX_BODY).read_to_end(&mut bytes);
+                if read.is_err() {
+                    text_response(
+                        400,
+                        "application/json",
+                        protocol::error_response(
+                            Value::Null,
+                            -32700,
+                            "Corpo da requisição ilegível.",
+                        )
+                        .to_string(),
+                    )
+                } else {
+                    let body = decode_body(bytes);
+                    let mut run =
+                        |name: &str, arguments: &Value| run_in_app(calls, wake, name, arguments);
+                    match protocol::handle_text(&body, &mut run) {
+                        Some(answer) if wants_event_stream(&accept) => text_response(
+                            200,
+                            "text/event-stream",
+                            format!("event: message\ndata: {answer}\n\n"),
+                        ),
+                        Some(answer) => text_response(200, "application/json", answer),
+                        // Only notifications: accepted, nothing to say.
+                        None => Response::empty(202).boxed(),
+                    }
                 }
             }
+            // This server sends nothing unprompted, so it opens no event stream.
+            Method::Get if accept.contains("text/event-stream") => Response::empty(405)
+                .with_header(header("Allow", "POST, OPTIONS"))
+                .boxed(),
+            Method::Get => text_response(
+                200,
+                "text/plain; charset=UTF-8",
+                "Servidor MCP do Trazo ativo.\n\
+                 Conecte o assistente a este endereço terminado em /mcp (requisições POST).\n"
+                    .to_owned(),
+            ),
+            _ => Response::empty(405)
+                .with_header(header("Allow", "POST, GET, OPTIONS"))
+                .boxed(),
         }
-        // This server sends nothing unprompted, so it opens no event stream.
-        Method::Get if accept.contains("text/event-stream") => Response::empty(405)
-            .with_header(header("Allow", "POST, OPTIONS"))
-            .boxed(),
-        Method::Get => text_response(
-            200,
-            "text/plain; charset=UTF-8",
-            "Servidor MCP do Trazo ativo.\n\
-             Conecte o assistente a este endereço terminado em /mcp (requisições POST).\n"
-                .to_owned(),
-        ),
-        _ => Response::empty(405)
-            .with_header(header("Allow", "POST, GET, OPTIONS"))
-            .boxed(),
     };
     let response = response
         .with_header(header("Access-Control-Allow-Origin", "*"))
@@ -302,5 +436,61 @@ mod tests {
         let (sender, _receiver) = mpsc::channel::<ToolCall>();
         let port = echo_server();
         assert!(start(port, sender, || {}).is_err());
+    }
+
+    #[test]
+    fn tunneled_requests_require_matching_secret_token() {
+        let token = TunnelToken::new();
+        token.set(Some("segredo-123".to_owned()));
+        let (sender, receiver) = mpsc::channel::<ToolCall>();
+        std::thread::spawn(move || {
+            for call in receiver {
+                let _ = call
+                    .reply
+                    .send(ToolOutput::ok(format!("ran {}", call.name)).to_result());
+            }
+        });
+        let port = start_with_token(0, sender, token.clone(), || {}).unwrap();
+
+        let send_raw = |path: &str, extra_headers: &str| -> u16 {
+            let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            let body = r#"{"jsonrpc":"2.0","id":1,"method":"ping"}"#;
+            write!(
+                stream,
+                "POST {path} HTTP/1.1\r\n{extra_headers}Accept: application/json\r\n\
+                 Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+            let mut raw = String::new();
+            stream.read_to_string(&mut raw).unwrap();
+            raw.split(' ').nth(1).unwrap().parse().unwrap()
+        };
+
+        // Local requests need no token.
+        assert_eq!(send_raw("/mcp", "Host: 127.0.0.1\r\n"), 200);
+        // Tunneled requests without a token or with a wrong token are rejected.
+        let tunnel_headers = "Host: demo.trycloudflare.com\r\nCf-Connecting-Ip: 203.0.113.5\r\n";
+        assert_eq!(send_raw("/mcp", tunnel_headers), 403);
+        assert_eq!(send_raw("/mcp/errado", tunnel_headers), 403);
+        // With the active token they succeed.
+        assert_eq!(send_raw("/mcp/segredo-123", tunnel_headers), 200);
+        // Closing the tunnel immediately invalidates the token.
+        token.clear();
+        assert_eq!(send_raw("/mcp/segredo-123", tunnel_headers), 403);
+    }
+
+    #[test]
+    fn extracts_tokens_only_from_mcp_subpaths() {
+        assert_eq!(extract_path_token("/mcp/abc123"), Some("abc123"));
+        assert_eq!(extract_path_token("/mcp/abc123/"), Some("abc123"));
+        assert_eq!(extract_path_token("/mcp/abc123?x=1"), Some("abc123"));
+        assert_eq!(extract_path_token("/mcp"), None);
+        assert_eq!(extract_path_token("/mcp/"), None);
+        assert_eq!(extract_path_token("/mcp/a/b"), None);
+        assert_eq!(extract_path_token("/other/abc"), None);
     }
 }

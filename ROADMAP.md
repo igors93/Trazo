@@ -171,7 +171,7 @@ O DXF é o que permite mandar o projeto a outro profissional sem obrigá-lo a in
 | # | Funcionalidade | Prioridade | Fase | Hoje |
 | --- | --- | --- | --- | --- |
 | 46 | Modo de aprovação opcional: a IA propõe, a planta mostra a prévia e o usuário confirma | P1 | paralelo | — |
-| 47 | Endereço do túnel protegido por token automático, sem passo extra | P0 | paralelo | — |
+| 47 | Endereço do túnel protegido por token automático, sem passo extra | P0 | paralelo | Feito |
 | 48 | Comandos em linguagem natural para criar e modificar ambientes | P1 | 4 | Parcial |
 | 49 | Validação automática da planta, com explicação dos problemas | P1 | 4 | — |
 | 50 | Propostas de distribuição de ambientes | P2 | 4 | — |
@@ -225,7 +225,7 @@ Exemplo: "Criar quarto 3,00 × 4,00 m".
 
 O ponto que pede atenção é o túnel: enquanto ele está aberto, qualquer pessoa que conheça o endereço pode ler e alterar a planta e gravar arquivos. A proposta protege esse caso sem somar passos para o usuário:
 
-1. **#47 — Token automático no túnel.** Ao abrir o túnel, o Trazo gera um caminho secreto (`https://….trycloudflare.com/mcp/<token>`). O botão "Copiar" já entrega o endereço completo, então o usuário continua só colando um link. Um novo token é gerado a cada vez que o túnel abre.
+1. **[x] #47 — Token automático no túnel.** Ao abrir o túnel, o Trazo gera um caminho secreto (`https://….trycloudflare.com/mcp/<token>`). O botão "Copiar" já entrega o endereço completo, então o usuário continua só colando um link. Um novo token é gerado a cada vez que o túnel abre.
 2. **Somente leitura**, ligado por um interruptor em *Conectar uma IA*, para quando a IA só deve analisar a planta.
 3. **#46 — Aprovação opcional.** A IA propõe a alteração, a planta mostra a prévia e o usuário confirma. Fica desligado por padrão.
 4. **Registro das ações da IA**, com o nome de cada ferramenta e horário, no painel do projeto (base para o #51).
