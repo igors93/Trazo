@@ -379,22 +379,24 @@ mod tests {
                 .is_err()
         );
 
-        // Terrain corner resize respects walls inside it.
+        // Terrain corner drag supports angled boundaries and keeps existing walls inside.
         project.set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 10.0));
         project
             .add_wall(Point::new(2.0, 2.0), Point::new(6.0, 2.0))
             .unwrap();
+        // Moving corner 1 (10, 0) to (4, 0) cuts across the wall endpoint (6, 2) -> rejected.
         assert!(
             project
-                .move_terrain_corner(2, Point::new(4.0, 10.0))
+                .move_terrain_corner(1, Point::new(4.0, 0.0))
                 .is_err()
         );
+        // Moving corner 2 (10, 10) to (8, 9) keeps the wall inside and updates the polygon vertex.
         project
             .move_terrain_corner(2, Point::new(8.0, 9.0))
             .unwrap();
         let terrain = project.terrain.unwrap();
-        assert!((terrain.width() - 8.0).abs() < 1e-4);
-        assert!((terrain.height() - 9.0).abs() < 1e-4);
+        assert_eq!(terrain.outline()[2], Point::new(8.0, 9.0));
+        assert!((terrain.area() - 85.0).abs() < 1e-4);
     }
 
     #[test]

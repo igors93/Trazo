@@ -134,7 +134,13 @@ impl Project {
                 let mut wall_ids: Vec<u64> = rays.iter().map(|ray| ray.wall_id).collect();
                 wall_ids.sort_unstable();
                 wall_ids.dedup();
-                let boundary = rays
+                rays.sort_by(|a, b| {
+                    a.direction
+                        .y
+                        .atan2(a.direction.x)
+                        .total_cmp(&b.direction.y.atan2(b.direction.x))
+                });
+                let mut boundary: Vec<Point> = rays
                     .iter()
                     .flat_map(|ray| {
                         let normal =
@@ -142,6 +148,30 @@ impl Project {
                         [point.translated(normal), point.minus(normal)]
                     })
                     .collect();
+                // Include miter intersections of adjacent rays' facing edges (clamped by miter limit)
+                // so L-, T-, and X-junction patches fill the full outer corner rather than chamfering it.
+                for idx in 0..rays.len() {
+                    let a = rays[idx];
+                    let b = rays[(idx + 1) % rays.len()];
+                    let na = Point::new(-a.direction.y, a.direction.x).scaled(a.half_width);
+                    let nb = Point::new(-b.direction.y, b.direction.x).scaled(b.half_width);
+                    let miter_limit = a.half_width.max(b.half_width) * 2.5;
+                    for (pa, pb) in [
+                        (point.translated(na), point.minus(nb)),
+                        (point.minus(na), point.translated(nb)),
+                    ] {
+                        if let Some((corner, _, _)) = line_intersection(
+                            pa,
+                            pa.translated(a.direction),
+                            pb,
+                            pb.translated(b.direction),
+                        ) && corner.is_finite()
+                            && corner.distance(point) <= miter_limit
+                        {
+                            boundary.push(corner);
+                        }
+                    }
+                }
                 let outline = convex_hull(boundary);
                 (outline.len() >= 3).then_some(WallJunction {
                     point: point.rounded(),
@@ -166,8 +196,10 @@ mod tests {
         let diagonal = l
             .add_wall(Point::new(0.0, 0.0), Point::new(-2.0, -1.3))
             .unwrap();
-        let mut thick = Masonry::default();
-        thick.block_width = 0.19;
+        let thick = Masonry {
+            block_width: 0.19,
+            ..Default::default()
+        };
         l.set_wall_masonry(diagonal, &thick);
         let joins = l.wall_junctions();
         assert_eq!(joins.len(), 1);

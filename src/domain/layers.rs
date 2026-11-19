@@ -375,6 +375,7 @@ impl Project {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn set_wall_layer(&mut self, wall_id: u64, layer_id: Option<u64>) -> Result<(), String> {
         if let Some(lid) = layer_id
             && self.layer(lid).is_none()
@@ -390,6 +391,7 @@ impl Project {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn set_drawing_layer(
         &mut self,
         drawing_id: u64,

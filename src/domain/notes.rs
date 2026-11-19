@@ -151,6 +151,7 @@ impl Project {
         self.notes.len() < before
     }
 
+    #[allow(dead_code)]
     pub fn note_at(&self, point: Point, tolerance: f64) -> Option<u64> {
         self.notes.iter().rev().find_map(|note| {
             let near_pos = note.position.distance(point) <= tolerance.max(0.35);

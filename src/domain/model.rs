@@ -187,6 +187,7 @@ pub struct Lot {
 }
 
 impl Lot {
+    #[allow(dead_code)]
     pub fn area(&self) -> f64 {
         super::geometry::polygon_area(&self.vertices)
     }

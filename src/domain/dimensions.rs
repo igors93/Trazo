@@ -29,6 +29,7 @@ pub enum DimensionAnchor {
 }
 
 impl DimensionAnchor {
+    #[allow(dead_code)]
     pub fn from_point(p: Point) -> Self {
         Self::Point { x: p.x, y: p.y }
     }

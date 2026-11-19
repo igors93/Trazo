@@ -343,9 +343,14 @@ mod tests {
             DrawingScale::best_fit(12.0, 8.0, 388.0, 283.0),
             DrawingScale::S1_50
         );
-        // 25 m × 18 m plan in A3 needs 1:100 (250 × 180 mm).
+        // 25 m × 18 m plan in A3 fits at 1:75 (333.3 × 240.0 mm <= 388 × 283 mm).
         assert_eq!(
             DrawingScale::best_fit(25.0, 18.0, 388.0, 283.0),
+            DrawingScale::S1_75
+        );
+        // 30 m × 22 m plan in A3 exceeds 1:75 (400 × 293.3 mm) and needs 1:100 (300 × 220 mm).
+        assert_eq!(
+            DrawingScale::best_fit(30.0, 22.0, 388.0, 283.0),
             DrawingScale::S1_100
         );
     }

@@ -56,6 +56,7 @@ impl HatchPattern {
     }
 
     /// Suggested technical hatch pattern for a given masonry material.
+    #[allow(dead_code)]
     pub fn for_masonry(masonry: &Masonry) -> Self {
         let lower = masonry.name.to_lowercase();
         if lower.contains("concreto") {
@@ -188,7 +189,7 @@ fn parallel_segments(poly: &[Point], spacing: f64, angle_deg: f64) -> Vec<(Point
             }
         }
         xs.sort_by(f64::total_cmp);
-        for pair in xs.chunks_exact(2) {
+        for pair in xs.as_chunks::<2>().0 {
             if pair[1] - pair[0] > 1e-4 {
                 let p0 = rotate(Point::new(pair[0], y), cos_p, sin_p);
                 let p1 = rotate(Point::new(pair[1], y), cos_p, sin_p);
@@ -249,7 +250,7 @@ pub fn hatch_segments_in_polygon(poly: &[Point], style: &HatchStyle) -> Vec<(Poi
                     } else {
                         brick_len * 0.5
                     };
-                    for pair in xs.chunks_exact(2) {
+                    for pair in xs.as_chunks::<2>().0 {
                         let start_col = ((pair[0] - stagger) / brick_len).ceil() as i64;
                         let end_col = ((pair[1] - stagger) / brick_len).floor() as i64;
                         for col in start_col..=end_col {

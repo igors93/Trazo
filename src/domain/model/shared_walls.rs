@@ -311,9 +311,17 @@ mod tests {
         let win_pos = top_wall.start.lerp(top_wall.end, win.t);
         assert!((win_pos.x - 6.0).abs() < 1e-3);
 
-        // Automatic dimensions reflect the moved wall at x = 4.40 m.
+        // Automatic dimensions reflect both faces of the moved wall at x = 4.40 m.
+        let half = project
+            .walls
+            .iter()
+            .find(|w| w.id == shared_wall)
+            .unwrap()
+            .thickness()
+            / 2.0;
         let dims = building_dimensions(&project).unwrap();
-        assert!(dims.xs.iter().any(|&x| (x - 4.40).abs() < 1e-3));
+        assert!(dims.xs.iter().any(|&x| (x - (4.40 - half)).abs() < 1e-3));
+        assert!(dims.xs.iter().any(|&x| (x - (4.40 + half)).abs() < 1e-3));
 
         // Moving too far right (collapsing Quarto 2 or crushing its 1.20 m window) is rejected.
         assert!(
@@ -415,7 +423,15 @@ mod tests {
         let r_bottom = project.rooms.iter().find(|r| r.id == bottom).unwrap();
         assert!((project.room_area(r_top).unwrap() - 10.0).abs() < 1e-3);
         assert!((project.room_area(r_bottom).unwrap() - 14.0).abs() < 1e-3);
+        let half = project
+            .walls
+            .iter()
+            .find(|w| w.id == shared)
+            .unwrap()
+            .thickness()
+            / 2.0;
         let dims = building_dimensions(&project).unwrap();
-        assert!(dims.ys.iter().any(|&y| (y - 2.5).abs() < 1e-3));
+        assert!(dims.ys.iter().any(|&y| (y - (2.5 - half)).abs() < 1e-3));
+        assert!(dims.ys.iter().any(|&y| (y - (2.5 + half)).abs() < 1e-3));
     }
 }

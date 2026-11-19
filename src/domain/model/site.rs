@@ -1,6 +1,7 @@
 use super::{Lot, Project, Terrain};
 use crate::domain::geometry::{Point, polygon_area, polygon_is_simple};
 
+#[allow(dead_code)]
 fn bounds(points: &[Point]) -> Option<(Point, Point)> {
     let first = *points.first()?;
     Some(
@@ -46,6 +47,7 @@ fn clip_half_plane(polygon: &[Point], a: Point, b: Point, keep_left: bool) -> Ve
 }
 
 impl Project {
+    #[allow(dead_code)]
     pub fn set_polygon_terrain(&mut self, corners: &[Point]) -> Result<u64, String> {
         let corners: Vec<Point> = corners.iter().map(|point| point.rounded()).collect();
         if corners.len() < 3 || !polygon_is_simple(&corners) || polygon_area(&corners) < 0.25 {
