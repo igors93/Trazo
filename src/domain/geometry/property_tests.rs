@@ -48,7 +48,7 @@ proptest! {
         dx in -10_000.0f64..10_000.0,
         dy in -10_000.0f64..10_000.0,
     ) {
-        let rectangle = vec![
+        let rectangle = [
             Point::new(x, y),
             Point::new(x + width, y),
             Point::new(x + width, y + height),

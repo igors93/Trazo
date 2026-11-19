@@ -78,6 +78,7 @@ const MAX_BODY: u64 = 8 * 1024 * 1024;
 
 /// Starts the server on 127.0.0.1:`port` (0 picks a free port) and returns
 /// the port in use. `wake` makes the app look at its queue of calls.
+#[cfg(test)]
 pub fn start(
     port: u16,
     calls: mpsc::Sender<ToolCall>,

@@ -13,6 +13,7 @@ use crate::domain::{
 use eframe::egui::{self, PointerButton, Sense};
 
 impl FloorPlanApp {
+    #[cfg(test)]
     fn snap(&self, point: Point, start: Option<Point>) -> Point {
         self.snap_detail(point, start)
             .map(|hit| hit.point)

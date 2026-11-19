@@ -53,9 +53,11 @@ pub(super) fn content(project: &Project) -> String {
 
     for frame in frame_types(project) {
         let height = frame.height.map(number).unwrap_or_default();
-        let sill = (frame.kind == crate::domain::model::OpeningKind::Window)
-            .then(|| number(frame.sill))
-            .unwrap_or_default();
+        let sill = if frame.kind == crate::domain::model::OpeningKind::Window {
+            number(frame.sill)
+        } else {
+            String::new()
+        };
         let _ = writeln!(
             csv,
             "esquadria,{},{},{},un,{},{},{}\r",
