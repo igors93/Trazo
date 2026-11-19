@@ -397,6 +397,12 @@ pub fn pdf(project: &Project, path: &Path) -> Result<(), String> {
     fs::write(path, pdf).map_err(|error| error.to_string())
 }
 
+/// Grava a planta como SVG vetorial editável, mantendo textos e formas como
+/// elementos independentes para edição em programas gráficos e CAD.
+pub fn svg(project: &Project, path: &Path) -> Result<(), String> {
+    fs::write(path, document(project).markup).map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn exports_png_and_pdf() {
+    fn exports_png_pdf_and_editable_svg() {
         let mut project = Project::default();
         project.set_terrain(Point::new(0.0, 0.0), Point::new(5.0, 10.0));
         project
@@ -465,12 +471,20 @@ mod tests {
         fs::create_dir_all(&directory).unwrap();
         let png_path = directory.join("plan.png");
         let pdf_path = directory.join("plan.pdf");
+        let svg_path = directory.join("plan.svg");
         png(&project, &png_path).unwrap();
         pdf(&project, &pdf_path).unwrap();
+        svg(&project, &svg_path).unwrap();
         assert!(fs::read(&png_path).unwrap().starts_with(b"\x89PNG"));
         assert!(fs::read(&pdf_path).unwrap().starts_with(b"%PDF"));
+        let svg_content = fs::read_to_string(&svg_path).unwrap();
+        assert!(svg_content.starts_with("<svg"));
+        assert!(svg_content.contains("<text"));
+        assert!(svg_content.contains("<line"));
+        assert!(svg_content.contains("Quarto personalizado"));
         let _ = fs::remove_file(png_path);
         let _ = fs::remove_file(pdf_path);
+        let _ = fs::remove_file(svg_path);
         let _ = fs::remove_dir(directory);
     }
 }

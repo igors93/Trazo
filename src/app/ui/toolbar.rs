@@ -538,6 +538,14 @@ impl FloorPlanApp {
             {
                 self.export_pdf();
             }
+            if tip(
+                ribbon_button(ui, Icon::Export, "SVG editável", false, false),
+                "Exportar textos e formas como elementos SVG editáveis",
+            )
+            .clicked()
+            {
+                self.export_svg();
+            }
         });
     }
 

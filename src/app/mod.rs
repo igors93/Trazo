@@ -693,6 +693,20 @@ impl FloorPlanApp {
         };
     }
 
+    fn export_svg(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Desenho SVG editável", &["svg"])
+            .set_file_name("planta-baixa.svg")
+            .save_file()
+        else {
+            return;
+        };
+        self.message = match export::svg(&self.project, &path) {
+            Ok(()) => "SVG editável exportado.".to_owned(),
+            Err(error) => format!("Não foi possível exportar SVG: {error}"),
+        };
+    }
+
     pub fn revalidate_selection(&mut self) {
         let valid = match self.selection {
             Some(Selection::Wall(id)) => self.project.walls.iter().any(|w| w.id == id),

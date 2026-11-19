@@ -158,7 +158,7 @@ As cotas automáticas e os quadros de áreas e de esquadrias já existem: a prop
 | 38 | Importar e exportar DXF preservando geometria, camadas e unidades | P0 | 2 | — |
 | 39 | DWG, por biblioteca ou conversor confiável | P1 | 3 | — |
 | 40 | Imagens e PDFs como referência de fundo, com calibração de escala | P1 | 2 | — |
-| 41 | Exportação SVG editável | P1 | 2 | — |
+| 41 | Exportação SVG editável | P1 | 2 | Feito |
 | 42 | Exportação CSV de áreas, esquadrias e quantitativos | P1 | 2 | — |
 | 43 | Blocos reutilizáveis com atributos e biblioteca pessoal | P1 | 3 | — |
 | 44 | Referências externas (outros desenhos) | P2 | 4 | — |

@@ -156,6 +156,10 @@ impl FloorPlanApp {
             self.export_pdf();
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Export), "Exportar SVG editável...", "").clicked() {
+            self.export_svg();
+            ui.close();
+        }
         menu_separator(ui);
         if menu_item(ui, Some(Icon::Close), "Sair", "Alt+F4").clicked() {
             self.request_close(ui.ctx());
@@ -375,6 +379,10 @@ impl FloorPlanApp {
             self.export_pdf();
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Export), "Desenho SVG editável...", "").clicked() {
+            self.export_svg();
+            ui.close();
+        }
     }
 }
 
@@ -418,6 +426,6 @@ fn export_button(ui: &mut Ui) -> egui::Response {
         label,
         egui::Color32::WHITE,
     );
-    tip(response, "Exportar a planta em imagem PNG ou documento PDF")
+    tip(response, "Exportar a planta em PNG, PDF ou SVG editável")
         .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
