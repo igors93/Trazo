@@ -2876,14 +2876,15 @@ mod tests {
         let mut app = FloorPlanApp::new(&context);
         app.set_tool(Tool::Wall);
 
-        // First point via absolute coordinates `1;2`.
+        // First point via absolute coordinates `1;2` (Y up, as the status
+        // bar shows it: 2 m above the origin is -2 in plan coordinates).
         app.draft_input = "1;2".to_owned();
         app.commit_numeric_input();
-        assert_eq!(app.draft_start(), Some(Point::new(1.0, 2.0)));
+        assert_eq!(app.draft_start(), Some(Point::new(1.0, -2.0)));
         assert!(app.draft_input.is_empty());
 
         // Second point via distance `3,47` aiming right.
-        app.draft_aim = Some(Point::new(5.0, 2.0));
+        app.draft_aim = Some(Point::new(5.0, -2.0));
         app.draft_input = "3,47".to_owned();
         app.commit_numeric_input();
         assert_eq!(app.project.walls.len(), 1);

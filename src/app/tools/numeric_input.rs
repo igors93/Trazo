@@ -15,9 +15,11 @@ pub(in crate::app) enum NumericSpec {
     Angle(f64),
     /// Width × height from the draft start in the pointer's quadrant.
     Dimensions { width: f64, height: f64 },
-    /// Relative offset `(dx, dy)` from the draft start.
+    /// Relative offset `(dx, dy)` from the draft start, Y up as everywhere
+    /// the interface shows coordinates (so `@0;3` and `@3<90` agree).
     Relative(f64, f64),
-    /// Absolute coordinates `(x, y)` in metres.
+    /// Absolute coordinates `(x, y)` in metres, Y up as the status bar
+    /// shows them.
     Absolute(f64, f64),
 }
 
@@ -99,10 +101,11 @@ impl NumericSpec {
     /// `start` point (if any) and the current `aim` point (snapped pointer).
     pub(in crate::app) fn resolve(self, start: Option<Point>, aim: Option<Point>) -> Option<Point> {
         match self {
-            NumericSpec::Absolute(x, y) => Some(Point::new(x, y).rounded()),
+            // Plan coordinates grow downwards on screen; typed ones go up.
+            NumericSpec::Absolute(x, y) => Some(Point::new(x, -y).rounded()),
             NumericSpec::Relative(dx, dy) => {
                 let from = start?;
-                Some(Point::new(from.x + dx, from.y + dy).rounded())
+                Some(Point::new(from.x + dx, from.y - dy).rounded())
             }
             NumericSpec::Distance(distance) => {
                 let from = start?;
@@ -281,9 +284,10 @@ mod tests {
         .unwrap();
         assert!(rect.near(Point::new(-2.0, 6.0), 1e-4));
 
-        // Absolute coordinates work even without a start point.
+        // Absolute coordinates work even without a start point; Y is up,
+        // as the status bar reads it.
         let abs = NumericSpec::Absolute(2.5, 3.5).resolve(None, None).unwrap();
-        assert!(abs.near(Point::new(2.5, 3.5), 1e-4));
+        assert!(abs.near(Point::new(2.5, -3.5), 1e-4));
         assert!(NumericSpec::Distance(3.0).resolve(None, None).is_none());
     }
 
@@ -296,12 +300,23 @@ mod tests {
             .unwrap();
         assert!(locked.near(Point::new(2.0, -3.0), 1e-4));
 
-        // Relative offset and alternative dimension separators.
+        // Relative offset (Y up: -0,5 goes down the screen) and alternative
+        // dimension separators.
         let rel = parse_numeric_input("@1,5 -0,5")
             .unwrap()
             .resolve(start, None)
             .unwrap();
-        assert!(rel.near(Point::new(3.5, 1.5), 1e-4));
+        assert!(rel.near(Point::new(3.5, 2.5), 1e-4));
+        // Relative and polar input agree on which way is up.
+        let up_relative = parse_numeric_input("@0;3")
+            .unwrap()
+            .resolve(start, None)
+            .unwrap();
+        let up_polar = parse_numeric_input("@3<90")
+            .unwrap()
+            .resolve(start, None)
+            .unwrap();
+        assert!(up_relative.near(up_polar, 1e-4));
         assert_eq!(
             parse_numeric_input("2,5×3,0"),
             Some(NumericSpec::Dimensions {
