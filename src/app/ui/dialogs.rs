@@ -226,6 +226,8 @@ impl FloorPlanApp {
                             (&["Ctrl", "Z"], "Desfazer"),
                             (&["Ctrl", "Y"], "Refazer"),
                             (&["Delete"], "Excluir seleção"),
+                            (&["Setas"], "Mover seleção 0,25 m"),
+                            (&["Shift", "Setas"], "Mover seleção 1 m"),
                             (&["Esc"], "Cancelar ação ou limpar seleção"),
                         ],
                     );

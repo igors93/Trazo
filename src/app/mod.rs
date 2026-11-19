@@ -23,6 +23,9 @@ pub enum PendingAction {
     CloseApp,
 }
 
+/// How far an arrow key moves the selection: one grid step.
+const NUDGE_STEP: f32 = 0.25;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RibbonTab {
     Architecture,
@@ -632,6 +635,53 @@ impl FloorPlanApp {
         }
     }
 
+    /// Moves the selected element by `delta` metres as one undo step,
+    /// within the terrain like a drag. Doors and windows slide along their
+    /// wall, so only the part of `delta` along the wall counts.
+    fn nudge_selection(&mut self, delta: Point) {
+        let Some(selection) = self.selection else {
+            return;
+        };
+        if self.item_drag.is_some() || self.draft_start().is_some() {
+            return;
+        }
+        let previous = self.project.clone();
+        match selection {
+            Selection::Wall(id) => self.project.move_wall(id, delta),
+            Selection::Room(id) => {
+                if !self.project.move_room(id, delta) {
+                    self.message = "Cômodo possui paredes compartilhadas. Mova as paredes individualmente para ajustar a planta.".to_owned();
+                    return;
+                }
+            }
+            Selection::Terrain(id) => self.project.move_terrain(id, delta),
+            Selection::Opening(id) => {
+                if let Some(center) = self.opening_center(id) {
+                    self.project.move_opening_along_wall(
+                        id,
+                        Point::new(center.x + delta.x, center.y + delta.y),
+                    );
+                }
+            }
+        }
+        if self.project == previous {
+            self.message = match selection {
+                Selection::Opening(_) => {
+                    "A abertura só se move ao longo da parede, e não há espaço nessa direção."
+                }
+                _ => "Não há espaço para mover nessa direção dentro do terreno.",
+            }
+            .to_owned();
+            return;
+        }
+        self.record_change(previous);
+        self.sync_inspector_fields();
+        self.message = format!(
+            "Seleção movida {}. Setas: 0,25 m · Shift+setas: 1 m.",
+            crate::domain::geometry::format_meters(delta.x.abs().max(delta.y.abs()))
+        );
+    }
+
     fn toggle_snap(&mut self) {
         self.snap_enabled = !self.snap_enabled;
         self.message = if self.snap_enabled {
@@ -970,6 +1020,35 @@ impl FloorPlanApp {
                         if *event_key == key && (modifiers.command || modifiers.ctrl) && modifiers.shift == shift)
                 })
             };
+            // Arrows nudge the selection: 0,25 m, or 1 m with Shift. Held
+            // keys repeat, as in other editors.
+            let nudge = [
+                (Key::ArrowLeft, -1.0, 0.0),
+                (Key::ArrowRight, 1.0, 0.0),
+                (Key::ArrowUp, 0.0, -1.0),
+                (Key::ArrowDown, 0.0, 1.0),
+            ]
+            .into_iter()
+            .find_map(|(key, dx, dy)| {
+                input.events.iter().find_map(|event| match event {
+                    egui::Event::Key {
+                        key: event_key,
+                        pressed: true,
+                        modifiers,
+                        ..
+                    } if *event_key == key
+                        && !editing_text
+                        && !modal_open
+                        && !modifiers.ctrl
+                        && !modifiers.command
+                        && !modifiers.alt =>
+                    {
+                        let step = if modifiers.shift { 1.0 } else { NUDGE_STEP };
+                        Some(Point::new(dx * step, dy * step))
+                    }
+                    _ => None,
+                })
+            });
             let tool = [
                 (Key::V, Tool::Move),
                 (Key::T, Tool::Terrain),
@@ -990,6 +1069,7 @@ impl FloorPlanApp {
                 escape: pressed(Key::Escape) && self.pending_action.is_none(),
                 delete: pressed(Key::Delete) && !editing_text && free,
                 tool,
+                nudge,
                 fit: plain(Key::F),
                 snap: pressed(Key::F3) && free,
                 grid: pressed(Key::F7) && free,
@@ -1030,6 +1110,9 @@ impl FloorPlanApp {
         if actions.delete {
             self.delete_selection();
         }
+        if let Some(delta) = actions.nudge {
+            self.nudge_selection(delta);
+        }
         if let Some(tool) = actions.tool {
             self.set_tool(tool);
             if tool == Tool::Terrain {
@@ -1063,6 +1146,7 @@ struct ShortcutActions {
     escape: bool,
     delete: bool,
     tool: Option<Tool>,
+    nudge: Option<Point>,
     fit: bool,
     snap: bool,
     grid: bool,
@@ -1222,6 +1306,72 @@ mod tests {
         assert_eq!(app.project.walls[0].start, Point::new(2.0, 0.0));
         app.undo();
         assert_eq!(app.project.walls[0].start, Point::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn arrow_keys_nudge_the_selection_as_undoable_steps() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let id = app
+            .project
+            .add_wall(Point::new(0.0, 0.0), Point::new(3.0, 0.0))
+            .unwrap();
+        app.selection = Some(Selection::Wall(id));
+
+        press(&mut app, &context, Key::ArrowRight, egui::Modifiers::NONE);
+        assert_eq!(app.project.walls[0].start, Point::new(0.25, 0.0));
+        press(&mut app, &context, Key::ArrowDown, egui::Modifiers::SHIFT);
+        assert_eq!(app.project.walls[0].start, Point::new(0.25, 1.0));
+        assert!(app.dirty);
+
+        app.undo();
+        assert_eq!(app.project.walls[0].start, Point::new(0.25, 0.0));
+        app.undo();
+        assert_eq!(app.project.walls[0].start, Point::new(0.0, 0.0));
+
+        // Nothing selected, or Ctrl held: the arrows do nothing.
+        press(&mut app, &context, Key::ArrowRight, egui::Modifiers::CTRL);
+        app.selection = None;
+        press(&mut app, &context, Key::ArrowRight, egui::Modifiers::NONE);
+        assert_eq!(app.project.walls[0].start, Point::new(0.0, 0.0));
+    }
+
+    #[test]
+    fn arrows_slide_openings_along_their_wall_only() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let wall = app
+            .project
+            .add_wall(Point::new(0.0, 0.0), Point::new(6.0, 0.0))
+            .unwrap();
+        let door = app.project.add_opening(wall, OpeningKind::Door, 0.5).unwrap();
+        app.selection = Some(Selection::Opening(door));
+
+        app.nudge_selection(Point::new(1.0, 0.0));
+        assert!((app.opening_center(door).unwrap().x - 4.0).abs() < 1e-3);
+        let before = app.project.clone();
+        app.nudge_selection(Point::new(0.0, 1.0));
+        assert_eq!(app.project, before);
+        assert!(app.message.contains("ao longo da parede"));
+    }
+
+    #[test]
+    fn nudging_stops_at_the_terrain_edge() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        app.project
+            .set_terrain(Point::new(0.0, 0.0), Point::new(5.0, 5.0));
+        let id = app
+            .project
+            .add_wall(Point::new(0.0, 1.0), Point::new(3.0, 1.0))
+            .unwrap();
+        app.selection = Some(Selection::Wall(id));
+        app.history.clear();
+        app.dirty = false;
+        app.nudge_selection(Point::new(-0.25, 0.0));
+        assert_eq!(app.project.walls[0].start, Point::new(0.0, 1.0));
+        assert!(!app.dirty && !app.history.can_undo());
+        assert!(app.message.contains("terreno"));
     }
 
     #[test]
