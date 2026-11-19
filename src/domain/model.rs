@@ -8,6 +8,7 @@ use super::geometry::{
 
 mod auto_rooms;
 mod drawings;
+mod elements;
 mod rooms;
 mod shared_walls;
 mod site;

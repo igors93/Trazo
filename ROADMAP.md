@@ -105,7 +105,7 @@ IA para analisar, propor e revisar, com as decisões sempre nas mãos de quem pr
 | 06 | Dividir, unir, alinhar, distribuir, agrupar e repetir objetos | P1 | 3 | — |
 | 07 | Entidades CAD genéricas: linha, polilinha, arco, círculo, retângulo, spline | P1 | 2 | Feito |
 | 08 | Restrições: paralelismo, perpendicularidade, coincidência, distâncias fixas | P1 | 3 | — |
-| 09 | Seleção múltipla, por janela, por cruzamento e por filtros | P1 | 1 | — |
+| 09 | Seleção múltipla, por janela, por cruzamento e por filtros | P1 | 1 | Feito |
 | 10 | Edição de vértices e manipulação direta da geometria | P1 | 1 | Feito |
 
 O #10 foi antecipado para a Fase 1 porque cômodos poligonais (#02) só ficam úteis se os vértices puderem ser editados.

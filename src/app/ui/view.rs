@@ -130,7 +130,12 @@ impl FloorPlanApp {
     pub(in crate::app) fn canvas_context_menu(&mut self, ui: &mut Ui) {
         ui.set_width(MENU_WIDTH);
         if let Some(selection) = self.selection {
-            let title = self.selection_title(selection);
+            let multi = self.is_multi_selection();
+            let title = if multi {
+                self.selection_summary()
+            } else {
+                self.selection_title(selection)
+            };
             let galley = caps_galley(ui.painter(), &title, 10.5, MUTED);
             let (rect, _) = ui.allocate_exact_size(vec2(MENU_WIDTH, 22.0), Sense::hover());
             ui.painter().galley(
@@ -146,13 +151,15 @@ impl FloorPlanApp {
                 self.zoom_to_selection(selection);
                 ui.close();
             }
-            if matches!(selection, Selection::Fixture(_))
+            if !multi
+                && matches!(selection, Selection::Fixture(_))
                 && menu_item(ui, Some(Icon::Redo), "Girar 90°", "G").clicked()
             {
                 self.rotate_fixture_or_next();
                 ui.close();
             }
             let is_door = match selection {
+                _ if multi => false,
                 Selection::Opening(id) => self
                     .project
                     .openings
@@ -171,11 +178,20 @@ impl FloorPlanApp {
                     ui.close();
                 }
             }
-            if menu_item(ui, Some(Icon::Delete), "Excluir", "Delete").clicked() {
+            if menu_item(ui, None, "Selecionar semelhantes", "").clicked() {
+                self.select_similar();
+                ui.close();
+            }
+            let delete = if multi { "Excluir todos" } else { "Excluir" };
+            if menu_item(ui, Some(Icon::Delete), delete, "Delete").clicked() {
                 self.delete_selection();
                 ui.close();
             }
             menu_separator(ui);
+        }
+        if menu_item(ui, Some(Icon::Select), "Selecionar tudo", "Ctrl+A").clicked() {
+            self.select_all();
+            ui.close();
         }
         if menu_item(ui, Some(Icon::ZoomFit), "Enquadrar tudo", "F").clicked() {
             self.fit_view_requested();

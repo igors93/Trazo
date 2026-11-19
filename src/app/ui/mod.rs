@@ -12,6 +12,7 @@ mod layers;
 mod notes;
 mod options_bar;
 mod schedules;
+mod selection;
 mod sheet;
 mod sheet_set;
 mod status_bar;

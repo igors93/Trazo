@@ -355,6 +355,44 @@ pub fn paint_vertex_grip(painter: &Painter, position: Pos2, active: bool) {
     painter.rect_stroke(rect, 1.5, stroke, StrokeKind::Middle);
 }
 
+/// The selection box between `start` and `end`: a blue window with a solid
+/// edge (whole elements inside) or, drawn right to left, a green crossing
+/// box with a dashed edge (whatever it touches).
+pub fn paint_selection_box(painter: &Painter, start: Pos2, end: Pos2, crossing: bool) {
+    let rect = Rect::from_two_pos(start, end);
+    let color = if crossing {
+        theme::SUCCESS
+    } else {
+        theme::ACCENT
+    };
+    painter.rect_filled(rect, 0.0, color.gamma_multiply(0.10));
+    let corners = [
+        rect.left_top(),
+        rect.right_top(),
+        rect.right_bottom(),
+        rect.left_bottom(),
+        rect.left_top(),
+    ];
+    let stroke = Stroke::new(1.2, color);
+    if crossing {
+        painter.extend(Shape::dashed_line(&corners, stroke, 6.0, 4.0));
+    } else {
+        painter.add(Shape::line(corners.to_vec(), stroke));
+    }
+    let label = if crossing { "Cruzamento" } else { "Janela" };
+    let galley = painter.layout_no_wrap(label.to_owned(), theme::regular(11.0), color);
+    let anchor = end + vec2(10.0, 10.0);
+    let badge = Rect::from_min_size(anchor, galley.size() + vec2(10.0, 4.0));
+    painter.rect(
+        badge,
+        3.0,
+        Color32::WHITE,
+        Stroke::new(1.0, color.gamma_multiply(0.6)),
+        StrokeKind::Inside,
+    );
+    painter.galley(badge.min + vec2(5.0, 2.0), galley, color);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

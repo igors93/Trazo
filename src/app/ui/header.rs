@@ -198,6 +198,8 @@ impl FloorPlanApp {
             ui.close();
         }
         menu_separator(ui);
+        self.selection_menu_items(ui);
+        menu_separator(ui);
         if ui
             .add_enabled_ui(self.selection.is_some(), |ui| {
                 menu_item(ui, Some(Icon::Delete), "Excluir seleção", "Delete")
@@ -215,7 +217,8 @@ impl FloorPlanApp {
             .inner
             .clicked()
         {
-            self.selection = None;
+            self.clear_selection();
+            self.after_selection_change();
             ui.close();
         }
     }

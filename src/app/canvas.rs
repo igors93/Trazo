@@ -59,10 +59,14 @@ pub enum Preview {
 
 /// What the canvas shows besides the project itself.
 #[derive(Clone, Copy, Default)]
-pub struct PaintOptions {
+pub struct PaintOptions<'a> {
     pub selection: Option<Selection>,
+    /// The other selected elements, when several are.
+    pub extra_selection: &'a [Selection],
     /// The element under the pointer, highlighted before it is picked.
     pub hover: Option<Selection>,
+    /// What a selection box being drawn would pick, highlighted like hover.
+    pub pending: &'a [Selection],
     pub preview: Option<Preview>,
     pub show_grid: bool,
     /// The fixture about to be placed, drawn under the pointer.
@@ -391,16 +395,43 @@ fn dash_dot(painter: &Painter, points: &[Pos2], stroke: Stroke) {
     ));
 }
 
-pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options: PaintOptions) {
+/// Which elements are drawn as selected and which as hovered.
+#[derive(Clone, Copy)]
+pub struct Marks<'a> {
+    selection: Option<Selection>,
+    extra: &'a [Selection],
+    hover: Option<Selection>,
+    pending: &'a [Selection],
+}
+
+impl Marks<'_> {
+    pub fn selected(&self, item: Selection) -> bool {
+        self.selection == Some(item) || self.extra.contains(&item)
+    }
+
+    pub fn hovered(&self, item: Selection) -> bool {
+        self.hover == Some(item) || self.pending.contains(&item)
+    }
+}
+
+pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options: PaintOptions<'_>) {
     let PaintOptions {
         selection,
+        extra_selection,
         hover,
+        pending,
         preview,
         show_grid,
         ghost,
         dimensions,
         wall_reference,
     } = options;
+    let marks = Marks {
+        selection,
+        extra: extra_selection,
+        hover,
+        pending,
+    };
     painter.rect_filled(view.rect, 0.0, theme::CANVAS);
     if show_grid {
         paint_grid(painter, view);
@@ -412,8 +443,8 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         let outline = terrain.outline();
         let screen_outline: Vec<Pos2> =
             outline.iter().map(|point| view.to_screen(*point)).collect();
-        let selected = selection == Some(Selection::Terrain(terrain.id));
-        let hovered = hover == Some(Selection::Terrain(terrain.id));
+        let selected = marks.selected(Selection::Terrain(terrain.id));
+        let hovered = marks.hovered(Selection::Terrain(terrain.id));
         let fill = if selected {
             theme::TERRAIN_FILL_SELECTED
         } else {
@@ -472,8 +503,8 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
 
     if project.category_visible(crate::domain::layers::LayerCategory::Rooms) {
         for room in &project.rooms {
-            let selected = selection == Some(Selection::Room(room.id));
-            let hovered = hover == Some(Selection::Room(room.id));
+            let selected = marks.selected(Selection::Room(room.id));
+            let hovered = marks.hovered(Selection::Room(room.id));
             let fill_color = if selected {
                 theme::ROOM_FILL_SELECTED
             } else if hovered {
@@ -544,26 +575,29 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         if !project.is_wall_visible(wall) {
             continue;
         }
-        let in_room = |target: Option<Selection>| {
-            project.rooms.iter().any(|room| {
-                target == Some(Selection::Room(room.id)) && room.wall_ids.contains(&wall.id)
-            })
+        let in_room = |marked: &dyn Fn(Selection) -> bool| {
+            project
+                .rooms
+                .iter()
+                .any(|room| marked(Selection::Room(room.id)) && room.wall_ids.contains(&wall.id))
         };
-        let tone = if selection == Some(Selection::Wall(wall.id)) || in_room(selection) {
+        let tone = if marks.selected(Selection::Wall(wall.id))
+            || in_room(&|item| marks.selected(item))
+        {
             WallTone::Selected
-        } else if hover == Some(Selection::Wall(wall.id)) || in_room(hover) {
+        } else if marks.hovered(Selection::Wall(wall.id)) || in_room(&|item| marks.hovered(item)) {
             WallTone::Hovered
         } else {
             WallTone::Normal
         };
-        paint_wall(painter, view, wall, project, tone, selection, hover);
+        paint_wall(painter, view, wall, project, tone, marks);
     }
 
     if project.category_visible(crate::domain::layers::LayerCategory::Fixtures) {
         for fixture in &project.fixtures {
-            let tone = if selection == Some(Selection::Fixture(fixture.id)) {
+            let tone = if marks.selected(Selection::Fixture(fixture.id)) {
                 FixtureTone::Selected
-            } else if hover == Some(Selection::Fixture(fixture.id)) {
+            } else if marks.hovered(Selection::Fixture(fixture.id)) {
                 FixtureTone::Hovered
             } else {
                 FixtureTone::Normal
@@ -571,7 +605,7 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
             paint_fixture(painter, view, fixture, tone);
         }
     }
-    drawings::paint_drawings(painter, view, project, selection, hover);
+    drawings::paint_drawings(painter, view, project, marks);
 
     let mut occupied = Vec::new();
     let show_dims =
@@ -1203,8 +1237,7 @@ fn paint_wall(
     wall: &Wall,
     project: &Project,
     tone: WallTone,
-    selection: Option<Selection>,
-    hover: Option<Selection>,
+    marks: Marks<'_>,
 ) {
     let a = view.to_screen(wall.start);
     let b = view.to_screen(wall.end);
@@ -1227,8 +1260,8 @@ fn paint_wall(
     let mut cursor = 0.0;
     let mut run_start = a - cap;
     for opening in openings {
-        let op_selected = selection == Some(Selection::Opening(opening.id));
-        let op_hovered = hover == Some(Selection::Opening(opening.id));
+        let op_selected = marks.selected(Selection::Opening(opening.id));
+        let op_hovered = marks.hovered(Selection::Opening(opening.id));
         let half = view.pixels(opening.width()) / 2.0;
         let center = opening.t as f32 * screen_length;
         let left = center - half;

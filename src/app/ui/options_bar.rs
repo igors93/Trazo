@@ -362,12 +362,62 @@ impl FloorPlanApp {
         }
     }
 
+    /// The selection filter as a pill with its menu.
+    fn selection_filter_pill(&mut self, ui: &mut Ui) {
+        let label = if self.selection_filter.is_open() {
+            "Filtro ▾"
+        } else {
+            "Filtro ativo ▾"
+        };
+        let pill = toggle_pill(
+            ui,
+            label,
+            !self.selection_filter.is_open(),
+            "Tipos de elemento que a seleção por janela, por cruzamento e Ctrl+A pegam",
+        );
+        egui::Popup::menu(&pill).show(|ui| self.selection_filter_menu(ui));
+    }
+
     fn selection_options(&mut self, ui: &mut Ui) {
+        if self.is_multi_selection() {
+            caption(ui, "Selecionados:");
+            chip(ui, &self.selection_summary());
+            divider(ui);
+            if tip(
+                secondary_button(ui, "Aproximar"),
+                "Aproximar a vista de todos os selecionados",
+            )
+            .clicked()
+                && let Some(primary) = self.selection
+            {
+                self.zoom_to_selection(primary);
+            }
+            if tip(
+                danger_button(ui, "Excluir"),
+                "Excluir todos os selecionados (Delete)",
+            )
+            .clicked()
+            {
+                self.delete_selection();
+            }
+            divider(ui);
+            self.selection_filter_pill(ui);
+            return;
+        }
         let Some(selection) = self.selection else {
             caption(
                 ui,
-                "Clique num elemento para selecioná-lo; arraste para mover. Roda: zoom · botão do meio: mover vista.",
+                "Clique para selecionar · Shift+clique soma · arraste no vazio: → janela, ← cruzamento.",
             );
+            if tip(
+                secondary_button(ui, "Selecionar tudo"),
+                "Seleciona todos os elementos que o filtro deixa passar (Ctrl+A)",
+            )
+            .clicked()
+            {
+                self.select_all();
+            }
+            self.selection_filter_pill(ui);
             return;
         };
         let (label, detail) = match selection {

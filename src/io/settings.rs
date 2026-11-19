@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::{snap::OsnapSettings, wall_reference::WallReference};
+use crate::domain::{element::SelectionFilter, snap::OsnapSettings, wall_reference::WallReference};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -25,6 +25,8 @@ pub struct Settings {
     pub modulation: bool,
     /// Dimension chains around the building.
     pub dimensions: bool,
+    /// Which kinds a selection box or "select all" picks.
+    pub selection_filter: SelectionFilter,
 }
 
 impl Default for Settings {
@@ -40,6 +42,7 @@ impl Default for Settings {
             ribbon_collapsed: false,
             modulation: true,
             dimensions: true,
+            selection_filter: SelectionFilter::default(),
         }
     }
 }

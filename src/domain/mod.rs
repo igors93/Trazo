@@ -3,6 +3,7 @@ pub mod areas;
 pub mod dimensions;
 pub mod doc_style;
 pub mod drawing;
+pub mod element;
 pub mod fixtures;
 pub mod geometry;
 pub mod hatch;

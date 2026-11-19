@@ -275,7 +275,10 @@ impl FloorPlanApp {
         } else {
             None
         };
-        let hovered_item = if self.item_drag.is_some() || self.vertex_drag.is_some() {
+        let hovered_item = if self.item_drag.is_some()
+            || self.vertex_drag.is_some()
+            || self.box_select.is_some()
+        {
             None
         } else {
             world.and_then(|point| self.pick(point))
@@ -308,13 +311,13 @@ impl FloorPlanApp {
                         pos,
                         button: PointerButton::Primary,
                         pressed: true,
-                        ..
-                    } if on_canvas(*pos) => Some(*pos),
+                        modifiers,
+                    } if on_canvas(*pos) => Some((*pos, modifiers.shift)),
                     _ => None,
                 })
             });
-            if let Some(position) = pressed {
-                self.begin_item_drag(view.to_world(position));
+            if let Some((position, shift)) = pressed {
+                self.begin_item_drag_with(view.to_world(position), shift);
             }
             let primary_down = ui.input(|input| input.pointer.primary_down());
             if primary_down && let Some(point) = world {
@@ -337,6 +340,7 @@ impl FloorPlanApp {
         let mut drag_finished_this_frame = false;
 
         if ui.input(|input| input.pointer.any_released()) {
+            self.finish_box_select(self.screen_metres(4.0));
             self.commit_item_drag();
             if let Some(kind) = self.opening_drag.take()
                 && let Some(point) = world
@@ -432,12 +436,29 @@ impl FloorPlanApp {
             (Tool::Fixture(kind), Some(point)) => Some(self.fixture_placement(kind, point)),
             _ => None,
         };
+        // What the selection box would pick, highlighted as it is drawn.
+        let boxed: Vec<Selection> = self
+            .box_select
+            .filter(|selection_box| {
+                selection_box.start.distance(selection_box.end) >= self.screen_metres(4.0)
+            })
+            .map(|selection_box| {
+                self.project.elements_in_box(
+                    selection_box.start,
+                    selection_box.end,
+                    selection_box.crossing(),
+                    self.selection_filter,
+                )
+            })
+            .unwrap_or_default();
         canvas::paint(
             &painter,
             view,
             &self.project,
             PaintOptions {
                 selection: self.selection,
+                extra_selection: &self.selection_extra,
+                pending: &boxed,
                 hover,
                 preview,
                 show_grid: self.show_grid,
@@ -447,6 +468,16 @@ impl FloorPlanApp {
             },
         );
         self.paint_view_aids(&painter, view);
+        if let Some(selection_box) = self.box_select
+            && selection_box.start.distance(selection_box.end) >= self.screen_metres(4.0)
+        {
+            overlay::paint_selection_box(
+                &painter,
+                view.to_screen(selection_box.start),
+                view.to_screen(selection_box.end),
+                selection_box.crossing(),
+            );
+        }
         if self.tool == Tool::Move {
             for (pos, target) in self.selection_grips() {
                 let active = self.vertex_drag.is_some_and(|drag| drag.target == target)
@@ -575,13 +606,20 @@ impl FloorPlanApp {
             self.cancel_creation();
             self.message = "Desenho cancelado.".to_owned();
         }
-        if let Some(selection) = point.and_then(|point| self.pick(point)) {
+        // On an element of a selection of several, the menu acts on all.
+        if let Some(selection) = point.and_then(|point| self.pick(point))
+            && !(self.is_multi_selection() && self.is_selected(selection))
+        {
             self.select(selection);
         }
     }
 
     /// Editable vertex handles for the current selection in Select/Move mode.
     pub(super) fn selection_grips(&self) -> Vec<(Point, GripTarget)> {
+        // Vertices are edited one element at a time.
+        if self.is_multi_selection() {
+            return Vec::new();
+        }
         match self.selection {
             Some(Selection::Wall(id)) => self
                 .project
@@ -644,39 +682,71 @@ impl FloorPlanApp {
 
     /// Picks the element (or vertex grip of the current selection) at `point`
     /// and gets ready to drag it.
+    #[cfg(test)]
     pub(super) fn begin_item_drag(&mut self, point: Point) {
-        if let Some((_, target)) = self.grip_at(point) {
+        self.begin_item_drag_with(point, false);
+    }
+
+    /// A press with the selection tool. On a grip it edits that vertex; on
+    /// an element it selects it (Shift adds it or takes it out) and gets
+    /// ready to drag it, with the rest of the selection when it is part of
+    /// it; on empty space, or on a terrain that is not selected, it starts
+    /// a selection box.
+    pub(super) fn begin_item_drag_with(&mut self, point: Point, shift: bool) {
+        self.item_drag = None;
+        self.vertex_drag = None;
+        self.drag_initial_project = None;
+        if !shift && let Some((_, target)) = self.grip_at(point) {
             self.vertex_drag = Some(VertexDrag {
                 target,
                 moved: false,
             });
-            self.item_drag = None;
             self.drag_initial_project = Some(self.project.clone());
             self.message = "Arraste o vértice para editar a geometria.".to_owned();
             return;
         }
-        self.vertex_drag = None;
-        self.selection = self.pick(point);
-        self.item_drag = self.selection.map(|selection| {
-            // An opening keeps the spot where it was grabbed instead of
-            // jumping so that its centre sits under the pointer.
-            let grab_offset = match selection {
-                Selection::Opening(id) => self
-                    .opening_center(id)
-                    .map(|center| Point::new(point.x - center.x, point.y - center.y))
-                    .unwrap_or(Point::new(0.0, 0.0)),
-                _ => Point::new(0.0, 0.0),
-            };
-            ItemDrag {
-                selection,
-                last: self.drag_position(selection, point),
-                grab_offset,
-                moved: false,
+        let item = match self.pick(point) {
+            None => {
+                self.begin_box_select(point, shift, None);
+                return;
             }
+            // The terrain is the plan's background: dragging over it draws
+            // a selection box, and a click selects it.
+            Some(terrain @ Selection::Terrain(_)) if !self.is_selected(terrain) => {
+                self.begin_box_select(point, shift, Some(terrain));
+                return;
+            }
+            Some(item) => item,
+        };
+        if shift {
+            self.toggle_selection(item);
+            return;
+        }
+        let group = self.is_multi_selection() && self.is_selected(item);
+        if !group {
+            self.set_selection(Some(item));
+        }
+        // An opening keeps the spot where it was grabbed instead of jumping
+        // so that its centre sits under the pointer.
+        let grab_offset = match item {
+            Selection::Opening(id) if !group => self
+                .opening_center(id)
+                .map(|center| Point::new(point.x - center.x, point.y - center.y))
+                .unwrap_or(Point::new(0.0, 0.0)),
+            _ => Point::new(0.0, 0.0),
+        };
+        self.item_drag = Some(ItemDrag {
+            selection: item,
+            last: self.drag_point(item, group, point),
+            grab_offset,
+            moved: false,
+            group,
         });
+        // Locked layers keep their elements in place, alone or in a group.
         if self
-            .selection
-            .is_some_and(|sel| self.selection_is_locked(sel))
+            .selected()
+            .into_iter()
+            .any(|selected| self.selection_is_locked(selected))
         {
             self.item_drag = None;
             self.drag_initial_project = None;
@@ -684,9 +754,8 @@ impl FloorPlanApp {
             self.sync_inspector_fields();
             return;
         }
-        self.drag_initial_project = self.item_drag.as_ref().map(|_| self.project.clone());
-        self.message = Self::selection_message(self.selection).to_owned();
-        self.sync_inspector_fields();
+        self.drag_initial_project = Some(self.project.clone());
+        self.after_selection_change();
     }
 
     /// Walls, rooms and the terrain move in grid steps when snapping is on,
@@ -698,6 +767,25 @@ impl FloorPlanApp {
             Selection::Fixture(_) | Selection::Drawing(_) => point.snapped_to(0.05),
             _ => point.snapped_to(0.25),
         }
+    }
+
+    /// Where the drag stands for the pointer at `point`. Several elements
+    /// dragged together move in grid steps when any of them is built (a
+    /// wall, a room, the terrain), else in 5 cm steps.
+    fn drag_point(&self, grabbed: Selection, group: bool, point: Point) -> Point {
+        if !group {
+            return self.drag_position(grabbed, point);
+        }
+        if !self.snap_enabled {
+            return point;
+        }
+        let built = self.selected().iter().any(|item| {
+            matches!(
+                item,
+                Selection::Wall(_) | Selection::Room(_) | Selection::Terrain(_)
+            )
+        });
+        point.snapped_to(if built { 0.25 } else { 0.05 })
     }
 
     /// Where a fixture of `kind` lands for the pointer at `point`. Near a
@@ -783,6 +871,10 @@ impl FloorPlanApp {
     /// Nothing changes until the pointer actually moves, so a click only
     /// selects.
     pub(super) fn drag_item_to(&mut self, point: Point) {
+        if self.box_select.is_some() {
+            self.update_box_select(point);
+            return;
+        }
         if self.vertex_drag.is_some() {
             self.drag_vertex_to(point);
             return;
@@ -790,9 +882,20 @@ impl FloorPlanApp {
         let Some(drag) = self.item_drag else {
             return;
         };
-        let current = self.drag_position(drag.selection, point);
+        let current = self.drag_point(drag.selection, drag.group, point);
         let delta = Point::new(current.x - drag.last.x, current.y - drag.last.y);
         if delta.x == 0.0 && delta.y == 0.0 {
+            return;
+        }
+        if drag.group {
+            if let Err(error) = self.project.move_elements(&self.selected(), delta) {
+                self.message = error;
+                return;
+            }
+            if let Some(drag) = &mut self.item_drag {
+                drag.last = current;
+                drag.moved = true;
+            }
             return;
         }
         match drag.selection {

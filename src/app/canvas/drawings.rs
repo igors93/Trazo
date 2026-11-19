@@ -3,7 +3,7 @@
 
 use eframe::egui::{Color32, Painter, Pos2, Rect, Shape as EguiShape, Stroke, vec2};
 
-use super::ViewTransform;
+use super::{Marks, ViewTransform};
 use crate::app::{Selection, theme};
 use crate::domain::drawing::Shape;
 use crate::domain::geometry::Point;
@@ -38,23 +38,17 @@ pub fn paint_shape_styled(
 }
 
 /// The project's drawing entities, with layer visibility, colour, weight and
-/// line type applied.
-pub fn paint_drawings(
-    painter: &Painter,
-    view: ViewTransform,
-    project: &Project,
-    selection: Option<Selection>,
-    hover: Option<Selection>,
-) {
+/// line type applied, and the selected and hovered ones highlighted.
+pub fn paint_drawings(painter: &Painter, view: ViewTransform, project: &Project, marks: Marks<'_>) {
     for drawing in &project.drawings {
         if !project.is_drawing_visible(drawing) {
             continue;
         }
         let layer = project.effective_drawing_layer(drawing);
         let line_type = layer.map(|l| l.line_type).unwrap_or(LineType::Solid);
-        let stroke = if selection == Some(Selection::Drawing(drawing.id)) {
+        let stroke = if marks.selected(Selection::Drawing(drawing.id)) {
             Stroke::new(2.4, theme::SELECTION)
-        } else if hover == Some(Selection::Drawing(drawing.id)) {
+        } else if marks.hovered(Selection::Drawing(drawing.id)) {
             Stroke::new(2.0, theme::HOVER)
         } else if let Some(layer) = layer {
             let [r, g, b] = layer.color;

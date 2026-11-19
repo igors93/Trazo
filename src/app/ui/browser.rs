@@ -164,6 +164,41 @@ impl FloorPlanApp {
 
         let filter = self.browser_filter.trim().to_lowercase();
         let groups = self.browser_groups();
+        if !filter.is_empty() {
+            let found: Vec<Selection> = groups
+                .iter()
+                .flat_map(|group| {
+                    group
+                        .rows
+                        .iter()
+                        .filter(|row| {
+                            row.label.to_lowercase().contains(&filter)
+                                || group.title.to_lowercase().contains(&filter)
+                        })
+                        .map(|row| row.selection)
+                })
+                .collect();
+            egui::Frame::new()
+                .inner_margin(Margin {
+                    left: 12,
+                    right: 12,
+                    top: 0,
+                    bottom: 8,
+                })
+                .show(ui, |ui| {
+                    let label = format!("Selecionar os {} encontrados", found.len());
+                    if ui
+                        .add_enabled_ui(!found.is_empty(), |ui| {
+                            super::widgets::secondary_button(ui, &label)
+                        })
+                        .inner
+                        .on_hover_text("Seleciona juntos todos os elementos que o filtro mostra")
+                        .clicked()
+                    {
+                        self.select_many(found, false);
+                    }
+                });
+        }
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -343,7 +378,7 @@ impl FloorPlanApp {
     fn browser_row(&mut self, ui: &mut Ui, icon: Icon, row: &Row) {
         let (rect, response) =
             ui.allocate_exact_size(vec2(ui.available_width(), 24.0), Sense::click());
-        let selected = self.selection == Some(row.selection);
+        let selected = self.is_selected(row.selection);
         let painter = ui.painter();
         if selected {
             painter.rect_filled(rect, 0, ACCENT_SOFT);
@@ -389,10 +424,20 @@ impl FloorPlanApp {
         );
         let response = response
             .on_hover_cursor(egui::CursorIcon::PointingHand)
-            .on_hover_text("Clique para selecionar · duplo clique para aproximar");
+            .on_hover_text(
+                "Clique para selecionar · Shift ou Ctrl+clique soma ou retira · duplo clique para aproximar",
+            );
+        let adding = ui.input(|input| input.modifiers.shift || input.modifiers.command);
         if response.double_clicked() {
-            self.select(row.selection);
+            if !self.is_selected(row.selection) {
+                self.select(row.selection);
+            }
             self.zoom_to_selection(row.selection);
+        } else if response.clicked() && adding {
+            if self.tool != super::super::Tool::Move {
+                self.set_tool(super::super::Tool::Move);
+            }
+            self.toggle_selection(row.selection);
         } else if response.clicked() {
             self.select(row.selection);
         }

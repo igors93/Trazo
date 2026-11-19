@@ -232,14 +232,14 @@ impl FloorPlanApp {
     /// plan as it was instead of taking the app down.
     pub(super) fn run_mcp_tool(&mut self, name: &str, args: &Value) -> ToolOutput {
         self.commit_item_drag();
-        let backup = (self.project.clone(), self.selection);
+        let backup = (self.project.clone(), self.selected());
         let outcome = catch_unwind(AssertUnwindSafe(|| self.dispatch_tool(name, args)));
         let output = match outcome {
             Ok(Ok(output)) => output,
             Ok(Err(message)) => ToolOutput::error(message),
             Err(_) => {
                 self.project = backup.0;
-                self.selection = backup.1;
+                self.set_selection_set(backup.1);
                 ToolOutput::error(
                     "Erro interno do Trazo ao executar a ferramenta; a planta foi mantida como estava.",
                 )
@@ -484,7 +484,7 @@ impl FloorPlanApp {
             self.fit_view_requested();
         }
         if let Some(selection) = outcome.selection {
-            self.selection = Some(selection);
+            self.set_selection(Some(selection));
         }
         let mut output = ToolOutput::ok(outcome.message);
         if let Some(data) = outcome.data {

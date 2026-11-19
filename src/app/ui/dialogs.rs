@@ -254,6 +254,10 @@ impl FloorPlanApp {
                         &[
                             (&["Ctrl", "Z"], "Desfazer"),
                             (&["Ctrl", "Y"], "Refazer"),
+                            (&["Ctrl", "A"], "Selecionar tudo (segue o filtro)"),
+                            (&["Shift", "Clique"], "Somar ou retirar da seleção"),
+                            (&["Arrastar →"], "Seleção por janela (inteiros dentro)"),
+                            (&["Arrastar ←"], "Seleção por cruzamento (o que tocar)"),
                             (&["Delete"], "Excluir seleção"),
                             (&["Setas"], "Mover seleção 0,25 m"),
                             (&["Shift", "Setas"], "Mover seleção 1 m"),

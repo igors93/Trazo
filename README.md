@@ -38,6 +38,7 @@ Grid, snapping, ortho mode, modulation, dimension chains, open panels and the fo
    - **Openings**: drag along the wall or set custom widths within the limits (doors: 0.60 m to 2.00 m; windows: 0.40 m to 4.00 m), and set the height and, for windows, the sill. Turn a door to the other side of the wall (`I`) or move its hinge to the other jamb (`Shift+I`), also from Properties or the context menu.
    - **Door and window schedule**: openings of the same kind and size share a code, numbered from the smallest (P1, P2… for doors, PV for saloon doors, J for windows, V for open spans). The plan and the export tag each one as "P1 80/210" or "J1 120/100" (width/height in cm), and Properties lists the schedule with quantities and sills.
    - **Terrain**: resize, check the occupancy rate, or use **Centralizar planta**.
+   - **Several at once**: `Shift`+click adds an element to the selection or takes it out; dragging from empty space draws a selection box — left to right it picks by window (elements wholly inside, solid blue box), right to left by crossing (anything it touches, dashed green box); `Ctrl+A` selects everything. *Editar* also selects by kind, similar elements (doors of the same size, the same fixture, walls of the same thickness) or the inverse, and the **selection filter** limits which kinds boxes and select-all pick. In the project browser, `Shift` or `Ctrl`+click adds rows, and **Selecionar os encontrados** selects every element the text filter shows. Dragging any selected element moves them all.
    - Move the selection with the arrow keys (0.25 m, or 1 m with `Shift`), and remove it with **Excluir** or `Delete`.
 6. Furnish with the *Interiores* tab: near a straight wall, a fixture turns its back to the wall and stands against the face of the bricks (half the 0.12 m wall thickness off the wall's centre line). Fixtures can be dragged in 5 cm steps, nudged with the arrows, turned 90° with `G` and resized in Properties. A washbasin 0.90 m or wider becomes a double (shared) sink. **Porta vai-e-vem** adds double-acting saloon doors.
 7. Check distances with **Medir** (`M`): click two points (snapping to wall ends, faces and the grid) to keep a measurement on screen; it never changes the project. `Esc` in the measuring tool, or **Limpar medidas**, clears them. **Cotas** (status bar or *Vista*) shows dimension chains in centimetres along the top and left of the building — every wall thickness and clear span, plus the total — on screen and in the export.
@@ -55,6 +56,8 @@ Drawing can be cancelled at any time with `Esc`, a right click, or by switching 
 | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` | New, open, save |
 | `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`) | Undo, redo |
 | `Delete` | Delete the selection |
+| `Ctrl+A` | Select all (following the selection filter) |
+| `Shift`+click / drag → / drag ← | Add to or remove from the selection / window / crossing selection |
 | Arrows / `Shift`+arrows | Move the selection 0.25 m / 1 m |
 | `G` | Turn the selected fixture (or the next one) 90° |
 | `Esc` | Cancel the current action, or clear the selection |
@@ -96,10 +99,12 @@ If Claude Desktop is using Trazo, close it before rebuilding (`cargo build --rel
 - `src/domain/masonry.rs`: bricks and blocks, wall thickness, modulation, courses and the block estimate.
 - `src/domain/annotations.rs`: dimension chains and the door and window schedule, shared by the canvas and the export.
 - `src/domain/fixtures.rs`: fixture kinds, sizes, rotation and their plan symbols, shared by the canvas, the export and the ribbon icons.
+- `src/domain/element.rs` and `src/domain/model/elements.rs`: references to elements, the selection filter, window and crossing picks, and moving or deleting several elements as one change.
 - `src/domain/history.rs`: undo and redo stack with duplicate-state suppression.
 - `src/app/canvas.rs`: rendering grid, terrain, walls, rooms, openings, labels, hover and selection highlights, and live previews.
 - `src/app/canvas/overlay.rs`: drawing aids over the plan: graphic scale, north arrow, crosshair, snap markers.
 - `src/app/interaction.rs`: canvas mouse interactions, creation state machine, picking, dragging, snapping and the context menu trigger.
+- `src/app/selection.rs`: multiple selection, selection boxes, select all, similar and inverse.
 - `src/app/ui/`: menu bar, ribbon, options bar, project browser, properties panel, status bar, view overlays, dialogs (including *Conectar uma IA*), icons and shared widgets.
 - `src/app/theme.rs`: the white and light-blue theme, colours and system fonts.
 - `src/app/mod.rs`: application state, data protection flows, commands, and shortcuts.

@@ -47,7 +47,7 @@ fn metres_field(ui: &mut Ui, text: &mut String) -> Response {
 }
 
 /// The card at the top of the panel that says what is selected.
-fn type_card(ui: &mut Ui, icon: Icon, title: &str, subtitle: &str) {
+pub(super) fn type_card(ui: &mut Ui, icon: Icon, title: &str, subtitle: &str) {
     egui::Frame::new()
         .inner_margin(Margin {
             left: 12,
@@ -133,6 +133,10 @@ impl FloorPlanApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
+                if self.is_multi_selection() {
+                    self.multi_selection_inspector(ui);
+                    return;
+                }
                 match self.selection {
                     Some(Selection::Fixture(id)) => self.fixture_inspector(ui, id),
                     Some(Selection::Drawing(id)) => self.drawing_inspector(ui, id),

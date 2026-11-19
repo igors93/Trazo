@@ -86,7 +86,7 @@ impl FloorPlanApp {
         if let Some(template) = chosen {
             let prev = self.project.clone();
             self.project = template.build();
-            self.selection = None;
+            self.clear_selection();
             self.file_path = None;
             self.record_change(prev);
             self.fit_view_requested();

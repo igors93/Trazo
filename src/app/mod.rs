@@ -1,6 +1,7 @@
 mod canvas;
 mod interaction;
 mod mcp_tools;
+mod selection;
 mod theme;
 mod tools;
 mod ui;
@@ -83,16 +84,8 @@ enum Tool {
     Draw(tools::DrawKind),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum Selection {
-    Fixture(u64),
-    Wall(u64),
-    Room(u64),
-    Terrain(u64),
-    Opening(u64),
-    /// A line, arc, circle or other drawing entity.
-    Drawing(u64),
-}
+/// A selected element: the domain's reference to it.
+use crate::domain::element::Element as Selection;
 
 #[derive(Clone, Copy)]
 struct ItemDrag {
@@ -101,6 +94,8 @@ struct ItemDrag {
     /// Where an opening was grabbed, relative to its centre.
     grab_offset: Point,
     moved: bool,
+    /// The whole selection moves, not only the grabbed element.
+    group: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -132,7 +127,14 @@ pub struct FloorPlanApp {
     pending_action: Option<PendingAction>,
     tool: Tool,
     creation_state: CreationState,
+    /// The primary selected element: the one the properties panel shows.
     selection: Option<Selection>,
+    /// The other selected elements when several are (see `selection`).
+    selection_extra: Vec<Selection>,
+    /// Which kinds a selection box or "select all" picks.
+    selection_filter: crate::domain::element::SelectionFilter,
+    /// The selection box being drawn.
+    box_select: Option<selection::BoxSelect>,
     item_drag: Option<ItemDrag>,
     vertex_drag: Option<VertexDrag>,
     drag_initial_project: Option<Project>,
@@ -247,6 +249,9 @@ impl FloorPlanApp {
             tool: Tool::Move,
             creation_state: CreationState::Idle,
             selection: None,
+            selection_extra: Vec::new(),
+            selection_filter: preferences.selection_filter,
+            box_select: None,
             item_drag: None,
             vertex_drag: None,
             drag_initial_project: None,
@@ -375,6 +380,7 @@ impl FloorPlanApp {
             ribbon_collapsed: self.ribbon_collapsed,
             modulation: self.modulation_enabled,
             dimensions: self.show_dimensions,
+            selection_filter: self.selection_filter,
         }
     }
 
@@ -420,6 +426,8 @@ impl FloorPlanApp {
     /// step. Whatever interrupts a drag (a tool key, Delete) goes through
     /// here, so a move is never left outside the history and unsaved.
     fn commit_item_drag(&mut self) {
+        // A selection box cut short selects nothing.
+        self.box_select = None;
         let drag = self.item_drag.take();
         let vertex = self.vertex_drag.take();
         let moved = drag.is_some_and(|d| d.moved) || vertex.is_some_and(|v| v.moved);
@@ -438,7 +446,7 @@ impl FloorPlanApp {
         self.polygon_draft.clear();
         self.draw_points.clear();
         self.draft_input.clear();
-        self.selection = None;
+        self.clear_selection();
         self.message = match tool {
             Tool::Wall => "Clique em dois pontos para desenhar uma parede.",
             Tool::Room => "Clique em dois cantos opostos e dê um nome ao cômodo.",
@@ -541,6 +549,21 @@ impl FloorPlanApp {
         self.message = "Operação cancelada.".to_owned();
     }
 
+    /// Drops everything in progress on the plan (drafts, drags, the
+    /// selection) when another project takes its place.
+    fn reset_editing_state(&mut self) {
+        self.creation_state = CreationState::Idle;
+        self.polygon_draft.clear();
+        self.draw_points.clear();
+        self.draft_input.clear();
+        self.clear_selection();
+        self.box_select = None;
+        self.item_drag = None;
+        self.vertex_drag = None;
+        self.drag_initial_project = None;
+        self.pending_room = None;
+    }
+
     fn new_project(&mut self) {
         recovery::clear();
         self.measurements.clear();
@@ -551,11 +574,7 @@ impl FloorPlanApp {
         self.recovery_pending = false;
         self.pending_action = None;
         self.tool = Tool::Move;
-        self.creation_state = CreationState::Idle;
-        self.selection = None;
-        self.item_drag = None;
-        self.drag_initial_project = None;
-        self.pending_room = None;
+        self.reset_editing_state();
         self.pan = egui::Vec2::ZERO;
         self.last_canvas_center = None;
         self.scale = 60.0;
@@ -588,11 +607,7 @@ impl FloorPlanApp {
                 self.recovery_pending = false;
                 self.pending_action = None;
                 self.tool = Tool::Move;
-                self.creation_state = CreationState::Idle;
-                self.selection = None;
-                self.item_drag = None;
-                self.drag_initial_project = None;
-                self.pending_room = None;
+                self.reset_editing_state();
                 self.sync_inspector_fields();
                 self.fit_view_requested();
                 if warnings.is_empty() {
@@ -648,7 +663,7 @@ impl FloorPlanApp {
                 let previous = self.project.clone();
                 if let Some(id) = self.project.set_terrain(start, end) {
                     self.record_change(previous);
-                    self.selection = Some(Selection::Terrain(id));
+                    self.set_selection(Some(Selection::Terrain(id)));
                     if let Some(terrain) = &self.project.terrain {
                         self.terrain_width_text =
                             format!("{:.2}", terrain.width()).replace('.', ",");
@@ -830,19 +845,15 @@ impl FloorPlanApp {
         };
     }
 
+    /// Drops from the selection whatever the project no longer has (after
+    /// an undo, say); the last element left becomes the primary one.
     pub fn revalidate_selection(&mut self) {
-        let valid = match self.selection {
-            Some(Selection::Wall(id)) => self.project.walls.iter().any(|w| w.id == id),
-            Some(Selection::Room(id)) => self.project.rooms.iter().any(|r| r.id == id),
-            Some(Selection::Opening(id)) => self.project.openings.iter().any(|o| o.id == id),
-            Some(Selection::Terrain(_)) => self.project.terrain.is_some(),
-            Some(Selection::Fixture(id)) => self.project.fixtures.iter().any(|f| f.id == id),
-            Some(Selection::Drawing(id)) => self.project.drawing(id).is_some(),
-            None => false,
-        };
-        if !valid {
-            self.selection = None;
-        }
+        let kept: Vec<Selection> = self
+            .selected()
+            .into_iter()
+            .filter(|item| self.project.element_exists(*item))
+            .collect();
+        self.set_selection_set(kept);
     }
 
     fn undo(&mut self) {
@@ -1023,13 +1034,27 @@ impl FloorPlanApp {
             self.set_tool(Tool::Move);
         }
         self.cancel_creation();
-        self.selection = Some(selection);
+        self.set_selection(Some(selection));
         self.sync_inspector_fields();
         self.message = Self::selection_message(self.selection).to_owned();
     }
 
+    /// Zooms to `selection`, or to everything selected when it is part of
+    /// a selection of several elements.
     fn zoom_to_selection(&mut self, selection: Selection) {
-        if let Some(bounds) = self.selection_bounds(selection) {
+        let bounds = if self.is_multi_selection() && self.is_selected(selection) {
+            self.project
+                .elements_bounds(&self.selected())
+                .map(|(low, high)| {
+                    (
+                        Point::new(low.x - 0.75, low.y - 0.75),
+                        Point::new(high.x + 0.75, high.y + 0.75),
+                    )
+                })
+        } else {
+            self.selection_bounds(selection)
+        };
+        if let Some(bounds) = bounds {
             self.zoom_target = Some(bounds);
         }
     }
@@ -1061,7 +1086,11 @@ impl FloorPlanApp {
         let Some(selection) = self.selection else {
             return;
         };
-        if self.selection_is_locked(selection) {
+        if self
+            .selected()
+            .into_iter()
+            .any(|selected| self.selection_is_locked(selected))
+        {
             self.message = "A camada deste elemento está bloqueada.".to_owned();
             return;
         }
@@ -1069,6 +1098,26 @@ impl FloorPlanApp {
             return;
         }
         let previous = self.project.clone();
+        if self.is_multi_selection() {
+            if let Err(error) = self.project.move_elements(&self.selected(), delta) {
+                self.message = error;
+                return;
+            }
+            if self.project == previous {
+                self.message =
+                    "Não há espaço para mover a seleção nessa direção dentro do terreno."
+                        .to_owned();
+                return;
+            }
+            self.record_change(previous);
+            self.sync_inspector_fields();
+            self.message = format!(
+                "{} movidos {}. Setas: 0,25 m · Shift+setas: 1 m.",
+                self.selection_summary(),
+                crate::domain::geometry::format_meters(delta.x.abs().max(delta.y.abs()))
+            );
+            return;
+        }
         match selection {
             Selection::Wall(id) => {
                 if let Err(error) = self.project.move_wall_checked(id, delta) {
@@ -1396,7 +1445,7 @@ impl FloorPlanApp {
                 .unwrap()
         };
         self.record_change(previous);
-        self.selection = Some(Selection::Terrain(id));
+        self.set_selection(Some(Selection::Terrain(id)));
         self.fit_view_requested();
         self.message = format!(
             "Terreno {}: {:.2} m².",
@@ -1503,10 +1552,23 @@ impl FloorPlanApp {
 
     fn delete_selection(&mut self) {
         self.commit_item_drag();
-        if let Some(selection) = self.selection
-            && self.selection_is_locked(selection)
+        if self
+            .selected()
+            .into_iter()
+            .any(|selected| self.selection_is_locked(selected))
         {
             self.message = "A camada deste elemento está bloqueada.".to_owned();
+            return;
+        }
+        if self.is_multi_selection() {
+            let items = self.selected();
+            let summary = self.selection_summary();
+            let previous = self.project.clone();
+            self.project.delete_elements(&items);
+            self.clear_selection();
+            self.record_change(previous);
+            self.message = format!("{summary} removidos.");
+            self.sync_inspector_fields();
             return;
         }
         if let Some(selection) = self.selection.take() {
@@ -1895,6 +1957,7 @@ impl FloorPlanApp {
                 new: shortcut(Key::N, false) && free,
                 undo: shortcut(Key::Z, false) && !editing_text && free,
                 redo: (shortcut(Key::Y, false) || shortcut(Key::Z, true)) && !editing_text && free,
+                select_all: shortcut(Key::A, false) && !editing_text && free,
                 escape: pressed(Key::Escape) && self.pending_action.is_none(),
                 delete: pressed(Key::Delete) && !editing_text && !typing_numeric && free,
                 tool,
@@ -1938,12 +2001,17 @@ impl FloorPlanApp {
         if actions.redo {
             self.redo();
         }
+        if actions.select_all {
+            self.select_all();
+        }
         if actions.escape {
             if self.show_help || self.show_mcp_dialog || self.active_doc_dialog != DocDialog::None {
                 self.show_help = false;
                 self.show_mcp_dialog = false;
                 self.active_doc_dialog = DocDialog::None;
                 self.mcp_feedback = None;
+            } else if self.box_select.take().is_some() {
+                self.message = "Seleção por janela cancelada.".to_owned();
             } else if !self.draft_input.is_empty() {
                 self.draft_input.clear();
                 self.message = "Entrada numérica limpa.".to_owned();
@@ -1957,7 +2025,7 @@ impl FloorPlanApp {
                 && self.pending_room.is_none()
                 && self.selection.is_some()
             {
-                self.selection = None;
+                self.clear_selection();
                 self.message = "Seleção limpa.".to_owned();
             } else {
                 self.cancel_creation();
@@ -2036,6 +2104,7 @@ struct ShortcutActions {
     new: bool,
     undo: bool,
     redo: bool,
+    select_all: bool,
     escape: bool,
     delete: bool,
     tool: Option<Tool>,
@@ -2183,6 +2252,7 @@ mod tests {
             last: Point::new(2.0, 0.0),
             grab_offset: Point::new(0.0, 0.0),
             moved: true,
+            group: false,
         });
         app.project.move_wall(id, Point::new(2.0, 0.0));
     }

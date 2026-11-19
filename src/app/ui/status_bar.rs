@@ -54,18 +54,17 @@ Clique para ver como conectar uma IA."
 
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 3.0;
-                let total = self.project.walls.len()
-                    + self.project.rooms.len()
-                    + self.project.openings.len()
-                    + usize::from(self.project.terrain.is_some());
-                ui.label(
-                    RichText::new(format!(
-                        "{total} elemento{}",
-                        if total == 1 { "" } else { "s" }
-                    ))
-                    .size(12.0)
-                    .color(MUTED),
-                );
+                let total = self.project.elements().len();
+                let selected = self.selection_count();
+                let count = if selected > 0 {
+                    format!(
+                        "{selected} de {total} selecionado{}",
+                        if selected == 1 { "" } else { "s" }
+                    )
+                } else {
+                    format!("{total} elemento{}", if total == 1 { "" } else { "s" })
+                };
+                ui.label(RichText::new(count).size(12.0).color(MUTED));
                 divider(ui);
 
                 if icon_button_sized(ui, Icon::ZoomFit, "Enquadrar tudo (F)", false, 22.0, 15.0)
