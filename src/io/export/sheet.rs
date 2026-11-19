@@ -8,8 +8,9 @@ use std::{fmt::Write as _, fs, path::Path};
 
 use super::escaped;
 use crate::domain::{
-    annotations::{building_dimensions, centimetres},
+    annotations::building_dimensions,
     dimensions::ResolvedDimension,
+    doc_style::DimensionTick,
     fixtures::{SymbolShape, Weight},
     geometry::Point,
     hatch::{HatchPattern, hatch_segments_in_polygon},
@@ -18,10 +19,65 @@ use crate::domain::{
     notes::{NoteKind, TechnicalSymbol},
 };
 
+fn write_dimension_tick(
+    svg: &mut String,
+    tick: DimensionTick,
+    x: f64,
+    y: f64,
+    color: &str,
+    horizontal: bool,
+) {
+    match tick {
+        DimensionTick::Oblique45 => {
+            let _ = writeln!(
+                svg,
+                "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{color}\" stroke-width=\"0.25\"/>",
+                x - 0.8,
+                y + 0.8,
+                x + 0.8,
+                y - 0.8
+            );
+        }
+        DimensionTick::Dot => {
+            let _ = writeln!(
+                svg,
+                "<circle cx=\"{x:.2}\" cy=\"{y:.2}\" r=\"0.55\" fill=\"{color}\"/>"
+            );
+        }
+        DimensionTick::Arrow => {
+            if horizontal {
+                let _ = writeln!(
+                    svg,
+                    "<polygon points=\"{x:.2},{y:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"{color}\"/>",
+                    x - 1.1,
+                    y - 0.45,
+                    x - 1.1,
+                    y + 0.45
+                );
+            } else {
+                let _ = writeln!(
+                    svg,
+                    "<polygon points=\"{x:.2},{y:.2} {:.2},{:.2} {:.2},{:.2}\" fill=\"{color}\"/>",
+                    x - 0.45,
+                    y - 1.1,
+                    x + 0.45,
+                    y - 1.1
+                );
+            }
+        }
+    }
+}
+
 /// Renders the project onto its configured physical sheet (`A4`–`A0` or custom)
 /// at the exact configured scale (`1:25`–`1:200`), returning physical-mm SVG.
 pub fn scaled_sheet_svg(project: &Project) -> String {
     let layout = &project.sheet;
+    let doc_style = &project.doc_style;
+    let wall_color = doc_style.wall_color();
+    let opening_color = doc_style.opening_color();
+    let dim_color = doc_style.dimension_color();
+    let room_fill = doc_style.room_fill();
+    let font_family = escaped(&doc_style.font_family);
     let (sheet_w, sheet_h) = layout.sheet_mm();
     let (frame_x, frame_y, frame_w, frame_h) = layout.printable_rect_mm();
     let mm_per_m = layout.scale.mm_per_meter();
@@ -103,18 +159,25 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
                 .collect::<Vec<_>>()
                 .join(" ");
             let fill = match room.hatch {
-                Some(style) if style.pattern == HatchPattern::Solid => style.hex_color(),
-                _ => "#f3f7fc".to_owned(),
+                Some(style) if style.pattern == HatchPattern::Solid && !doc_style.monochrome => {
+                    style.hex_color()
+                }
+                _ => room_fill.to_owned(),
             };
             let _ = writeln!(svg, "<polygon points=\"{pts}\" fill=\"{fill}\"/>");
             if let Some(style) = room.hatch {
-                let stroke = style.hex_color();
+                let stroke = if doc_style.monochrome {
+                    "#444444".to_owned()
+                } else {
+                    style.hex_color()
+                };
                 for (a, b) in hatch_segments_in_polygon(&poly, &style) {
                     let (x1, y1) = pt(a);
                     let (x2, y2) = pt(b);
                     let _ = writeln!(
                         svg,
-                        "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"0.13\" opacity=\"0.8\"/>"
+                        "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{stroke}\" stroke-width=\"{:.2}\" opacity=\"0.8\"/>",
+                        doc_style.hatch_pen_mm
                     );
                 }
             }
@@ -133,14 +196,14 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
                 })
                 .collect::<Vec<_>>()
                 .join(" ");
-            let _ = writeln!(svg, "<polygon points=\"{pts}\" fill=\"#1d2836\"/>");
+            let _ = writeln!(svg, "<polygon points=\"{pts}\" fill=\"{wall_color}\"/>");
         }
     }
     for wall in &project.walls {
         if !project.is_wall_visible(wall) {
             continue;
         }
-        let wall_w_mm = (wall.thickness() * mm_per_m).max(0.35);
+        let wall_w_mm = (wall.thickness() * mm_per_m).max(doc_style.wall_pen_mm);
         let (x, y) = pt(wall.start);
         let len_mm = wall.length() * mm_per_m;
         let angle = (wall.end.y - wall.start.y)
@@ -164,7 +227,7 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
             let right = center + half;
             let _ = writeln!(
                 svg,
-                "<line x1=\"{cursor:.2}\" y1=\"0\" x2=\"{left:.2}\" y2=\"0\" stroke=\"#1d2836\" stroke-width=\"{wall_w_mm:.2}\" stroke-linecap=\"square\"/>"
+                "<line x1=\"{cursor:.2}\" y1=\"0\" x2=\"{left:.2}\" y2=\"0\" stroke=\"{wall_color}\" stroke-width=\"{wall_w_mm:.2}\" stroke-linecap=\"square\"/>"
             );
             match op.kind {
                 OpeningKind::Door => {
@@ -188,8 +251,10 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
                         .join(" ");
                     let _ = writeln!(
                         svg,
-                        "<line x1=\"{hinge:.2}\" y1=\"0\" x2=\"{hinge:.2}\" y2=\"{:.2}\" stroke=\"#1d2836\" stroke-width=\"0.35\"/><polyline points=\"{arc}\" fill=\"none\" stroke=\"#627489\" stroke-width=\"0.18\"/>",
-                        side * leaf
+                        "<line x1=\"{hinge:.2}\" y1=\"0\" x2=\"{hinge:.2}\" y2=\"{:.2}\" stroke=\"{wall_color}\" stroke-width=\"{:.2}\"/><polyline points=\"{arc}\" fill=\"none\" stroke=\"{dim_color}\" stroke-width=\"{:.2}\"/>",
+                        side * leaf,
+                        doc_style.opening_pen_mm,
+                        doc_style.dimension_pen_mm
                     );
                 }
                 OpeningKind::SaloonDoor => {
@@ -197,23 +262,25 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
                     for hinge in [left, right] {
                         let _ = writeln!(
                             svg,
-                            "<line x1=\"{hinge:.2}\" y1=\"0\" x2=\"{hinge:.2}\" y2=\"{:.2}\" stroke=\"#1d2836\" stroke-width=\"0.30\"/>",
-                            side * half
+                            "<line x1=\"{hinge:.2}\" y1=\"0\" x2=\"{hinge:.2}\" y2=\"{:.2}\" stroke=\"{wall_color}\" stroke-width=\"{:.2}\"/>",
+                            side * half,
+                            doc_style.opening_pen_mm
                         );
                     }
                 }
                 OpeningKind::Gap => {
                     let _ = writeln!(
                         svg,
-                        "<line x1=\"{left:.2}\" y1=\"0\" x2=\"{right:.2}\" y2=\"0\" stroke=\"#627489\" stroke-width=\"0.18\" stroke-dasharray=\"1.5 1.0\"/>"
+                        "<line x1=\"{left:.2}\" y1=\"0\" x2=\"{right:.2}\" y2=\"0\" stroke=\"{dim_color}\" stroke-width=\"{:.2}\" stroke-dasharray=\"1.5 1.0\"/>",
+                        doc_style.dimension_pen_mm
                     );
                 }
                 OpeningKind::Window => {
                     let off = (wall_w_mm * 0.25).max(0.4);
                     let _ = writeln!(
                         svg,
-                        "<line x1=\"{left:.2}\" y1=\"{:.2}\" x2=\"{right:.2}\" y2=\"{:.2}\" stroke=\"#2878d2\" stroke-width=\"0.30\"/><line x1=\"{left:.2}\" y1=\"{off:.2}\" x2=\"{right:.2}\" y2=\"{off:.2}\" stroke=\"#2878d2\" stroke-width=\"0.30\"/>",
-                        -off, -off
+                        "<line x1=\"{left:.2}\" y1=\"{:.2}\" x2=\"{right:.2}\" y2=\"{:.2}\" stroke=\"{opening_color}\" stroke-width=\"{:.2}\"/><line x1=\"{left:.2}\" y1=\"{off:.2}\" x2=\"{right:.2}\" y2=\"{off:.2}\" stroke=\"{opening_color}\" stroke-width=\"{:.2}\"/>",
+                        -off, -off, doc_style.opening_pen_mm, doc_style.opening_pen_mm
                     );
                 }
             }
@@ -221,7 +288,7 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
         }
         let _ = writeln!(
             svg,
-            "<line x1=\"{cursor:.2}\" y1=\"0\" x2=\"{len_mm:.2}\" y2=\"0\" stroke=\"#1d2836\" stroke-width=\"{wall_w_mm:.2}\" stroke-linecap=\"square\"/></g>"
+            "<line x1=\"{cursor:.2}\" y1=\"0\" x2=\"{len_mm:.2}\" y2=\"0\" stroke=\"{wall_color}\" stroke-width=\"{wall_w_mm:.2}\" stroke-linecap=\"square\"/></g>"
         );
     }
 
@@ -295,9 +362,13 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
             let _ = write!(path, " L{cx:.2} {cy:.2}");
         }
         let layer = project.effective_drawing_layer(drawing);
-        let color = layer
-            .map(|l| l.hex_color())
-            .unwrap_or_else(|| "#1d2836".to_owned());
+        let color = if doc_style.monochrome {
+            wall_color.to_owned()
+        } else {
+            layer
+                .map(|l| l.hex_color())
+                .unwrap_or_else(|| wall_color.to_owned())
+        };
         let width_mm = layer.map(|l| l.line_weight_mm).unwrap_or(0.20);
         let dash = layer
             .and_then(|l| l.line_type.svg_dasharray_mm())
@@ -323,28 +394,23 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
                     .collect();
                 let _ = writeln!(
                     svg,
-                    "<line x1=\"{:.2}\" y1=\"{row:.2}\" x2=\"{:.2}\" y2=\"{row:.2}\" stroke=\"#3b4e63\" stroke-width=\"0.13\"/>",
+                    "<line x1=\"{:.2}\" y1=\"{row:.2}\" x2=\"{:.2}\" y2=\"{row:.2}\" stroke=\"{dim_color}\" stroke-width=\"{:.2}\"/>",
                     xs[0],
-                    xs[xs.len() - 1]
+                    xs[xs.len() - 1],
+                    doc_style.dimension_pen_mm
                 );
                 for x in &xs {
-                    let _ = writeln!(
-                        svg,
-                        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#1d2836\" stroke-width=\"0.25\"/>",
-                        x - 0.8,
-                        row + 0.8,
-                        x + 0.8,
-                        row - 0.8
-                    );
+                    write_dimension_tick(&mut svg, doc_style.tick, *x, row, wall_color, true);
                 }
                 for (pair, span) in stations.windows(2).zip(xs.windows(2)) {
-                    let val = centimetres(pair[1] - pair[0]);
+                    let val = doc_style.format_length(pair[1] - pair[0]);
                     if span[1] - span[0] >= 4.0 {
                         let _ = writeln!(
                             svg,
-                            "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"2.3\" fill=\"#1d2836\" text-anchor=\"middle\">{val}</text>",
+                            "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"{font_family}\" font-size=\"2.3\" fill=\"{wall_color}\" text-anchor=\"middle\">{}</text>",
                             (span[0] + span[1]) * 0.5,
-                            row - 0.8
+                            row - 0.8,
+                            escaped(&val)
                         );
                     }
                 }
@@ -359,27 +425,22 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
                     .collect();
                 let _ = writeln!(
                     svg,
-                    "<line x1=\"{col:.2}\" y1=\"{:.2}\" x2=\"{col:.2}\" y2=\"{:.2}\" stroke=\"#3b4e63\" stroke-width=\"0.13\"/>",
+                    "<line x1=\"{col:.2}\" y1=\"{:.2}\" x2=\"{col:.2}\" y2=\"{:.2}\" stroke=\"{dim_color}\" stroke-width=\"{:.2}\"/>",
                     ys[0],
-                    ys[ys.len() - 1]
+                    ys[ys.len() - 1],
+                    doc_style.dimension_pen_mm
                 );
                 for y in &ys {
-                    let _ = writeln!(
-                        svg,
-                        "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#1d2836\" stroke-width=\"0.25\"/>",
-                        col - 0.8,
-                        y + 0.8,
-                        col + 0.8,
-                        y - 0.8
-                    );
+                    write_dimension_tick(&mut svg, doc_style.tick, col, *y, wall_color, false);
                 }
                 for (pair, span) in stations.windows(2).zip(ys.windows(2)) {
-                    let val = centimetres(pair[1] - pair[0]);
+                    let val = doc_style.format_length(pair[1] - pair[0]);
                     if span[1] - span[0] >= 4.0 {
                         let (x, y) = (col - 0.9, (span[0] + span[1]) * 0.5);
                         let _ = writeln!(
                             svg,
-                            "<text x=\"{x:.2}\" y=\"{y:.2}\" transform=\"rotate(-90 {x:.2} {y:.2})\" font-family=\"Arial, sans-serif\" font-size=\"2.3\" fill=\"#1d2836\" text-anchor=\"middle\">{val}</text>"
+                            "<text x=\"{x:.2}\" y=\"{y:.2}\" transform=\"rotate(-90 {x:.2} {y:.2})\" font-family=\"{font_family}\" font-size=\"2.3\" fill=\"{wall_color}\" text-anchor=\"middle\">{}</text>",
+                            escaped(&val)
                         );
                     }
                 }
@@ -941,5 +1002,23 @@ mod tests {
         assert!(markup.contains("id=\"quadros\""));
         assert!(markup.contains("Quadro de Áreas"));
         assert!(markup.contains("01/01"));
+    }
+
+    #[test]
+    fn doc_style_presets_apply_monochrome_colors_and_metre_units() {
+        use crate::domain::doc_style::{DimensionTick, DimensionUnit, DocStyle, DocStylePreset};
+
+        let mut project = Project::default();
+        project.doc_style = DocStyle::from_preset(DocStylePreset::ObraMonocromatico);
+        project.doc_style.unit = DimensionUnit::Metres;
+        project.doc_style.tick = DimensionTick::Dot;
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Sala")
+            .unwrap();
+        let markup = scaled_sheet_svg(&project);
+        assert!(markup.contains("stroke=\"#000000\""));
+        assert!(markup.contains("fill=\"#ffffff\""));
+        assert!(markup.contains("4,00 m"));
+        assert!(markup.contains("<circle "));
     }
 }

@@ -80,6 +80,10 @@ pub struct Project {
     #[serde(default)]
     pub schedules: super::schedules::ScheduleConfig,
 
+    /// Documentation graphic style (ABNT NBR 6492:2021, Trazo Visual, or Monochrome).
+    #[serde(default)]
+    pub doc_style: super::doc_style::DocStyle,
+
     next_id: u64,
 }
 
@@ -125,6 +129,8 @@ impl Default for Project {
             sheet: super::sheet::SheetLayout::default(),
 
             schedules: super::schedules::ScheduleConfig::default(),
+
+            doc_style: super::doc_style::DocStyle::default(),
 
             next_id: 1,
         }

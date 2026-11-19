@@ -6,7 +6,10 @@ use eframe::egui::{self, Margin, RichText, Stroke};
 use super::super::{DocDialog, FloorPlanApp, theme::*};
 use super::icons::Icon;
 use super::widgets::{primary_button, secondary_button, toggle_pill};
-use crate::domain::sheet::{DrawingScale, Orientation, PaperSize, SheetMargins};
+use crate::domain::{
+    doc_style::{DimensionTick, DimensionUnit, DocStyle, DocStylePreset, NBR_6492_DISCLAIMER},
+    sheet::{DrawingScale, Orientation, PaperSize, SheetMargins},
+};
 
 impl FloorPlanApp {
     pub(super) fn sheet_dialog(&mut self, ctx: &egui::Context) {
@@ -26,13 +29,20 @@ impl FloorPlanApp {
                     "Configure o formato da folha (A4 a A0 ou personalizado), orientação e margens ABNT.",
                 );
 
-                egui::Frame::new()
-                    .fill(PANEL_ALT)
-                    .stroke(Stroke::new(1.0, BORDER))
-                    .corner_radius(8)
-                    .inner_margin(Margin::same(12))
+                egui::ScrollArea::vertical()
+                    .max_height(460.0)
                     .show(ui, |ui| {
-                        ui.label(RichText::new("Formato da folha").font(strong(13.0)).color(TEXT));
+                        egui::Frame::new()
+                            .fill(PANEL_ALT)
+                            .stroke(Stroke::new(1.0, BORDER))
+                            .corner_radius(8)
+                            .inner_margin(Margin::same(12))
+                            .show(ui, |ui| {
+                                ui.label(
+                                    RichText::new("Formato da folha")
+                                        .font(strong(13.0))
+                                        .color(TEXT),
+                                );
                         ui.add_space(6.0);
                         ui.horizontal_wrapped(|ui| {
                             for standard in PaperSize::STANDARD {
@@ -342,6 +352,89 @@ impl FloorPlanApp {
                         if changed {
                             self.dirty = true;
                         }
+                    });
+
+                        ui.add_space(10.0);
+                        egui::Frame::new()
+                            .fill(PANEL_ALT)
+                            .stroke(Stroke::new(1.0, BORDER))
+                            .corner_radius(8)
+                            .inner_margin(Margin::same(12))
+                            .show(ui, |ui| {
+                                ui.label(
+                                    RichText::new("Estilo de documentação (Normas Brasileiras)")
+                                        .font(strong(13.0))
+                                        .color(TEXT),
+                                );
+                                ui.add_space(6.0);
+                                ui.horizontal_wrapped(|ui| {
+                                    for preset in DocStylePreset::ALL {
+                                        if toggle_pill(
+                                            ui,
+                                            preset.label(),
+                                            self.project.doc_style.preset == preset,
+                                            preset.label(),
+                                        )
+                                        .clicked()
+                                        {
+                                            let prev = self.project.clone();
+                                            self.project.doc_style = DocStyle::from_preset(preset);
+                                            self.record_change(prev);
+                                        }
+                                    }
+                                });
+                                ui.add_space(6.0);
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(RichText::new("Terminal de cota:").size(12.0).color(TEXT_2));
+                                    for tick in DimensionTick::ALL {
+                                        if toggle_pill(
+                                            ui,
+                                            tick.label(),
+                                            self.project.doc_style.tick == tick,
+                                            tick.label(),
+                                        )
+                                        .clicked()
+                                        {
+                                            let prev = self.project.clone();
+                                            self.project.doc_style.tick = tick;
+                                            self.record_change(prev);
+                                        }
+                                    }
+                                });
+                                ui.add_space(6.0);
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new("Unidade das cotas:").size(12.0).color(TEXT_2));
+                                    for unit in [DimensionUnit::Centimetres, DimensionUnit::Metres] {
+                                        if toggle_pill(
+                                            ui,
+                                            unit.label(),
+                                            self.project.doc_style.unit == unit,
+                                            unit.label(),
+                                        )
+                                        .clicked()
+                                        {
+                                            let prev = self.project.clone();
+                                            self.project.doc_style.unit = unit;
+                                            self.record_change(prev);
+                                        }
+                                    }
+                                    if ui
+                                        .checkbox(
+                                            &mut self.project.doc_style.monochrome,
+                                            "Monocromático (P&B)",
+                                        )
+                                        .changed()
+                                    {
+                                        self.dirty = true;
+                                    }
+                                });
+                                ui.add_space(6.0);
+                                ui.label(
+                                    RichText::new(NBR_6492_DISCLAIMER)
+                                        .size(11.0)
+                                        .color(MUTED),
+                                );
+                            });
                     });
 
                 ui.add_space(12.0);

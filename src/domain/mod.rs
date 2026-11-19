@@ -1,6 +1,7 @@
 pub mod annotations;
 pub mod areas;
 pub mod dimensions;
+pub mod doc_style;
 pub mod drawing;
 pub mod fixtures;
 pub mod geometry;
