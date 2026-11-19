@@ -50,7 +50,7 @@ fn document(project: &Project) -> SvgDocument {
         let h = terrain.height() * pixels_per_meter;
         let _ = writeln!(
             svg,
-            "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" fill=\"#f0f7fc\" stroke=\"#4f7ca9\" stroke-width=\"3\"/>"
+            "<rect x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" fill=\"#f8fbfe\" stroke=\"#5e8bbf\" stroke-width=\"2.5\" stroke-dasharray=\"28 8 5 8\"/>"
         );
         let label = format!(
             "Terreno · {} × {} · {:.2} m²",
@@ -61,7 +61,7 @@ fn document(project: &Project) -> SvgDocument {
         .replace('.', ",");
         let _ = writeln!(
             svg,
-            "<text x=\"{x:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"15\" fill=\"#365a7b\">{}</text>",
+            "<text x=\"{x:.1}\" y=\"{:.1}\" font-family=\"Arial, sans-serif\" font-size=\"15\" fill=\"#3d6a9c\">{}</text>",
             y - 12.0,
             escaped(&label)
         );
@@ -76,7 +76,7 @@ fn document(project: &Project) -> SvgDocument {
                 })
                 .collect::<Vec<_>>()
                 .join(" ");
-            let _ = writeln!(svg, "<polygon points=\"{}\" fill=\"#eff8f7\"/>", points_str);
+            let _ = writeln!(svg, "<polygon points=\"{}\" fill=\"#eef5fd\"/>", points_str);
         }
     }
     for wall in &project.walls {
@@ -103,13 +103,13 @@ fn document(project: &Project) -> SvgDocument {
             let right = center + half;
             let _ = writeln!(
                 svg,
-                "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{left:.1}\" y2=\"0\" stroke=\"#24354b\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/>"
+                "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{left:.1}\" y2=\"0\" stroke=\"#1d2836\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/>"
             );
             match opening.kind {
                 OpeningKind::Door => {
                     let _ = writeln!(
                         svg,
-                        "<line x1=\"{left:.1}\" y1=\"0\" x2=\"{left:.1}\" y2=\"{:.1}\" stroke=\"#35b4a3\" stroke-width=\"4\"/><path d=\"M {left:.1} {:.1} A {:.1} {:.1} 0 0 0 {right:.1} 0\" fill=\"none\" stroke=\"#8bcfc5\" stroke-width=\"2\" stroke-dasharray=\"5 5\"/>",
+                        "<line x1=\"{left:.1}\" y1=\"0\" x2=\"{left:.1}\" y2=\"{:.1}\" stroke=\"#1d2836\" stroke-width=\"3\"/><path d=\"M {left:.1} {:.1} A {:.1} {:.1} 0 0 0 {right:.1} 0\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.5\"/>",
                         half * 2.0,
                         half * 2.0,
                         half * 2.0,
@@ -119,7 +119,7 @@ fn document(project: &Project) -> SvgDocument {
                 OpeningKind::Window => {
                     let _ = writeln!(
                         svg,
-                        "<line x1=\"{left:.1}\" y1=\"-4\" x2=\"{right:.1}\" y2=\"-4\" stroke=\"#27a8c2\" stroke-width=\"3\"/><line x1=\"{left:.1}\" y1=\"4\" x2=\"{right:.1}\" y2=\"4\" stroke=\"#27a8c2\" stroke-width=\"3\"/>"
+                        "<line x1=\"{left:.1}\" y1=\"-4\" x2=\"{right:.1}\" y2=\"-4\" stroke=\"#2878d2\" stroke-width=\"3\"/><line x1=\"{left:.1}\" y1=\"4\" x2=\"{right:.1}\" y2=\"4\" stroke=\"#2878d2\" stroke-width=\"3\"/>"
                     );
                 }
             }
@@ -127,7 +127,7 @@ fn document(project: &Project) -> SvgDocument {
         }
         let _ = writeln!(
             svg,
-            "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{length:.1}\" y2=\"0\" stroke=\"#24354b\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/></g>"
+            "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{length:.1}\" y2=\"0\" stroke=\"#1d2836\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/></g>"
         );
     }
     let mut occupied = labels::write_room_labels(&mut svg, project, &point, wall_width);
@@ -141,7 +141,7 @@ fn document(project: &Project) -> SvgDocument {
     );
     let _ = writeln!(
         svg,
-        "<text x=\"{MARGIN:.1}\" y=\"55\" font-family=\"Arial, sans-serif\" font-size=\"23\" font-weight=\"700\" fill=\"#172438\">{}</text>",
+        "<text x=\"{MARGIN:.1}\" y=\"55\" font-family=\"Arial, sans-serif\" font-size=\"23\" font-weight=\"700\" fill=\"#1c2b3c\">{}</text>",
         escaped(&project.name)
     );
     svg.push_str("</svg>");

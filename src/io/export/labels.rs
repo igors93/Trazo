@@ -150,14 +150,14 @@ pub(super) fn write_room_labels(
         let center_x = inner.x + inner.width / 2.0;
         let _ = writeln!(
             svg,
-            "<text x=\"{center_x:.1}\" y=\"{name_y:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"{name_size:.1}\" font-weight=\"700\" fill=\"#1e3a4a\">{}</text>",
+            "<text x=\"{center_x:.1}\" y=\"{name_y:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"{name_size:.1}\" font-weight=\"700\" fill=\"#1c2b3c\">{}</text>",
             escaped(&name)
         );
         if let Some((measure, measure_size)) = measure {
             let measure_y = block.y + name_size * 1.2 + 4.0 + measure_size;
             let _ = writeln!(
                 svg,
-                "<text x=\"{center_x:.1}\" y=\"{measure_y:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"{measure_size:.1}\" fill=\"#64748b\">{measure}</text>"
+                "<text x=\"{center_x:.1}\" y=\"{measure_y:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"{measure_size:.1}\" fill=\"#627489\">{measure}</text>"
             );
         }
         svg.push_str("</g>\n");
@@ -225,7 +225,7 @@ pub(super) fn write_wall_labels(
                 }
                 let _ = writeln!(
                     svg,
-                    "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{width:.1}\" height=\"{height:.1}\" rx=\"4\" fill=\"#ffffff\"/><text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"{font_size:.1}\" fill=\"#52657a\">{label}</text>",
+                    "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{width:.1}\" height=\"{height:.1}\" rx=\"4\" fill=\"#ffffff\" stroke=\"#dce6f1\"/><text x=\"{:.1}\" y=\"{:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"{font_size:.1}\" fill=\"#3b4e63\">{label}</text>",
                     rect.x,
                     rect.y,
                     center.0,
