@@ -335,7 +335,7 @@ impl FloorPlanApp {
         // or the wall that will receive a door or window.
         let opening_target = matches!(self.tool, Tool::Opening(_)) || self.opening_drag.is_some();
         let hover = if opening_target {
-            world
+            self.opening_point(world, snapped)
                 .and_then(|point| self.project.nearest_wall(point, 0.35))
                 .map(|(id, _)| Selection::Wall(id))
         } else if self.tool == Tool::Move {
@@ -401,6 +401,17 @@ impl FloorPlanApp {
         self.canvas_navigation(ui, navigation);
     }
 
+    /// The point a door or window will be placed at: where it is dropped
+    /// when dragged from the ribbon, or the snapped click with the tool.
+    /// The highlighted wall must be the one that point lands on.
+    fn opening_point(&self, world: Option<Point>, snapped: Option<Point>) -> Option<Point> {
+        if self.opening_drag.is_some() {
+            world
+        } else {
+            snapped
+        }
+    }
+
     fn paint_view_aids(&self, painter: &egui::Painter, view: ViewTransform) {
         self.paint_view_label(painter, view.rect);
         overlay::paint_scale_bar(painter, view);
@@ -427,6 +438,18 @@ mod tests {
 
         app.ortho_enabled = false;
         assert_eq!(app.snap(Point::new(3.0, 0.9), Some(start)), Point::new(3.0, 0.9));
+    }
+
+    #[test]
+    fn opening_highlight_uses_the_point_the_opening_will_use() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        app.set_tool(Tool::Opening(crate::domain::model::OpeningKind::Door));
+        let raw = Point::new(1.1, 0.3);
+        let snapped = Point::new(1.0, 0.25);
+        assert_eq!(app.opening_point(Some(raw), Some(snapped)), Some(snapped));
+        app.opening_drag = Some(crate::domain::model::OpeningKind::Door);
+        assert_eq!(app.opening_point(Some(raw), Some(snapped)), Some(raw));
     }
 
     #[test]
