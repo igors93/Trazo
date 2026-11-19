@@ -214,6 +214,136 @@ impl FloorPlanApp {
                         }
                     });
 
+                ui.add_space(10.0);
+                egui::Frame::new()
+                    .fill(PANEL_ALT)
+                    .stroke(Stroke::new(1.0, BORDER))
+                    .corner_radius(8)
+                    .inner_margin(Margin::same(12))
+                    .show(ui, |ui| {
+                        ui.label(
+                            RichText::new("Carimbo, identificação, legenda e paginação")
+                                .font(strong(13.0))
+                                .color(TEXT),
+                        );
+                        ui.add_space(6.0);
+                        let tb = &mut self.project.sheet.title_block;
+                        let mut changed = false;
+                        egui::Grid::new("title_block_grid")
+                            .num_columns(4)
+                            .spacing([8.0, 6.0])
+                            .show(ui, |ui| {
+                                ui.label(RichText::new("Desenho:").size(12.0).color(TEXT_2));
+                                changed |= ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut tb.drawing_title)
+                                            .desired_width(170.0),
+                                    )
+                                    .changed();
+                                ui.label(RichText::new("Prancha:").size(12.0).color(TEXT_2));
+                                changed |= ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut tb.sheet_number)
+                                            .desired_width(80.0)
+                                            .hint_text("01/03"),
+                                    )
+                                    .changed();
+                                ui.end_row();
+
+                                ui.label(RichText::new("Cliente:").size(12.0).color(TEXT_2));
+                                changed |= ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut tb.client)
+                                            .desired_width(170.0),
+                                    )
+                                    .changed();
+                                ui.label(RichText::new("Revisão:").size(12.0).color(TEXT_2));
+                                changed |= ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut tb.revision)
+                                            .desired_width(80.0)
+                                            .hint_text("R00"),
+                                    )
+                                    .changed();
+                                ui.end_row();
+
+                                ui.label(RichText::new("Responsável:").size(12.0).color(TEXT_2));
+                                changed |= ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut tb.author)
+                                            .desired_width(170.0),
+                                    )
+                                    .changed();
+                                ui.label(RichText::new("CAU/CREA:").size(12.0).color(TEXT_2));
+                                changed |= ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut tb.registration)
+                                            .desired_width(80.0),
+                                    )
+                                    .changed();
+                                ui.end_row();
+
+                                ui.label(RichText::new("Endereço:").size(12.0).color(TEXT_2));
+                                changed |= ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut tb.address)
+                                            .desired_width(170.0),
+                                    )
+                                    .changed();
+                                ui.label(RichText::new("Data:").size(12.0).color(TEXT_2));
+                                changed |= ui
+                                    .add(
+                                        egui::TextEdit::singleline(&mut tb.date)
+                                            .desired_width(80.0)
+                                            .hint_text("19/11/2026"),
+                                    )
+                                    .changed();
+                                ui.end_row();
+                            });
+                        ui.add_space(6.0);
+                        ui.horizontal_wrapped(|ui| {
+                            changed |= toggle_pill(
+                                ui,
+                                "Carimbo",
+                                tb.show_title_block,
+                                "Incluir carimbo ABNT no canto inferior direito",
+                            )
+                            .clicked()
+                            .then(|| tb.show_title_block = !tb.show_title_block)
+                            .is_some();
+                            changed |= toggle_pill(
+                                ui,
+                                "Legenda",
+                                tb.show_legend,
+                                "Incluir legenda de símbolos técnicos",
+                            )
+                            .clicked()
+                            .then(|| tb.show_legend = !tb.show_legend)
+                            .is_some();
+                            changed |= toggle_pill(
+                                ui,
+                                "Norte",
+                                tb.show_north,
+                                "Incluir indicação do Norte",
+                            )
+                            .clicked()
+                            .then(|| tb.show_north = !tb.show_north)
+                            .is_some();
+                            changed |= toggle_pill(
+                                ui,
+                                "Escala gráfica",
+                                tb.show_scale_bar,
+                                "Incluir barra de escala gráfica proporcional",
+                            )
+                            .clicked()
+                            .then(|| tb.show_scale_bar = !tb.show_scale_bar)
+                            .is_some();
+                        });
+                        if changed {
+                            self.dirty = true;
+                        }
+                    });
+
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
                     if primary_button(ui, "Exportar prancha PDF (escala exata)").clicked() {

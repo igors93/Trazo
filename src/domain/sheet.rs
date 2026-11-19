@@ -183,13 +183,63 @@ impl DrawingScale {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+fn default_true() -> bool {
+    true
+}
+
+/// Editable ABNT title block (carimbo), legend and pagination metadata.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct TitleBlock {
+    pub client: String,
+    pub address: String,
+    pub author: String,
+    /// CAU or CREA professional registration.
+    pub registration: String,
+    pub drawing_title: String,
+    pub date: String,
+    /// Sheet pagination, e.g. `"01/03"`.
+    pub sheet_number: String,
+    pub revision: String,
+    pub notes: String,
+    #[serde(default = "default_true")]
+    pub show_title_block: bool,
+    #[serde(default = "default_true")]
+    pub show_legend: bool,
+    #[serde(default = "default_true")]
+    pub show_north: bool,
+    #[serde(default = "default_true")]
+    pub show_scale_bar: bool,
+}
+
+impl Default for TitleBlock {
+    fn default() -> Self {
+        Self {
+            client: String::new(),
+            address: String::new(),
+            author: String::new(),
+            registration: String::new(),
+            drawing_title: "Planta Baixa".to_owned(),
+            date: String::new(),
+            sheet_number: "01/01".to_owned(),
+            revision: "R00".to_owned(),
+            notes: String::new(),
+            show_title_block: true,
+            show_legend: true,
+            show_north: true,
+            show_scale_bar: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SheetLayout {
     pub size: PaperSize,
     pub orientation: Orientation,
     pub margins: SheetMargins,
     pub scale: DrawingScale,
+    pub title_block: TitleBlock,
 }
 
 impl Default for SheetLayout {
@@ -205,11 +255,12 @@ impl SheetLayout {
             orientation,
             margins: SheetMargins::abnt_for(size),
             scale: DrawingScale::S1_50,
+            title_block: TitleBlock::default(),
         }
     }
 
     /// Physical `(width_mm, height_mm)` of the full sheet.
-    pub fn sheet_mm(self) -> (f64, f64) {
+    pub fn sheet_mm(&self) -> (f64, f64) {
         let (a, b) = self.size.base_mm();
         match self.size {
             PaperSize::Custom { .. } => match self.orientation {
@@ -224,14 +275,14 @@ impl SheetLayout {
     }
 
     /// Inner drawing border `(x_mm, y_mm, width_mm, height_mm)` after margins.
-    pub fn printable_rect_mm(self) -> (f64, f64, f64, f64) {
+    pub fn printable_rect_mm(&self) -> (f64, f64, f64, f64) {
         let (w, h) = self.sheet_mm();
         let inner_w = (w - self.margins.left_mm - self.margins.right_mm).max(20.0);
         let inner_h = (h - self.margins.top_mm - self.margins.bottom_mm).max(20.0);
         (self.margins.left_mm, self.margins.top_mm, inner_w, inner_h)
     }
 
-    pub fn validate(self) -> Result<(), String> {
+    pub fn validate(&self) -> Result<(), String> {
         let (w, h) = self.sheet_mm();
         if !w.is_finite() || !h.is_finite() || w < 100.0 || h < 100.0 {
             return Err("O tamanho da prancha deve ser de pelo menos 100 × 100 mm.".to_owned());
