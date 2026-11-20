@@ -1267,7 +1267,16 @@ fn paint_wall(
         let left = center - half;
         let right = center + half;
         if left > cursor {
-            wall_run(painter, run_start, a + direction * left, wall_width, color);
+            paint_wall_segment(
+                painter,
+                run_start,
+                a + direction * left,
+                normal,
+                wall_width,
+                wall,
+                tone,
+                color,
+            );
         }
         let start = a + direction * left;
         let end = a + direction * right;
@@ -1455,7 +1464,57 @@ fn paint_wall(
         cursor = right;
         run_start = end;
     }
-    wall_run(painter, run_start, b + cap, wall_width, color);
+    paint_wall_segment(
+        painter,
+        run_start,
+        b + cap,
+        normal,
+        wall_width,
+        wall,
+        tone,
+        color,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+fn paint_wall_segment(
+    painter: &Painter,
+    from: Pos2,
+    to: Pos2,
+    normal: egui::Vec2,
+    wall_width: f32,
+    wall: &Wall,
+    tone: WallTone,
+    color: Color32,
+) {
+    if let Some(assembly) = &wall.assembly
+        && tone == WallTone::Normal
+        && wall_width >= 6.0
+        && assembly.total_thickness() > 1e-6
+    {
+        let total = assembly.total_thickness() as f32;
+        for (start_m, end_m, layer) in assembly.layer_offsets() {
+            let s0 = (start_m as f32 / total) * wall_width;
+            let s1 = (end_m as f32 / total) * wall_width;
+            let [r, g, b] = layer.color;
+            painter.add(Shape::convex_polygon(
+                vec![
+                    from + normal * s0,
+                    to + normal * s0,
+                    to + normal * s1,
+                    from + normal * s1,
+                ],
+                Color32::from_rgb(r, g, b),
+                Stroke::NONE,
+            ));
+        }
+        let half = wall_width * 0.5;
+        let outline = Stroke::new(0.8, theme::WALL);
+        painter.line_segment([from - normal * half, to - normal * half], outline);
+        painter.line_segment([from + normal * half, to + normal * half], outline);
+    } else {
+        wall_run(painter, from, to, wall_width, color);
+    }
 }
 
 /// A dashed frame around a selected or hovered opening.

@@ -300,6 +300,59 @@ impl FloorPlanApp {
         if use_active {
             self.apply_masonry_to_walls(Some(id));
         }
+        let mut next_assembly: Option<Option<crate::domain::wall_layers::WallAssembly>> = None;
+        section(ui, "wall_multilayer", "Paredes multicamadas", |ui| {
+            let current_name = wall
+                .assembly
+                .as_ref()
+                .map(|a| a.name.as_str())
+                .unwrap_or("Alvenaria simples (padrão)");
+            egui::ComboBox::from_id_salt("wall_assembly_combo")
+                .selected_text(current_name)
+                .width(ui.available_width())
+                .show_ui(ui, |ui| {
+                    if ui
+                        .selectable_label(wall.assembly.is_none(), "Alvenaria simples (padrão)")
+                        .clicked()
+                    {
+                        next_assembly = Some(None);
+                    }
+                    for preset in crate::domain::wall_layers::WallAssembly::presets() {
+                        let selected = wall
+                            .assembly
+                            .as_ref()
+                            .is_some_and(|a| a.name == preset.name);
+                        if ui.selectable_label(selected, &preset.name).clicked() {
+                            next_assembly = Some(Some(preset));
+                        }
+                    }
+                });
+            if let Some(assembly) = &wall.assembly {
+                ui.add_space(4.0);
+                for layer in &assembly.layers {
+                    ui.label(
+                        RichText::new(
+                            format!(
+                                "• {} ({}) — {:.1} cm",
+                                layer.name,
+                                layer.role.label(),
+                                layer.thickness_m * 100.0
+                            )
+                            .replace(".0 cm", " cm")
+                            .replace('.', ","),
+                        )
+                        .font(regular(11.5))
+                        .color(TEXT_2),
+                    );
+                }
+            }
+        });
+        if let Some(chosen) = next_assembly {
+            let prev = self.project.clone();
+            if self.project.set_wall_assembly(id, chosen).is_ok() {
+                self.record_change(prev);
+            }
+        }
         let rooms: Vec<String> = self
             .project
             .rooms

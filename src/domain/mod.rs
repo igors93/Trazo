@@ -23,4 +23,5 @@ pub mod snap;
 pub mod templates;
 pub mod transform;
 pub mod views;
+pub mod wall_layers;
 pub mod wall_reference;

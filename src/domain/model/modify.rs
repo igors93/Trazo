@@ -282,6 +282,7 @@ impl Project {
                     start: cut_to,
                     end: wall.end,
                     masonry: wall.masonry.clone(),
+                    assembly: wall.assembly.clone(),
                     layer_id: wall.layer_id,
                 });
                 touched.push(new_id);

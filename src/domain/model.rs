@@ -182,6 +182,10 @@ pub struct Wall {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub masonry: Option<Masonry>,
 
+    /// Optional multilayer wall composition (structure, insulation, plaster, finish).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub assembly: Option<super::wall_layers::WallAssembly>,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer_id: Option<u64>,
 }
@@ -257,8 +261,11 @@ impl Terrain {
 }
 
 impl Wall {
-    /// The finished thickness: block plus plaster.
+    /// The finished thickness: multilayer assembly if defined, else block plus plaster.
     pub fn thickness(&self) -> f64 {
+        if let Some(assembly) = &self.assembly {
+            return assembly.total_thickness();
+        }
         self.masonry
             .as_ref()
             .map(Masonry::thickness)
@@ -851,6 +858,7 @@ impl Project {
             start,
             end,
             masonry: Some(self.masonry.clone()),
+            assembly: None,
             layer_id: self.active_layer_id,
         });
 
@@ -887,6 +895,7 @@ impl Project {
 
         let new_id = self.id();
         let built_with = self.walls[wall_idx].masonry.clone();
+        let assembly = self.walls[wall_idx].assembly.clone();
         let layer_id = self.walls[wall_idx].layer_id;
 
         self.walls.push(Wall {
@@ -894,6 +903,7 @@ impl Project {
             start: split_point,
             end: old_end,
             masonry: built_with,
+            assembly,
             layer_id,
         });
 
@@ -2247,6 +2257,7 @@ mod tests {
             start: Point::new(0.0, 0.0),
             end: Point::new(10.0, 0.0),
             masonry: None,
+            assembly: None,
             layer_id: None,
         });
         let w2 = project.id();
@@ -2255,6 +2266,7 @@ mod tests {
             start: Point::new(10.0, 0.0),
             end: Point::new(0.0, 0.0),
             masonry: None,
+            assembly: None,
             layer_id: None,
         });
 

@@ -183,6 +183,20 @@ fn document(project: &Project) -> SvgDocument {
                 svg,
                 "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{left:.1}\" y2=\"0\" stroke=\"#1d2836\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/>"
             );
+            if let Some(assembly) = &wall.assembly
+                && left > cursor
+            {
+                for (s0, s1, layer) in assembly.layer_offsets() {
+                    let y0 = s0 * pixels_per_meter;
+                    let h = ((s1 - s0) * pixels_per_meter).max(0.5);
+                    let _ = writeln!(
+                        svg,
+                        "<rect x=\"{cursor:.1}\" y=\"{y0:.1}\" width=\"{:.1}\" height=\"{h:.1}\" fill=\"{}\" stroke=\"#1d2836\" stroke-width=\"0.4\"/>",
+                        left - cursor,
+                        layer.hex_color()
+                    );
+                }
+            }
             match opening.kind {
                 OpeningKind::Door => {
                     let leaf = half * 2.0;
@@ -252,8 +266,23 @@ fn document(project: &Project) -> SvgDocument {
         }
         let _ = writeln!(
             svg,
-            "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{length:.1}\" y2=\"0\" stroke=\"#1d2836\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/></g>"
+            "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{length:.1}\" y2=\"0\" stroke=\"#1d2836\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/>"
         );
+        if let Some(assembly) = &wall.assembly
+            && length > cursor
+        {
+            for (s0, s1, layer) in assembly.layer_offsets() {
+                let y0 = s0 * pixels_per_meter;
+                let h = ((s1 - s0) * pixels_per_meter).max(0.5);
+                let _ = writeln!(
+                    svg,
+                    "<rect x=\"{cursor:.1}\" y=\"{y0:.1}\" width=\"{:.1}\" height=\"{h:.1}\" fill=\"{}\" stroke=\"#1d2836\" stroke-width=\"0.4\"/>",
+                    length - cursor,
+                    layer.hex_color()
+                );
+            }
+        }
+        svg.push_str("</g>\n");
     }
     for fixture in &project.fixtures {
         let corner = |x: f64, y: f64| {
