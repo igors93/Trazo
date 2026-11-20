@@ -1304,8 +1304,14 @@ fn paint_wall(
         }
         match opening.kind {
             OpeningKind::Door => {
+                use crate::domain::openings::DoorType;
                 let leaf_color = if op_color == Color32::TRANSPARENT {
                     theme::WALL
+                } else {
+                    op_color
+                };
+                let arc_color = if op_color == Color32::TRANSPARENT {
+                    theme::DOOR_ARC
                 } else {
                     op_color
                 };
@@ -1316,24 +1322,148 @@ fn paint_wall(
                 } else {
                     (start, direction)
                 };
-                painter.line_segment([hinge, hinge + side * leaf], Stroke::new(2.2, leaf_color));
-                let arc: Vec<Pos2> = (0..=20)
-                    .map(|step| {
-                        let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 20.0;
-                        hinge + along * (theta.sin() * leaf) + side * (theta.cos() * leaf)
-                    })
-                    .collect();
-                painter.add(Shape::line(
-                    arc,
-                    Stroke::new(
-                        1.0,
-                        if op_color == Color32::TRANSPARENT {
-                            theme::DOOR_ARC
-                        } else {
-                            op_color
-                        },
-                    ),
-                ));
+                let mut outline_extent = leaf + 4.0;
+                match opening.effective_door_type() {
+                    DoorType::Swing => {
+                        painter.line_segment(
+                            [hinge, hinge + side * leaf],
+                            Stroke::new(2.2, leaf_color),
+                        );
+                        let arc: Vec<Pos2> = (0..=20)
+                            .map(|step| {
+                                let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 20.0;
+                                hinge + along * (theta.sin() * leaf) + side * (theta.cos() * leaf)
+                            })
+                            .collect();
+                        painter.add(Shape::line(arc, Stroke::new(1.0, arc_color)));
+                    }
+                    DoorType::DoubleSwing => {
+                        outline_extent = half + 4.0;
+                        for (h, dir_h) in [(start, direction), (end, -direction)] {
+                            painter
+                                .line_segment([h, h + side * half], Stroke::new(2.0, leaf_color));
+                            let arc: Vec<Pos2> = (0..=14)
+                                .map(|step| {
+                                    let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 14.0;
+                                    h + dir_h * (theta.sin() * half) + side * (theta.cos() * half)
+                                })
+                                .collect();
+                            painter.add(Shape::line(arc, Stroke::new(1.0, arc_color)));
+                        }
+                    }
+                    DoorType::Sliding => {
+                        outline_extent = half_wall + 8.0;
+                        let track_off = side * (half_wall + 2.5);
+                        let leaf_off = side * (half_wall + 5.0);
+                        painter.line_segment(
+                            [start + track_off, end + track_off],
+                            Stroke::new(1.0, arc_color),
+                        );
+                        let slide_end = hinge + along * leaf;
+                        painter.line_segment(
+                            [hinge + leaf_off, slide_end + leaf_off],
+                            Stroke::new(2.4, leaf_color),
+                        );
+                        // Sliding direction arrow.
+                        let mid = start.lerp(end, 0.5) + side * (half_wall + 9.0);
+                        let tip = mid + along * (half * 0.45);
+                        painter.line_segment(
+                            [mid - along * (half * 0.45), tip],
+                            Stroke::new(1.1, arc_color),
+                        );
+                        painter.line_segment(
+                            [tip, tip - along * 4.5 + side * 2.5],
+                            Stroke::new(1.1, arc_color),
+                        );
+                        painter.line_segment(
+                            [tip, tip - along * 4.5 - side * 2.5],
+                            Stroke::new(1.1, arc_color),
+                        );
+                    }
+                    DoorType::PocketSliding => {
+                        outline_extent = half_wall + 6.0;
+                        let pocket_end = hinge - along * leaf;
+                        let p_off = normal * (half_wall * 0.45);
+                        painter.extend(Shape::dashed_line(
+                            &[
+                                hinge + p_off,
+                                pocket_end + p_off,
+                                pocket_end - p_off,
+                                hinge - p_off,
+                            ],
+                            Stroke::new(1.0, arc_color),
+                            4.0,
+                            3.0,
+                        ));
+                        painter.line_segment(
+                            [hinge, hinge + along * (leaf * 0.65)],
+                            Stroke::new(2.4, leaf_color),
+                        );
+                    }
+                    DoorType::Pivot => {
+                        let pivot = hinge + along * (leaf * 0.20);
+                        let short_r = leaf * 0.20;
+                        let long_r = leaf * 0.80;
+                        outline_extent = long_r + 4.0;
+                        painter.circle_filled(pivot, 2.5, leaf_color);
+                        painter.line_segment(
+                            [pivot - side * short_r, pivot + side * long_r],
+                            Stroke::new(2.2, leaf_color),
+                        );
+                        let big_arc: Vec<Pos2> = (0..=16)
+                            .map(|step| {
+                                let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 16.0;
+                                pivot
+                                    + along * (theta.sin() * long_r)
+                                    + side * (theta.cos() * long_r)
+                            })
+                            .collect();
+                        let small_arc: Vec<Pos2> = (0..=10)
+                            .map(|step| {
+                                let theta = std::f32::consts::FRAC_PI_2 * step as f32 / 10.0;
+                                pivot
+                                    - along * (theta.sin() * short_r)
+                                    - side * (theta.cos() * short_r)
+                            })
+                            .collect();
+                        painter.add(Shape::line(big_arc, Stroke::new(1.0, arc_color)));
+                        painter.add(Shape::line(small_arc, Stroke::new(1.0, arc_color)));
+                    }
+                    DoorType::Bifold => {
+                        outline_extent = half * 0.65 + 4.0;
+                        let segs = 4;
+                        let step_along = leaf * 0.72 / segs as f32;
+                        let peak = half * 0.55;
+                        let pts: Vec<Pos2> = (0..=segs)
+                            .map(|i| {
+                                let s = if i % 2 == 1 {
+                                    side * peak
+                                } else {
+                                    egui::Vec2::ZERO
+                                };
+                                hinge + along * (step_along * i as f32) + s
+                            })
+                            .collect();
+                        painter.add(Shape::line(pts, Stroke::new(2.0, leaf_color)));
+                        painter.extend(Shape::dashed_line(
+                            &[start, end],
+                            Stroke::new(1.0, arc_color),
+                            4.0,
+                            3.0,
+                        ));
+                    }
+                    DoorType::Revolving => {
+                        outline_extent = half + 4.0;
+                        let mid = start.lerp(end, 0.5);
+                        painter.circle_stroke(mid, half, Stroke::new(1.2, arc_color));
+                        let diag1 = (direction + normal).normalized() * half;
+                        let diag2 = (direction - normal).normalized() * half;
+                        painter
+                            .line_segment([mid - diag1, mid + diag1], Stroke::new(2.0, leaf_color));
+                        painter
+                            .line_segment([mid - diag2, mid + diag2], Stroke::new(2.0, leaf_color));
+                    }
+                }
                 if op_color != Color32::TRANSPARENT {
                     outline_opening(
                         painter,
@@ -1342,7 +1472,7 @@ fn paint_wall(
                         direction,
                         side,
                         -(half_wall + 4.0),
-                        leaf + 4.0,
+                        outline_extent,
                         op_color,
                     );
                 }

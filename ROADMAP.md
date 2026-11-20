@@ -122,7 +122,7 @@ O #10 foi antecipado para a Fase 1 porque cômodos poligonais (#02) só ficam ú
 | 16 | Recuos, afastamentos e limites de implantação configuráveis | P1 | 3 | Feito |
 | 17 | Área útil, construída, de projeção e do terreno calculadas separadamente | P1 | 3 | Feito |
 | 18 | Paredes multicamadas: alvenaria, revestimento, isolamento, acabamento | P1 | 3 | Feito |
-| 19 | Portas de correr, pivotantes, duplas, sanfonadas e outras tipologias | P1 | 3 | Parcial |
+| 19 | Portas de correr, pivotantes, duplas, sanfonadas e outras tipologias | P1 | 3 | Feito |
 | 20 | Tipos de janela (correr, basculante, maxim-ar…) com representação técnica | P1 | 3 | — |
 | 21 | Escadas, rampas, patamares, guarda-corpos e desníveis | P1 | 3 | — |
 | 22 | Vários pavimentos, com níveis, pé-direito e referência do pavimento de baixo | P1 | 3 | — |

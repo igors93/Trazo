@@ -545,7 +545,7 @@ impl FloorPlanApp {
             return;
         };
         let (icon, title, subtitle) = match opening.kind {
-            OpeningKind::Door => (Icon::Door, "Porta", "Porta de abrir · 1 folha"),
+            OpeningKind::Door => (Icon::Door, "Porta", opening.effective_door_type().label()),
             OpeningKind::Window => (Icon::Window, "Janela", "Janela em parede"),
             OpeningKind::SaloonDoor => (
                 Icon::SaloonDoor,
@@ -555,6 +555,29 @@ impl FloorPlanApp {
             OpeningKind::Gap => (Icon::Gap, "Vão livre", "Trecho aberto da parede, sem porta"),
         };
         type_card(ui, icon, title, subtitle);
+
+        if opening.kind == OpeningKind::Door {
+            let mut chosen_door_type = None;
+            section(ui, "door_typology", "Tipologia da porta", |ui| {
+                let current = opening.effective_door_type();
+                egui::ComboBox::from_id_salt("door_type_combo")
+                    .selected_text(current.label())
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for dt in crate::domain::openings::DoorType::ALL {
+                            if ui.selectable_label(current == dt, dt.label()).clicked() {
+                                chosen_door_type = Some(dt);
+                            }
+                        }
+                    });
+            });
+            if let Some(dt) = chosen_door_type {
+                let prev = self.project.clone();
+                if self.project.set_opening_door_type(id, dt).is_ok() {
+                    self.record_change(prev);
+                }
+            }
+        }
         let wall_length = self
             .project
             .walls

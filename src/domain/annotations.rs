@@ -72,6 +72,7 @@ pub fn centimetres(metres: f64) -> String {
 pub struct FrameType {
     pub code: String,
     pub kind: OpeningKind,
+    pub door_type: Option<super::openings::DoorType>,
     pub width: f64,
     pub height: Option<f64>,
     pub sill: f64,
@@ -79,6 +80,16 @@ pub struct FrameType {
 }
 
 impl FrameType {
+    /// Human-readable opening description including door typology when applicable.
+    pub fn description(&self) -> String {
+        match (self.kind, self.door_type) {
+            (OpeningKind::Door, Some(dt)) if dt != super::openings::DoorType::Swing => {
+                format!("Porta ({})", dt.short_label())
+            }
+            _ => self.kind.label().to_owned(),
+        }
+    }
+
     /// "P1 80/210", "J1 120/100", "V1 1205".
     pub fn tag(&self) -> String {
         match self.height {
@@ -117,8 +128,10 @@ pub fn frame_types(project: &Project) -> Vec<FrameType> {
     let mut types: Vec<FrameType> = Vec::new();
     let same = |a: f64, b: f64| (a - b).abs() < 0.005;
     for opening in &project.openings {
+        let door_type = (opening.kind == OpeningKind::Door).then(|| opening.effective_door_type());
         let fits = |frame: &FrameType| {
             frame.kind == opening.kind
+                && frame.door_type == door_type
                 && same(frame.width, opening.width())
                 && match (frame.height, opening.height()) {
                     (Some(a), Some(b)) => same(a, b),
@@ -134,6 +147,7 @@ pub fn frame_types(project: &Project) -> Vec<FrameType> {
         types.push(FrameType {
             code: String::new(),
             kind: opening.kind,
+            door_type,
             width: opening.width(),
             height: opening.height(),
             sill: opening.sill(),
@@ -143,6 +157,7 @@ pub fn frame_types(project: &Project) -> Vec<FrameType> {
     types.sort_by(|a, b| {
         kind_order(a.kind)
             .cmp(&kind_order(b.kind))
+            .then(a.door_type.cmp(&b.door_type))
             .then(a.width.total_cmp(&b.width))
             .then(a.height.unwrap_or(0.0).total_cmp(&b.height.unwrap_or(0.0)))
             .then(a.sill.total_cmp(&b.sill))

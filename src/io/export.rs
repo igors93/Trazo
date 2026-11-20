@@ -199,6 +199,7 @@ fn document(project: &Project) -> SvgDocument {
             }
             match opening.kind {
                 OpeningKind::Door => {
+                    use crate::domain::openings::DoorType;
                     let leaf = half * 2.0;
                     let side = if opening.flip_side { -1.0 } else { 1.0 };
                     let (hinge, along) = if opening.flip_hinge {
@@ -206,22 +207,116 @@ fn document(project: &Project) -> SvgDocument {
                     } else {
                         (left, 1.0)
                     };
-                    let arc = (0..=20)
-                        .map(|step| {
-                            let theta = std::f64::consts::FRAC_PI_2 * step as f64 / 20.0;
-                            format!(
-                                "{:.1},{:.1}",
-                                hinge + along * theta.sin() * leaf,
-                                side * theta.cos() * leaf
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let _ = writeln!(
-                        svg,
-                        "<line x1=\"{hinge:.1}\" y1=\"0\" x2=\"{hinge:.1}\" y2=\"{:.1}\" stroke=\"#1d2836\" stroke-width=\"3\"/><polyline points=\"{arc}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.5\"/>",
-                        side * leaf
-                    );
+                    match opening.effective_door_type() {
+                        DoorType::Swing => {
+                            let arc = (0..=20)
+                                .map(|step| {
+                                    let theta = std::f64::consts::FRAC_PI_2 * step as f64 / 20.0;
+                                    format!(
+                                        "{:.1},{:.1}",
+                                        hinge + along * theta.sin() * leaf,
+                                        side * theta.cos() * leaf
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            let _ = writeln!(
+                                svg,
+                                "<line x1=\"{hinge:.1}\" y1=\"0\" x2=\"{hinge:.1}\" y2=\"{:.1}\" stroke=\"#1d2836\" stroke-width=\"3\"/><polyline points=\"{arc}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.5\"/>",
+                                side * leaf
+                            );
+                        }
+                        DoorType::DoubleSwing => {
+                            for (h, dir_h) in [(left, 1.0), (right, -1.0)] {
+                                let arc = (0..=14)
+                                    .map(|step| {
+                                        let theta =
+                                            std::f64::consts::FRAC_PI_2 * step as f64 / 14.0;
+                                        format!(
+                                            "{:.1},{:.1}",
+                                            h + dir_h * theta.sin() * half,
+                                            side * theta.cos() * half
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(" ");
+                                let _ = writeln!(
+                                    svg,
+                                    "<line x1=\"{h:.1}\" y1=\"0\" x2=\"{h:.1}\" y2=\"{:.1}\" stroke=\"#1d2836\" stroke-width=\"2.6\"/><polyline points=\"{arc}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.3\"/>",
+                                    side * half
+                                );
+                            }
+                        }
+                        DoorType::Sliding => {
+                            let y_track = side * (wall_width * 0.5 + 3.0);
+                            let y_leaf = side * (wall_width * 0.5 + 6.0);
+                            let _ = writeln!(
+                                svg,
+                                "<line x1=\"{left:.1}\" y1=\"{y_track:.1}\" x2=\"{right:.1}\" y2=\"{y_track:.1}\" stroke=\"#8ea2b8\" stroke-width=\"1.4\"/><line x1=\"{hinge:.1}\" y1=\"{y_leaf:.1}\" x2=\"{:.1}\" y2=\"{y_leaf:.1}\" stroke=\"#1d2836\" stroke-width=\"3.2\"/>",
+                                hinge + along * leaf
+                            );
+                        }
+                        DoorType::PocketSliding => {
+                            let pocket = hinge - along * leaf;
+                            let _ = writeln!(
+                                svg,
+                                "<line x1=\"{hinge:.1}\" y1=\"0\" x2=\"{pocket:.1}\" y2=\"0\" stroke=\"#8ea2b8\" stroke-width=\"2.0\" stroke-dasharray=\"5 4\"/><line x1=\"{hinge:.1}\" y1=\"0\" x2=\"{:.1}\" y2=\"0\" stroke=\"#1d2836\" stroke-width=\"3.2\"/>",
+                                hinge + along * (leaf * 0.65)
+                            );
+                        }
+                        DoorType::Pivot => {
+                            let pivot = hinge + along * (leaf * 0.20);
+                            let short_r = leaf * 0.20;
+                            let long_r = leaf * 0.80;
+                            let big_arc = (0..=16)
+                                .map(|s| {
+                                    let th = std::f64::consts::FRAC_PI_2 * s as f64 / 16.0;
+                                    format!(
+                                        "{:.1},{:.1}",
+                                        pivot + along * th.sin() * long_r,
+                                        side * th.cos() * long_r
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            let _ = writeln!(
+                                svg,
+                                "<circle cx=\"{pivot:.1}\" cy=\"0\" r=\"3\" fill=\"#1d2836\"/><line x1=\"{pivot:.1}\" y1=\"{:.1}\" x2=\"{pivot:.1}\" y2=\"{:.1}\" stroke=\"#1d2836\" stroke-width=\"3\"/><polyline points=\"{big_arc}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.4\"/>",
+                                -side * short_r,
+                                side * long_r
+                            );
+                        }
+                        DoorType::Bifold => {
+                            let step = leaf * 0.72 / 4.0;
+                            let peak = half * 0.55;
+                            let pts: String = (0..=4)
+                                .map(|i| {
+                                    let y = if i % 2 == 1 { side * peak } else { 0.0 };
+                                    format!("{:.1},{y:.1}", hinge + along * step * i as f64)
+                                })
+                                .collect::<Vec<_>>()
+                                .join(" ");
+                            let _ = writeln!(
+                                svg,
+                                "<polyline points=\"{pts}\" fill=\"none\" stroke=\"#1d2836\" stroke-width=\"2.4\"/><line x1=\"{left:.1}\" y1=\"0\" x2=\"{right:.1}\" y2=\"0\" stroke=\"#8ea2b8\" stroke-width=\"1.2\" stroke-dasharray=\"5 4\"/>"
+                            );
+                        }
+                        DoorType::Revolving => {
+                            let d = half * std::f64::consts::FRAC_1_SQRT_2;
+                            let _ = writeln!(
+                                svg,
+                                "<circle cx=\"{center:.1}\" cy=\"0\" r=\"{half:.1}\" fill=\"none\" stroke=\"#8ea2b8\" stroke-width=\"1.4\"/><line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#1d2836\" stroke-width=\"2.4\"/><line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#1d2836\" stroke-width=\"2.4\"/>",
+                                center - d,
+                                -d,
+                                center + d,
+                                d,
+                                center - d,
+                                d,
+                                center + d,
+                                -d
+                            );
+                        }
+                    }
                 }
                 OpeningKind::SaloonDoor => {
                     // Two half leaves swinging both ways (dashed on the far side).

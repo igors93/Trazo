@@ -169,7 +169,7 @@ pub fn build_openings_schedule(project: &Project, config: &ScheduleConfig) -> Sc
             Some(h) => format!("{} × {}", centimetres(frame.width), centimetres(h)),
             None => format!("{} × pé-direito", centimetres(frame.width)),
         };
-        let mut row = vec![frame.code.clone(), frame.kind.label().to_owned(), dim];
+        let mut row = vec![frame.code.clone(), frame.description(), dim];
         if config.show_sill {
             row.push(if frame.sill > 0.005 {
                 format!("{} cm", centimetres(frame.sill))

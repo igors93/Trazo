@@ -15,6 +15,7 @@ pub mod masonry;
 pub mod model;
 pub mod notes;
 pub mod offset;
+pub mod openings;
 pub mod schedules;
 pub mod setbacks;
 pub mod sheet;
