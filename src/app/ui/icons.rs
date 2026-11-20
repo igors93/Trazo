@@ -37,6 +37,8 @@ pub enum Icon {
     Keyboard,
     PanelLeft,
     PanelRight,
+    DuplicateTab,
+    SplitView,
     Search,
     ChevronDown,
     ChevronUp,
@@ -496,6 +498,23 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
             pen.fill(&[(x0, 4.5), (x1, 4.5), (x1, 19.5), (x0, 19.5)], soft);
             let x = if icon == Icon::PanelLeft { x1 } else { x0 };
             pen.accent_line(&[(x, 4.5), (x, 19.5)]);
+        }
+        Icon::DuplicateTab => {
+            // Back sheet peeking up-left, front sheet with a crisp '+' accent.
+            pen.line(&[(4.0, 15.5), (4.0, 4.5), (15.0, 4.5)]);
+            pen.fill(&[(8.0, 8.5), (20.0, 8.5), (20.0, 19.5), (8.0, 19.5)], soft);
+            pen.rect(8.0, 8.5, 20.0, 19.5, ink_s);
+            pen.accent_line(&[(14.0, 11.5), (14.0, 16.5)]);
+            pen.accent_line(&[(11.5, 14.0), (16.5, 14.0)]);
+        }
+        Icon::SplitView => {
+            // Two equal side-by-side panes separated by an accent divider.
+            pen.fill(
+                &[(12.0, 4.5), (21.0, 4.5), (21.0, 19.5), (12.0, 19.5)],
+                soft,
+            );
+            pen.rect(3.0, 4.5, 21.0, 19.5, ink_s);
+            pen.accent_line(&[(12.0, 4.5), (12.0, 19.5)]);
         }
         Icon::Search => {
             pen.circle(10.8, 10.8, 6.5, ink_s);

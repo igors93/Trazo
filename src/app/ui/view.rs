@@ -88,6 +88,56 @@ impl FloorPlanApp {
         painter.galley(Pos2::new(x, middle - unit.size().y / 2.0), unit, MUTED);
     }
 
+    /// Matching top-left view plate for the inactive side of a split view.
+    pub(in crate::app) fn paint_side_view_label(
+        &self,
+        painter: &egui::Painter,
+        rect: Rect,
+        floor_name: &str,
+    ) {
+        const PAD: f32 = 12.0;
+        const ICON_GAP: f32 = 7.0;
+        const DIVIDER_GAP: f32 = 12.0;
+        const VIEW_ICON: f32 = 15.0;
+        let title_text = format!("Planta baixa · {floor_name}");
+        let title = painter.layout_no_wrap(title_text, strong(12.5), TEXT);
+        let hint = painter.layout_no_wrap("Clique para editar".to_owned(), regular(11.5), MUTED);
+        let (title_width, hint_width) = (title.size().x, hint.size().x);
+        let width = PAD + VIEW_ICON + ICON_GAP + title_width + 2.0 * DIVIDER_GAP + hint_width + PAD;
+        let plate = Rect::from_min_size(
+            Pos2::new(rect.left() + 12.0, rect.top() + 12.0),
+            vec2(width, 30.0),
+        );
+        if !rect.contains_rect(plate) {
+            return;
+        }
+        overlay::paint_floating_plate(painter, plate);
+        let middle = plate.center().y;
+        let mut x = plate.left() + PAD;
+        icons::paint(
+            painter,
+            Rect::from_min_size(
+                Pos2::new(x, middle - VIEW_ICON / 2.0),
+                vec2(VIEW_ICON, VIEW_ICON),
+            ),
+            Icon::Plan,
+            TEXT_2,
+            ACCENT,
+        );
+        x += VIEW_ICON + ICON_GAP;
+        painter.galley(Pos2::new(x, middle - title.size().y / 2.0), title, TEXT);
+        x += title_width + DIVIDER_GAP;
+        painter.line_segment(
+            [
+                Pos2::new(x, plate.top() + 8.0),
+                Pos2::new(x, plate.bottom() - 8.0),
+            ],
+            Stroke::new(1.0, BORDER),
+        );
+        x += DIVIDER_GAP;
+        painter.galley(Pos2::new(x, middle - hint.size().y / 2.0), hint, MUTED);
+    }
+
     /// A short name for the selected element, for the context menu.
     fn selection_title(&self, selection: Selection) -> String {
         match selection {

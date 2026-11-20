@@ -294,8 +294,12 @@ pub struct FloorPlanApp {
     /// fields above (see `tabs.rs`).
     tabs: Vec<Option<tabs::Document>>,
     active_tab: usize,
+    /// Which side holds the active tab when viewing side by side.
+    active_pane: tabs::TabPane,
     /// The tab shown beside the active one, with the same view.
     split_tab: Option<usize>,
+    /// Horizontal fraction (`0.20..=0.80`) given to the left side when split.
+    split_ratio: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -449,7 +453,9 @@ impl FloorPlanApp {
             constraint_texts: std::collections::HashMap::new(),
             tabs: vec![None],
             active_tab: 0,
+            active_pane: tabs::TabPane::Left,
             split_tab: None,
+            split_ratio: 0.5,
         };
         if restored {
             app.restore_tab_drafts();
