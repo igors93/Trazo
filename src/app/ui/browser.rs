@@ -2,7 +2,7 @@ use super::super::{FloorPlanApp, Selection, theme::*};
 use super::icons::{self, Icon};
 use super::widgets::{icon_button_sized, panel_header};
 use crate::domain::{geometry::format_meters, model::OpeningKind};
-use eframe::egui::{self, Align2, Margin, Pos2, Rect, RichText, Sense, Stroke, Ui, vec2};
+use eframe::egui::{self, Align2, Margin, Pos2, Rect, Sense, Stroke, Ui, vec2};
 
 /// One element row of the browser.
 struct Row {
@@ -267,14 +267,6 @@ impl FloorPlanApp {
                     let open =
                         self.group_header(ui, group.key, group.title, group.icon, rows.len());
                     if open {
-                        if rows.is_empty() {
-                            ui.add_space(2.0);
-                            ui.horizontal(|ui| {
-                                ui.add_space(46.0);
-                                ui.label(RichText::new("Nenhum item").color(FAINT).size(12.0));
-                            });
-                            ui.add_space(4.0);
-                        }
                         for row in rows {
                             self.browser_row(ui, group.icon, row);
                         }
@@ -350,7 +342,8 @@ impl FloorPlanApp {
         ui.add_space(2.0);
     }
 
-    /// A group's title row; returns whether the group is open.
+    /// A group's title row; returns whether the group is open. An empty
+    /// group is a quiet, compact row that does not open: nothing to list.
     fn group_header(
         &mut self,
         ui: &mut Ui,
@@ -359,33 +352,46 @@ impl FloorPlanApp {
         icon: Icon,
         count: usize,
     ) -> bool {
+        let empty = count == 0;
         let id = ui.make_persistent_id(("browser_group", key));
         // Walls are the longest list; they start folded.
         let mut open = ui.data_mut(|data| *data.get_temp_mut_or(id, key != "walls"));
-        let (rect, response) =
-            ui.allocate_exact_size(vec2(ui.available_width(), 26.0), Sense::click());
+        let height = if empty { 24.0 } else { 26.0 };
+        let sense = if empty {
+            Sense::hover()
+        } else {
+            Sense::click()
+        };
+        let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), height), sense);
         if response.clicked() {
             open = !open;
             ui.data_mut(|data| data.insert_temp(id, open));
         }
         let painter = ui.painter();
-        if response.hovered() {
+        if response.hovered() && !empty {
             painter.rect_filled(rect, 0, ACCENT_SOFTER);
         }
-        icons::paint(
-            painter,
-            Rect::from_center_size(
-                Pos2::new(rect.left() + 14.0, rect.center().y),
-                vec2(12.0, 12.0),
-            ),
-            if open {
-                Icon::ChevronDown
-            } else {
-                Icon::ChevronRight
-            },
-            MUTED,
-            MUTED,
-        );
+        if !empty {
+            icons::paint(
+                painter,
+                Rect::from_center_size(
+                    Pos2::new(rect.left() + 14.0, rect.center().y),
+                    vec2(12.0, 12.0),
+                ),
+                if open {
+                    Icon::ChevronDown
+                } else {
+                    Icon::ChevronRight
+                },
+                MUTED,
+                MUTED,
+            );
+        }
+        let (icon_ink, icon_accent, title_font, title_ink) = if empty {
+            (FAINT, FAINT, regular(12.5), MUTED)
+        } else {
+            (TEXT_2, ACCENT, strong(12.5), TEXT)
+        };
         icons::paint(
             painter,
             Rect::from_center_size(
@@ -393,31 +399,38 @@ impl FloorPlanApp {
                 vec2(16.0, 16.0),
             ),
             icon,
-            TEXT_2,
-            ACCENT,
+            icon_ink,
+            icon_accent,
         );
         painter.text(
             Pos2::new(rect.left() + 46.0, rect.center().y),
             Align2::LEFT_CENTER,
             title,
-            strong(12.5),
-            TEXT,
+            title_font,
+            title_ink,
         );
         let count_text = count.to_string();
-        let galley = painter.layout_no_wrap(count_text, regular(11.0), MUTED);
+        let count_ink = if empty { FAINT } else { MUTED };
+        let galley = painter.layout_no_wrap(count_text, regular(11.0), count_ink);
         let pill = Rect::from_center_size(
             Pos2::new(rect.right() - 14.0 - galley.size().x / 2.0, rect.center().y),
             vec2(galley.size().x + 12.0, 17.0),
         );
-        painter.rect_filled(pill, 8, BAND);
+        if !empty {
+            painter.rect_filled(pill, 8, BAND);
+        }
         painter.galley(
             Pos2::new(
                 pill.center().x - galley.size().x / 2.0,
                 pill.center().y - galley.size().y / 2.0,
             ),
             galley,
-            MUTED,
+            count_ink,
         );
+        if empty {
+            response.on_hover_text(format!("Nenhum item em {title}"));
+            return false;
+        }
         response.on_hover_cursor(egui::CursorIcon::PointingHand);
         open
     }
