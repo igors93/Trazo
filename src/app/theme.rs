@@ -129,10 +129,26 @@ fn install_fonts(context: &egui::Context) {
             "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
         ],
     );
+    // Arrows and shapes the interface font lacks (▾ ↻ ↺ ↕ ⌀ …), which would
+    // otherwise show as empty boxes in labels such as "Girar 90° ↻".
+    let symbols = load(
+        "ui-symbols",
+        &[
+            "C:\\Windows\\Fonts\\seguisym.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/System/Library/Fonts/Apple Symbols.ttf",
+        ],
+    );
 
     let proportional = fonts.families.entry(FontFamily::Proportional).or_default();
     if regular {
         proportional.insert(0, "ui-regular".to_owned());
+    }
+    if symbols {
+        // Right after the interface font, before egui's bundled fallbacks.
+        let at = usize::from(regular);
+        proportional.insert(at, "ui-symbols".to_owned());
     }
     let mut strong_list = proportional.clone();
     if semibold {
@@ -145,6 +161,13 @@ fn install_fonts(context: &egui::Context) {
             .entry(FontFamily::Monospace)
             .or_default()
             .insert(0, "ui-mono".to_owned());
+    }
+    if symbols {
+        fonts
+            .families
+            .entry(FontFamily::Monospace)
+            .or_default()
+            .push("ui-symbols".to_owned());
     }
     context.set_fonts(fonts);
 }
