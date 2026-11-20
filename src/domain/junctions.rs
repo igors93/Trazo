@@ -64,9 +64,22 @@ fn convex_hull(mut points: Vec<Point>) -> Vec<Point> {
 
 impl Project {
     pub fn wall_junctions(&self) -> Vec<WallJunction> {
+        self.wall_junctions_with_inset(0.0)
+    }
+
+    /// Computes wall junction patches with each wall face inset inward by
+    /// `inset_m` metres (used to punch the hollow architectural core cleanly
+    /// through L-, T-, and X-junctions without crossing lines).
+    pub fn wall_junctions_with_inset(&self, inset_m: f64) -> Vec<WallJunction> {
+        let inset = inset_m.max(0.0);
+        let visible_walls: Vec<_> = self
+            .walls
+            .iter()
+            .filter(|wall| self.is_wall_visible(wall))
+            .collect();
         let mut candidates: Vec<Point> = Vec::new();
-        for (index, first) in self.walls.iter().enumerate() {
-            for second in self.walls.iter().skip(index + 1) {
+        for (index, first) in visible_walls.iter().enumerate() {
+            for second in visible_walls.iter().skip(index + 1) {
                 let Some((point, t, u)) =
                     line_intersection(first.start, first.end, second.start, second.end)
                 else {
@@ -89,8 +102,12 @@ impl Project {
             .into_iter()
             .filter_map(|point| {
                 let mut rays: Vec<Ray> = Vec::new();
-                for wall in &self.walls {
+                for wall in &visible_walls {
                     if distance_to_segment(point, wall.start, wall.end) > JOIN_TOLERANCE {
+                        continue;
+                    }
+                    let half_width = wall.thickness() / 2.0 - inset;
+                    if half_width <= 1e-5 {
                         continue;
                     }
                     let (_, t) = nearest_point_on_segment(point, wall.start, wall.end);
@@ -103,14 +120,14 @@ impl Project {
                             .iter_mut()
                             .find(|ray| ray.direction.dot(direction) > 0.9999)
                         {
-                            if wall.thickness() / 2.0 > existing.half_width {
-                                existing.half_width = wall.thickness() / 2.0;
+                            if half_width > existing.half_width {
+                                existing.half_width = half_width;
                                 existing.wall_id = wall.id;
                             }
                         } else {
                             rays.push(Ray {
                                 direction,
-                                half_width: wall.thickness() / 2.0,
+                                half_width,
                                 wall_id: wall.id,
                             });
                         }
@@ -222,5 +239,28 @@ mod tests {
         project.add_wall(Point::new(0.0, 0.0), Point::new(2.0, 0.0));
         project.add_wall(Point::new(2.0, 0.0), Point::new(4.0, 0.0));
         assert!(project.wall_junctions().is_empty());
+    }
+
+    #[test]
+    fn inset_junction_patch_is_strictly_smaller_than_outer_patch() {
+        let mut project = Project::default();
+        project.add_wall(Point::new(0.0, 0.0), Point::new(4.0, 0.0));
+        project.add_wall(Point::new(0.0, 0.0), Point::new(0.0, 3.0));
+        project.add_wall(Point::new(2.0, 0.0), Point::new(2.0, 3.0));
+        let outer = project.wall_junctions();
+        let inner = project.wall_junctions_with_inset(0.02);
+        assert_eq!(outer.len(), 2);
+        assert_eq!(inner.len(), 2);
+        for (o, i) in outer.iter().zip(inner.iter()) {
+            assert_eq!(o.kind, i.kind);
+            let outer_area = polygon_area(&o.outline);
+            let inner_area = polygon_area(&i.outline);
+            assert!(
+                inner_area > 0.0 && inner_area < outer_area,
+                "expected 0 < {inner_area} < {outer_area}"
+            );
+        }
+        // Inset wider than half the wall thickness collapses the hollow core.
+        assert!(project.wall_junctions_with_inset(0.20).is_empty());
     }
 }

@@ -589,9 +589,58 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         }
     }
 
-    // Fill the calculated mitre patches before drawing the wall runs. This
-    // closes L/T/X meetings even when angles and wall thicknesses differ.
+    // Paint walls as architectural double-line (hollow) walls in four passes so
+    // L-, T-, X-junctions and collinear continuations merge cleanly without
+    // crossing lines inside the wall cavity:
+    //   1) outer dark contour (junction patches + wall runs),
+    //   2) inner white hollow core (inset junction patches + inset wall runs),
+    //   3) hovered / selected wall highlights (outer + inner),
+    //   4) openings (jambs, doors, windows, passages) on top.
     if project.category_visible(crate::domain::layers::LayerCategory::Walls) {
+        let base_wall_w = wall_screen_width(view.scale, project.masonry.thickness());
+        let border_px = wall_border_width(base_wall_w);
+        let draw_hollow = base_wall_w >= 2.0 * border_px + 1.0;
+
+        struct WallRenderEntry<'a> {
+            wall: &'a Wall,
+            tone: WallTone,
+            runs: Vec<(Pos2, Pos2)>,
+            width: f32,
+        }
+
+        let visible_walls: Vec<WallRenderEntry<'_>> = project
+            .walls
+            .iter()
+            .filter(|wall| project.is_wall_visible(wall))
+            .map(|wall| {
+                let in_room = |marked: &dyn Fn(Selection) -> bool| {
+                    project.rooms.iter().any(|room| {
+                        marked(Selection::Room(room.id)) && room.wall_ids.contains(&wall.id)
+                    })
+                };
+                let tone = if marks.selected(Selection::Wall(wall.id))
+                    || in_room(&|item| marks.selected(item))
+                {
+                    WallTone::Selected
+                } else if marks.hovered(Selection::Wall(wall.id))
+                    || in_room(&|item| marks.hovered(item))
+                {
+                    WallTone::Hovered
+                } else {
+                    WallTone::Normal
+                };
+                let width = wall_screen_width(view.scale, wall.thickness());
+                let runs = wall_solid_runs(wall, project, view, width);
+                WallRenderEntry {
+                    wall,
+                    tone,
+                    runs,
+                    width,
+                }
+            })
+            .collect();
+
+        // Pass 1: outer wall contour (junctions + segments).
         for junction in project.wall_junctions() {
             painter.add(Shape::convex_polygon(
                 junction
@@ -603,28 +652,84 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
                 Stroke::NONE,
             ));
         }
-    }
-
-    for wall in &project.walls {
-        if !project.is_wall_visible(wall) {
-            continue;
+        for entry in &visible_walls {
+            for &(from, to) in &entry.runs {
+                wall_run(painter, from, to, entry.width, theme::WALL);
+            }
         }
-        let in_room = |marked: &dyn Fn(Selection) -> bool| {
-            project
-                .rooms
+
+        // Pass 2: inner hollow white core (inset junctions + inset segments)
+        // and multilayer wall assemblies.
+        if draw_hollow && view.scale > 1e-3 {
+            let border_m = (border_px / view.scale) as f64;
+            for junction in project.wall_junctions_with_inset(border_m) {
+                painter.add(Shape::convex_polygon(
+                    junction
+                        .outline
+                        .into_iter()
+                        .map(|point| view.to_screen(point))
+                        .collect(),
+                    theme::WALL_FILL,
+                    Stroke::NONE,
+                ));
+            }
+        }
+        for entry in &visible_walls {
+            if let Some(assembly) = &entry.wall.assembly
+                && entry.tone == WallTone::Normal
+                && entry.width >= 6.0
+                && assembly.total_thickness() > 1e-6
+            {
+                let a = view.to_screen(entry.wall.start);
+                let b = view.to_screen(entry.wall.end);
+                let direction = (b - a).normalized();
+                let normal = egui::vec2(-direction.y, direction.x);
+                for &(from, to) in &entry.runs {
+                    paint_wall_assembly_segment(painter, from, to, normal, entry.width, assembly);
+                }
+            } else {
+                for &(from, to) in &entry.runs {
+                    wall_core_run(painter, from, to, entry.width, border_px, theme::WALL_FILL);
+                }
+            }
+        }
+
+        // Pass 3: hovered and selected walls keep the same double-line look
+        // with blue contours and a soft tinted interior.
+        for highlight_tone in [WallTone::Hovered, WallTone::Selected] {
+            let (outer_color, inner_color) = match highlight_tone {
+                WallTone::Selected => (theme::SELECTION, theme::WALL_FILL_SELECTED),
+                WallTone::Hovered => (theme::HOVER, theme::WALL_FILL_HOVER),
+                WallTone::Normal => continue,
+            };
+            let any_highlighted = visible_walls
                 .iter()
-                .any(|room| marked(Selection::Room(room.id)) && room.wall_ids.contains(&wall.id))
-        };
-        let tone = if marks.selected(Selection::Wall(wall.id))
-            || in_room(&|item| marks.selected(item))
-        {
-            WallTone::Selected
-        } else if marks.hovered(Selection::Wall(wall.id)) || in_room(&|item| marks.hovered(item)) {
-            WallTone::Hovered
-        } else {
-            WallTone::Normal
-        };
-        paint_wall(painter, view, wall, project, tone, marks);
+                .any(|entry| entry.tone == highlight_tone);
+            if !any_highlighted {
+                continue;
+            }
+            for entry in &visible_walls {
+                if entry.tone == highlight_tone {
+                    for &(from, to) in &entry.runs {
+                        wall_run(painter, from, to, entry.width, outer_color);
+                    }
+                }
+            }
+            for entry in &visible_walls {
+                if entry.tone == highlight_tone {
+                    for &(from, to) in &entry.runs {
+                        wall_core_run(painter, from, to, entry.width, border_px, inner_color);
+                    }
+                }
+            }
+        }
+
+        // Pass 4: openings (doors, windows, gates, passages and jambs).
+        for entry in &visible_walls {
+            paint_wall_openings(
+                painter, view, entry.wall, project, entry.tone, marks, border_px,
+            );
+        }
     }
 
     {
@@ -1386,21 +1491,90 @@ fn wall_run(painter: &Painter, from: Pos2, to: Pos2, width: f32, color: Color32)
     ));
 }
 
-fn paint_wall(
+/// Paints the hollow architectural interior core of a wall segment inset by
+/// `border` on all four sides, leaving crisp double-line outer contours and
+/// clean end caps / jambs.
+fn wall_core_run(painter: &Painter, from: Pos2, to: Pos2, width: f32, border: f32, fill: Color32) {
+    let inner_width = width - 2.0 * border;
+    if inner_width < 1.0 {
+        return;
+    }
+    let along = to - from;
+    let len = along.length();
+    if len <= 2.0 * border + 0.5 {
+        return;
+    }
+    let dir = along / len;
+    wall_run(
+        painter,
+        from + dir * border,
+        to - dir * border,
+        inner_width,
+        fill,
+    );
+}
+
+/// Computes the screen-space solid masonry runs of a wall between its openings,
+/// extending by half the wall thickness at wall endpoints so corners close.
+fn wall_solid_runs(
+    wall: &Wall,
+    project: &Project,
+    view: ViewTransform,
+    wall_width: f32,
+) -> Vec<(Pos2, Pos2)> {
+    let a = view.to_screen(wall.start);
+    let b = view.to_screen(wall.end);
+    let screen_length = a.distance(b);
+    if screen_length < 0.01 {
+        return Vec::new();
+    }
+    let direction = (b - a) / screen_length;
+    let cap = direction * (wall_width / 2.0);
+    let mut openings: Vec<_> = project
+        .openings
+        .iter()
+        .filter(|opening| opening.wall_id == wall.id)
+        .collect();
+    openings.sort_by(|left, right| left.t.total_cmp(&right.t));
+
+    let mut runs = Vec::with_capacity(openings.len() + 1);
+    let mut cursor = 0.0;
+    let mut run_start = a - cap;
+    for opening in openings {
+        let half = view.pixels(opening.width()) / 2.0;
+        let center = opening.t as f32 * screen_length;
+        let left = center - half;
+        let right = center + half;
+        if left > cursor {
+            runs.push((run_start, a + direction * left));
+        }
+        cursor = right;
+        run_start = a + direction * right;
+    }
+    if cursor < screen_length {
+        runs.push((run_start, b + cap));
+    }
+    runs
+}
+
+fn paint_wall_openings(
     painter: &Painter,
     view: ViewTransform,
     wall: &Wall,
     project: &Project,
     tone: WallTone,
     marks: Marks<'_>,
+    border_px: f32,
 ) {
     let a = view.to_screen(wall.start);
     let b = view.to_screen(wall.end);
-    let direction = (b - a).normalized();
-    let normal = egui::vec2(-direction.y, direction.x);
     let screen_length = a.distance(b);
+    if screen_length < 0.01 {
+        return;
+    }
+    let direction = (b - a) / screen_length;
+    let normal = egui::vec2(-direction.y, direction.x);
     let wall_width = wall_screen_width(view.scale, wall.thickness());
-    let cap = direction * (wall_width / 2.0);
     let color = match tone {
         WallTone::Selected => theme::SELECTION,
         WallTone::Hovered => theme::HOVER,
@@ -1412,8 +1586,6 @@ fn paint_wall(
         .filter(|opening| opening.wall_id == wall.id)
         .collect();
     openings.sort_by(|left, right| left.t.total_cmp(&right.t));
-    let mut cursor = 0.0;
-    let mut run_start = a - cap;
     for opening in openings {
         let op_selected = marks.selected(Selection::Opening(opening.id));
         let op_hovered = marks.hovered(Selection::Opening(opening.id));
@@ -1421,18 +1593,6 @@ fn paint_wall(
         let center = opening.t as f32 * screen_length;
         let left = center - half;
         let right = center + half;
-        if left > cursor {
-            paint_wall_segment(
-                painter,
-                run_start,
-                a + direction * left,
-                normal,
-                wall_width,
-                wall,
-                tone,
-                color,
-            );
-        }
         let start = a + direction * left;
         let end = a + direction * right;
         let op_color = if op_selected {
@@ -1443,7 +1603,7 @@ fn paint_wall(
             Color32::TRANSPARENT
         };
         let jamb = Stroke::new(
-            1.2,
+            border_px.max(1.2),
             if op_color == Color32::TRANSPARENT {
                 color
             } else {
@@ -1850,60 +2010,37 @@ fn paint_wall(
                 }
             }
         }
-        cursor = right;
-        run_start = end;
     }
-    paint_wall_segment(
-        painter,
-        run_start,
-        b + cap,
-        normal,
-        wall_width,
-        wall,
-        tone,
-        color,
-    );
 }
 
-#[allow(clippy::too_many_arguments)]
-fn paint_wall_segment(
+fn paint_wall_assembly_segment(
     painter: &Painter,
     from: Pos2,
     to: Pos2,
     normal: egui::Vec2,
     wall_width: f32,
-    wall: &Wall,
-    tone: WallTone,
-    color: Color32,
+    assembly: &crate::domain::wall_layers::WallAssembly,
 ) {
-    if let Some(assembly) = &wall.assembly
-        && tone == WallTone::Normal
-        && wall_width >= 6.0
-        && assembly.total_thickness() > 1e-6
-    {
-        let total = assembly.total_thickness() as f32;
-        for (start_m, end_m, layer) in assembly.layer_offsets() {
-            let s0 = (start_m as f32 / total) * wall_width;
-            let s1 = (end_m as f32 / total) * wall_width;
-            let [r, g, b] = layer.color;
-            painter.add(Shape::convex_polygon(
-                vec![
-                    from + normal * s0,
-                    to + normal * s0,
-                    to + normal * s1,
-                    from + normal * s1,
-                ],
-                Color32::from_rgb(r, g, b),
-                Stroke::NONE,
-            ));
-        }
-        let half = wall_width * 0.5;
-        let outline = Stroke::new(0.8, theme::WALL);
-        painter.line_segment([from - normal * half, to - normal * half], outline);
-        painter.line_segment([from + normal * half, to + normal * half], outline);
-    } else {
-        wall_run(painter, from, to, wall_width, color);
+    let total = assembly.total_thickness() as f32;
+    for (start_m, end_m, layer) in assembly.layer_offsets() {
+        let s0 = (start_m as f32 / total) * wall_width;
+        let s1 = (end_m as f32 / total) * wall_width;
+        let [r, g, b] = layer.color;
+        painter.add(Shape::convex_polygon(
+            vec![
+                from + normal * s0,
+                to + normal * s0,
+                to + normal * s1,
+                from + normal * s1,
+            ],
+            Color32::from_rgb(r, g, b),
+            Stroke::NONE,
+        ));
     }
+    let half = wall_width * 0.5;
+    let outline = Stroke::new(0.8, theme::WALL);
+    painter.line_segment([from - normal * half, to - normal * half], outline);
+    painter.line_segment([from + normal * half, to + normal * half], outline);
 }
 
 /// A dashed frame around a selected or hovered opening.
@@ -1944,13 +2081,26 @@ fn wall_screen_width(scale: f32, thickness: f64) -> f32 {
     (scale * thickness as f32).max(1.5)
 }
 
+/// Face outline weight for hollow architectural double-line walls.
+fn wall_border_width(wall_width: f32) -> f32 {
+    (wall_width * 0.20).clamp(1.0, 1.6)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::wall_stroke_width;
+    use super::{wall_border_width, wall_stroke_width};
 
     #[test]
     fn wall_lines_get_thinner_when_zoomed_out() {
         assert!(wall_stroke_width(18.0) < 3.0);
         assert!(wall_stroke_width(60.0) > 6.0);
+    }
+
+    #[test]
+    fn hollow_wall_border_leaves_clear_interior_at_working_zoom() {
+        let w = 9.0; // 15 cm at 60 px/m
+        let b = wall_border_width(w);
+        assert!((1.0..=1.6).contains(&b));
+        assert!(w - 2.0 * b >= 5.0);
     }
 }

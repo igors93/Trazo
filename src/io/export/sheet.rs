@@ -184,7 +184,59 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
         }
     }
 
-    // Wall junctions + walls at exact scaled thickness.
+    // Architectural double-line (hollow) walls at exact scaled thickness in
+    // three passes so L-, T-, and X-junctions merge seamlessly:
+    //   1) outer dark contour (junction patches + wall runs),
+    //   2) inner white hollow cavity (inset junctions + inset runs),
+    //   3) openings (jambs, doors, windows, passages) on top.
+    let base_wall_mm = (project.masonry.thickness() * mm_per_m).max(doc_style.wall_pen_mm);
+    let border_mm = doc_style.wall_pen_mm.min(base_wall_mm * 0.28).max(0.18);
+    let draw_hollow = base_wall_mm >= 2.0 * border_mm + 0.3;
+
+    let sheet_walls: Vec<_> = if project.category_visible(LayerCategory::Walls) {
+        project
+            .walls
+            .iter()
+            .filter(|wall| project.is_wall_visible(wall))
+            .map(|wall| {
+                let wall_w_mm = (wall.thickness() * mm_per_m).max(doc_style.wall_pen_mm);
+                let half_w = wall_w_mm * 0.5;
+                let (x, y) = pt(wall.start);
+                let len_mm = wall.length() * mm_per_m;
+                let angle = (wall.end.y - wall.start.y)
+                    .atan2(wall.end.x - wall.start.x)
+                    .to_degrees();
+                let mut openings: Vec<_> = project
+                    .openings
+                    .iter()
+                    .filter(|o| o.wall_id == wall.id)
+                    .collect();
+                openings.sort_by(|a, b| a.t.total_cmp(&b.t));
+                let mut runs = Vec::with_capacity(openings.len() + 1);
+                let mut cursor = 0.0;
+                let mut run_start = -half_w;
+                for op in &openings {
+                    let half = op.width() * mm_per_m * 0.5;
+                    let center = op.t * len_mm;
+                    let left = center - half;
+                    let right = center + half;
+                    if left > cursor {
+                        runs.push((run_start, left));
+                    }
+                    cursor = right;
+                    run_start = right;
+                }
+                if cursor < len_mm {
+                    runs.push((run_start, len_mm + half_w));
+                }
+                (wall_w_mm, half_w, x, y, len_mm, angle, openings, runs)
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    // Pass 1: outer contours.
     if project.category_visible(LayerCategory::Walls) {
         for junction in project.wall_junctions() {
             let pts: String = junction
@@ -199,36 +251,85 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
             let _ = writeln!(svg, "<polygon points=\"{pts}\" fill=\"{wall_color}\"/>");
         }
     }
-    for wall in &project.walls {
-        if !project.is_wall_visible(wall) {
-            continue;
-        }
-        let wall_w_mm = (wall.thickness() * mm_per_m).max(doc_style.wall_pen_mm);
-        let (x, y) = pt(wall.start);
-        let len_mm = wall.length() * mm_per_m;
-        let angle = (wall.end.y - wall.start.y)
-            .atan2(wall.end.x - wall.start.x)
-            .to_degrees();
+    for &(wall_w_mm, half_w, x, y, _, angle, _, ref runs) in &sheet_walls {
         let _ = writeln!(
             svg,
             "<g transform=\"translate({x:.2} {y:.2}) rotate({angle:.3})\">"
         );
-        let mut openings: Vec<_> = project
-            .openings
-            .iter()
-            .filter(|o| o.wall_id == wall.id)
-            .collect();
-        openings.sort_by(|a, b| a.t.total_cmp(&b.t));
-        let mut cursor = 0.0;
+        for &(x0, x1) in runs {
+            let w = (x1 - x0).max(0.0);
+            if w > 0.02 {
+                let _ = writeln!(
+                    svg,
+                    "<rect x=\"{x0:.2}\" y=\"{:.2}\" width=\"{w:.2}\" height=\"{wall_w_mm:.2}\" fill=\"{wall_color}\"/>",
+                    -half_w
+                );
+            }
+        }
+        svg.push_str("</g>\n");
+    }
+
+    // Pass 2: inner white hollow cavity.
+    if draw_hollow && project.category_visible(LayerCategory::Walls) {
+        let border_m = border_mm / mm_per_m;
+        for junction in project.wall_junctions_with_inset(border_m) {
+            let pts: String = junction
+                .outline
+                .iter()
+                .map(|p| {
+                    let (x, y) = pt(*p);
+                    format!("{x:.2},{y:.2}")
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = writeln!(svg, "<polygon points=\"{pts}\" fill=\"#ffffff\"/>");
+        }
+    }
+    for &(wall_w_mm, half_w, x, y, _, angle, _, ref runs) in &sheet_walls {
+        let inner_h = wall_w_mm - 2.0 * border_mm;
+        if inner_h < 0.3 {
+            continue;
+        }
+        let _ = writeln!(
+            svg,
+            "<g transform=\"translate({x:.2} {y:.2}) rotate({angle:.3})\">"
+        );
+        for &(x0, x1) in runs {
+            let ix0 = x0 + border_mm;
+            let ix1 = x1 - border_mm;
+            if ix1 - ix0 > 0.1 {
+                let _ = writeln!(
+                    svg,
+                    "<rect x=\"{ix0:.2}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{inner_h:.2}\" fill=\"#ffffff\"/>",
+                    -(half_w - border_mm),
+                    ix1 - ix0
+                );
+            }
+        }
+        svg.push_str("</g>\n");
+    }
+
+    // Pass 3: openings (jambs, doors, windows, passages) on top of walls.
+    for &(wall_w_mm, half_w, x, y, len_mm, angle, ref openings, _) in &sheet_walls {
+        if openings.is_empty() {
+            continue;
+        }
+        let _ = writeln!(
+            svg,
+            "<g transform=\"translate({x:.2} {y:.2}) rotate({angle:.3})\">"
+        );
         for op in openings {
             let half = op.width() * mm_per_m * 0.5;
             let center = op.t * len_mm;
             let left = center - half;
             let right = center + half;
-            let _ = writeln!(
-                svg,
-                "<line x1=\"{cursor:.2}\" y1=\"0\" x2=\"{left:.2}\" y2=\"0\" stroke=\"{wall_color}\" stroke-width=\"{wall_w_mm:.2}\" stroke-linecap=\"square\"/>"
-            );
+            for jamb_x in [left, right] {
+                let _ = writeln!(
+                    svg,
+                    "<line x1=\"{jamb_x:.2}\" y1=\"{:.2}\" x2=\"{jamb_x:.2}\" y2=\"{half_w:.2}\" stroke=\"{wall_color}\" stroke-width=\"{border_mm:.2}\"/>",
+                    -half_w
+                );
+            }
             match op.kind {
                 OpeningKind::Door | OpeningKind::Gate => {
                     use crate::domain::openings::DoorType;
@@ -430,12 +531,8 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
                     }
                 }
             }
-            cursor = right;
         }
-        let _ = writeln!(
-            svg,
-            "<line x1=\"{cursor:.2}\" y1=\"0\" x2=\"{len_mm:.2}\" y2=\"0\" stroke=\"{wall_color}\" stroke-width=\"{wall_w_mm:.2}\" stroke-linecap=\"square\"/></g>"
-        );
+        svg.push_str("</g>\n");
     }
 
     // Fixtures.
@@ -1113,16 +1210,14 @@ fn write_legend(svg: &mut String, x: f64, y: f64) {
         "<g id=\"legenda\">\n\
          <rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"64\" height=\"20\" fill=\"#ffffff\" stroke=\"#b8c4d0\" stroke-width=\"0.22\"/>\n\
          <text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"2.2\" font-weight=\"700\" fill=\"#1d2836\">LEGENDA</text>\n\
-         <line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#1d2836\" stroke-width=\"1.2\"/><text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"2.0\" fill=\"#3b4e63\">Alvenaria</text>\n\
+         <rect x=\"{:.2}\" y=\"{:.2}\" width=\"9.5\" height=\"1.8\" fill=\"#ffffff\" stroke=\"#1d2836\" stroke-width=\"0.35\"/><text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"2.0\" fill=\"#3b4e63\">Alvenaria</text>\n\
          <line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#2878d2\" stroke-width=\"0.6\"/><text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"2.0\" fill=\"#3b4e63\">Esquadrias</text>\n\
          <line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"#5e8bbf\" stroke-width=\"0.4\" stroke-dasharray=\"2.5 1.0 0.5 1.0\"/><text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"2.0\" fill=\"#3b4e63\">Divisa do terreno</text>\n\
          </g>",
         x + 2.5,
         y + 3.8,
         x + 2.5,
-        y + 8.0,
-        x + 12.0,
-        y + 8.0,
+        y + 7.1,
         x + 14.5,
         y + 8.8,
         x + 2.5,
@@ -1359,8 +1454,14 @@ mod tests {
         let markup = scaled_sheet_svg(&project);
         assert!(markup.contains("width=\"420.00mm\" height=\"297.00mm\""));
         assert!(markup.contains("viewBox=\"0 0 420.00 297.00\""));
-        // 4.00 m at 1:50 = 80.00 mm!
-        assert!(markup.contains("x2=\"80.00\""));
+        // 4.00 m at 1:50 = 80.00 mm (+ 2 × half wall thickness end caps),
+        // rendered as a hollow architectural double-line wall.
+        let expected_h = project.masonry.thickness() * 20.0;
+        let expected_w = 80.0 + expected_h;
+        assert!(markup.contains(&format!(
+            "width=\"{expected_w:.2}\" height=\"{expected_h:.2}\""
+        )));
+        assert!(markup.contains("fill=\"#ffffff\""));
         assert!(markup.contains("1:50"));
         assert!(markup.contains("id=\"carimbo\""));
         assert!(markup.contains("id=\"legenda\""));
@@ -1383,7 +1484,7 @@ mod tests {
             .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Sala")
             .unwrap();
         let markup = scaled_sheet_svg(&project);
-        assert!(markup.contains("stroke=\"#000000\""));
+        assert!(markup.contains("fill=\"#000000\""));
         assert!(markup.contains("fill=\"#ffffff\""));
         assert!(markup.contains("4,00 m"));
         assert!(markup.contains("<circle "));

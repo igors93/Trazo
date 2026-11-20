@@ -141,64 +141,175 @@ fn document(project: &Project) -> SvgDocument {
             }
         }
     }
-    for junction in project.wall_junctions() {
-        let points = junction
-            .outline
-            .into_iter()
-            .map(|corner| {
-                let (x, y) = point(corner);
-                format!("{x:.1},{y:.1}")
-            })
-            .collect::<Vec<_>>()
-            .join(" ");
-        let _ = writeln!(
-            svg,
-            "<polygon points=\"{points}\" fill=\"#1d2836\" data-wall-junction=\"{:?}\"/>",
-            junction.kind
-        );
-    }
     let base_wall_width = wall_width;
-    for wall in &project.walls {
-        // Each wall at its own thickness (block plus plaster).
-        let wall_width = (pixels_per_meter * wall.thickness()).max(1.0);
-        let (x, y) = point(wall.start);
-        let length = wall.length() * pixels_per_meter;
-        let angle = (wall.end.y - wall.start.y)
-            .atan2(wall.end.x - wall.start.x)
-            .to_degrees();
+    let border_px = (base_wall_width * 0.20).clamp(1.0, 2.2);
+    let draw_hollow = base_wall_width >= 2.0 * border_px + 1.0;
+
+    // Collect solid masonry runs per visible wall in local wall coordinates so
+    // Pass 1 (dark outer contour), Pass 2 (white hollow core), and Pass 3
+    // (openings) stay aligned with clean mitered L/T/X junctions.
+    let wall_entries: Vec<_> =
+        if project.category_visible(crate::domain::layers::LayerCategory::Walls) {
+            project
+                .walls
+                .iter()
+                .filter(|wall| project.is_wall_visible(wall))
+                .map(|wall| {
+                    let wall_w = (pixels_per_meter * wall.thickness()).max(1.0);
+                    let half_w = wall_w * 0.5;
+                    let (x, y) = point(wall.start);
+                    let length = wall.length() * pixels_per_meter;
+                    let angle = (wall.end.y - wall.start.y)
+                        .atan2(wall.end.x - wall.start.x)
+                        .to_degrees();
+                    let mut openings: Vec<_> = project
+                        .openings
+                        .iter()
+                        .filter(|opening| opening.wall_id == wall.id)
+                        .collect();
+                    openings.sort_by(|a, b| a.t.total_cmp(&b.t));
+                    let mut runs = Vec::with_capacity(openings.len() + 1);
+                    let mut cursor = 0.0;
+                    let mut run_start = -half_w;
+                    for opening in &openings {
+                        let half = opening.width() * pixels_per_meter / 2.0;
+                        let center = opening.t * length;
+                        let left = center - half;
+                        let right = center + half;
+                        if left > cursor {
+                            runs.push((run_start, left));
+                        }
+                        cursor = right;
+                        run_start = right;
+                    }
+                    if cursor < length {
+                        runs.push((run_start, length + half_w));
+                    }
+                    (wall, wall_w, half_w, x, y, length, angle, openings, runs)
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+    // Pass 1: outer wall contours (junctions + wall runs).
+    if project.category_visible(crate::domain::layers::LayerCategory::Walls) {
+        for junction in project.wall_junctions() {
+            let points = junction
+                .outline
+                .into_iter()
+                .map(|corner| {
+                    let (x, y) = point(corner);
+                    format!("{x:.1},{y:.1}")
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = writeln!(
+                svg,
+                "<polygon points=\"{points}\" fill=\"#1d2836\" data-wall-junction=\"{:?}\"/>",
+                junction.kind
+            );
+        }
+    }
+    for &(_, wall_w, half_w, x, y, _, angle, _, ref runs) in &wall_entries {
         let _ = writeln!(
             svg,
             "<g transform=\"translate({x:.1} {y:.1}) rotate({angle:.3})\">"
         );
-        let mut openings: Vec<_> = project
-            .openings
-            .iter()
-            .filter(|opening| opening.wall_id == wall.id)
-            .collect();
-        openings.sort_by(|a, b| a.t.total_cmp(&b.t));
-        let mut cursor = 0.0;
+        for &(x0, x1) in runs {
+            let w = (x1 - x0).max(0.0);
+            if w > 0.05 {
+                let _ = writeln!(
+                    svg,
+                    "<rect x=\"{x0:.1}\" y=\"{:.1}\" width=\"{w:.1}\" height=\"{wall_w:.1}\" fill=\"#1d2836\"/>",
+                    -half_w
+                );
+            }
+        }
+        svg.push_str("</g>\n");
+    }
+
+    // Pass 2: inner hollow white core (inset junctions + inset runs) and
+    // multilayer wall assemblies.
+    if draw_hollow && project.category_visible(crate::domain::layers::LayerCategory::Walls) {
+        let border_m = border_px / pixels_per_meter;
+        for junction in project.wall_junctions_with_inset(border_m) {
+            let points = junction
+                .outline
+                .into_iter()
+                .map(|corner| {
+                    let (x, y) = point(corner);
+                    format!("{x:.1},{y:.1}")
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = writeln!(svg, "<polygon points=\"{points}\" fill=\"#ffffff\"/>");
+        }
+    }
+    for &(wall, wall_w, half_w, x, y, _, angle, _, ref runs) in &wall_entries {
+        let _ = writeln!(
+            svg,
+            "<g transform=\"translate({x:.1} {y:.1}) rotate({angle:.3})\">"
+        );
+        if let Some(assembly) = &wall.assembly
+            && wall_w >= 6.0
+            && assembly.total_thickness() > 1e-6
+        {
+            for &(x0, x1) in runs {
+                let w = (x1 - x0).max(0.0);
+                if w > 0.05 {
+                    for (s0, s1, layer) in assembly.layer_offsets() {
+                        let y0 = s0 * pixels_per_meter;
+                        let h = ((s1 - s0) * pixels_per_meter).max(0.5);
+                        let _ = writeln!(
+                            svg,
+                            "<rect x=\"{x0:.1}\" y=\"{y0:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" fill=\"{}\" stroke=\"#1d2836\" stroke-width=\"0.4\"/>",
+                            layer.hex_color()
+                        );
+                    }
+                }
+            }
+        } else {
+            let inner_h = wall_w - 2.0 * border_px;
+            if inner_h >= 1.0 {
+                for &(x0, x1) in runs {
+                    let ix0 = x0 + border_px;
+                    let ix1 = x1 - border_px;
+                    if ix1 - ix0 > 0.5 {
+                        let _ = writeln!(
+                            svg,
+                            "<rect x=\"{ix0:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{inner_h:.1}\" fill=\"#ffffff\"/>",
+                            -(half_w - border_px),
+                            ix1 - ix0
+                        );
+                    }
+                }
+            }
+        }
+        svg.push_str("</g>\n");
+    }
+
+    // Pass 3: openings (jambs, doors, windows, passages) on top of walls.
+    for &(_, wall_w, half_w, x, y, length, angle, ref openings, _) in &wall_entries {
+        if openings.is_empty() {
+            continue;
+        }
+        let wall_width = wall_w;
+        let _ = writeln!(
+            svg,
+            "<g transform=\"translate({x:.1} {y:.1}) rotate({angle:.3})\">"
+        );
         for opening in openings {
             let half = opening.width() * pixels_per_meter / 2.0;
             let center = opening.t * length;
             let left = center - half;
             let right = center + half;
-            let _ = writeln!(
-                svg,
-                "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{left:.1}\" y2=\"0\" stroke=\"#1d2836\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/>"
-            );
-            if let Some(assembly) = &wall.assembly
-                && left > cursor
-            {
-                for (s0, s1, layer) in assembly.layer_offsets() {
-                    let y0 = s0 * pixels_per_meter;
-                    let h = ((s1 - s0) * pixels_per_meter).max(0.5);
-                    let _ = writeln!(
-                        svg,
-                        "<rect x=\"{cursor:.1}\" y=\"{y0:.1}\" width=\"{:.1}\" height=\"{h:.1}\" fill=\"{}\" stroke=\"#1d2836\" stroke-width=\"0.4\"/>",
-                        left - cursor,
-                        layer.hex_color()
-                    );
-                }
+            for jamb_x in [left, right] {
+                let _ = writeln!(
+                    svg,
+                    "<line x1=\"{jamb_x:.1}\" y1=\"{:.1}\" x2=\"{jamb_x:.1}\" y2=\"{half_w:.1}\" stroke=\"#1d2836\" stroke-width=\"{border_px:.1}\"/>",
+                    -half_w
+                );
             }
             match opening.kind {
                 OpeningKind::Door | OpeningKind::Gate => {
@@ -356,17 +467,26 @@ fn document(project: &Project) -> SvgDocument {
                 OpeningKind::Window => {
                     use crate::domain::openings::WindowType;
                     let side = if opening.flip_side { -1.0 } else { 1.0 };
+                    let off = (half_w - 0.5).max(2.5);
                     let _ = writeln!(
                         svg,
-                        "<line x1=\"{left:.1}\" y1=\"-4\" x2=\"{right:.1}\" y2=\"-4\" stroke=\"#2878d2\" stroke-width=\"2.6\"/><line x1=\"{left:.1}\" y1=\"4\" x2=\"{right:.1}\" y2=\"4\" stroke=\"#2878d2\" stroke-width=\"2.6\"/>"
+                        "<rect x=\"{left:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#2878d2\" fill-opacity=\"0.10\"/><line x1=\"{left:.1}\" y1=\"{:.1}\" x2=\"{right:.1}\" y2=\"{:.1}\" stroke=\"#2878d2\" stroke-width=\"1.8\"/><line x1=\"{left:.1}\" y1=\"{off:.1}\" x2=\"{right:.1}\" y2=\"{off:.1}\" stroke=\"#2878d2\" stroke-width=\"1.8\"/>",
+                        -off,
+                        right - left,
+                        off * 2.0,
+                        -off,
+                        -off
                     );
                     match opening.effective_window_type() {
                         WindowType::Sliding => {
                             let ov = (half * 0.14).min(6.0);
+                            let inner_off = (off * 0.35).max(1.2);
                             let _ = writeln!(
                                 svg,
-                                "<line x1=\"{left:.1}\" y1=\"-1.5\" x2=\"{:.1}\" y2=\"-1.5\" stroke=\"#2878d2\" stroke-width=\"1.8\"/><line x1=\"{:.1}\" y1=\"1.5\" x2=\"{right:.1}\" y2=\"1.5\" stroke=\"#2878d2\" stroke-width=\"1.8\"/>",
+                                "<line x1=\"{left:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"#2878d2\" stroke-width=\"1.5\"/><line x1=\"{:.1}\" y1=\"{inner_off:.1}\" x2=\"{right:.1}\" y2=\"{inner_off:.1}\" stroke=\"#2878d2\" stroke-width=\"1.5\"/>",
+                                -inner_off,
                                 center + ov,
+                                -inner_off,
                                 center - ov
                             );
                         }
@@ -415,25 +535,6 @@ fn document(project: &Project) -> SvgDocument {
                         }
                     }
                 }
-            }
-            cursor = right;
-        }
-        let _ = writeln!(
-            svg,
-            "<line x1=\"{cursor:.1}\" y1=\"0\" x2=\"{length:.1}\" y2=\"0\" stroke=\"#1d2836\" stroke-width=\"{wall_width:.1}\" stroke-linecap=\"square\"/>"
-        );
-        if let Some(assembly) = &wall.assembly
-            && length > cursor
-        {
-            for (s0, s1, layer) in assembly.layer_offsets() {
-                let y0 = s0 * pixels_per_meter;
-                let h = ((s1 - s0) * pixels_per_meter).max(0.5);
-                let _ = writeln!(
-                    svg,
-                    "<rect x=\"{cursor:.1}\" y=\"{y0:.1}\" width=\"{:.1}\" height=\"{h:.1}\" fill=\"{}\" stroke=\"#1d2836\" stroke-width=\"0.4\"/>",
-                    length - cursor,
-                    layer.hex_color()
-                );
             }
         }
         svg.push_str("</g>\n");
