@@ -29,7 +29,9 @@ Para editar como num CAD: transformar (mover, girar, espelhar, copiar vários el
 alinhar, distribuir, agrupar, repetir, editar_geometria (aparar, estender, deslocar, \
 dividir), unir e restringir (paralelas, perpendiculares, distâncias fixas que o Trazo \
 mantém nas edições seguintes). Use selecionar para mostrar ao usuário os elementos de que \
-está falando; 'selecao' em obter_planta diz o que ele selecionou.";
+está falando; 'selecao' em obter_planta diz o que ele selecionou. Para muitas mudanças de uma \
+vez, use executar_lote: tudo vira um só passo de desfazer e nada é aplicado se uma ação \
+falhar.";
 
 /// Runs a tool by name with its arguments and returns the `CallToolResult`.
 pub type ToolRunner<'a> = dyn FnMut(&str, &Value) -> Value + 'a;
@@ -421,6 +423,28 @@ fn catalogue() -> Vec<Tool> {
                 "dy": number("Deslocamento em Y (positivo para cima), em metros."),
             }),
             required: &["id", "dx", "dy"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "executar_lote",
+            title: "Executar em lote",
+            description: "Executa várias ferramentas em sequência numa só chamada, como um único passo de desfazer: se uma falhar, nada é aplicado. Use para montar de uma vez um ambiente inteiro (cômodos, aberturas, objetos). Não aceita novo_projeto, abrir_projeto, salvar_projeto, exportar_planta, desfazer, refazer nem lotes dentro de lotes.",
+            properties: json!({
+                "acoes": {
+                    "type": "array",
+                    "description": "Até 200 ações, na ordem.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "ferramenta": string("Nome da ferramenta, ex.: criar_comodo."),
+                            "argumentos": { "type": "object", "description": "Os argumentos dessa ferramenta." },
+                        },
+                        "required": ["ferramenta"],
+                    },
+                },
+            }),
+            required: &["acoes"],
             read_only: false,
             destructive: false,
         },

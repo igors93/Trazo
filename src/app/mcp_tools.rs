@@ -13,6 +13,7 @@ use serde_json::{Value, json};
 
 use super::{FloorPlanApp, OpenResult, Selection};
 
+mod batch;
 mod drawings;
 mod editing;
 mod shapes;
@@ -241,6 +242,7 @@ impl FloorPlanApp {
             Ok(Err(message)) => ToolOutput::error(message),
             Err(_) => {
                 self.project = before.clone();
+                self.batch_depth = 0;
                 self.set_selection_set(before_selection);
                 ToolOutput::error(
                     "Erro interno do Trazo ao executar a ferramenta; a planta foi mantida como estava.",
@@ -311,6 +313,7 @@ impl FloorPlanApp {
             "editar_objeto" => self.tool_edit_fixture(args),
             "mover_elemento" => self.tool_move(args),
             "selecionar" => self.tool_select(args),
+            "executar_lote" => self.tool_batch(args),
             "transformar" => self.tool_transform(args),
             "alinhar" => self.tool_arrange(args, false),
             "distribuir" => self.tool_arrange(args, true),

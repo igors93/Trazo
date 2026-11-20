@@ -264,6 +264,8 @@ pub struct FloorPlanApp {
     follow_ai: bool,
     /// Where the plan was drawn last frame.
     last_canvas_rect: Option<egui::Rect>,
+    /// Inside an AI batch: edits are recorded as one undo step at its end.
+    batch_depth: u32,
     /// The first pick of a constraint tool.
     constraint_pick: Option<tools::ConstraintPick>,
     /// The distances of the constraints, as typed in the properties panel.
@@ -397,6 +399,7 @@ impl FloorPlanApp {
             ai_activity: ai_activity::AiActivity::default(),
             follow_ai: preferences.follow_ai,
             last_canvas_rect: None,
+            batch_depth: 0,
             constraint_pick: None,
             constraint_texts: std::collections::HashMap::new(),
         };
@@ -1673,7 +1676,10 @@ impl FloorPlanApp {
             }
             return true;
         }
-        self.history.record(previous);
+        // An AI batch records itself as one step when it ends.
+        if self.batch_depth == 0 {
+            self.history.record(previous);
+        }
         self.mark_edited_outside_history();
         true
     }
