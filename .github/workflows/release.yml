@@ -163,7 +163,7 @@ jobs:
           & $iscc "/DMyAppVersion=$version" "/DMyExePath=$exePath" "installer\trazo.iss"
 
       - name: Upload packaged artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trazo-${{ matrix.target }}
           path: trazo-${{ needs.verify.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}
@@ -171,7 +171,7 @@ jobs:
 
       - name: Upload Windows installer
         if: matrix.target == 'x86_64-pc-windows-msvc'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trazo-windows-installer
           path: dist/trazo-${{ needs.verify.outputs.version }}-x86_64-setup.exe
