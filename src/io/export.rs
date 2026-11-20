@@ -573,6 +573,61 @@ fn document(project: &Project) -> SvgDocument {
 
     drawings::write_drawings(&mut svg, project, &point);
 
+    // Stairs, ramps, landings, railings and level transitions.
+    if !project.circulations.is_empty() {
+        let _ = writeln!(svg, "<g id=\"circulacao-vertical\">");
+        for elem in &project.circulations {
+            let geom = elem.plan_geometry();
+            for poly in &geom.polygons {
+                let pts: String = poly
+                    .iter()
+                    .map(|p| {
+                        let (x, y) = point(*p);
+                        format!("{x:.1},{y:.1}")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let _ = writeln!(
+                    svg,
+                    "<polygon points=\"{pts}\" fill=\"#f1f5f9\" stroke=\"#1d2836\" stroke-width=\"1.5\"/>"
+                );
+            }
+            for (a, b) in &geom.lines {
+                let (x1, y1) = point(*a);
+                let (x2, y2) = point(*b);
+                let _ = writeln!(
+                    svg,
+                    "<line x1=\"{x1:.1}\" y1=\"{y1:.1}\" x2=\"{x2:.1}\" y2=\"{y2:.1}\" stroke=\"#3b4e63\" stroke-width=\"1.0\"/>"
+                );
+            }
+            for (a, b) in &geom.railing_lines {
+                let (x1, y1) = point(*a);
+                let (x2, y2) = point(*b);
+                let _ = writeln!(
+                    svg,
+                    "<line x1=\"{x1:.1}\" y1=\"{y1:.1}\" x2=\"{x2:.1}\" y2=\"{y2:.1}\" stroke=\"#1d2836\" stroke-width=\"2.2\"/>"
+                );
+            }
+            if let Some((a, b)) = geom.arrow {
+                let (x1, y1) = point(a);
+                let (x2, y2) = point(b);
+                let _ = writeln!(
+                    svg,
+                    "<line x1=\"{x1:.1}\" y1=\"{y1:.1}\" x2=\"{x2:.1}\" y2=\"{y2:.1}\" stroke=\"#2878d2\" stroke-width=\"1.5\"/>"
+                );
+            }
+            if !geom.label.is_empty() {
+                let (lx, ly) = point(geom.label_pos);
+                let _ = writeln!(
+                    svg,
+                    "<text x=\"{lx:.1}\" y=\"{ly:.1}\" font-family=\"Arial, sans-serif\" font-size=\"10\" font-weight=\"700\" fill=\"#1d2836\" text-anchor=\"middle\">{}</text>",
+                    escaped(&geom.label)
+                );
+            }
+        }
+        svg.push_str("</g>\n");
+    }
+
     if project.category_visible(crate::domain::layers::LayerCategory::Dimensions) {
         for dim in &project.dimensions {
             if !dim.visible {

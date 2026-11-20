@@ -310,6 +310,10 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::SheetSet;
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Plan), "Escadas, rampas e desníveis...", "").clicked() {
+            self.active_doc_dialog = super::super::DocDialog::Circulation;
+            ui.close();
+        }
     }
 
     pub(super) fn osnap_menu(&mut self, ui: &mut Ui) {

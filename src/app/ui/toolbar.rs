@@ -197,6 +197,20 @@ impl FloorPlanApp {
                 "Cômodo livre",
                 "Cômodo em L, U ou de qualquer forma: clique em cada canto e feche no primeiro (L)",
             );
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::Plan,
+                    "Escadas",
+                    self.active_doc_dialog == super::super::DocDialog::Circulation,
+                    false,
+                ),
+                "Escadas, rampas NBR 9050, patamares, guarda-corpos e desníveis",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Circulation;
+            }
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Aberturas", |ui| {

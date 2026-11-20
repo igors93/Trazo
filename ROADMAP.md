@@ -124,7 +124,7 @@ O #10 foi antecipado para a Fase 1 porque cômodos poligonais (#02) só ficam ú
 | 18 | Paredes multicamadas: alvenaria, revestimento, isolamento, acabamento | P1 | 3 | Feito |
 | 19 | Portas de correr, pivotantes, duplas, sanfonadas e outras tipologias | P1 | 3 | Feito |
 | 20 | Tipos de janela (correr, basculante, maxim-ar…) com representação técnica | P1 | 3 | Feito |
-| 21 | Escadas, rampas, patamares, guarda-corpos e desníveis | P1 | 3 | — |
+| 21 | Escadas, rampas, patamares, guarda-corpos e desníveis | P1 | 3 | Feito |
 | 22 | Vários pavimentos, com níveis, pé-direito e referência do pavimento de baixo | P1 | 3 | — |
 | 23 | Biblioteca de móveis, equipamentos e símbolos personalizáveis | P1 | 3 | Parcial |
 | 24 | Revestimentos, acabamentos, rodapés e especificações por cômodo | P2 | 4 | — |

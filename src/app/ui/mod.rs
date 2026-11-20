@@ -1,6 +1,7 @@
 use eframe::egui::{self, Margin, Ui};
 
 mod browser;
+mod circulation;
 mod connect;
 mod constraints;
 mod dialogs;
@@ -107,5 +108,6 @@ impl FloorPlanApp {
         self.templates_dialog(&context);
         self.views_dialog(&context);
         self.sheet_set_dialog(&context);
+        self.circulation_dialog(&context);
     }
 }

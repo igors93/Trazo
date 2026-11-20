@@ -526,6 +526,52 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
         );
     }
 
+    // Stairs, ramps, landings, railings and level transitions.
+    for elem in &project.circulations {
+        let geom = elem.plan_geometry();
+        for poly in &geom.polygons {
+            let pts: String = poly
+                .iter()
+                .map(|p| {
+                    let (x, y) = pt(*p);
+                    format!("{x:.2},{y:.2}")
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = writeln!(
+                svg,
+                "<polygon points=\"{pts}\" fill=\"{room_fill}\" stroke=\"{wall_color}\" stroke-width=\"{:.2}\"/>",
+                doc_style.opening_pen_mm
+            );
+        }
+        for (a, b) in &geom.lines {
+            let (x1, y1) = pt(*a);
+            let (x2, y2) = pt(*b);
+            let _ = writeln!(
+                svg,
+                "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{dim_color}\" stroke-width=\"{:.2}\"/>",
+                doc_style.dimension_pen_mm
+            );
+        }
+        for (a, b) in &geom.railing_lines {
+            let (x1, y1) = pt(*a);
+            let (x2, y2) = pt(*b);
+            let _ = writeln!(
+                svg,
+                "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{wall_color}\" stroke-width=\"{:.2}\"/>",
+                doc_style.wall_pen_mm
+            );
+        }
+        if !geom.label.is_empty() {
+            let (lx, ly) = pt(geom.label_pos);
+            let _ = writeln!(
+                svg,
+                "<text x=\"{lx:.2}\" y=\"{ly:.2}\" font-family=\"{font_family}\" font-size=\"2.1\" font-weight=\"700\" fill=\"{wall_color}\" text-anchor=\"middle\">{}</text>",
+                escaped(&geom.label)
+            );
+        }
+    }
+
     // Building dimension chains & associative dimensions.
     if project.category_visible(LayerCategory::Dimensions) {
         if let Some(dims) = building_dimensions(project) {

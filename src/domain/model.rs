@@ -109,6 +109,10 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub constraints: Vec<Constraint>,
 
+    /// Stairs, ramps, landings, railings and floor level transitions.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub circulations: Vec<super::circulation::CirculationElement>,
+
     next_id: u64,
 }
 
@@ -163,6 +167,8 @@ impl Default for Project {
             groups: Vec::new(),
 
             constraints: Vec::new(),
+
+            circulations: Vec::new(),
 
             next_id: 1,
         }
