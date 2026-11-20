@@ -190,14 +190,13 @@ impl FloorPlanApp {
                         }
                     });
 
-                if let Some((id, name, elev, ceiling, slab)) = meta_update {
-                    if self
+                if let Some((id, name, elev, ceiling, slab)) = meta_update
+                    && self
                         .project
                         .update_floor_metadata(id, &name, elev, ceiling, slab)
                         .is_ok()
-                    {
-                        self.dirty = true;
-                    }
+                {
+                    self.dirty = true;
                 }
                 if let Some(id) = switch_to {
                     let prev = self.project.clone();

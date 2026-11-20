@@ -209,18 +209,17 @@ pub fn analyze_ergonomics(project: &Project, min_passage_m: f64) -> ErgonomicsRe
         for wall in &project.walls {
             let half_t = wall.thickness() * 0.5;
             // Margin accounts for wall thickness + 3 cm snapping tolerance.
-            if let Some(hit) = segment_intrudes_rect(wall.start, wall.end, f_min, f_max, 0.04) {
-                if distance_to_segment(fixture.center, wall.start, wall.end)
+            if let Some(hit) = segment_intrudes_rect(wall.start, wall.end, f_min, f_max, 0.04)
+                && distance_to_segment(fixture.center, wall.start, wall.end)
                     < fixture.width.min(fixture.depth) * 0.5 + half_t - 0.04
-                {
-                    issues.push(ErgonomicsIssue {
-                        severity: IssueSeverity::Error,
-                        kind: ErgonomicsIssueKind::WallCollision,
-                        location: hit,
-                        message: format!("{} invade uma parede.", fixture.kind.label()),
-                    });
-                    break;
-                }
+            {
+                issues.push(ErgonomicsIssue {
+                    severity: IssueSeverity::Error,
+                    kind: ErgonomicsIssueKind::WallCollision,
+                    location: hit,
+                    message: format!("{} invade uma parede.", fixture.kind.label()),
+                });
+                break;
             }
         }
     }

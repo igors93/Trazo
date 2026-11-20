@@ -16,6 +16,7 @@ pub enum WallLayerRole {
 }
 
 impl WallLayerRole {
+    #[allow(dead_code)]
     pub const ALL: [WallLayerRole; 5] = [
         WallLayerRole::Structure,
         WallLayerRole::Plaster,
@@ -111,6 +112,7 @@ impl WallAssembly {
     }
 
     /// Derives a standard 3-layer assembly from a legacy single `Masonry` definition.
+    #[allow(dead_code)]
     pub fn from_masonry(masonry: &Masonry) -> Self {
         let mut layers = Vec::new();
         if masonry.plaster > 0.001 {

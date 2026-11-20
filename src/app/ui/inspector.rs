@@ -608,14 +608,13 @@ impl FloorPlanApp {
                 self.record_change(prev);
                 self.message = format!("Acabamentos aplicados: {}.", preset.label());
             }
-        } else if finishes_edited {
-            if self
+        } else if finishes_edited
+            && self
                 .project
                 .set_room_finishes(id, Some(updated_finishes))
                 .is_ok()
-            {
-                self.dirty = true;
-            }
+        {
+            self.dirty = true;
         }
         section(ui, "room_relations", "Relações", |ui| {
             grid(ui, "room_relations_grid", |ui| {

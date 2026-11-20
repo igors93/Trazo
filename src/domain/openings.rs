@@ -63,6 +63,7 @@ impl DoorType {
     }
 
     /// Suggested typical opening width in metres when switching typology.
+    #[allow(dead_code)]
     pub fn typical_width(self) -> f64 {
         match self {
             Self::Swing | Self::Sliding | Self::PocketSliding | Self::Bifold => 0.80,
@@ -130,6 +131,7 @@ impl WindowType {
         }
     }
 
+    #[allow(dead_code)]
     pub fn typical_sill_and_height(self) -> (f64, f64) {
         match self {
             Self::Basculante | Self::MaximAr => (1.50, 0.60),
