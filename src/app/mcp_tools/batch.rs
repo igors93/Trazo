@@ -67,6 +67,7 @@ impl FloorPlanApp {
         let before = self.project.clone();
         let (dirty, recovery) = (self.dirty, self.recovery_pending);
         let selection = self.selected();
+        let plan_log = self.plan_log.clone();
         self.batch_depth += 1;
         let mut results = Vec::with_capacity(plan.len());
         for (index, (name, arguments)) in plan.iter().enumerate() {
@@ -82,6 +83,7 @@ impl FloorPlanApp {
                 self.project = before;
                 self.dirty = dirty;
                 self.recovery_pending = recovery;
+                self.plan_log = plan_log;
                 self.set_selection_set(selection);
                 return Err(format!(
                     "Ação {} ({name}) falhou: {error} Nenhuma ação do lote foi aplicada.",
@@ -142,6 +144,8 @@ mod tests {
 
         // A failing action leaves no trace of the ones before it.
         let before = app.project.clone();
+        let revision = app.plan_log.revision;
+        let changes = app.plan_log.changes.clone();
         let failed = app.run_mcp_tool(
             "executar_lote",
             &json!({ "acoes": [
@@ -151,6 +155,8 @@ mod tests {
         );
         assert!(failed.is_error && failed.text.contains("Ação 2"));
         assert_eq!(app.project, before);
+        assert_eq!(app.plan_log.revision, revision);
+        assert_eq!(app.plan_log.changes, changes);
         // Files and history stay outside batches.
         let refused = app.run_mcp_tool(
             "executar_lote",

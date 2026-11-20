@@ -49,7 +49,7 @@ impl PlanChange {
 }
 
 /// The plan's revisions and what changed in each.
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub(super) struct PlanLog {
     pub revision: u64,
     /// The revision subscribers were last told about.
