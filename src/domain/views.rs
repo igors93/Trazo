@@ -542,11 +542,40 @@ pub fn elevation_svg(project: &Project, elevation: &ElevationView) -> String {
                 "<rect x=\"{ox:.1}\" y=\"{oy_top:.1}\" width=\"{ow:.1}\" height=\"{oh:.1}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"1.6\"/>"
             );
             if op.kind == OpeningKind::Window {
+                use super::openings::WindowType;
                 let mid_x = ox + ow * 0.5;
-                let _ = writeln!(
-                    svg,
-                    "<line x1=\"{mid_x:.1}\" y1=\"{oy_top:.1}\" x2=\"{mid_x:.1}\" y2=\"{oy_bot:.1}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>"
-                );
+                let mid_y = (oy_top + oy_bot) * 0.5;
+                match op.effective_window_type() {
+                    WindowType::Sliding => {
+                        let _ = writeln!(
+                            svg,
+                            "<line x1=\"{mid_x:.1}\" y1=\"{oy_top:.1}\" x2=\"{mid_x:.1}\" y2=\"{oy_bot:.1}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/>"
+                        );
+                    }
+                    WindowType::Basculante | WindowType::MaximAr => {
+                        let _ = writeln!(
+                            svg,
+                            "<polyline points=\"{ox:.1},{oy_bot:.1} {mid_x:.1},{oy_top:.1} {:.1},{oy_bot:.1}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"1.0\" stroke-dasharray=\"4 3\"/>",
+                            ox + ow
+                        );
+                    }
+                    WindowType::Casement | WindowType::TiltTurn => {
+                        let _ = writeln!(
+                            svg,
+                            "<line x1=\"{mid_x:.1}\" y1=\"{oy_top:.1}\" x2=\"{mid_x:.1}\" y2=\"{oy_bot:.1}\" stroke=\"{stroke}\" stroke-width=\"1.0\"/><polyline points=\"{ox:.1},{oy_top:.1} {mid_x:.1},{mid_y:.1} {ox:.1},{oy_bot:.1}\" fill=\"none\" stroke=\"{stroke}\" stroke-width=\"0.9\" stroke-dasharray=\"4 3\"/>"
+                        );
+                    }
+                    WindowType::Fixed | WindowType::BayWindow => {
+                        let _ = writeln!(
+                            svg,
+                            "<line x1=\"{:.1}\" y1=\"{:.1}\" x2=\"{:.1}\" y2=\"{:.1}\" stroke=\"{stroke}\" stroke-width=\"0.9\"/>",
+                            mid_x - 6.0,
+                            mid_y - 6.0,
+                            mid_x + 6.0,
+                            mid_y + 6.0
+                        );
+                    }
+                }
             }
         }
     }

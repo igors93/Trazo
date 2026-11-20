@@ -351,10 +351,66 @@ fn document(project: &Project) -> SvgDocument {
                     );
                 }
                 OpeningKind::Window => {
+                    use crate::domain::openings::WindowType;
+                    let side = if opening.flip_side { -1.0 } else { 1.0 };
                     let _ = writeln!(
                         svg,
-                        "<line x1=\"{left:.1}\" y1=\"-4\" x2=\"{right:.1}\" y2=\"-4\" stroke=\"#2878d2\" stroke-width=\"3\"/><line x1=\"{left:.1}\" y1=\"4\" x2=\"{right:.1}\" y2=\"4\" stroke=\"#2878d2\" stroke-width=\"3\"/>"
+                        "<line x1=\"{left:.1}\" y1=\"-4\" x2=\"{right:.1}\" y2=\"-4\" stroke=\"#2878d2\" stroke-width=\"2.6\"/><line x1=\"{left:.1}\" y1=\"4\" x2=\"{right:.1}\" y2=\"4\" stroke=\"#2878d2\" stroke-width=\"2.6\"/>"
                     );
+                    match opening.effective_window_type() {
+                        WindowType::Sliding => {
+                            let ov = (half * 0.14).min(6.0);
+                            let _ = writeln!(
+                                svg,
+                                "<line x1=\"{left:.1}\" y1=\"-1.5\" x2=\"{:.1}\" y2=\"-1.5\" stroke=\"#2878d2\" stroke-width=\"1.8\"/><line x1=\"{:.1}\" y1=\"1.5\" x2=\"{right:.1}\" y2=\"1.5\" stroke=\"#2878d2\" stroke-width=\"1.8\"/>",
+                                center + ov,
+                                center - ov
+                            );
+                        }
+                        WindowType::Basculante => {
+                            let py = side * 9.0;
+                            let _ = writeln!(
+                                svg,
+                                "<line x1=\"{left:.1}\" y1=\"{py:.1}\" x2=\"{right:.1}\" y2=\"{py:.1}\" stroke=\"#2878d2\" stroke-width=\"1.3\" stroke-dasharray=\"5 3\"/><circle cx=\"{center:.1}\" cy=\"0\" r=\"2.2\" fill=\"#2878d2\"/>"
+                            );
+                        }
+                        WindowType::MaximAr => {
+                            let py = side * 12.0;
+                            let _ = writeln!(
+                                svg,
+                                "<polyline points=\"{left:.1},0 {center:.1},{py:.1} {right:.1},0\" fill=\"none\" stroke=\"#2878d2\" stroke-width=\"1.4\" stroke-dasharray=\"5 3\"/>"
+                            );
+                        }
+                        WindowType::Casement | WindowType::TiltTurn => {
+                            let r = half * 0.75;
+                            let _ = writeln!(
+                                svg,
+                                "<line x1=\"{left:.1}\" y1=\"0\" x2=\"{left:.1}\" y2=\"{:.1}\" stroke=\"#2878d2\" stroke-width=\"1.8\"/><line x1=\"{right:.1}\" y1=\"0\" x2=\"{right:.1}\" y2=\"{:.1}\" stroke=\"#2878d2\" stroke-width=\"1.8\"/>",
+                                side * r,
+                                side * r
+                            );
+                        }
+                        WindowType::Fixed => {
+                            let _ = writeln!(
+                                svg,
+                                "<line x1=\"{left:.1}\" y1=\"0\" x2=\"{right:.1}\" y2=\"0\" stroke=\"#2878d2\" stroke-width=\"1.8\"/><line x1=\"{:.1}\" y1=\"-3\" x2=\"{:.1}\" y2=\"3\" stroke=\"#2878d2\" stroke-width=\"1.3\"/><line x1=\"{:.1}\" y1=\"3\" x2=\"{:.1}\" y2=\"-3\" stroke=\"#2878d2\" stroke-width=\"1.3\"/>",
+                                center - 3.0,
+                                center + 3.0,
+                                center - 3.0,
+                                center + 3.0
+                            );
+                        }
+                        WindowType::BayWindow => {
+                            let py = side * 16.0;
+                            let inset = half * 0.35;
+                            let _ = writeln!(
+                                svg,
+                                "<polyline points=\"{left:.1},0 {:.1},{py:.1} {:.1},{py:.1} {right:.1},0\" fill=\"none\" stroke=\"#2878d2\" stroke-width=\"2.2\"/>",
+                                left + inset,
+                                right - inset
+                            );
+                        }
+                    }
                 }
             }
             cursor = right;

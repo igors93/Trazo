@@ -320,6 +320,7 @@ mod tests {
             height: None,
             sill: None,
             door_type: None,
+            window_type: None,
         });
         // Opening on valid wall
         project.add_opening(w1, OpeningKind::Window, 0.5);

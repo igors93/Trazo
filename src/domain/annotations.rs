@@ -73,6 +73,7 @@ pub struct FrameType {
     pub code: String,
     pub kind: OpeningKind,
     pub door_type: Option<super::openings::DoorType>,
+    pub window_type: Option<super::openings::WindowType>,
     pub width: f64,
     pub height: Option<f64>,
     pub sill: f64,
@@ -80,11 +81,14 @@ pub struct FrameType {
 }
 
 impl FrameType {
-    /// Human-readable opening description including door typology when applicable.
+    /// Human-readable opening description including door/window typology when applicable.
     pub fn description(&self) -> String {
-        match (self.kind, self.door_type) {
-            (OpeningKind::Door, Some(dt)) if dt != super::openings::DoorType::Swing => {
+        match (self.kind, self.door_type, self.window_type) {
+            (OpeningKind::Door, Some(dt), _) if dt != super::openings::DoorType::Swing => {
                 format!("Porta ({})", dt.short_label())
+            }
+            (OpeningKind::Window, _, Some(wt)) if wt != super::openings::WindowType::Sliding => {
+                format!("Janela ({})", wt.short_label())
             }
             _ => self.kind.label().to_owned(),
         }
@@ -129,9 +133,12 @@ pub fn frame_types(project: &Project) -> Vec<FrameType> {
     let same = |a: f64, b: f64| (a - b).abs() < 0.005;
     for opening in &project.openings {
         let door_type = (opening.kind == OpeningKind::Door).then(|| opening.effective_door_type());
+        let window_type =
+            (opening.kind == OpeningKind::Window).then(|| opening.effective_window_type());
         let fits = |frame: &FrameType| {
             frame.kind == opening.kind
                 && frame.door_type == door_type
+                && frame.window_type == window_type
                 && same(frame.width, opening.width())
                 && match (frame.height, opening.height()) {
                     (Some(a), Some(b)) => same(a, b),
@@ -148,6 +155,7 @@ pub fn frame_types(project: &Project) -> Vec<FrameType> {
             code: String::new(),
             kind: opening.kind,
             door_type,
+            window_type,
             width: opening.width(),
             height: opening.height(),
             sill: opening.sill(),
@@ -158,6 +166,7 @@ pub fn frame_types(project: &Project) -> Vec<FrameType> {
         kind_order(a.kind)
             .cmp(&kind_order(b.kind))
             .then(a.door_type.cmp(&b.door_type))
+            .then(a.window_type.cmp(&b.window_type))
             .then(a.width.total_cmp(&b.width))
             .then(a.height.unwrap_or(0.0).total_cmp(&b.height.unwrap_or(0.0)))
             .then(a.sill.total_cmp(&b.sill))

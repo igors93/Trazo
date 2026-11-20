@@ -447,11 +447,18 @@ pub struct Opening {
     /// Architectural door typology (sliding, pivot, double, bifold, etc.) when `kind == Door`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub door_type: Option<super::openings::DoorType>,
+    /// Architectural window typology (sliding, basculante, maxim-ar, etc.) when `kind == Window`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub window_type: Option<super::openings::WindowType>,
 }
 
 impl Opening {
     pub fn effective_door_type(&self) -> super::openings::DoorType {
         self.door_type.unwrap_or_default()
+    }
+
+    pub fn effective_window_type(&self) -> super::openings::WindowType {
+        self.window_type.unwrap_or_default()
     }
     pub fn width(&self) -> f64 {
         self.width.unwrap_or_else(|| self.kind.width())
@@ -1464,6 +1471,7 @@ impl Project {
             height: None,
             sill: None,
             door_type: None,
+            window_type: None,
         });
         Some(id)
     }
@@ -2290,6 +2298,7 @@ mod tests {
             height: None,
             sill: None,
             door_type: None,
+            window_type: None,
         });
 
         project.deduplicate_walls();
@@ -2354,6 +2363,7 @@ mod tests {
             height: None,
             sill: None,
             door_type: None,
+            window_type: None,
         });
         // 0.90 + 0.16 = 1.06 > 1.00 => should fail with wall too short / abertura maior que a parede
         let err_short = project.update_opening_width(short_door, 0.90);

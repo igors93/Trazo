@@ -546,7 +546,11 @@ impl FloorPlanApp {
         };
         let (icon, title, subtitle) = match opening.kind {
             OpeningKind::Door => (Icon::Door, "Porta", opening.effective_door_type().label()),
-            OpeningKind::Window => (Icon::Window, "Janela", "Janela em parede"),
+            OpeningKind::Window => (
+                Icon::Window,
+                "Janela",
+                opening.effective_window_type().label(),
+            ),
             OpeningKind::SaloonDoor => (
                 Icon::SaloonDoor,
                 "Porta vai-e-vem",
@@ -574,6 +578,27 @@ impl FloorPlanApp {
             if let Some(dt) = chosen_door_type {
                 let prev = self.project.clone();
                 if self.project.set_opening_door_type(id, dt).is_ok() {
+                    self.record_change(prev);
+                }
+            }
+        } else if opening.kind == OpeningKind::Window {
+            let mut chosen_window_type = None;
+            section(ui, "window_typology", "Tipologia da janela", |ui| {
+                let current = opening.effective_window_type();
+                egui::ComboBox::from_id_salt("window_type_combo")
+                    .selected_text(current.label())
+                    .width(ui.available_width())
+                    .show_ui(ui, |ui| {
+                        for wt in crate::domain::openings::WindowType::ALL {
+                            if ui.selectable_label(current == wt, wt.label()).clicked() {
+                                chosen_window_type = Some(wt);
+                            }
+                        }
+                    });
+            });
+            if let Some(wt) = chosen_window_type {
+                let prev = self.project.clone();
+                if self.project.set_opening_window_type(id, wt).is_ok() {
                     self.record_change(prev);
                 }
             }

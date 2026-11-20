@@ -73,6 +73,73 @@ impl DoorType {
     }
 }
 
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum WindowType {
+    /// Two overlapping sliding sashes with opposing arrows.
+    #[default]
+    Sliding,
+    /// High-sill awning / basculante window (e.g. bathrooms, laundry).
+    Basculante,
+    /// Top-hung outward-projecting maxim-ar window.
+    MaximAr,
+    /// Side-hung casement window (2 leaves).
+    Casement,
+    /// European tilt-and-turn window (oscilo-batente).
+    TiltTurn,
+    /// Non-operable fixed glass panel.
+    Fixed,
+    /// Outward-projecting trapezoidal bay window.
+    BayWindow,
+}
+
+impl WindowType {
+    pub const ALL: [WindowType; 7] = [
+        WindowType::Sliding,
+        WindowType::Basculante,
+        WindowType::MaximAr,
+        WindowType::Casement,
+        WindowType::TiltTurn,
+        WindowType::Fixed,
+        WindowType::BayWindow,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Sliding => "Janela de correr",
+            Self::Basculante => "Janela basculante",
+            Self::MaximAr => "Janela maxim-ar",
+            Self::Casement => "Janela de abrir (2 folhas)",
+            Self::TiltTurn => "Janela oscilo-batente",
+            Self::Fixed => "Vidro fixo",
+            Self::BayWindow => "Bay window (projetada)",
+        }
+    }
+
+    pub fn short_label(self) -> &'static str {
+        match self {
+            Self::Sliding => "Correr",
+            Self::Basculante => "Basculante",
+            Self::MaximAr => "Maxim-ar",
+            Self::Casement => "Abrir",
+            Self::TiltTurn => "Oscilo-batente",
+            Self::Fixed => "Fixa",
+            Self::BayWindow => "Bay window",
+        }
+    }
+
+    pub fn typical_sill_and_height(self) -> (f64, f64) {
+        match self {
+            Self::Basculante | Self::MaximAr => (1.50, 0.60),
+            Self::Fixed => (0.90, 1.20),
+            Self::BayWindow => (0.80, 1.30),
+            _ => (1.10, 1.00),
+        }
+    }
+}
+
 impl Project {
     pub fn set_opening_door_type(&mut self, id: u64, door_type: DoorType) -> Result<(), String> {
         let opening = self
@@ -87,6 +154,27 @@ impl Project {
             None
         } else {
             Some(door_type)
+        };
+        Ok(())
+    }
+
+    pub fn set_opening_window_type(
+        &mut self,
+        id: u64,
+        window_type: WindowType,
+    ) -> Result<(), String> {
+        let opening = self
+            .openings
+            .iter_mut()
+            .find(|o| o.id == id)
+            .ok_or_else(|| "Abertura não encontrada.".to_owned())?;
+        if opening.kind != OpeningKind::Window {
+            return Err("Apenas janelas aceitam tipologia de janela.".to_owned());
+        }
+        opening.window_type = if window_type == WindowType::Sliding {
+            None
+        } else {
+            Some(window_type)
         };
         Ok(())
     }
@@ -164,6 +252,74 @@ mod tests {
                 .unwrap()
                 .effective_door_type(),
             DoorType::Pivot
+        );
+    }
+
+    #[test]
+    fn window_typologies_differentiate_schedule_codes_and_round_trip() {
+        for wt in WindowType::ALL {
+            assert!(!wt.label().is_empty());
+            assert!(!wt.short_label().is_empty());
+            let (sill, height) = wt.typical_sill_and_height();
+            assert!(sill > 0.0 && height > 0.0);
+        }
+
+        let mut project = Project::default();
+        let wall = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(8.0, 0.0))
+            .unwrap();
+        let w1 = project
+            .add_opening(wall, OpeningKind::Window, 0.20)
+            .unwrap();
+        let w2 = project
+            .add_opening(wall, OpeningKind::Window, 0.50)
+            .unwrap();
+        let w3 = project
+            .add_opening(wall, OpeningKind::Window, 0.80)
+            .unwrap();
+        project
+            .set_opening_window_type(w2, WindowType::Basculante)
+            .unwrap();
+        project
+            .set_opening_window_type(w3, WindowType::MaximAr)
+            .unwrap();
+
+        let types = frame_types(&project);
+        assert_eq!(types.len(), 3);
+        assert_eq!(types[0].code, "J1");
+        assert_eq!(types[1].code, "J2");
+        assert!(types[1].description().contains("Basculante"));
+        assert_eq!(types[2].code, "J3");
+        assert!(types[2].description().contains("Maxim-ar"));
+
+        let json = serde_json::to_string(&project).unwrap();
+        let loaded: Project = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            loaded
+                .openings
+                .iter()
+                .find(|o| o.id == w1)
+                .unwrap()
+                .effective_window_type(),
+            WindowType::Sliding
+        );
+        assert_eq!(
+            loaded
+                .openings
+                .iter()
+                .find(|o| o.id == w2)
+                .unwrap()
+                .effective_window_type(),
+            WindowType::Basculante
+        );
+        assert_eq!(
+            loaded
+                .openings
+                .iter()
+                .find(|o| o.id == w3)
+                .unwrap()
+                .effective_window_type(),
+            WindowType::MaximAr
         );
     }
 }

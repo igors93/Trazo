@@ -1554,12 +1554,14 @@ fn paint_wall(
                 }
             }
             OpeningKind::Window => {
+                use crate::domain::openings::WindowType;
                 let window_color = if op_color == Color32::TRANSPARENT {
                     theme::WINDOW
                 } else {
                     op_color
                 };
                 let offset = (half_wall - 0.5).max(2.5);
+                let side = if opening.flip_side { -normal } else { normal };
                 painter.add(Shape::convex_polygon(
                     vec![
                         start + normal * offset,
@@ -1570,13 +1572,115 @@ fn paint_wall(
                     window_color.gamma_multiply(0.12),
                     Stroke::NONE,
                 ));
-                for side in [-1.0, 1.0] {
+                for s in [-1.0, 1.0] {
                     painter.line_segment(
-                        [start + normal * offset * side, end + normal * offset * side],
-                        Stroke::new(1.6, window_color),
+                        [start + normal * offset * s, end + normal * offset * s],
+                        Stroke::new(1.5, window_color),
                     );
                 }
-                painter.line_segment([start, end], Stroke::new(1.0, window_color));
+                let mid = start.lerp(end, 0.5);
+                let overlap = (half * 0.14).min(6.0);
+                match opening.effective_window_type() {
+                    WindowType::Sliding => {
+                        // Two slightly offset overlapping sliding sashes.
+                        let off = offset * 0.35;
+                        painter.line_segment(
+                            [
+                                start + normal * off,
+                                mid + direction * overlap + normal * off,
+                            ],
+                            Stroke::new(1.3, window_color),
+                        );
+                        painter.line_segment(
+                            [mid - direction * overlap - normal * off, end - normal * off],
+                            Stroke::new(1.3, window_color),
+                        );
+                    }
+                    WindowType::Basculante => {
+                        // High-sill awning window: dashed horizontal projection on both sides + central axis.
+                        let proj = offset + 4.0;
+                        painter.extend(Shape::dashed_line(
+                            &[start + side * proj, end + side * proj],
+                            Stroke::new(1.0, window_color),
+                            4.0,
+                            3.0,
+                        ));
+                        painter.line_segment([start, end], Stroke::new(1.0, window_color));
+                        painter.circle_filled(mid, 2.0, window_color);
+                    }
+                    WindowType::MaximAr => {
+                        // Outward-projecting maxim-ar sash triangle/trapezoid in dashed lines.
+                        let proj = offset + 7.0;
+                        painter.line_segment([start, end], Stroke::new(1.0, window_color));
+                        painter.extend(Shape::dashed_line(
+                            &[start, mid + side * proj, end],
+                            Stroke::new(1.1, window_color),
+                            4.0,
+                            3.0,
+                        ));
+                    }
+                    WindowType::Casement | WindowType::TiltTurn => {
+                        // Two opening leaves with technical quarter arcs.
+                        let leaf_r = half * 0.75;
+                        for (h, dir_h) in [(start, direction), (end, -direction)] {
+                            painter.line_segment(
+                                [h, h + side * leaf_r],
+                                Stroke::new(1.4, window_color),
+                            );
+                            let arc: Vec<Pos2> = (0..=10)
+                                .map(|step| {
+                                    let th = std::f32::consts::FRAC_PI_2 * step as f32 / 10.0;
+                                    h + dir_h * (th.sin() * leaf_r) + side * (th.cos() * leaf_r)
+                                })
+                                .collect();
+                            painter.extend(Shape::dashed_line(
+                                &arc,
+                                Stroke::new(0.9, window_color),
+                                3.5,
+                                2.5,
+                            ));
+                        }
+                        if opening.effective_window_type() == WindowType::TiltTurn {
+                            painter.extend(Shape::dashed_line(
+                                &[start, mid + side * (offset + 5.0), end],
+                                Stroke::new(0.9, window_color),
+                                3.0,
+                                2.5,
+                            ));
+                        }
+                    }
+                    WindowType::Fixed => {
+                        // Single fixed glass pane with small central cross mark.
+                        painter.line_segment([start, end], Stroke::new(1.3, window_color));
+                        let cross = 3.0;
+                        painter.line_segment(
+                            [
+                                mid - direction * cross - normal * cross,
+                                mid + direction * cross + normal * cross,
+                            ],
+                            Stroke::new(1.0, window_color),
+                        );
+                        painter.line_segment(
+                            [
+                                mid - direction * cross + normal * cross,
+                                mid + direction * cross - normal * cross,
+                            ],
+                            Stroke::new(1.0, window_color),
+                        );
+                    }
+                    WindowType::BayWindow => {
+                        // Outward-projecting trapezoidal bay window silhouette.
+                        let depth = (offset + 12.0).max(half * 0.45);
+                        let inset = half * 0.35;
+                        let p1 = start + direction * inset + side * depth;
+                        let p2 = end - direction * inset + side * depth;
+                        painter.add(Shape::line(
+                            vec![start, p1, p2, end],
+                            Stroke::new(1.8, window_color),
+                        ));
+                        painter.line_segment([start, end], Stroke::new(0.9, window_color));
+                    }
+                }
                 if op_color != Color32::TRANSPARENT {
                     outline_opening(
                         painter,
