@@ -509,6 +509,114 @@ impl FloorPlanApp {
                 self.message = format!("Hachura atualizada: {}.", pattern.label());
             }
         }
+        let mut chosen_finish_preset = None;
+        let mut updated_finishes = room.finishes.clone().unwrap_or_default();
+        let mut finishes_edited = false;
+        section(ui, "room_finishes", "Revestimentos e acabamentos", |ui| {
+            egui::ComboBox::from_id_salt(("room_finish_preset", id))
+                .width(ui.available_width())
+                .selected_text("Aplicar pacote de acabamento...")
+                .show_ui(ui, |ui| {
+                    for preset in crate::domain::finishes::RoomFinishPreset::ALL {
+                        if ui.selectable_label(false, preset.label()).clicked() {
+                            chosen_finish_preset = Some(preset);
+                        }
+                    }
+                });
+            ui.add_space(6.0);
+            grid(ui, "room_finishes_grid", |ui| {
+                property_label(ui, "Piso");
+                finishes_edited |= ui
+                    .add(
+                        egui::TextEdit::singleline(&mut updated_finishes.floor)
+                            .desired_width(148.0)
+                            .hint_text("Porcelanato 60×60"),
+                    )
+                    .changed();
+                ui.end_row();
+                property_label(ui, "Parede");
+                finishes_edited |= ui
+                    .add(
+                        egui::TextEdit::singleline(&mut updated_finishes.wall)
+                            .desired_width(148.0)
+                            .hint_text("Pintura acrílica"),
+                    )
+                    .changed();
+                ui.end_row();
+                property_label(ui, "Teto");
+                finishes_edited |= ui
+                    .add(
+                        egui::TextEdit::singleline(&mut updated_finishes.ceiling)
+                            .desired_width(148.0)
+                            .hint_text("Forro de gesso"),
+                    )
+                    .changed();
+                ui.end_row();
+                property_label(ui, "Rodapé");
+                finishes_edited |= ui
+                    .add(
+                        egui::TextEdit::singleline(&mut updated_finishes.baseboard)
+                            .desired_width(148.0)
+                            .hint_text("Poliestireno"),
+                    )
+                    .changed();
+                ui.end_row();
+                property_label(ui, "Alt. rodapé");
+                finishes_edited |= ui
+                    .add(
+                        egui::DragValue::new(&mut updated_finishes.baseboard_height_cm)
+                            .range(0.0..=30.0)
+                            .speed(0.5)
+                            .suffix(" cm"),
+                    )
+                    .changed();
+                ui.end_row();
+                property_label(ui, "Notas");
+                finishes_edited |= ui
+                    .add(
+                        egui::TextEdit::singleline(&mut updated_finishes.notes)
+                            .desired_width(148.0)
+                            .hint_text("Especificações técnicas"),
+                    )
+                    .changed();
+                ui.end_row();
+            });
+            finishes_edited |= ui
+                .checkbox(
+                    &mut updated_finishes.waterproofing,
+                    "Área molhada (impermeabilização)",
+                )
+                .changed();
+            if let Some(qty) = self.project.room_finish_quantities(&room) {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(
+                        format!(
+                            "Piso (+10%): {:.2} m² · Paredes: {:.2} m² · Rodapé: {:.1} m",
+                            qty.floor_with_waste_m2, qty.wall_net_area_m2, qty.baseboard_linear_m
+                        )
+                        .replace('.', ","),
+                    )
+                    .font(regular(11.0))
+                    .color(MUTED),
+                );
+            }
+        });
+        if let Some(preset) = chosen_finish_preset {
+            let prev = self.project.clone();
+            if self.project.apply_room_finish_preset(id, preset).is_ok() {
+                self.record_change(prev);
+                self.message = format!("Acabamentos aplicados: {}.", preset.label());
+            }
+        } else if finishes_edited {
+            if self
+                .project
+                .set_room_finishes(id, Some(updated_finishes))
+                .is_ok()
+            {
+                self.dirty = true;
+            }
+        }
         section(ui, "room_relations", "Relações", |ui| {
             grid(ui, "room_relations_grid", |ui| {
                 property_label(ui, "Paredes");

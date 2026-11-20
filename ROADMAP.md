@@ -127,7 +127,7 @@ O #10 foi antecipado para a Fase 1 porque cômodos poligonais (#02) só ficam ú
 | 21 | Escadas, rampas, patamares, guarda-corpos e desníveis | P1 | 3 | Feito |
 | 22 | Vários pavimentos, com níveis, pé-direito e referência do pavimento de baixo | P1 | 3 | Feito |
 | 23 | Biblioteca de móveis, equipamentos e símbolos personalizáveis | P1 | 3 | Feito |
-| 24 | Revestimentos, acabamentos, rodapés e especificações por cômodo | P2 | 4 | — |
+| 24 | Revestimentos, acabamentos, rodapés e especificações por cômodo | P2 | 4 | Feito |
 | 25 | Verificação de circulação, interferências e área de uso do mobiliário | P2 | 4 | — |
 
 O #12 é o mais importante deste grupo. Dois quartos separados por uma parede: o usuário arrasta a parede 40 cm e o Trazo ajusta as áreas dos dois, mantém portas e janelas e atualiza as cotas.

@@ -150,6 +150,7 @@ impl Project {
                 legacy_kind: None,
                 wall_ids: detected.wall_ids.clone(),
                 hatch: None,
+                finishes: None,
             });
         }
         detected.len()

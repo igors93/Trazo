@@ -271,6 +271,9 @@ pub fn active_schedules(project: &Project, config: &ScheduleConfig) -> Vec<Sched
     if config.show_materials_schedule && !project.walls.is_empty() {
         tables.push(build_materials_schedule(project, config));
     }
+    if project.rooms.iter().any(|r| r.finishes.is_some()) {
+        tables.push(super::finishes::build_finishes_schedule(project));
+    }
     tables
 }
 

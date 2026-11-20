@@ -351,6 +351,9 @@ pub struct Room {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hatch: Option<super::hatch::HatchStyle>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finishes: Option<super::finishes::RoomFinishes>,
 }
 
 impl Room {

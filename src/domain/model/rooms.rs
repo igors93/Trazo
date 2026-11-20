@@ -53,6 +53,7 @@ impl Project {
             legacy_kind: None,
             wall_ids: all_wall_ids,
             hatch: None,
+            finishes: None,
         });
         *self = tx;
         Ok(id)
