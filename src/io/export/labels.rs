@@ -3,6 +3,7 @@ use std::fmt::Write as _;
 use crate::domain::{
     annotations::{frame_of, frame_types},
     geometry::{Point, format_meters},
+    label_layout::{Area, label_spot},
     model::Project,
 };
 
@@ -23,6 +24,22 @@ impl LabelBox {
             y: y - height / 2.0,
             width,
             height,
+        }
+    }
+
+    fn area(self) -> Area {
+        Area::from_corners(
+            (self.x, self.y),
+            (self.x + self.width, self.y + self.height),
+        )
+    }
+
+    fn from_area(area: Area) -> Self {
+        Self {
+            x: area.min_x,
+            y: area.min_y,
+            width: area.width(),
+            height: area.height(),
         }
     }
 
@@ -86,7 +103,12 @@ pub(super) fn write_room_labels(
     point: &impl Fn(Point) -> (f64, f64),
     wall_width: f64,
 ) -> Vec<LabelBox> {
-    let mut occupied = Vec::new();
+    let mut occupied: Vec<LabelBox> = Vec::new();
+    let furniture: Vec<Area> = project
+        .label_obstacles()
+        .into_iter()
+        .map(|(low, high)| Area::from_corners(point(low), point(high)))
+        .collect();
     for room in &project.rooms {
         let Some((anchor, width, height)) = project.room_label_anchor(room) else {
             continue;
@@ -136,26 +158,57 @@ pub(super) fn write_room_labels(
                 .as_ref()
                 .map_or(0.0, |(text, size)| estimated_text_width(text, *size)),
         );
-        let block = LabelBox::centered(
-            inner.x + inner.width / 2.0,
-            inner.y + inner.height / 2.0,
-            block_width,
-            block_height,
-        );
-        if occupied
-            .iter()
-            .any(|other: &LabelBox| other.intersects(block, 4.0))
-        {
+        // The same placement as on screen: the free spot nearest the middle,
+        // clear of furniture and door swings; the name alone when both lines
+        // do not fit; else the middle over a translucent halo.
+        let taken = |block: Area| {
+            occupied
+                .iter()
+                .any(|other| other.area().intersects(&block, 4.0))
+        };
+        let blocked =
+            |block: Area| taken(block) || furniture.iter().any(|item| item.intersects(&block, 3.0));
+        let full = (block_width, block_height);
+        let name_only = (estimated_text_width(&name, name_size), name_size * 1.2);
+        let (center, measure, size, halo) =
+            if let Some(spot) = label_spot(inner.area(), full, &blocked) {
+                (spot, measure, full, false)
+            } else if let Some(spot) = measure
+                .is_some()
+                .then(|| label_spot(inner.area(), name_only, &blocked))
+                .flatten()
+            {
+                (spot, None, name_only, false)
+            } else {
+                (inner.area().center(), measure, full, true)
+            };
+        let block_area = Area::centered(center, size);
+        if taken(block_area) {
             continue;
         }
+        let block = LabelBox::from_area(block_area);
         let clip_id = format!("room-label-{}", room.id);
         let _ = writeln!(
             svg,
             "<defs><clipPath id=\"{clip_id}\"><rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\"/></clipPath></defs><g clip-path=\"url(#{clip_id})\">",
             inner.x, inner.y, inner.width, inner.height
         );
+        if halo
+            && furniture
+                .iter()
+                .any(|item| item.intersects(&block_area, 0.0))
+        {
+            let _ = writeln!(
+                svg,
+                "<rect x=\"{:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{:.1}\" rx=\"3\" fill=\"#eef5fd\" fill-opacity=\"0.72\"/>",
+                block.x - 4.0,
+                block.y - 1.0,
+                block.width + 8.0,
+                block.height + 2.0
+            );
+        }
         let name_y = block.y + name_size;
-        let center_x = inner.x + inner.width / 2.0;
+        let center_x = center.0;
         let _ = writeln!(
             svg,
             "<text x=\"{center_x:.1}\" y=\"{name_y:.1}\" text-anchor=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"{name_size:.1}\" font-weight=\"700\" fill=\"#1c2b3c\">{}</text>",

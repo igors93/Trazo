@@ -4,7 +4,11 @@ use eframe::egui::{self, Color32, FontId, Painter, Pos2, Rect, Stroke, StrokeKin
 
 use crate::app::theme;
 
-use crate::domain::{geometry::format_meters, model::Project};
+use crate::domain::{
+    geometry::format_meters,
+    label_layout::{self, Area},
+    model::Project,
+};
 
 use super::{Selection, ViewTransform, wall_stroke_width};
 
@@ -61,7 +65,11 @@ pub(super) fn paint_room_labels(
 ) {
     let name_color = theme::TEXT;
     let measure_color = theme::MUTED;
-    let furniture = fixture_rects(view, project);
+    let furniture: Vec<Rect> = project
+        .label_obstacles()
+        .into_iter()
+        .map(|(low, high)| Rect::from_two_pos(view.to_screen(low), view.to_screen(high)))
+        .collect();
     for room in &project.rooms {
         let Some((anchor, width, height)) = project.room_label_anchor(room) else {
             continue;
@@ -329,61 +337,26 @@ fn fit_text(
     best
 }
 
-/// The on-screen boxes of the furniture and equipment symbols.
-fn fixture_rects(view: ViewTransform, project: &Project) -> Vec<Rect> {
-    use crate::domain::fixtures::SymbolShape;
-    if !project.category_visible(crate::domain::layers::LayerCategory::Fixtures) {
-        return Vec::new();
-    }
-    project
-        .fixtures
-        .iter()
-        .map(|fixture| {
-            let (low, high) = fixture.bounds();
-            let mut rect = Rect::from_two_pos(view.to_screen(low), view.to_screen(high));
-            // Chairs and other details may reach past the footprint.
-            for shape in fixture.symbol() {
-                match shape {
-                    SymbolShape::Polyline { points, .. } => {
-                        for point in points {
-                            rect.extend_with(view.to_screen(fixture.to_world(point)));
-                        }
-                    }
-                    SymbolShape::Circle { center, radius, .. } => {
-                        let middle = view.to_screen(fixture.to_world(center));
-                        let r = view.pixels(radius);
-                        rect = rect.union(Rect::from_center_size(middle, egui::vec2(r, r) * 2.0));
-                    }
-                }
-            }
-            rect
-        })
-        .collect()
-}
-
-/// Where a label of `size` fits inside `inner` without touching anything
-/// `blocked`: the free spot nearest the middle, or `None`.
+/// [`label_layout::label_spot`] in screen space.
 fn label_spot(inner: Rect, size: egui::Vec2, blocked: &dyn Fn(Rect) -> bool) -> Option<Pos2> {
-    const STEPS: i32 = 10;
-    let reach = ((inner.size() - size) / 2.0).max(egui::Vec2::ZERO);
-    let mut spots: Vec<Pos2> = (-STEPS..=STEPS)
-        .flat_map(|i| (-STEPS..=STEPS).map(move |j| (i, j)))
-        .map(|(i, j)| {
-            inner.center()
-                + egui::vec2(
-                    reach.x * i as f32 / STEPS as f32,
-                    reach.y * j as f32 / STEPS as f32,
-                )
-        })
-        .collect();
-    spots.sort_by(|a, b| {
-        let da = a.distance_sq(inner.center());
-        let db = b.distance_sq(inner.center());
-        da.total_cmp(&db)
-    });
-    spots
-        .into_iter()
-        .find(|spot| !blocked(Rect::from_center_size(*spot, size)))
+    let area = |rect: Rect| {
+        Area::from_corners(
+            (f64::from(rect.min.x), f64::from(rect.min.y)),
+            (f64::from(rect.max.x), f64::from(rect.max.y)),
+        )
+    };
+    let rect = |area: Area| {
+        Rect::from_min_max(
+            Pos2::new(area.min_x as f32, area.min_y as f32),
+            Pos2::new(area.max_x as f32, area.max_y as f32),
+        )
+    };
+    label_layout::label_spot(
+        area(inner),
+        (f64::from(size.x), f64::from(size.y)),
+        &|block| blocked(rect(block)),
+    )
+    .map(|(x, y)| Pos2::new(x as f32, y as f32))
 }
 
 fn paint_centered_galley(
@@ -417,25 +390,6 @@ fn rect_inside(inner: Rect, outer: Rect) -> bool {
 mod tests {
     use super::*;
     use crate::domain::geometry::Point;
-
-    #[test]
-    fn a_room_label_moves_off_the_furniture() {
-        let inner = Rect::from_min_size(Pos2::ZERO, egui::vec2(200.0, 160.0));
-        let size = egui::vec2(60.0, 30.0);
-        // Nothing in the way: the middle of the room.
-        assert_eq!(label_spot(inner, size, &|_| false), Some(inner.center()));
-        // A table in the middle: the nearest free spot, still inside.
-        let table = Rect::from_center_size(inner.center(), egui::vec2(120.0, 60.0));
-        let spot = label_spot(inner, size, &|block| block.intersects(table)).unwrap();
-        let block = Rect::from_center_size(spot, size);
-        assert!(!block.intersects(table) && rect_inside(block, inner));
-        assert!(
-            (spot.x - inner.center().x).abs() < 1.0,
-            "moves up or down first"
-        );
-        // A room full of furniture has no free spot.
-        assert_eq!(label_spot(inner, size, &|_| true), None);
-    }
 
     #[test]
     fn adjacent_room_labels_fit_without_touching() {

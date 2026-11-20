@@ -14,6 +14,7 @@ pub mod geometry;
 pub mod hatch;
 pub mod history;
 pub mod junctions;
+pub mod label_layout;
 pub mod layers;
 pub mod library;
 pub mod masonry;
