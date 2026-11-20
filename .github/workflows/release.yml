@@ -1,0 +1,206 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to package (dry-run, e.g. v0.1.0)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  verify:
+    name: Verify version, format, Clippy and tests
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      is_tag: ${{ steps.meta.outputs.is_tag }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            IS_TAG="true"
+            EXPECTED="v${CARGO_VERSION}"
+            if [[ "${TAG}" != "${EXPECTED}" && "${TAG}" != "${EXPECTED}-"* ]]; then
+              echo "::error::Tag ${TAG} does not match Cargo.toml version ${CARGO_VERSION}"
+              exit 1
+            fi
+          elif [[ -n "${{ inputs.tag }}" ]]; then
+            TAG="${{ inputs.tag }}"
+            IS_TAG="false"
+          else
+            TAG="v${CARGO_VERSION}"
+            IS_TAG="false"
+          fi
+          IS_PRERELEASE="false"
+          if [[ "${TAG}" == *-* ]]; then
+            IS_PRERELEASE="true"
+          fi
+          echo "version=${TAG#v}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "is_tag=${IS_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "is_prerelease=${IS_PRERELEASE}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test --all-targets --all-features
+
+  build:
+    name: Build (${{ matrix.target }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+            binary: trazo.exe
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+            binary: trazo
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+            binary: trazo
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+            binary: trazo
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Install Rust target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Package archive (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        run: |
+          VERSION="${{ needs.verify.outputs.version }}"
+          STAGING="trazo-${VERSION}-${{ matrix.target }}"
+          mkdir -p "${STAGING}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" "${STAGING}/"
+          cp README.md CHANGELOG.md LICENSE-MIT LICENSE-APACHE "${STAGING}/"
+          tar -czf "${STAGING}.tar.gz" "${STAGING}"
+
+      - name: Package archive (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $version = "${{ needs.verify.outputs.version }}"
+          $staging = "trazo-$version-${{ matrix.target }}"
+          New-Item -ItemType Directory -Path $staging -Force | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" "$staging/"
+          Copy-Item README.md, CHANGELOG.md, LICENSE-MIT, LICENSE-APACHE "$staging/"
+          Compress-Archive -Path $staging -DestinationPath "$staging.zip" -Force
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trazo-${{ matrix.target }}
+          path: trazo-${{ needs.verify.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [verify, build]
+    if: needs.verify.outputs.is_tag == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: |
+          cd dist
+          LC_ALL=C sha256sum $(ls -1 | sort) > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Extract changelog notes
+        shell: bash
+        run: |
+          python3 scripts/extract_release_notes.py "${{ needs.verify.outputs.tag }}" CHANGELOG.md > release-notes.md
+          {
+            echo ""
+            echo "### Checksums"
+            echo ""
+            echo 'Verify downloads with `sha256sum -c SHA256SUMS.txt` (Linux/macOS) or `Get-FileHash` (Windows).'
+          } >> release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          TAG="${{ needs.verify.outputs.tag }}"
+          PRERELEASE_FLAG=""
+          if [[ "${{ needs.verify.outputs.is_prerelease }}" == "true" ]]; then
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" dist/* --clobber
+            gh release edit "${TAG}" --title "Trazo ${TAG}" --notes-file release-notes.md
+          else
+            gh release create "${TAG}" dist/* \
+              --title "Trazo ${TAG}" \
+              --notes-file release-notes.md \
+              ${PRERELEASE_FLAG}
+          fi
