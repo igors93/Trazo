@@ -84,16 +84,18 @@ impl Project {
     }
 
     pub fn area_summary(&self) -> AreaSummary {
+        // `fold` from +0.0: an empty `sum()` of floats is -0.0, which shows
+        // as "-0,00 m²" in an empty project.
         let usable = self
             .rooms
             .iter()
             .filter_map(|room| self.room_usable_area(room))
-            .sum();
+            .fold(0.0, |total, area| total + area);
         let walls = self
             .walls
             .iter()
             .map(|wall| wall.length() * wall.thickness())
-            .sum();
+            .fold(0.0, |total, area| total + area);
         let constructed = usable + walls;
         AreaSummary {
             usable,
@@ -137,5 +139,18 @@ mod tests {
         assert_eq!(summary.usable, 0.0);
         assert!(summary.constructed > 0.0);
         assert_eq!(summary.terrain, 200.0);
+    }
+
+    #[test]
+    fn an_empty_project_has_positive_zero_areas() {
+        let summary = Project::default().area_summary();
+        for value in [
+            summary.usable,
+            summary.walls,
+            summary.constructed,
+            summary.projection,
+        ] {
+            assert!(value == 0.0 && value.is_sign_positive(), "{value}");
+        }
     }
 }

@@ -20,6 +20,8 @@ pub(super) fn format_point(point: Point) -> String {
 }
 
 fn area(value: f64) -> String {
+    // Never "-0,00": a value that rounds to zero is plain zero.
+    let value = if value.abs() < 0.005 { 0.0 } else { value };
     format!("{value:.2} m²").replace('.', ",")
 }
 
