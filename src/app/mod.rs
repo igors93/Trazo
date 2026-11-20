@@ -2,6 +2,7 @@ mod ai_activity;
 mod canvas;
 mod interaction;
 mod mcp_tools;
+mod plan_sync;
 mod selection;
 mod theme;
 mod tools;
@@ -266,6 +267,12 @@ pub struct FloorPlanApp {
     last_canvas_rect: Option<egui::Rect>,
     /// Inside an AI batch: edits are recorded as one undo step at its end.
     batch_depth: u32,
+    /// Feeds the event streams of connected assistants.
+    mcp_events: mcp::events::EventHub,
+    /// The plan's revisions and who changed what.
+    plan_log: plan_sync::PlanLog,
+    /// The assistant's tool running now, if any.
+    mcp_running: Option<String>,
     /// The first pick of a constraint tool.
     constraint_pick: Option<tools::ConstraintPick>,
     /// The distances of the constraints, as typed in the properties panel.
@@ -290,10 +297,11 @@ impl FloorPlanApp {
             settings::load()
         };
         let tunnel_token = mcp::server::TunnelToken::new();
+        let mcp_events = mcp::events::EventHub::new();
         let (mcp_calls, mcp_status) = if cfg!(test) {
             (None, McpStatus::Off)
         } else {
-            Self::start_mcp(context, tunnel_token.clone())
+            Self::start_mcp(context, tunnel_token.clone(), mcp_events.clone())
         };
         let mut app = Self {
             project: recovered.unwrap_or_default(),
@@ -400,6 +408,9 @@ impl FloorPlanApp {
             follow_ai: preferences.follow_ai,
             last_canvas_rect: None,
             batch_depth: 0,
+            mcp_events,
+            plan_log: plan_sync::PlanLog::default(),
+            mcp_running: None,
             constraint_pick: None,
             constraint_texts: std::collections::HashMap::new(),
         };
@@ -412,10 +423,11 @@ impl FloorPlanApp {
     fn start_mcp(
         context: &egui::Context,
         tunnel_token: mcp::server::TunnelToken,
+        events: mcp::events::EventHub,
     ) -> (Option<mpsc::Receiver<ToolCall>>, McpStatus) {
         let (sender, receiver) = mpsc::channel();
         let waker = context.clone();
-        match mcp::server::start_with_token(mcp::port(), sender, tunnel_token, move || {
+        match mcp::server::start_with_token(mcp::port(), sender, tunnel_token, events, move || {
             waker.request_repaint()
         }) {
             Ok(port) => (Some(receiver), McpStatus::Listening(port)),
@@ -655,7 +667,8 @@ impl FloorPlanApp {
     fn new_project(&mut self) {
         recovery::clear();
         self.measurements.clear();
-        self.project = Project::default();
+        let before = std::mem::take(&mut self.project);
+        self.note_plan_change(&before, true);
         self.history.clear();
         self.file_path = None;
         self.dirty = false;
@@ -688,7 +701,8 @@ impl FloorPlanApp {
             Ok((project, warnings)) => {
                 recovery::clear();
                 self.measurements.clear();
-                self.project = project;
+                let before = std::mem::replace(&mut self.project, project);
+                self.note_plan_change(&before, true);
                 self.history.clear();
                 self.file_path = Some(path.to_path_buf());
                 self.dirty = false;
@@ -949,7 +963,9 @@ impl FloorPlanApp {
     }
 
     fn undo(&mut self) {
+        let before = self.project.clone();
         if self.history.undo(&mut self.project) {
+            self.note_plan_change(&before, false);
             self.dirty = true;
             self.recovery_pending = true;
             self.revalidate_selection();
@@ -963,7 +979,9 @@ impl FloorPlanApp {
     }
 
     fn redo(&mut self) {
+        let before = self.project.clone();
         if self.history.redo(&mut self.project) {
+            self.note_plan_change(&before, false);
             self.dirty = true;
             self.recovery_pending = true;
             self.revalidate_selection();
@@ -1676,6 +1694,7 @@ impl FloorPlanApp {
             }
             return true;
         }
+        self.note_plan_change(&previous, false);
         // An AI batch records itself as one step when it ends.
         if self.batch_depth == 0 {
             self.history.record(previous);
@@ -2393,6 +2412,7 @@ impl eframe::App for FloorPlanApp {
     /// an assistant's tool calls are answered even then.
     fn logic(&mut self, _context: &egui::Context, _frame: &mut eframe::Frame) {
         self.process_mcp_calls();
+        self.publish_plan_changes();
         self.save_recovery_if_pending();
     }
 

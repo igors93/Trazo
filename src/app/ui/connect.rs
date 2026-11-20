@@ -401,6 +401,17 @@ impl FloorPlanApp {
     fn ai_log_section(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             ui.label(RichText::new("Ações da IA").font(strong(13.0)).color(TEXT));
+            let live = self.mcp_events.listeners();
+            if live > 0 {
+                ui.label(
+                    RichText::new(format!(
+                        "· {live} assistente(s) recebendo as mudanças ao vivo · revisão {}",
+                        self.plan_log.revision
+                    ))
+                    .size(12.0)
+                    .color(SUCCESS),
+                );
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if super::widgets::toggle_pill(
                     ui,

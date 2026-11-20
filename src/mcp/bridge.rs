@@ -19,12 +19,22 @@ const WINDOW_START_TIMEOUT: Duration = Duration::from_secs(40);
 /// Longer than the server's own wait for the window, so its answer arrives.
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Writes one JSON message as a line on stdout, whole: answers and
+/// notifications come from two threads and must not interleave.
+fn write_line(message: &str) -> bool {
+    let mut output = std::io::stdout().lock();
+    output
+        .write_all(format!("{message}\n").as_bytes())
+        .and_then(|()| output.flush())
+        .is_ok()
+}
+
 /// Serves MCP on stdin/stdout until the client closes stdin.
 pub fn run(port: u16) {
     let stdin = std::io::stdin();
     let mut input = stdin.lock();
-    let mut output = std::io::stdout().lock();
     let mut line = Vec::new();
+    let mut relaying = false;
     loop {
         line.clear();
         match input.read_until(b'\n', &mut line) {
@@ -32,14 +42,52 @@ pub fn run(port: u16) {
             Ok(_) => {}
         }
         let text = String::from_utf8_lossy(&line);
+        // Once the client subscribes to the plan, the window's change
+        // notices are passed on to it.
+        if !relaying && text.contains("resources/subscribe") {
+            relaying = true;
+            let _ = std::thread::Builder::new()
+                .name("trazo-mcp-avisos".to_owned())
+                .spawn(move || relay_events(port, &mut |message| write_line(message)));
+        }
         let mut forward =
             |name: &str, arguments: &Value| forward_tool(port, name, arguments, &launch_window);
         if let Some(answer) = handle_line(&text, &mut forward) {
             // One JSON message per line; serde_json writes no raw newlines.
-            if writeln!(output, "{answer}").is_err() || output.flush().is_err() {
+            if !write_line(&answer) {
                 break;
             }
         }
+    }
+}
+
+/// Listens to the window's event stream and hands each message to
+/// `deliver`, reconnecting while the window is closed; returns when
+/// `deliver` fails (the client went away).
+fn relay_events(port: u16, deliver: &mut dyn FnMut(&str) -> bool) {
+    loop {
+        if let Ok(mut stream) = TcpStream::connect_timeout(&address(port), Duration::from_secs(2)) {
+            let request = format!(
+                "GET /mcp HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/event-stream\r\n\r\n"
+            );
+            if stream.write_all(request.as_bytes()).is_ok() {
+                let mut reader = std::io::BufReader::new(stream);
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    match reader.read_line(&mut line) {
+                        Ok(0) | Err(_) => break,
+                        Ok(_) => {}
+                    }
+                    if let Some(data) = line.trim_end().strip_prefix("data: ")
+                        && !deliver(data)
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+        std::thread::sleep(Duration::from_secs(3));
     }
 }
 
@@ -283,5 +331,39 @@ mod tests {
         assert_eq!(parse_http_response(chunked).unwrap(), "{\"a\":1}");
         assert!(parse_http_response(b"HTTP/1.1 405 Method Not Allowed\r\n\r\n").is_err());
         assert!(parse_http_response(b"garbage").is_err());
+    }
+}
+
+#[cfg(test)]
+mod relay_tests {
+    use super::*;
+    use crate::mcp::events::{EventHub, plan_updated};
+    use crate::mcp::server::{TunnelToken, start_with_token};
+    use std::sync::mpsc;
+
+    #[test]
+    fn the_bridge_passes_the_windows_notices_on() {
+        let (sender, _calls) = mpsc::channel();
+        let events = EventHub::new();
+        let port = start_with_token(0, sender, TunnelToken::new(), events.clone(), || {}).unwrap();
+        let (delivered, received) = mpsc::channel::<String>();
+        std::thread::spawn(move || {
+            relay_events(port, &mut |message| {
+                delivered.send(message.to_owned()).is_ok()
+            })
+        });
+        let started = Instant::now();
+        let message = loop {
+            assert!(
+                started.elapsed() < Duration::from_secs(10),
+                "no notice arrived"
+            );
+            events.publish(&plan_updated());
+            if let Ok(message) = received.recv_timeout(Duration::from_millis(100)) {
+                break message;
+            }
+        };
+        let message: Value = serde_json::from_str(&message).unwrap();
+        assert_eq!(message["method"], "notifications/resources/updated");
     }
 }

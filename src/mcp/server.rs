@@ -5,7 +5,7 @@
 //! Requests are answered one at a time on a background thread. Tool calls
 //! are handed to the app's UI thread, which runs them on the open project.
 
-use std::io::Read;
+use std::io::{Read, Write};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use tiny_http::{Header, Method, Request, Response, ResponseBox, Server};
 
+use super::events::EventHub;
 use super::{ToolOutput, protocol};
 
 /// Shared secret token required on requests arriving through a public tunnel.
@@ -84,14 +85,16 @@ pub fn start(
     calls: mpsc::Sender<ToolCall>,
     wake: impl Fn() + Send + 'static,
 ) -> Result<u16, String> {
-    start_with_token(port, calls, TunnelToken::new(), wake)
+    start_with_token(port, calls, TunnelToken::new(), EventHub::new(), wake)
 }
 
-/// Starts the server with a shared `tunnel_token` protecting tunneled traffic.
+/// Starts the server with a shared `tunnel_token` protecting tunneled
+/// traffic; `events` feeds the event streams assistants open.
 pub fn start_with_token(
     port: u16,
     calls: mpsc::Sender<ToolCall>,
     tunnel_token: TunnelToken,
+    events: EventHub,
     wake: impl Fn() + Send + 'static,
 ) -> Result<u16, String> {
     let server = Server::http(("127.0.0.1", port))
@@ -105,6 +108,17 @@ pub fn start_with_token(
         .name("trazo-mcp".to_owned())
         .spawn(move || {
             for request in server.incoming_requests() {
+                // An event stream stays open: it gets a thread of its own.
+                if matches!(request.method(), Method::Get)
+                    && request_header(&request, "Accept").contains("text/event-stream")
+                    && is_authorized(&request, &tunnel_token)
+                {
+                    let stream = events.listen();
+                    let _ = std::thread::Builder::new()
+                        .name("trazo-mcp-eventos".to_owned())
+                        .spawn(move || stream_events(request, stream));
+                    continue;
+                }
                 // One bad request must never stop the server.
                 let _ = catch_unwind(AssertUnwindSafe(|| {
                     respond(request, &calls, &tunnel_token, &wake)
@@ -113,6 +127,41 @@ pub fn start_with_token(
         })
         .map_err(|error| error.to_string())?;
     Ok(port)
+}
+
+/// How often an idle event stream sends a comment, so proxies and clients
+/// keep it open.
+const KEEPALIVE: Duration = Duration::from_secs(15);
+
+/// Serves one event stream until the client goes away: each message the
+/// window publishes is written and flushed at once.
+fn stream_events(request: Request, messages: mpsc::Receiver<String>) {
+    let mut writer = request.into_writer();
+    let head = "HTTP/1.1 200 OK\r\n\
+        Content-Type: text/event-stream\r\n\
+        Cache-Control: no-store\r\n\
+        Connection: keep-alive\r\n\
+        Access-Control-Allow-Origin: *\r\n\r\n";
+    let mut send = |text: &str| {
+        writer
+            .write_all(text.as_bytes())
+            .and_then(|()| writer.flush())
+            .is_ok()
+    };
+    if !send(head) {
+        return;
+    }
+    loop {
+        let chunk = match messages.recv_timeout(KEEPALIVE) {
+            Ok(message) => format!("event: message\ndata: {message}\n\n"),
+            Err(mpsc::RecvTimeoutError::Timeout) => ": ativo\n\n".to_owned(),
+            Err(mpsc::RecvTimeoutError::Disconnected) => return,
+        };
+        // A write error means the client closed the stream.
+        if !send(&chunk) {
+            return;
+        }
+    }
 }
 
 fn header(name: &'static str, value: &str) -> Header {
@@ -241,7 +290,7 @@ fn respond(
                     }
                 }
             }
-            // This server sends nothing unprompted, so it opens no event stream.
+            // An event stream without the tunnel token ends up here.
             Method::Get if accept.contains("text/event-stream") => Response::empty(405)
                 .with_header(header("Allow", "POST, OPTIONS"))
                 .boxed(),
@@ -451,7 +500,7 @@ mod tests {
                     .send(ToolOutput::ok(format!("ran {}", call.name)).to_result());
             }
         });
-        let port = start_with_token(0, sender, token.clone(), || {}).unwrap();
+        let port = start_with_token(0, sender, token.clone(), EventHub::new(), || {}).unwrap();
 
         let send_raw = |path: &str, extra_headers: &str| -> u16 {
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
@@ -524,7 +573,7 @@ mod tests {
                 let _ = call.reply.send(ToolOutput::ok("ok").to_result());
             }
         });
-        let port = start_with_token(0, sender, token.clone(), || {}).unwrap();
+        let port = start_with_token(0, sender, token.clone(), EventHub::new(), || {}).unwrap();
 
         let send = |method: &str, path: &str, headers: &str, body: &str| -> u16 {
             let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
@@ -587,5 +636,68 @@ mod tests {
             ),
             200
         );
+    }
+}
+
+#[cfg(test)]
+mod event_stream_tests {
+    use super::*;
+    use std::io::{BufRead, BufReader, Write};
+    use std::net::TcpStream;
+
+    /// Publishes until `received` says the stream got it (a stream only
+    /// hears what is published after it opens).
+    fn publish_until(events: &EventHub, received: impl Fn() -> bool) {
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(10) {
+            events.publish(&super::super::events::plan_updated());
+            if received() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        panic!("the event never arrived");
+    }
+
+    #[test]
+    fn an_open_event_stream_hears_each_change_at_once() {
+        let (sender, _calls) = mpsc::channel();
+        let events = EventHub::new();
+        let port = start_with_token(0, sender, TunnelToken::new(), events.clone(), || {}).unwrap();
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        stream
+            .write_all(
+                format!("GET /mcp HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: text/event-stream\r\n\r\n")
+                    .as_bytes(),
+            )
+            .unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let mut reader = BufReader::new(stream);
+        let mut status = String::new();
+        reader.read_line(&mut status).unwrap();
+        assert!(status.starts_with("HTTP/1.1 200"), "{status}");
+        let (found, seen) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut line = String::new();
+            while reader.read_line(&mut line).is_ok_and(|read| read > 0) {
+                if let Some(data) = line.trim_end().strip_prefix("data: ") {
+                    let _ = found.send(data.to_owned());
+                    return;
+                }
+                line.clear();
+            }
+        });
+        let message = std::sync::Mutex::new(None);
+        publish_until(&events, || {
+            if let Ok(data) = seen.try_recv() {
+                *message.lock().unwrap() = Some(data);
+            }
+            message.lock().unwrap().is_some()
+        });
+        let data: Value = serde_json::from_str(&message.lock().unwrap().take().unwrap()).unwrap();
+        assert_eq!(data["method"], "notifications/resources/updated");
+        assert_eq!(data["params"]["uri"], "trazo://planta");
     }
 }

@@ -90,6 +90,8 @@ Tools: `obter_planta` (plan with ids, coordinates, sizes and areas), `imagem_da_
 
 Each change runs on a copy of the project and is applied only if it succeeds, as one undo step; a failing tool explains why, so the assistant can correct itself. Opening a new or other project refuses to drop unsaved changes unless the assistant asks to discard them.
 
+**Working together in real time.** Every change to the plan — yours or the assistant's, including undo and redo — gets a revision number. `obter_planta` returns the current `revisao`, and `mudancas_desde` tells the assistant what changed after the revision it knows: who did it (`usuario` or `ia`, with the tool) and which element ids were added, removed or altered, so it never overwrites what you just did. The open plan is also the MCP resource `trazo://planta` (`resources/read`); a client that subscribes and opens the event stream (`GET /mcp` with `Accept: text/event-stream`, also relayed by `--mcp-stdio`) gets a `notifications/resources/updated` notice the moment the plan changes. *Conectar uma IA* shows how many assistants are following the plan live.
+
 **Security.** For ease of use the server has no authentication. It only listens on this computer (`127.0.0.1`), but while a tunnel is open anyone who knows its address can read and edit the open plan, and save or export files. Close the tunnel when you are done; it also closes with Trazo.
 
 If Claude Desktop is using Trazo, close it before rebuilding (`cargo build --release`), since Windows locks the running `trazo.exe`.

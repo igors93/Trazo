@@ -68,6 +68,26 @@ fn number(args: &Value, key: &str) -> Result<Option<f64>, String> {
     }
 }
 
+/// A whole number from 0 up given as `key`, if any.
+pub(super) fn optional_count(args: &Value, key: &str) -> Result<Option<u64>, String> {
+    let wrong = || format!("'{key}' deve ser um número inteiro de 0 em diante.");
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::Number(number)) => number
+            .as_u64()
+            .or_else(|| {
+                number
+                    .as_f64()
+                    .filter(|value| *value >= 0.0 && value.fract() == 0.0)
+                    .map(|value| value as u64)
+            })
+            .map(Some)
+            .ok_or_else(wrong),
+        Some(Value::String(text)) => text.trim().parse::<u64>().map(Some).map_err(|_| wrong()),
+        Some(_) => Err(wrong()),
+    }
+}
+
 fn required_number(args: &Value, key: &str) -> Result<f64, String> {
     number(args, key)?.ok_or_else(|| format!("Informe '{key}' (número, em metros)."))
 }
@@ -236,13 +256,17 @@ impl FloorPlanApp {
         self.commit_item_drag();
         let before = self.project.clone();
         let before_selection = self.selected();
+        // Changes made now are the assistant's, in the plan's log.
+        self.mcp_running = Some(name.to_owned());
         let outcome = catch_unwind(AssertUnwindSafe(|| self.dispatch_tool(name, args)));
         let output = match outcome {
             Ok(Ok(output)) => output,
             Ok(Err(message)) => ToolOutput::error(message),
             Err(_) => {
-                self.project = before.clone();
+                // Putting the plan back is a change too, for whoever follows it.
+                let broken = std::mem::replace(&mut self.project, before.clone());
                 self.batch_depth = 0;
+                self.note_plan_change(&broken, false);
                 self.set_selection_set(before_selection);
                 ToolOutput::error(
                     "Erro interno do Trazo ao executar a ferramenta; a planta foi mantida como estava.",
@@ -251,6 +275,7 @@ impl FloorPlanApp {
         };
         self.revalidate_selection();
         self.sync_inspector_fields();
+        self.mcp_running = None;
         self.mcp_actions += 1;
         // Shown on the plan: the highlight, the badge and the log.
         self.note_ai_action(name, &output, &before);
@@ -314,6 +339,15 @@ impl FloorPlanApp {
             "mover_elemento" => self.tool_move(args),
             "selecionar" => self.tool_select(args),
             "executar_lote" => self.tool_batch(args),
+            "mudancas_desde" => {
+                let data = self.plan_changes_since(args)?;
+                let count = data["mudancas"].as_array().map_or(0, Vec::len);
+                Ok(ToolOutput::ok(format!(
+                    "Revisão atual {}: {count} mudança(s) depois da revisão {} ({} do usuário).",
+                    data["revisao_atual"], data["desde"], data["mudancas_do_usuario"]
+                ))
+                .with_structured(data))
+            }
             "transformar" => self.tool_transform(args),
             "alinhar" => self.tool_arrange(args, false),
             "distribuir" => self.tool_arrange(args, true),
@@ -1146,6 +1180,7 @@ impl FloorPlanApp {
                 "modulo_m": round(self.project.masonry.module()),
                 "pe_direito_m": round(self.project.wall_height),
             },
+            "revisao": self.plan_log.revision,
             "objetos": fixtures,
             "desenhos": drawings::drawings_summary(project),
             // What the person has selected on screen, so "this one" makes sense.

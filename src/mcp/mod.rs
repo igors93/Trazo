@@ -10,6 +10,7 @@ use serde_json::{Value, json};
 
 pub mod bridge;
 pub mod clients;
+pub mod events;
 pub mod protocol;
 pub mod server;
 pub mod tunnel;

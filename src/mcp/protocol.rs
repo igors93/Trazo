@@ -31,7 +31,11 @@ dividir), unir e restringir (paralelas, perpendiculares, distâncias fixas que o
 mantém nas edições seguintes). Use selecionar para mostrar ao usuário os elementos de que \
 está falando; 'selecao' em obter_planta diz o que ele selecionou. Para muitas mudanças de uma \
 vez, use executar_lote: tudo vira um só passo de desfazer e nada é aplicado se uma ação \
-falhar.";
+falhar.
+O usuário pode editar a planta ao mesmo tempo que você. Guarde a 'revisao' de obter_planta \
+e, antes de cada nova rodada de edições, chame mudancas_desde com ela para ver o que ele \
+mudou (origem 'usuario'). Clientes que assinam o recurso trazo://planta recebem um aviso a \
+cada mudança.";
 
 /// Runs a tool by name with its arguments and returns the `CallToolResult`.
 pub type ToolRunner<'a> = dyn FnMut(&str, &Value) -> Value + 'a;
@@ -87,8 +91,17 @@ pub fn handle_message(message: &Value, run: &mut ToolRunner) -> Option<Value> {
         "ping" | "logging/setLevel" => Ok(json!({})),
         "tools/list" => Ok(json!({ "tools": tools() })),
         "tools/call" => call_tool(&params, run),
+        // The open plan as a resource; a subscriber hears when it changes
+        // on the event stream (see `super::events`).
+        "resources/list" => Ok(json!({ "resources": [plan_resource()] })),
+        "resources/read" => read_resource(&params, run),
+        "resources/subscribe" | "resources/unsubscribe" => {
+            match params.get("uri").and_then(Value::as_str) {
+                Some(super::events::PLAN_URI) => Ok(json!({})),
+                _ => Err((-32002, "Recurso desconhecido".to_owned())),
+            }
+        }
         // Not offered, but answered so that clients probing for them carry on.
-        "resources/list" => Ok(json!({ "resources": [] })),
         "resources/templates/list" => Ok(json!({ "resourceTemplates": [] })),
         "prompts/list" => Ok(json!({ "prompts": [] })),
         _ => Err((-32601, format!("Método desconhecido: {method}"))),
@@ -119,7 +132,10 @@ fn initialize(params: &Value) -> Value {
     };
     json!({
         "protocolVersion": version,
-        "capabilities": { "tools": { "listChanged": false } },
+        "capabilities": {
+            "tools": { "listChanged": false },
+            "resources": { "subscribe": true, "listChanged": false },
+        },
         "serverInfo": {
             "name": SERVER_NAME,
             "title": "Trazo — plantas baixas",
@@ -127,6 +143,46 @@ fn initialize(params: &Value) -> Value {
         },
         "instructions": INSTRUCTIONS,
     })
+}
+
+/// The open plan, as `resources/list` describes it.
+fn plan_resource() -> Value {
+    json!({
+        "uri": super::events::PLAN_URI,
+        "name": "planta",
+        "title": "Planta aberta no Trazo",
+        "description": "O mesmo conteúdo de obter_planta, com a revisão atual. Assine para saber quando o usuário ou você alterarem a planta.",
+        "mimeType": "application/json",
+    })
+}
+
+/// `resources/read`: the plan, read through `obter_planta` in the window.
+fn read_resource(params: &Value, run: &mut ToolRunner) -> Result<Value, (i64, String)> {
+    let uri = params
+        .get("uri")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if uri != super::events::PLAN_URI {
+        return Err((-32002, format!("Recurso desconhecido: {uri}")));
+    }
+    let result = run("obter_planta", &json!({}));
+    if result.get("isError").and_then(Value::as_bool) == Some(true) {
+        let text = result["content"][0]["text"]
+            .as_str()
+            .unwrap_or("indisponível");
+        return Err((-32603, format!("A planta não pôde ser lida: {text}")));
+    }
+    let plan = result
+        .get("structuredContent")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    Ok(json!({
+        "contents": [{
+            "uri": uri,
+            "mimeType": "application/json",
+            "text": plan.to_string(),
+        }],
+    }))
 }
 
 fn call_tool(params: &Value, run: &mut ToolRunner) -> Result<Value, (i64, String)> {
@@ -424,6 +480,17 @@ fn catalogue() -> Vec<Tool> {
             }),
             required: &["id", "dx", "dy"],
             read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "mudancas_desde",
+            title: "Mudanças desde uma revisão",
+            description: "O que mudou na planta depois de uma revisão: quem mudou (usuario ou ia, com a ferramenta) e os ids adicionados, removidos e alterados. obter_planta informa a 'revisao' atual; chame antes de editar para não desfazer o que o usuário acabou de fazer. Sem 'revisao', devolve as últimas 20 mudanças.",
+            properties: json!({
+                "revisao": integer("A última revisão que você conhece (de obter_planta ou de uma chamada anterior)."),
+            }),
+            required: &[],
+            read_only: true,
             destructive: false,
         },
         Tool {
@@ -815,5 +882,59 @@ mod tests {
         )
         .unwrap();
         assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 22);
+    }
+}
+
+#[cfg(test)]
+mod resource_tests {
+    use super::*;
+
+    #[test]
+    fn the_plan_is_a_resource_that_can_be_read_and_subscribed() {
+        let mut no_tools = |_: &str, _: &Value| -> Value { panic!("no tool should run") };
+        let init = handle_message(
+            &json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }),
+            &mut no_tools,
+        )
+        .unwrap();
+        assert_eq!(
+            init["result"]["capabilities"]["resources"]["subscribe"],
+            true
+        );
+        let list = handle_message(
+            &json!({ "jsonrpc": "2.0", "id": 2, "method": "resources/list" }),
+            &mut no_tools,
+        )
+        .unwrap();
+        assert_eq!(list["result"]["resources"][0]["uri"], "trazo://planta");
+        let subscribe = handle_message(
+            &json!({ "jsonrpc": "2.0", "id": 3, "method": "resources/subscribe", "params": { "uri": "trazo://planta" } }),
+            &mut no_tools,
+        )
+        .unwrap();
+        assert_eq!(subscribe["result"], json!({}));
+        let unknown = handle_message(
+            &json!({ "jsonrpc": "2.0", "id": 4, "method": "resources/read", "params": { "uri": "trazo://outra" } }),
+            &mut no_tools,
+        )
+        .unwrap();
+        assert_eq!(unknown["error"]["code"], -32002);
+
+        // Reading runs obter_planta in the window and hands back its data.
+        let mut plan = |name: &str, _: &Value| -> Value {
+            assert_eq!(name, "obter_planta");
+            json!({ "content": [], "isError": false, "structuredContent": { "revisao": 7 } })
+        };
+        let read = handle_message(
+            &json!({ "jsonrpc": "2.0", "id": 5, "method": "resources/read", "params": { "uri": "trazo://planta" } }),
+            &mut plan,
+        )
+        .unwrap();
+        let content = &read["result"]["contents"][0];
+        assert_eq!(content["mimeType"], "application/json");
+        let text: Value = serde_json::from_str(content["text"].as_str().unwrap()).unwrap();
+        assert_eq!(text["revisao"], 7);
+        assert!(tool_names().contains(&"mudancas_desde"));
+        assert!(is_read_only("mudancas_desde"));
     }
 }
