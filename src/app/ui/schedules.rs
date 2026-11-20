@@ -138,7 +138,7 @@ impl FloorPlanApp {
             });
 
         if changed {
-            self.dirty = true;
+            self.mark_edited_outside_history();
         }
         if !open {
             self.active_doc_dialog = DocDialog::None;

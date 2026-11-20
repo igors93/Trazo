@@ -100,7 +100,7 @@ impl FloorPlanApp {
                                         width_mm,
                                         height_mm,
                                     };
-                                    self.dirty = true;
+                                    self.mark_edited_outside_history();
                                 }
                             });
                         }
@@ -350,7 +350,7 @@ impl FloorPlanApp {
                             .is_some();
                         });
                         if changed {
-                            self.dirty = true;
+                            self.mark_edited_outside_history();
                         }
                     });
 
@@ -425,7 +425,7 @@ impl FloorPlanApp {
                                         )
                                         .changed()
                                     {
-                                        self.dirty = true;
+                                        self.mark_edited_outside_history();
                                     }
                                 });
                                 ui.add_space(6.0);

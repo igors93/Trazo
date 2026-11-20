@@ -57,7 +57,7 @@ impl FloorPlanApp {
                     )
                     .changed()
                 {
-                    self.dirty = true;
+                    self.mark_edited_outside_history();
                 }
 
                 let total_area = self.project.total_multistorey_constructed_area();
@@ -196,7 +196,7 @@ impl FloorPlanApp {
                         .update_floor_metadata(id, &name, elev, ceiling, slab)
                         .is_ok()
                 {
-                    self.dirty = true;
+                    self.mark_edited_outside_history();
                 }
                 if let Some(id) = switch_to {
                     let prev = self.project.clone();

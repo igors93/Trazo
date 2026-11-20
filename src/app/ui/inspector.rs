@@ -616,7 +616,7 @@ impl FloorPlanApp {
                 .set_room_finishes(id, Some(updated_finishes))
                 .is_ok()
         {
-            self.dirty = true;
+            self.mark_edited_outside_history();
         }
         section(ui, "room_relations", "Relações", |ui| {
             grid(ui, "room_relations_grid", |ui| {

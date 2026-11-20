@@ -332,7 +332,7 @@ impl FloorPlanApp {
             });
 
         if changed {
-            self.dirty = true;
+            self.mark_edited_outside_history();
         }
         if let Some((target, is_pdf)) = export_request {
             let rendered = match target {

@@ -1704,7 +1704,8 @@ impl FloorPlanApp {
     }
 
     /// Marks the project as changed and due for the crash-recovery draft,
-    /// for edits that are not undo steps (such as typing the project name).
+    /// for continuous form edits that are not individual undo steps (such as
+    /// typing the project name or technical-sheet metadata).
     fn mark_edited_outside_history(&mut self) {
         self.dirty = true;
         self.recovery_pending = true;

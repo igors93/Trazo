@@ -297,7 +297,7 @@ impl FloorPlanApp {
             });
 
         if changed {
-            self.dirty = true;
+            self.mark_edited_outside_history();
         }
         if let Some((sheet_id, is_pdf)) = export_item
             && let Some(item) = self

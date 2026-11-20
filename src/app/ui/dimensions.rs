@@ -127,7 +127,7 @@ impl FloorPlanApp {
                                                 let _ = self
                                                     .project
                                                     .update_dimension_override(id, Some(text));
-                                                self.dirty = true;
+                                                self.mark_edited_outside_history();
                                             }
                                             if secondary_button(ui, "±").on_hover_text("Deslocar linha de cota (+0,20 m)").clicked() {
                                                 let next = match dim.kind {

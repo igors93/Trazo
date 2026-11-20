@@ -138,7 +138,7 @@ impl FloorPlanApp {
                                                 .changed()
                                             {
                                                 let _ = self.project.update_note_text(id, &text);
-                                                self.dirty = true;
+                                                self.mark_edited_outside_history();
                                             }
                                             if secondary_button(ui, "→").on_hover_text("Deslocar +0,50 m em X").clicked() {
                                                 let prev = self.project.clone();
