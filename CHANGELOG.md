@@ -33,6 +33,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 - Texts, notes, leaders and symbols (#31), hatches by material (#32), templates (#33) and configurable schedules (#34).
 - Sections, elevations and details with cross-references (#35), sheet sets with revisions (#36), and ABNT NBR 6492 and NBR 16752 documentation styles (#37).
 - PDF and PNG export, editable SVG (#41) and CSV schedules (#42).
+- AutoCAD DXF import and export (`AC1009` / R12 in metres, with `$INSUNITS` scaling on import from mm/cm/m/in/ft): walls, openings, fixtures, 2D drawings, associative dimensions (`DIMENSION` with `*D<n>` blocks), texts/MTEXT and hatches, preserving layers, ACI colours and linetypes, plus `exportar_planta` (`dxf`) and `importar_dxf` MCP tools (#38).
 
 **AI assistants (MCP)**
 

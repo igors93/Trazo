@@ -1032,6 +1032,43 @@ impl FloorPlanApp {
         };
     }
 
+    fn export_dxf(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Desenho AutoCAD DXF", &["dxf"])
+            .set_file_name("planta-baixa.dxf")
+            .save_file()
+        else {
+            return;
+        };
+        self.message = match crate::io::dxf::export(&self.project, &path) {
+            Ok(()) => "Desenho DXF exportado (camadas, cotas e unidades em metros).".to_owned(),
+            Err(error) => format!("Não foi possível exportar DXF: {error}"),
+        };
+    }
+
+    fn import_dxf(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Desenho AutoCAD DXF", &["dxf"])
+            .pick_file()
+        else {
+            return;
+        };
+        let previous = self.project.clone();
+        match crate::io::dxf::import_file(&mut self.project, &path) {
+            Ok(report) => {
+                if report.total_imported() > 0 || report.layers > 0 {
+                    self.record_change(previous);
+                    self.fit_view_requested();
+                }
+                self.message = report.summary_pt();
+            }
+            Err(error) => {
+                self.project = previous;
+                self.message = format!("Não foi possível importar DXF: {error}");
+            }
+        }
+    }
+
     /// Drops from the selection whatever the project no longer has (after
     /// an undo, say); the last element left becomes the primary one.
     pub fn revalidate_selection(&mut self) {

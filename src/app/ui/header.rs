@@ -188,6 +188,11 @@ impl FloorPlanApp {
             ui.close();
         }
         menu_separator(ui);
+        if menu_item(ui, Some(Icon::Open), "Importar DXF (AutoCAD)...", "").clicked() {
+            self.import_dxf();
+            ui.close();
+        }
+        menu_separator(ui);
         if menu_item(ui, Some(Icon::ExportImage), "Exportar imagem PNG...", "").clicked() {
             self.export_png();
             ui.close();
@@ -198,6 +203,10 @@ impl FloorPlanApp {
         }
         if menu_item(ui, Some(Icon::Export), "Exportar SVG editável...", "").clicked() {
             self.export_svg();
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::Export), "Exportar DXF (AutoCAD)...", "").clicked() {
+            self.export_dxf();
             ui.close();
         }
         if menu_item(ui, Some(Icon::Export), "Exportar quantitativos CSV...", "").clicked() {
@@ -501,6 +510,10 @@ impl FloorPlanApp {
             self.export_svg();
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Export), "Desenho DXF (AutoCAD)...", "").clicked() {
+            self.export_dxf();
+            ui.close();
+        }
         if menu_item(ui, Some(Icon::Export), "Quantitativos CSV...", "").clicked() {
             self.export_csv();
             ui.close();
@@ -550,7 +563,7 @@ fn export_button(ui: &mut Ui) -> egui::Response {
     );
     tip(
         response,
-        "Exportar a planta e seus dados em PNG, PDF, SVG ou CSV",
+        "Exportar a planta e seus dados em PNG, PDF, SVG, DXF ou CSV",
     )
     .on_hover_cursor(egui::CursorIcon::PointingHand)
 }

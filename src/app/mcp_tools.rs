@@ -494,8 +494,8 @@ impl FloorPlanApp {
             "exportar_planta" => {
                 let format = text(args, "formato")
                     .map(|format| format.to_lowercase())
-                    .filter(|format| format == "pdf" || format == "png")
-                    .ok_or("Informe 'formato': pdf ou png.")?;
+                    .filter(|format| format == "pdf" || format == "png" || format == "dxf")
+                    .ok_or("Informe 'formato': pdf, png ou dxf.")?;
                 let path = match text(args, "caminho") {
                     Some(input) => resolve_path(&input, &format),
                     None => unique_path(
@@ -503,15 +503,43 @@ impl FloorPlanApp {
                     ),
                 };
                 ensure_parent(&path)?;
-                if format == "pdf" {
-                    export::pdf(&self.project, &path)?;
-                } else {
-                    export::png(&self.project, &path)?;
+                match format.as_str() {
+                    "pdf" => export::pdf(&self.project, &path)?,
+                    "png" => export::png(&self.project, &path)?,
+                    _ => crate::io::dxf::export(&self.project, &path)?,
                 }
                 Ok(
                     ToolOutput::ok(format!("Planta exportada em {}", path.display()))
                         .with_structured(json!({ "caminho": path.display().to_string() })),
                 )
+            }
+            "importar_dxf" => {
+                let input = text(args, "caminho").ok_or("Informe 'caminho' do arquivo DXF.")?;
+                let path = resolve_path(&input, "dxf");
+                let previous = self.project.clone();
+                match crate::io::dxf::import_file(&mut self.project, &path) {
+                    Ok(report) => {
+                        if report.total_imported() > 0 || report.layers > 0 {
+                            self.record_change(previous);
+                            self.fit_view_requested();
+                        }
+                        self.message = report.summary_pt();
+                        Ok(ToolOutput::ok(report.summary_pt()).with_structured(json!({
+                            "caminho": path.display().to_string(),
+                            "paredes": report.walls,
+                            "desenhos": report.drawings,
+                            "textos": report.notes,
+                            "cotas": report.dimensions,
+                            "camadas": report.layers,
+                            "terreno": report.terrain_imported,
+                            "unidades": report.units_label,
+                        })))
+                    }
+                    Err(error) => {
+                        self.project = previous;
+                        Err(error)
+                    }
+                }
             }
             _ => Err(format!("Ferramenta desconhecida: {name}")),
         }
@@ -1708,5 +1736,36 @@ mod gate_tests {
                 .iter()
                 .all(|o| o["tipo"] == "portao")
         );
+    }
+
+    #[test]
+    fn exports_and_imports_dxf_through_mcp() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let created = app.run_mcp_tool(
+            "criar_comodo",
+            &json!({ "nome": "Sala", "x": 0.0, "y": 0.0, "largura": 4.0, "comprimento": 3.0 }),
+        );
+        assert!(!created.is_error, "{}", created.text);
+        let dxf_path =
+            std::env::temp_dir().join(format!("trazo-mcp-dxf-{}.dxf", std::process::id()));
+        let exported = app.run_mcp_tool(
+            "exportar_planta",
+            &json!({ "formato": "dxf", "caminho": dxf_path.display().to_string() }),
+        );
+        assert!(!exported.is_error, "{}", exported.text);
+        assert!(dxf_path.is_file());
+
+        let reset = app.run_mcp_tool("novo_projeto", &json!({ "descartar_alteracoes": true }));
+        assert!(!reset.is_error, "{}", reset.text);
+        assert!(app.project.walls.is_empty());
+        let imported = app.run_mcp_tool(
+            "importar_dxf",
+            &json!({ "caminho": dxf_path.display().to_string() }),
+        );
+        assert!(!imported.is_error, "{}", imported.text);
+        assert!(app.project.walls.len() >= 4);
+        assert!(app.history.can_undo());
+        let _ = std::fs::remove_file(&dxf_path);
     }
 }

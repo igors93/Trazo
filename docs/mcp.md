@@ -57,7 +57,7 @@ Create a connector with that address and no authentication; in ChatGPT this is d
 
 ## Tools
 
-Trazo exposes 39 tools. Their names and messages are in Portuguese, like the interface.
+Trazo exposes 40 tools. Their names and messages are in Portuguese, like the interface.
 
 | Group | Tools |
 | --- | --- |
@@ -70,7 +70,7 @@ Trazo exposes 39 tools. Their names and messages are in Portuguese, like the int
 | **CAD editing** | `selecionar` (shows the person which elements the assistant means), `mover_elemento`, `transformar` (move, rotate, mirror or copy several elements), `alinhar`, `distribuir`, `agrupar`, `desagrupar`, `repetir` (grid or polar), `editar_geometria` (trim, extend, offset, divide), `unir`, `restringir`, `remover_restricao`, `excluir_elemento` |
 | **Batch** | `executar_lote`: up to 200 tool calls in one request, all or nothing, as a single undo step |
 | **History and view** | `desfazer`, `refazer`, `centralizar_planta` |
-| **Files** | `novo_projeto`, `abrir_projeto`, `salvar_projeto`, `exportar_planta` (PDF or PNG) |
+| **Files** | `novo_projeto`, `abrir_projeto`, `salvar_projeto`, `exportar_planta` (PDF, PNG or DXF), `importar_dxf` |
 
 Tools that read are marked read-only and tools that delete are marked destructive, so clients can ask before running them. `executar_lote` cannot contain file or history tools.
 

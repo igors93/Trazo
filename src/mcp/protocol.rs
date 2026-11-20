@@ -824,12 +824,23 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "exportar_planta",
             title: "Exportar planta",
-            description: "Exporta a planta em PDF vetorial ou imagem PNG. Sem caminho: em Documentos\\Trazo com o nome do projeto. Devolve o caminho usado.",
+            description: "Exporta a planta em PDF vetorial, imagem PNG ou DXF (AutoCAD/QCAD/LibreCAD). Sem caminho: em Documentos\\Trazo com o nome do projeto. Devolve o caminho usado.",
             properties: json!({
-                "formato": { "type": "string", "enum": ["pdf", "png"], "description": "pdf ou png." },
+                "formato": { "type": "string", "enum": ["pdf", "png", "dxf"], "description": "pdf, png ou dxf." },
                 "caminho": string("Opcional: caminho do arquivo (relativo a Documentos\\Trazo)."),
             }),
             required: &["formato"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "importar_dxf",
+            title: "Importar DXF",
+            description: "Importa um arquivo DXF (paredes, linhas, polilinhas, círculos, arcos, splines, textos, cotas e camadas) para a planta atual, num único passo de desfazer.",
+            properties: json!({
+                "caminho": string("Caminho do arquivo .dxf (relativo a Documentos\\Trazo ou absoluto)."),
+            }),
+            required: &["caminho"],
             read_only: false,
             destructive: false,
         },
@@ -883,7 +894,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 39);
+        assert_eq!(tools.len(), 40);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -964,7 +975,7 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 39);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 40);
     }
 }
 

@@ -170,6 +170,7 @@ Wire sections assume copper with PVC insulation, method B1, two loaded conductor
 | **PDF** | Vector drawing, or a sheet at exact scale. |
 | **PNG** | High-resolution image. |
 | **SVG** | Editable vector drawing for other drawing programs. |
+| **DXF** | AutoCAD, QCAD and LibreCAD exchange (import and export) with layers, colours, units, walls, openings, fixtures, drawings, dimensions, texts and hatches. |
 | **CSV** | Area, door and window and quantity schedules for spreadsheets. |
 
 ## Files and data safety

@@ -37,7 +37,7 @@ Trazo should serve both ends of the spectrum on the same project and file:
 | Drawing engine (#01–#10) | ✅ Complete: `f64` geometry, free-shape rooms, snaps, typed input, CAD modify tools, constraints, multiple selection |
 | Architecture (#11–#25) | ✅ Complete: junctions, shared walls, multilayer walls, door and window types, stairs, floors, library, finishes, circulation checks |
 | Documentation (#26–#37) | ✅ Complete: associative dimensions, layers, sheets, scales, title blocks, hatches, schedules, sections, sheet sets, ABNT styles |
-| Exchange (#38–#45) | 🟡 SVG and CSV export only; no DXF or DWG yet |
+| Exchange (#38–#45) | 🟡 DXF import/export, SVG and CSV export done; no DWG yet |
 | AI (#46–#52) | 🟡 39 MCP tools (the electrical design included), real-time sync, tunnel token; it covers only part of the model, and there is no approval or read-only mode |
 | Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
 | Release (#58–#64) | 🟡 CI, licence, property tests, file migrations, release binaries, crash reports and Windows installer done; samples, schema and signing remain |
@@ -135,7 +135,7 @@ Worth prototyping after M6, when the core is solid: #85, #86, #87, #94, #44, #45
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 38 | DXF import and export: walls, openings, fixtures, drawings, dimensions, texts and hatches, with layers, colours and units | P0 | L | M2 | ⬜ |
+| 38 | DXF import and export: walls, openings, fixtures, drawings, dimensions, texts and hatches, with layers, colours and units | P0 | L | M2 | ✅ |
 | 70 | Print to a printer at exact scale, with the system print dialog and sheet preview | P0 | M | M2 | ⬜ |
 | 40 | Image and PDF underlay with two-point scale calibration, opacity and lock | P1 | M | M2 | ⬜ The faded underlay of the floor below exists (#22); external images do not |
 | 43 | Reusable blocks with attributes and a personal library shared between projects | P1 | M | M2 | 🟡 The library (#23) customises symbols; there are no user blocks with attributes yet |
