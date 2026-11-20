@@ -2,7 +2,12 @@
 name = "trazo"
 version = "0.1.0"
 edition = "2024"
-description = "A simple, approachable floor plan editor"
+description = "A native 2D architectural CAD for floor plans, with a built-in MCP server for AI assistants"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/igors93/Trazo"
+readme = "README.md"
+keywords = ["cad", "floor-plan", "architecture", "egui", "mcp"]
+categories = ["graphics", "gui"]
 
 [dependencies]
 eframe = { version = "0.37", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
