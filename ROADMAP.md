@@ -1,282 +1,222 @@
-# Roadmap do Trazo
+# Trazo Roadmap
 
-Atualizado em 19/11/2026, a partir do commit `64fabbc`. As lacunas técnicas abaixo foram conferidas no código-fonte, não só deduzidas da documentação.
+*Last updated 2026-11-20.*
 
-## 1. Visão
+This is the plan for what comes next. Work through it **milestone by milestone, in order**: each milestone builds on the previous one and ends with a concrete test of "done". [Next up](#next-up) lists the first ten items on that path. Everything already shipped, items #01–#37 and more, is in the [changelog](CHANGELOG.md).
 
-> Um CAD arquitetônico 2D inteligente, com a simplicidade de um editor visual e a precisão de uma ferramenta de engenharia.
+- [Vision](#vision)
+- [Where Trazo stands](#where-trazo-stands)
+- [How to read this roadmap](#how-to-read-this-roadmap)
+- [Next up](#next-up)
+- [Milestones](#milestones)
+- [Backlog](#backlog)
+- [Definition of done](#definition-of-done)
+- [Out of scope](#out-of-scope)
 
-O Trazo não deve virar uma cópia do AutoCAD. O diferencial é servir às duas pontas:
+## Vision
 
-- **Quem está começando** cria uma casa inteira sem precisar entender coordenadas, camadas ou comandos CAD: desenha cômodos, arrasta portas e móveis, digita medidas e recebe orientação visual.
-- **Quem é profissional** produz uma planta técnica detalhada: controla geometria, cotas, camadas, escalas, quantitativos e intercâmbio com outros programas CAD.
+> A smart 2D architectural CAD with the simplicity of a visual editor and the precision of an engineering tool, ready for the construction site and built to work with AI.
 
-### Princípios
+Trazo should serve both ends of the spectrum on the same project and file:
 
-1. **Um só motor e um só arquivo.** Iniciante e profissional trabalham no mesmo projeto, com as mesmas medidas reais. O que muda é quanto controle a interface mostra, não a qualidade da planta. Uma porta criada no modo simples continua sendo uma porta editável pelo profissional.
-2. **Inteligência arquitetônica antes de quantidade de comandos.** Mover uma parede e ver os dois cômodos, as portas e as cotas se ajustarem vale mais do que reproduzir centenas de comandos genéricos.
-3. **Pensado para a obra.** A planta tem que sair pronta para o canteiro: medidas em cm, vãos cotados, alvenaria modulada, quantitativos e impressão em escala.
-4. **Evoluir, não reescrever.** A separação atual entre domínio, interface, arquivos, exportação e MCP é boa. Cada módulo evolui quando uma entrega exigir.
-5. **Facilidade como valor.** Isso inclui a conexão com IA. A proteção deve chegar sem acrescentar passos para quem usa (ver [seção 6](#6-segurança-do-mcp)).
+- **Newcomers** draw a whole house without learning coordinates, layers or CAD commands.
+- **Professionals** produce detailed technical drawings: exact geometry, dimensions, layers, scales, quantities and exchange with other CAD programs.
 
-## 2. Onde o Trazo está hoje
+### Principles
 
-Já entregue e documentado no [README](README.md):
+1. **Architecture before command count.** Moving a wall and seeing rooms, doors and dimensions follow is worth more than a hundred generic commands.
+2. **Built for the construction site.** Drawings must leave Trazo ready for the site: dimensions in centimetres, located openings, modular masonry, quantities, printing to scale.
+3. **Screen equals paper.** What you see is what you export; rules shared by both live in the domain.
+4. **AI as a collaborator.** Anything a person can do, an assistant can do through MCP, visibly, reversibly and with the person in control.
+5. **Ease is a feature.** Every new capability, including safety measures, should add as few steps as possible.
 
-| Área | Recursos |
+## Where Trazo stands
+
+| Area | Status |
 | --- | --- |
-| Desenho | Terreno, paredes e cômodos com medidas reais; grade de 0,25 m; encaixe em pontas de parede; modo orto; edição numérica; arraste; setas para mover |
-| Aberturas | Porta de giro, porta vai-e-vem, janela e vão livre; lado de abertura e dobradiça invertíveis; largura, altura e peitoril editáveis |
-| Alvenaria | Tijolos e blocos prontos ou personalizados (2 dimensões, junta e reboco); espessura real da parede; modulação em meio bloco; 1ª fiada por parede; estimativa de blocos descontando os vãos |
-| Interiores | 11 tipos de objeto (bancadas, pias, fogões, churrasqueira, geladeira, lavatórios, bacias, boxes, mesas, prateleiras), encostados na face da parede |
-| Documentação | Cotas automáticas em cm (cadeias em cima e à esquerda); etiquetas "P1 80/210" e "J1 120/100"; quadro de áreas, de esquadrias e de alvenaria; taxa de ocupação; modo medir (régua) |
-| Arquivos | Projeto JSON com gravação atômica e `.bak`; recuperação após falha; preferências salvas; exportação em PDF vetorial e PNG |
-| IA | Servidor MCP com 21 ferramentas (HTTP local e stdio), túnel público opcional, cada ação da IA vira um passo de desfazer |
-| Qualidade | 115 testes de unidade; `cargo fmt` e `clippy` limpos |
+| Drawing engine (#01–#10) | ✅ Complete: `f64` geometry, free-shape rooms, snaps, typed input, CAD modify tools, constraints, multiple selection |
+| Architecture (#11–#25) | ✅ Complete: junctions, shared walls, multilayer walls, door and window types, stairs, floors, library, finishes, circulation checks |
+| Documentation (#26–#37) | ✅ Complete: associative dimensions, layers, sheets, scales, title blocks, hatches, schedules, sections, sheet sets, ABNT styles |
+| Exchange (#38–#45) | 🟡 SVG and CSV export only; no DXF or DWG yet |
+| AI (#46–#52) | 🟡 35 MCP tools, real-time sync, tunnel token; it covers only part of the model, and there is no approval or read-only mode |
+| Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
+| Release (#58–#64) | 🟡 CI, licence, property tests and file migrations done; no binaries, installer or crash reports |
+| Experience (#65–#67) | ⬜ Not started |
 
-O ponto mais valioso a preservar: o Trazo sabe o que é uma parede, uma porta e um cômodo. Isso o aproxima de um editor arquitetônico paramétrico, e não de um CAD genérico de linhas.
+## How to read this roadmap
 
-## 3. Lacunas estruturais (conferidas no código)
-
-| Área | Hoje | O que precisa evoluir |
-| --- | --- | --- |
-| Precisão | Coordenadas `f32` ([geometry.rs](src/domain/geometry.rs)) | Núcleo geométrico em `f64` com tolerâncias controladas |
-| Geometria | Paredes são segmentos; cômodos nascem como retângulos de dois cantos (`add_room`); terreno é um retângulo `min`/`max` | Polígonos livres, arcos, cômodos em L/U, terrenos irregulares |
-| Paredes compartilhadas | `resize_room_dimensions` recusa redimensionar cômodo com parede compartilhada ([model.rs](src/domain/model.rs)) | Mover a parede entre dois cômodos e ajustar os dois |
-| Encontros de parede | Pontas quadradas estendidas em meia espessura: cantos ortogonais ficam corretos, mas não há junção topológica nem ângulos quaisquer | Encontros L, T e X calculados, em qualquer ângulo e com espessuras diferentes |
-| Encaixe | Grade, pontas de parede, modulação; faces de parede só no modo medir ([interaction.rs](src/app/interaction.rs)) | Ponto médio, interseção, perpendicular, tangente, centro, prolongamento |
-| Entrada de medidas | Números no painel depois de desenhar; terreno com largura × comprimento | Digitar distância, ângulo e coordenadas durante o desenho |
-| Edição | Mover, arrastar, girar objetos 90° | Copiar, colar, espelhar, girar, offset, aparar, estender; seleção múltipla |
-| Cotas | Calculadas a cada quadro a partir das paredes ([annotations.rs](src/domain/annotations.rs)); só cadeias externas | Cotas como entidades do projeto: associativas, internas, de vãos, editáveis |
-| Organização | Navegador por tipo de elemento | Camadas, grupos, blocos e filtros |
-| Exportação | SVG a 100 px/m, reduzido para caber em 5000 px, convertido em PDF/PNG ([export.rs](src/io/export.rs)) | Pranchas (A4–A0), escalas exatas (1:50, 1:100…), carimbo |
-| Intercâmbio | Só o JSON do Trazo | DXF (e depois DWG), SVG editável, CSV |
-| Histórico | Guarda cópias inteiras do projeto, com limite ([history.rs](src/domain/history.rs)) | Transações ou comandos reversíveis quando os projetos crescerem |
-| Pavimentos | Um único plano, um pé-direito por projeto | Pavimentos, níveis, desníveis, escadas |
-| Distribuição | Sem CI, sem licença, sem instalador | CI, licença, instalador e atualização |
-
-## 4. Roadmap por fases
-
-Prioridades: **P0** fundamental, **P1** importante, **P2** evolução. Os números (#) remetem ao [backlog](#5-backlog-completo).
-
-### Fase 1 — Desenhar qualquer planta residencial
-
-Base geométrica, edição natural e precisão CAD.
-
-- Entregas: #01, #02, #03, #04, #05, #09, #10, #11, #12, #13
-- **Pronto quando:** dá para desenhar uma casa com um cômodo em L e uma parede inclinada; digitar "3,47" durante o desenho; mover 40 cm a parede entre dois quartos e ver áreas, portas, janelas e cotas se ajustarem sem reconstruir nada; e os testes de geometria cobrirem esses casos.
-
-### Fase 2 — Projeto 2D profissional e planta de obra
-
-Documentação que pode ser impressa, medida com escalímetro e enviada a outros profissionais.
-
-- Entregas: #07, #26, #27, #28, #29, #30, #31, #32, #34, #37, #38, #40, #41, #42, #53, #55, #57
-- **Pronto quando:** a planta da casa sai em A3 a 1:50 com carimbo, cotas, vãos cotados e quadro de esquadrias, e confere com o escalímetro no papel; e o DXF abre no AutoCAD/QCAD com camadas e unidades corretas.
-
-### Fase 3 — Inteligência arquitetônica e quantitativos
-
-Menos trabalho repetitivo e informações mais confiáveis tiradas do próprio desenho.
-
-- Entregas: #06, #08, #14–#23, #33, #39, #43, #54, #56, #65, #66
-- **Pronto quando:** um sobrado de dois pavimentos com escada, terreno irregular e recuos pode ser desenhado; a paginação da alvenaria e o quantitativo de obra (blocos, vergas, argamassa) saem direto da planta; e uma pessoa sem experiência completa o fluxo "Minha primeira casa" sem ajuda.
-
-### Fase 4 — Assistência inteligente
-
-IA para analisar, propor e revisar, com as decisões sempre nas mãos de quem projeta.
-
-- Entregas: #24, #25, #35, #36, #44, #45, #48–#52, #67
-
-### Em paralelo, desde a Fase 1
-
-- **Segurança do MCP:** #46, #47 (ver [seção 6](#6-segurança-do-mcp)).
-- **Qualidade e distribuição:** #58–#64. CI e licença (#58, #59) já no início.
-
-## 5. Backlog completo
-
-### A. Motor de desenho e precisão CAD
-
-| # | Funcionalidade | Prioridade | Fase | Hoje |
-| --- | --- | --- | --- | --- |
-| 01 | Coordenadas e cálculos em `f64`, com tolerâncias controladas | P0 | 1 | Feito |
-| 02 | Cômodos poligonais (L, U, irregulares), desenhados clicando nos cantos | P0 | 1 | Feito |
-| 03 | Encaixe avançado: ponto médio, interseção, perpendicular, tangente, centro, prolongamento | P0 | 1 | Feito |
-| 04 | Digitar distância, ângulo, coordenadas e medidas durante o desenho | P0 | 1 | Feito |
-| 05 | Copiar, colar, espelhar, girar, deslocar (offset), aparar e estender | P0 | 1 | Feito |
-| 06 | Dividir, unir, alinhar, distribuir, agrupar e repetir objetos | P1 | 3 | Feito |
-| 07 | Entidades CAD genéricas: linha, polilinha, arco, círculo, retângulo, spline | P1 | 2 | Feito |
-| 08 | Restrições: paralelismo, perpendicularidade, coincidência, distâncias fixas | P1 | 3 | Feito |
-| 09 | Seleção múltipla, por janela, por cruzamento e por filtros | P1 | 1 | Feito |
-| 10 | Edição de vértices e manipulação direta da geometria | P1 | 1 | Feito |
-
-O #10 foi antecipado para a Fase 1 porque cômodos poligonais (#02) só ficam úteis se os vértices puderem ser editados.
-
-### B. Ferramentas arquitetônicas inteligentes
-
-| # | Funcionalidade | Prioridade | Fase | Hoje |
-| --- | --- | --- | --- | --- |
-| 11 | Encontros automáticos de paredes em L, T e X, em qualquer ângulo | P0 | 1 | Feito |
-| 12 | Mover paredes compartilhadas atualizando os cômodos, aberturas e cotas ligados | P0 | 1 | Feito |
-| 13 | Paredes referenciadas pela face interna, externa ou pelo eixo | P0 | 1 | Feito |
-| 14 | Ambientes detectados automaticamente pelo fechamento das paredes | P1 | 3 | Feito |
-| 15 | Terrenos irregulares, divisas inclinadas e desmembramento de lotes | P1 | 3 | Feito |
-| 16 | Recuos, afastamentos e limites de implantação configuráveis | P1 | 3 | Feito |
-| 17 | Área útil, construída, de projeção e do terreno calculadas separadamente | P1 | 3 | Feito |
-| 18 | Paredes multicamadas: alvenaria, revestimento, isolamento, acabamento | P1 | 3 | Feito |
-| 19 | Portas de correr, pivotantes, duplas, sanfonadas e outras tipologias | P1 | 3 | Feito |
-| 20 | Tipos de janela (correr, basculante, maxim-ar…) com representação técnica | P1 | 3 | Feito |
-| 21 | Escadas, rampas, patamares, guarda-corpos e desníveis | P1 | 3 | Feito |
-| 22 | Vários pavimentos, com níveis, pé-direito e referência do pavimento de baixo | P1 | 3 | Feito |
-| 23 | Biblioteca de móveis, equipamentos e símbolos personalizáveis | P1 | 3 | Feito |
-| 24 | Revestimentos, acabamentos, rodapés e especificações por cômodo | P2 | 4 | Feito |
-| 25 | Verificação de circulação, interferências e área de uso do mobiliário | P2 | 4 | Feito |
-
-O #12 é o mais importante deste grupo. Dois quartos separados por uma parede: o usuário arrasta a parede 40 cm e o Trazo ajusta as áreas dos dois, mantém portas e janelas e atualiza as cotas.
-
-### C. Documentação e apresentação
-
-| # | Funcionalidade | Prioridade | Fase | Hoje |
-| --- | --- | --- | --- | --- |
-| 26 | Cotas associativas: internas, externas, alinhadas, angulares, editáveis | P0 | 2 | Feito |
-| 27 | Camadas com cor, espessura, tipo de linha, visibilidade e bloqueio | P0 | 2 | Feito |
-| 28 | Pranchas A4, A3, A2, A1, A0 e tamanhos personalizados | P0 | 2 | Feito |
-| 29 | Impressão em escala exata: 1:25, 1:50, 1:75, 1:100, 1:200 | P0 | 2 | Feito |
-| 30 | Carimbo editável, legenda, identificação do projeto e paginação | P1 | 2 | Feito |
-| 31 | Textos, notas, chamadas, linhas de chamada e símbolos | P1 | 2 | Feito |
-| 32 | Hachuras e padrões gráficos por material | P1 | 2 | Feito |
-| 33 | Modelos de planta baixa, implantação e detalhamento | P1 | 3 | Feito |
-| 34 | Quadros de áreas, esquadrias, ambientes e materiais configuráveis | P1 | 2 | Feito |
-| 35 | Cortes, fachadas, detalhes e referências entre desenhos | P2 | 4 | Feito |
-| 36 | Conjunto de pranchas com revisões e controle de documentação | P2 | 4 | Feito |
-| 37 | Estilos de documentação baseados nas normas brasileiras | P1 | 2 | Feito |
-
-As cotas automáticas e os quadros de áreas e de esquadrias já existem: a proposta é ampliá-los, não recriá-los. Para o #37, a referência é a **ABNT NBR 6492:2021** (documentação técnica de projetos arquitetônicos e urbanísticos). O Trazo pode trazer padrões prontos, mas deve deixar claro que conferir as exigências aplicáveis continua sendo responsabilidade de quem projeta.
-
-### D. Compatibilidade com o mercado
-
-| # | Funcionalidade | Prioridade | Fase | Hoje |
-| --- | --- | --- | --- | --- |
-| 38 | Importar e exportar DXF preservando geometria, camadas e unidades | P0 | 2 | — |
-| 39 | DWG, por biblioteca ou conversor confiável | P1 | 3 | — |
-| 40 | Imagens e PDFs como referência de fundo, com calibração de escala | P1 | 2 | — |
-| 41 | Exportação SVG editável | P1 | 2 | Feito |
-| 42 | Exportação CSV de áreas, esquadrias e quantitativos | P1 | 2 | Feito |
-| 43 | Blocos reutilizáveis com atributos e biblioteca pessoal | P1 | 3 | — |
-| 44 | Referências externas (outros desenhos) | P2 | 4 | — |
-| 45 | Comparação visual entre versões | P2 | 4 | — |
-
-O DXF é o que permite mandar o projeto a outro profissional sem obrigá-lo a instalar o Trazo. O #40 também ajuda iniciantes: muitos começam de um rascunho fotografado.
-
-### E. Inteligência artificial e automação
-
-| # | Funcionalidade | Prioridade | Fase | Hoje |
-| --- | --- | --- | --- | --- |
-| 46 | Modo de aprovação opcional: a IA propõe, a planta mostra a prévia e o usuário confirma | P1 | paralelo | — |
-| 47 | Endereço do túnel protegido por token automático, sem passo extra | P0 | paralelo | Feito |
-| 48 | Comandos em linguagem natural para criar e modificar ambientes | P1 | 4 | Parcial |
-| 49 | Validação automática da planta, com explicação dos problemas | P1 | 4 | — |
-| 50 | Propostas de distribuição de ambientes | P2 | 4 | — |
-| 51 | Histórico separado das ações da IA, com comparação e reversão | P1 | 4 | Parcial |
-| 52 | Assistente que ensina a usar o editor | P1 | 4 | — |
-
-O #48 já funciona hoje por meio de assistentes externos (ChatGPT, Claude) conectados pelo MCP. O #51 é parcial porque cada ação da IA já vira um passo de desfazer, mas ainda não existe um histórico próprio das ações da IA.
-
-### F. Obra e execução (novo)
-
-O objetivo declarado é usar o Trazo no dia a dia da obra. Estes itens vêm do trabalho já feito em alvenaria, cotas e esquadrias.
-
-| # | Funcionalidade | Prioridade | Fase |
-| --- | --- | --- | --- |
-| 53 | Cotas dos vãos: posição e largura de cada porta e janela na parede, e cotas internas de cada cômodo | P0 | 2 |
-| 54 | Planta de 1ª fiada e paginação das paredes: blocos inteiros, meios, cortes, vergas e contravergas | P1 | 3 |
-| 55 | Planta de locação: cotas acumuladas a partir de um ponto de origem no terreno, para marcar a obra no gabarito | P1 | 2 |
-| 56 | Quantitativo de obra: blocos com perda, meio-bloco e canaleta, vergas e contravergas por vão, argamassa de assentamento, reboco, piso e revestimento por cômodo | P1 | 3 |
-| 57 | "Prancha de obra" em um clique: A3 a 1:50 com cotas, vãos, quadro de esquadrias e legenda | P1 | 2 |
-
-### G. Qualidade, distribuição e manutenção (novo)
-
-| # | Funcionalidade | Prioridade | Fase |
-| --- | --- | --- | --- |
-| 58 | CI no GitHub: `cargo fmt --check`, `clippy` e testes a cada push | P0 | paralelo — **Feito** |
-| 59 | Licença explícita no repositório | P0 | paralelo |
-| 60 | Testes de propriedade da geometria (interseções, polígonos, tolerâncias) | P1 | paralelo — **Feito** |
-| 61 | Testes de regressão visual da exportação PDF/PNG | P1 | paralelo |
-| 62 | Desempenho com plantas grandes (centenas de paredes, histórico longo) | P1 | paralelo |
-| 63 | Instalador para Windows, associação de arquivos e atualização automática | P1 | paralelo |
-| 64 | Versão do formato de arquivo com migrações testadas | P1 | paralelo — **Feito** |
-
-### H. Experiência progressiva (novo)
-
-| # | Funcionalidade | Prioridade | Fase |
-| --- | --- | --- | --- |
-| 65 | Níveis de interface Simples, Intermediário e Profissional, no mesmo projeto e no mesmo arquivo | P1 | 3 |
-| 66 | Fluxo guiado "Minha primeira casa": terreno, ambientes desejados, cômodos ajustáveis, aberturas e conferência de medidas | P1 | 3 |
-| 67 | Fluxo "Montar documentação": conjunto de pranchas com quadros, detalhes e escalas, revisado antes de exportar | P2 | 4 |
-
-O nível escolhido não pode ser uma barreira. O iniciante abre uma ferramenta avançada quando precisar, e o profissional continua usando as ações simples.
-
-Exemplo: "Criar quarto 3,00 × 4,00 m".
-
-- **Simples:** digitar as medidas ou arrastar o mouse; o Trazo cria paredes, nome e área.
-- **Profissional:** o mesmo quarto, com referência da parede pela face, cotas associativas e camada definida.
-
-## 6. Segurança do MCP
-
-**Decisão atual:** o MCP prioriza a facilidade de conexão. O endereço local (`127.0.0.1`) não pede autenticação, e isso continua assim.
-
-O ponto que pede atenção é o túnel: enquanto ele está aberto, qualquer pessoa que conheça o endereço pode ler e alterar a planta e gravar arquivos. A proposta protege esse caso sem somar passos para o usuário:
-
-1. **[x] #47 — Token automático no túnel.** Ao abrir o túnel, o Trazo gera um caminho secreto (`https://….trycloudflare.com/mcp/<token>`). O botão "Copiar" já entrega o endereço completo, então o usuário continua só colando um link. Um novo token é gerado a cada vez que o túnel abre.
-2. **Somente leitura**, ligado por um interruptor em *Conectar uma IA*, para quando a IA só deve analisar a planta.
-3. **#46 — Aprovação opcional.** A IA propõe a alteração, a planta mostra a prévia e o usuário confirma. Fica desligado por padrão.
-4. **Registro das ações da IA**, com o nome de cada ferramenta e horário, no painel do projeto (base para o #51).
-
-## 7. Evolução da arquitetura de software
-
-| Componente | Evolução |
+| Field | Meaning |
 | --- | --- |
-| [domain/geometry.rs](src/domain/geometry.rs) | Núcleo geométrico em `f64`: interseções, arcos, polígonos, tolerâncias robustas |
-| [domain/model.rs](src/domain/model.rs) | Separar documento, objetos, relações topológicas (parede ↔ cômodo ↔ abertura), pavimentos e propriedades |
-| [domain/annotations.rs](src/domain/annotations.rs) | Cotas e anotações como entidades persistentes vinculadas à geometria |
-| [domain/masonry.rs](src/domain/masonry.rs) | Base da paginação (#54) e do quantitativo de obra (#56) |
-| [app/interaction.rs](src/app/interaction.rs) | Arquitetura de comandos (desenhar, selecionar, modificar) com entrada numérica e encaixes |
-| [app/canvas.rs](src/app/canvas.rs) e [io/export.rs](src/io/export.rs) | Um único estilo de desenho (camadas, espessuras, hachuras) para a tela e a exportação; pranchas e escalas na saída |
-| [domain/history.rs](src/domain/history.rs) | De cópias inteiras para transações reversíveis quando o tamanho dos projetos pedir |
-| [mcp/](src/mcp/) | Token do túnel, modo somente leitura, aprovação e registro de ações |
+| **#** | Item number. Carried-over items keep their original number; new items start at #68. Use it in commits and pull requests: `feat: import DXF walls (#38)`. |
+| **Priority** | **P0** required for its milestone · **P1** important · **P2** valuable, can slip |
+| **Size** | Rough effort for one developer: **S** ≤ 2 days · **M** ≤ 1 week · **L** ≤ 3 weeks · **XL** more than 3 weeks |
+| **Status** | ⬜ not started · 🟡 partial (the note says what exists) · 🔵 in progress · ✅ done |
 
-## 8. As 10 prioridades absolutas
+When an item ships, mark it ✅ here, add it to the changelog, and remove it from this file at the next update.
 
-| Ordem | Entrega | Itens | Resultado |
-| --- | --- | --- | --- |
-| 1 | Motor geométrico robusto | #01 | Base confiável para todo o resto |
-| 2 | Cômodos de formato livre | #02, #10 | Liberdade arquitetônica |
-| 3 | Paredes conectadas e encontros automáticos | #11, #12, #13 | Editar sem reconstruir ambientes |
-| 4 | Encaixe e entrada de medidas CAD | #03, #04 | Precisão profissional |
-| 5 | Ferramentas de edição CAD | #05, #09 | Produtividade |
-| 6 | Cotas associativas e cotas dos vãos | #26, #53 | Documentação confiável para a obra |
-| 7 | Camadas e estilos gráficos | #27, #32 | Organização técnica |
-| 8 | Pranchas e impressão em escala | #28, #29, #30, #57 | Entrega do projeto |
-| 9 | Importação e exportação DXF | #38 | Integração com outros profissionais |
-| 10 | Experiência guiada para iniciantes | #65, #66 | Diferenciação e acessibilidade |
+## Next up
 
-Em paralelo a tudo isso: token do túnel (#47), CI (#58) e licença (#59).
+The first ten items on the path through M1, M2 and M3, in order. The other items of each milestone fit in around them.
 
-## 9. Fora do escopo por enquanto
+| Order | # | Item | Milestone | Why now |
+| --- | --- | --- | --- | --- |
+| 1 | #77 | Release pipeline with downloadable binaries | M1 | The repository is public and licensed; people need to run Trazo without installing Rust. |
+| 2 | #79 | Crash log and "report a problem" | M1 | Bug reports from real users need logs from day one. |
+| 3 | #63 | Windows installer and file association | M1 | Double-clicking a project should open it in Trazo. |
+| 4 | #81 | Sample projects | M1 | Docs, screenshots, tests and new users all need ready-made plans. |
+| 5 | #38 | DXF import and export | M2 | The biggest blocker for professional use: exchanging drawings with AutoCAD users. |
+| 6 | #70 | Print to scale | M2 | A3 at 1:50 straight to the printer, without going through PDF. |
+| 7 | #40 | Underlay image or PDF with scale calibration | M2 | Start from a photographed sketch or an existing plan. |
+| 8 | #53 | Opening dimension chains | M3 | The first construction-site deliverable, and the one builders use most. |
+| 9 | #56 | Construction quantities | M3 | Turns the drawing into a shopping list. |
+| 10 | #57 | One-click construction set | M3 | Packages #53–#56 into what a site actually uses. |
 
-Para manter o foco em um CAD arquitetônico 2D acessível, ficam para depois:
+## Milestones
 
-- renderização 3D fotorrealista;
-- modelagem BIM completa;
-- cálculo estrutural;
-- projetos avançados de instalações (elétrica, hidráulica);
-- colaboração em nuvem em tempo real.
+### M1: Ready to share
 
-Podem fazer sentido no futuro, mas nenhum deles é necessário para o Trazo ser um editor 2D excelente.
+Make Trazo easy to download, try and report problems with.
 
-## Conclusão
+- **Items:** #77, #63, #79, #81, #80, #78
+- **Done when:** someone without Rust downloads a release from GitHub, installs it, opens a sample project by double-clicking it, and can attach a crash log to a bug report in one click.
 
-A maior distância até um CAD 2D profissional não está no número de ferramentas. Está na capacidade de **representar, modificar, documentar e trocar qualquer planta baixa com precisão e consistência**. A evolução tem dois objetivos:
+### M2: Works with other CAD
 
-- **Iniciante:** criar uma casa inteira sem entender coordenadas, camadas ou comandos CAD.
-- **Profissional:** produzir uma planta técnica detalhada, ajustar elementos conectados, tirar quantitativos e entregar documentação que outros profissionais possam continuar usando.
+Exchange drawings with the rest of the profession and start from existing material.
 
-A simplicidade tem que ser uma vantagem para o iniciante, sem virar limitação para o profissional.
+- **Items:** #38, #70, #40, #43, #39
+- **Done when:** a Trazo plan opens in AutoCAD, QCAD and LibreCAD with layers, units and dimensions intact; a DXF from AutoCAD imports as walls and lines on the right layers; a photographed sketch can be calibrated and traced; and an A3 1:50 print measures correctly with a scale ruler.
+
+### M3: The construction-site set
+
+The differentiator: everything a builder needs comes straight from the plan.
+
+- **Items:** #53, #54, #55, #56, #57, #71
+- **Done when:** from the sample house, one click produces an A3 1:50 set with a dimensioned plan that locates every opening, a first-course plan with lintels, a setting-out plan and a quantity list. The quantities (blocks with waste, half blocks, U-blocks, lintels, mortar, plaster, flooring) must match a manual takeoff within 2 %.
+
+### M4: AI co-pilot
+
+Assistants that can do everything, explain problems and leave the person in control.
+
+- **Items:** #74, #75, #46, #51, #49, #73, #48, #76, #50, #52
+- **Done when:** an assistant draws a two-storey house with stairs, finishes, dimensions and a sheet set **using MCP only**. The person can review and approve each proposed change before it applies, compare and revert any AI action, and see every validation problem explained with a suggested fix.
+
+### M5: Progressive experience
+
+Simple for newcomers, fast for professionals.
+
+- **Items:** #65, #66, #67, #68, #69, #82
+- **Done when:** in a usability test with three people new to CAD, each completes *Minha primeira casa* (my first house) without help in under 15 minutes, while professional mode offers a command line, and the interface is available in English.
+
+### M6: Scale and robustness
+
+Runs in parallel with the other milestones.
+
+- **Items:** #62, #61, #83, #84
+- **Done when:** a project with 500 walls on 5 floors pans at 60 fps with every edit under 50 ms, undo memory stays bounded, and exported PDFs are compared against reference images in CI.
+
+### Exploratory
+
+Worth prototyping after M5, when the core is solid: #85, #86, #87, #72, #44, #45.
+
+## Backlog
+
+### A. Exchange and output
+
+| # | Item | Priority | Size | Milestone | Status |
+| --- | --- | --- | --- | --- | --- |
+| 38 | DXF import and export: walls, openings, fixtures, drawings, dimensions, texts and hatches, with layers, colours and units | P0 | L | M2 | ⬜ |
+| 70 | Print to a printer at exact scale, with the system print dialog and sheet preview | P0 | M | M2 | ⬜ |
+| 40 | Image and PDF underlay with two-point scale calibration, opacity and lock | P1 | M | M2 | ⬜ The faded underlay of the floor below exists (#22); external images do not |
+| 43 | Reusable blocks with attributes and a personal library shared between projects | P1 | M | M2 | 🟡 The library (#23) customises symbols; there are no user blocks with attributes yet |
+| 39 | DWG, through a reliable library or converter | P2 | L | M2 | ⬜ |
+| 44 | External references (other drawings shown and updated live) | P2 | L | Exploratory | ⬜ |
+| 45 | Visual comparison between two versions of a project | P2 | M | Exploratory | ⬜ |
+
+### B. Construction site
+
+| # | Item | Priority | Size | Milestone | Status |
+| --- | --- | --- | --- | --- | --- |
+| 53 | Automatic dimension chains locating each door and window along its wall, plus internal room dimensions | P0 | M | M3 | 🟡 Associative dimensions can anchor to openings and internal room dimensions can be generated; no automatic opening chains |
+| 54 | First-course plan and wall elevations with block paging: whole, half and cut blocks, lintels and sills | P1 | L | M3 | 🟡 Properties show each wall's first course; there is no drawing |
+| 55 | Setting-out plan (*locação*): cumulative dimensions from an origin on the lot, for marking out the building | P1 | M | M3 | ⬜ |
+| 56 | Construction quantities: blocks with waste, half blocks and U-blocks, lintels per opening, laying mortar, plaster, flooring and wall finishes per room | P0 | M | M3 | 🟡 Block estimate, wall area and finish quantities exist separately; no consolidated takeoff |
+| 57 | One-click construction set: A3 at 1:50 with dimensions, openings, schedules, first course, setting-out and legend | P0 | M | M3 | 🟡 Sheets, scales, templates and title blocks exist |
+| 71 | Roof plan (*planta de cobertura*): roof planes, slopes, ridges, gutters and downpipes | P1 | L | M3 | ⬜ |
+| 72 | Electrical and plumbing points (outlets, switches, lights, water points) with legend and counts; layout only, not engineering design | P2 | M | Exploratory | ⬜ The library has some technical symbols |
+
+### C. AI assistants
+
+| # | Item | Priority | Size | Milestone | Status |
+| --- | --- | --- | --- | --- | --- |
+| 74 | MCP covers the whole model: floors, stairs and ramps, finishes, layers, dimensions, notes, hatches, library items, sheets and views | P0 | L | M4 | 🟡 35 tools cover lot, walls, rooms, openings, 11 fixture kinds, drawings and CAD editing |
+| 75 | Read-only switch in *Conectar uma IA*, for assistants that should only analyse | P1 | S | M4 | ⬜ |
+| 46 | Approval mode: the assistant proposes, the plan shows a preview, the person accepts or rejects | P1 | M | M4 | ⬜ |
+| 51 | AI history with a diff per action, comparison and selective revert | P1 | M | M4 | 🟡 Live highlight, action log and revisions exist |
+| 49 | Plan validation with explanations and one-click fixes: unclosed rooms, overlaps, rooms without doors, unreachable spaces | P1 | M | M4 | 🟡 The circulation check (#25) covers clearances and door swings |
+| 73 | Building-code checks: minimum room areas and widths, lighting and ventilation ratios, door widths; rule sets configurable per municipality | P1 | L | M4 | ⬜ |
+| 48 | Built-in assistant panel: natural-language commands inside Trazo, using the user's own AI provider | P1 | L | M4 | 🟡 Works today through external assistants over MCP |
+| 76 | MCP prompts (for example "draw a house from this brief") and richer resources: sheet images, schedules | P2 | S | M4 | ⬜ |
+| 50 | Room layout proposals from a brief (rooms, areas, adjacencies), shown as alternatives | P2 | L | M4 | ⬜ |
+| 52 | An assistant that teaches the editor: context tips and guided exercises | P2 | M | M4 | ⬜ |
+
+### D. Experience
+
+| # | Item | Priority | Size | Milestone | Status |
+| --- | --- | --- | --- | --- | --- |
+| 65 | Simple, Intermediate and Professional interface levels on the same project and file | P1 | L | M5 | ⬜ |
+| 66 | Guided flow *Minha primeira casa*: lot, desired rooms, adjustable layout, openings and a final check | P1 | L | M5 | ⬜ |
+| 67 | Guided documentation flow: build and review a sheet set before exporting | P2 | M | M5 | ⬜ |
+| 68 | English interface (internationalisation), keeping Brazilian Portuguese as the default | P1 | L | M5 | ⬜ |
+| 69 | Command line and command palette with typed commands, aliases and recent commands | P1 | M | M5 | ⬜ |
+| 82 | Dark theme, interface scale and full keyboard navigation | P2 | M | M5 | ⬜ |
+
+A chosen level must never be a wall. A newcomer can open an advanced tool when needed, and a professional keeps the simple actions. For example, *create a 3.00 × 4.00 m bedroom*:
+
+- **Simple:** type the size or drag; Trazo creates the walls, the name and the area.
+- **Professional:** the same room, with walls referenced by face, associative dimensions and an assigned layer.
+
+### E. Release and quality
+
+| # | Item | Priority | Size | Milestone | Status |
+| --- | --- | --- | --- | --- | --- |
+| 77 | Release pipeline: tagged GitHub Releases with Windows, Linux and macOS binaries, checksums and changelog notes | P0 | M | M1 | ⬜ |
+| 63 | Windows installer, `.json` project association and update check | P0 | M | M1 | ⬜ |
+| 79 | Crash log and *Relatar problema* (report a problem): panic hook, rotating log file, pre-filled GitHub issue | P0 | S | M1 | ⬜ |
+| 81 | Sample projects in `examples/` (single-storey house, two-storey house, apartment), used by docs and tests | P1 | S | M1 | ⬜ |
+| 80 | Documented project file format (JSON Schema) for third-party tools | P1 | M | M1 | ⬜ |
+| 78 | Signed Windows binaries | P2 | S | M1 | ⬜ |
+| 62 | Performance with large plans: spatial index for picking, cached rendering, benchmarks in CI | P1 | L | M6 | ⬜ |
+| 61 | Visual regression tests for PDF, PNG and SVG export | P1 | M | M6 | ⬜ |
+| 84 | Transaction-based undo history (diffs instead of full project copies) | P2 | L | M6 | ⬜ |
+| 83 | Undo history panel: list of steps, jump to any step | P2 | S | M6 | ⬜ |
+
+### F. Exploratory
+
+| # | Item | Priority | Size | Status |
+| --- | --- | --- | --- | --- |
+| 85 | 3D massing preview: extruded walls, openings and slabs, orbit view | P2 | XL | ⬜ |
+| 86 | IFC export of walls, spaces, openings and floors, for BIM workflows | P2 | L | ⬜ |
+| 87 | Cost estimate from the quantities, with editable price tables (SINAPI import) | P2 | M | ⬜ |
+
+## Definition of done
+
+An item is done when:
+
+- it works on screen **and** in every export it touches (screen equals paper);
+- it has tests, including a regression test for each bug fixed along the way;
+- assistants can use it through MCP, when it changes the model;
+- the [user guide](docs/user-guide.md), the [MCP guide](docs/mcp.md) and the [changelog](CHANGELOG.md) are updated;
+- `cargo fmt`, `cargo clippy -- -D warnings` and `cargo test` pass.
+
+## Out of scope
+
+To stay an excellent, approachable 2D architectural editor, these are not planned:
+
+- photorealistic 3D rendering (a simple massing view is exploratory, #85);
+- full BIM authoring (IFC export is exploratory, #86);
+- structural calculation;
+- electrical and plumbing engineering design (points layout is #72);
+- real-time cloud collaboration between people (AI collaboration is in scope).
+
+Want to suggest a change to the roadmap? Open a [feature request](https://github.com/igors93/Trazo/issues/new?template=feature_request.yml) and explain the problem it solves.
