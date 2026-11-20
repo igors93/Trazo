@@ -47,6 +47,7 @@ enum DocDialog {
     Views,
     SheetSet,
     Circulation,
+    Floors,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

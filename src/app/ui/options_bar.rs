@@ -102,6 +102,31 @@ impl FloorPlanApp {
             );
             divider(ui);
 
+            if self.project.floors.levels.len() > 1 {
+                let mut switch_to = None;
+                let active_id = self.project.floors.active_floor_id;
+                for level in &self.project.floors.levels {
+                    if toggle_pill(
+                        ui,
+                        &level.name,
+                        Some(level.id) == active_id,
+                        &level.label_with_elevation(),
+                    )
+                    .clicked()
+                    {
+                        switch_to = Some(level.id);
+                    }
+                }
+                if let Some(id) = switch_to {
+                    let prev = self.project.clone();
+                    if self.project.switch_floor(id).is_ok() {
+                        self.selection = None;
+                        self.record_change(prev);
+                    }
+                }
+                divider(ui);
+            }
+
             match tool {
                 Tool::Terrain => self.terrain_options(ui),
                 Tool::Wall | Tool::Room => self.masonry_options(ui),

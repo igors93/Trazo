@@ -501,6 +501,8 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         }
     }
 
+    paint_floor_underlay(painter, view, project);
+
     if project.category_visible(crate::domain::layers::LayerCategory::Rooms) {
         for room in &project.rooms {
             let selected = marks.selected(Selection::Room(room.id));
@@ -950,6 +952,32 @@ fn paint_circulations(painter: &Painter, view: ViewTransform, project: &Project)
                 theme::strong(10.0),
                 theme::TEXT,
             );
+        }
+    }
+}
+
+/// Paints the floor directly below as a translucent architectural underlay reference.
+fn paint_floor_underlay(painter: &Painter, view: ViewTransform, project: &Project) {
+    let Some(underlay) = project.underlay_floor() else {
+        return;
+    };
+    let ghost_wall = Color32::from_rgba_unmultiplied(110, 140, 175, 78);
+    let ghost_line = Stroke::new(1.1, Color32::from_rgba_unmultiplied(100, 130, 165, 115));
+    for wall in &underlay.data.walls {
+        let a = view.to_screen(wall.start);
+        let b = view.to_screen(wall.end);
+        let w = wall_screen_width(view.scale, wall.thickness());
+        wall_run(painter, a, b, w, ghost_wall);
+        painter.extend(Shape::dashed_line(&[a, b], ghost_line, 6.0, 4.0));
+    }
+    for elem in &underlay.data.circulations {
+        let geom = elem.plan_geometry();
+        for poly in &geom.polygons {
+            let mut pts: Vec<Pos2> = poly.iter().map(|p| view.to_screen(*p)).collect();
+            if let Some(first) = pts.first().copied() {
+                pts.push(first);
+                painter.extend(Shape::dashed_line(&pts, ghost_line, 5.0, 4.0));
+            }
         }
     }
 }

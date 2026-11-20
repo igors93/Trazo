@@ -113,6 +113,13 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub circulations: Vec<super::circulation::CirculationElement>,
 
+    /// Multi-storey building floor levels with elevations, ceiling heights and underlay.
+    #[serde(
+        default,
+        skip_serializing_if = "super::floors::ProjectFloors::is_empty"
+    )]
+    pub floors: super::floors::ProjectFloors,
+
     next_id: u64,
 }
 
@@ -169,6 +176,8 @@ impl Default for Project {
             constraints: Vec::new(),
 
             circulations: Vec::new(),
+
+            floors: super::floors::ProjectFloors::default(),
 
             next_id: 1,
         }

@@ -6,6 +6,7 @@ mod connect;
 mod constraints;
 mod dialogs;
 mod dimensions;
+mod floors;
 mod header;
 pub(super) mod icons;
 pub(in crate::app) use icons::Glyph;
@@ -109,5 +110,6 @@ impl FloorPlanApp {
         self.views_dialog(&context);
         self.sheet_set_dialog(&context);
         self.circulation_dialog(&context);
+        self.floors_dialog(&context);
     }
 }

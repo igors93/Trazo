@@ -211,6 +211,20 @@ impl FloorPlanApp {
             {
                 self.active_doc_dialog = super::super::DocDialog::Circulation;
             }
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::Room,
+                    "Pavimentos",
+                    self.active_doc_dialog == super::super::DocDialog::Floors,
+                    false,
+                ),
+                "Gerenciar pavimentos (subsolo, térreo, superior), níveis, pé-direito e underlay",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Floors;
+            }
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Aberturas", |ui| {

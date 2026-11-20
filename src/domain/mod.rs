@@ -7,6 +7,7 @@ pub mod doc_style;
 pub mod drawing;
 pub mod element;
 pub mod fixtures;
+pub mod floors;
 pub mod geometry;
 pub mod hatch;
 pub mod history;

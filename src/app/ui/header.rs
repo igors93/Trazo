@@ -314,6 +314,10 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::Circulation;
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Room), "Pavimentos e níveis...", "").clicked() {
+            self.active_doc_dialog = super::super::DocDialog::Floors;
+            ui.close();
+        }
     }
 
     pub(super) fn osnap_menu(&mut self, ui: &mut Ui) {
