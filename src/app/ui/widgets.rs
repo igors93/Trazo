@@ -11,7 +11,7 @@ use eframe::egui::{
 use super::icons::{self, Icon};
 use crate::app::theme::{self, *};
 
-pub const MENU_WIDTH: f32 = 252.0;
+pub const MENU_WIDTH: f32 = 272.0;
 const RIBBON_ROW: f32 = 54.0;
 
 /// The tooltip shows whether or not the widget is enabled.
@@ -284,20 +284,40 @@ fn menu_row(
         ),
         enabled,
     );
-    painter.text(
-        Pos2::new(rect.left() + 34.0, rect.center().y),
-        Align2::LEFT_CENTER,
-        label,
-        regular(13.0),
-        if enabled { TEXT } else { FAINT },
-    );
-    if !shortcut.is_empty() {
-        painter.text(
-            Pos2::new(rect.right() - 10.0, rect.center().y),
-            Align2::RIGHT_CENTER,
-            shortcut,
+    let label_color = if enabled { TEXT } else { FAINT };
+    let shortcut_galley = (!shortcut.is_empty()).then(|| {
+        painter.layout_no_wrap(
+            shortcut.to_owned(),
             regular(11.5),
             if enabled { MUTED } else { FAINT },
+        )
+    });
+    let label_right = match &shortcut_galley {
+        Some(galley) => (rect.right() - 10.0 - galley.size().x - 10.0).max(rect.left() + 34.0),
+        None => rect.right() - 24.0,
+    };
+    let label_clip = Rect::from_min_max(
+        Pos2::new(rect.left() + 34.0, rect.top()),
+        Pos2::new(label_right, rect.bottom()),
+    );
+    let label_galley = painter.layout_no_wrap(label.to_owned(), regular(13.0), label_color);
+    painter.with_clip_rect(label_clip).galley(
+        Pos2::new(
+            rect.left() + 34.0,
+            rect.center().y - label_galley.size().y / 2.0,
+        ),
+        label_galley,
+        label_color,
+    );
+    if let Some(galley) = shortcut_galley {
+        let color = if enabled { MUTED } else { FAINT };
+        painter.galley(
+            Pos2::new(
+                rect.right() - 10.0 - galley.size().x,
+                rect.center().y - galley.size().y / 2.0,
+            ),
+            galley,
+            color,
         );
     }
     response

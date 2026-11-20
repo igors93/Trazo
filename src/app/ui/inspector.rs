@@ -661,7 +661,7 @@ impl FloorPlanApp {
         let (icon, title, subtitle) = match opening.kind {
             OpeningKind::Door => (Icon::Door, "Porta", opening.effective_door_type().label()),
             OpeningKind::Gate => (
-                Icon::Door,
+                Icon::Gate,
                 "Portão",
                 opening.effective_door_type().short_label(),
             ),

@@ -23,10 +23,23 @@ pub enum Icon {
     Redo,
     New,
     Open,
+    Import,
     Save,
     Export,
     ExportImage,
     ExportPdf,
+    Table,
+    Layers,
+    Floors,
+    Stairs,
+    Gate,
+    TextNote,
+    SectionView,
+    CirculationCheck,
+    Bolt,
+    Eye,
+    EyeOff,
+    Update,
     ZoomIn,
     ZoomOut,
     ZoomFit,
@@ -590,6 +603,143 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
             );
             pen.accent_line(&[(18.5, 2.5), (18.5, 7.5)]);
             pen.accent_line(&[(16.0, 5.0), (21.0, 5.0)]);
+        }
+        Icon::Import => {
+            // Tray with downward arrow entering from above.
+            pen.polyline(
+                &[(4.5, 13.5), (4.5, 19.5), (19.5, 19.5), (19.5, 13.5)],
+                ink_s,
+            );
+            pen.accent_line(&[(12.0, 4.0), (12.0, 15.0)]);
+            pen.accent_line(&[(8.0, 11.0), (12.0, 15.0), (16.0, 11.0)]);
+        }
+        Icon::Table => {
+            // Technical schedule / spreadsheet grid with accented header band.
+            pen.fill(&[(3.5, 4.5), (20.5, 4.5), (20.5, 9.5), (3.5, 9.5)], soft);
+            pen.rect(3.5, 4.5, 20.5, 19.5, ink_s);
+            pen.accent_line(&[(3.5, 9.5), (20.5, 9.5)]);
+            pen.polyline(&[(3.5, 14.5), (20.5, 14.5)], thin);
+            pen.polyline(&[(9.5, 9.5), (9.5, 19.5)], thin);
+            pen.polyline(&[(15.0, 9.5), (15.0, 19.5)], thin);
+        }
+        Icon::Layers => {
+            // Three stacked isometric CAD layer sheets.
+            let top = [(12.0, 3.5), (21.0, 8.0), (12.0, 12.5), (3.0, 8.0)];
+            pen.fill(&top, soft);
+            pen.closed(&top, acc_s);
+            pen.polyline(&[(3.0, 12.5), (12.0, 17.0), (21.0, 12.5)], ink_s);
+            pen.polyline(&[(3.0, 16.5), (12.0, 21.0), (21.0, 16.5)], ink_s);
+        }
+        Icon::Floors => {
+            // Multi-storey building levels with highlighted floor slab.
+            pen.fill(
+                &[(4.0, 10.5), (20.0, 10.5), (20.0, 13.5), (4.0, 13.5)],
+                soft,
+            );
+            pen.polyline(&[(4.0, 6.0), (20.0, 6.0)], ink_s);
+            pen.accent_line(&[(4.0, 12.0), (20.0, 12.0)]);
+            pen.polyline(&[(4.0, 18.0), (20.0, 18.0)], ink_s);
+            pen.polyline(&[(6.0, 6.0), (6.0, 18.0)], thin);
+            pen.polyline(&[(18.0, 6.0), (18.0, 18.0)], thin);
+        }
+        Icon::Stairs => {
+            // Stepped stair flight with upward direction arrow.
+            pen.fill(
+                &[
+                    (4.0, 19.5),
+                    (20.0, 19.5),
+                    (20.0, 6.5),
+                    (15.5, 6.5),
+                    (15.5, 11.0),
+                    (11.0, 11.0),
+                    (11.0, 15.5),
+                    (4.0, 15.5),
+                ],
+                soft,
+            );
+            pen.polyline(
+                &[
+                    (4.0, 19.5),
+                    (4.0, 15.5),
+                    (11.0, 15.5),
+                    (11.0, 11.0),
+                    (15.5, 11.0),
+                    (15.5, 6.5),
+                    (20.0, 6.5),
+                    (20.0, 19.5),
+                    (4.0, 19.5),
+                ],
+                ink_s,
+            );
+            pen.accent_line(&[(4.5, 11.0), (11.5, 4.0)]);
+            pen.accent_line(&[(7.8, 4.0), (11.5, 4.0), (11.5, 7.7)]);
+        }
+        Icon::Gate => {
+            // Two masonry pillars with a sliding entrance gate panel and track.
+            pen.fill(&[(2.5, 7.5), (5.5, 7.5), (5.5, 19.0), (2.5, 19.0)], ink);
+            pen.fill(&[(18.5, 7.5), (21.5, 7.5), (21.5, 19.0), (18.5, 19.0)], ink);
+            pen.fill(&[(6.0, 9.5), (16.5, 9.5), (16.5, 17.5), (6.0, 17.5)], soft);
+            pen.rect(6.0, 9.5, 16.5, 17.5, acc_s);
+            for x in [9.5_f32, 13.0] {
+                pen.polyline(&[(x, 9.5), (x, 17.5)], thin);
+            }
+            pen.dashed(&[(5.5, 19.0), (18.5, 19.0)], 2.0, 1.5, thin);
+        }
+        Icon::TextNote => {
+            // Typographic 'T' beside clean note lines.
+            pen.accent_line(&[(4.0, 6.0), (13.0, 6.0)]);
+            pen.accent_line(&[(8.5, 6.0), (8.5, 18.0)]);
+            pen.polyline(&[(6.5, 18.0), (10.5, 18.0)], acc_s);
+            pen.polyline(&[(14.5, 10.5), (20.5, 10.5)], ink_s);
+            pen.polyline(&[(14.5, 14.0), (20.5, 14.0)], ink_s);
+            pen.polyline(&[(14.5, 17.5), (18.5, 17.5)], thin);
+        }
+        Icon::SectionView => {
+            // Architectural cut line with section view arrows.
+            pen.dashed(&[(3.0, 12.0), (21.0, 12.0)], 3.0, 2.0, acc_s);
+            pen.polyline(&[(5.5, 12.0), (5.5, 5.5)], ink_s);
+            pen.polyline(&[(3.0, 8.0), (5.5, 5.5), (8.0, 8.0)], ink_s);
+            pen.polyline(&[(18.5, 12.0), (18.5, 5.5)], ink_s);
+            pen.polyline(&[(16.0, 8.0), (18.5, 5.5), (21.0, 8.0)], ink_s);
+            pen.fill(
+                &[(7.0, 14.5), (17.0, 14.5), (17.0, 19.5), (7.0, 19.5)],
+                soft,
+            );
+            pen.rect(7.0, 14.5, 17.0, 19.5, thin);
+        }
+        Icon::CirculationCheck => {
+            // Clearance circle with checkmark inside.
+            pen.circle(12.0, 12.0, 8.5, ink_s);
+            pen.accent_line(&[(8.0, 12.5), (11.0, 15.5), (16.5, 9.0)]);
+        }
+        Icon::Bolt => {
+            // High-voltage electrical bolt.
+            let bolt = [
+                (13.5, 3.0),
+                (5.5, 13.0),
+                (11.5, 13.0),
+                (10.5, 21.0),
+                (18.5, 11.0),
+                (12.5, 11.0),
+            ];
+            pen.fill(&bolt, soft);
+            pen.closed(&bolt, acc_s);
+        }
+        Icon::Eye | Icon::EyeOff => {
+            // Visibility eye (with diagonal slash when EyeOff).
+            pen.arc(12.0, 17.5, 10.5, -2.35, -0.79, ink_s);
+            pen.arc(12.0, 6.5, 10.5, 0.79, 2.35, ink_s);
+            pen.circle(12.0, 12.0, 3.2, acc_s);
+            if icon == Icon::EyeOff {
+                pen.accent_line(&[(4.5, 4.5), (19.5, 19.5)]);
+            }
+        }
+        Icon::Update => {
+            // Refresh / check-for-updates opposing curved arrows.
+            pen.arc(12.0, 12.0, 7.2, -2.7, -0.35, ink_s);
+            pen.polyline(&[(15.5, 6.8), (18.8, 9.2), (19.2, 5.3)], acc_s);
+            pen.arc(12.0, 12.0, 7.2, 0.45, 2.8, ink_s);
+            pen.polyline(&[(8.5, 17.2), (5.2, 14.8), (4.8, 18.7)], acc_s);
         }
         Icon::Warning => {
             pen.fill(&[(12.0, 3.5), (21.5, 20.0), (2.5, 20.0)], soft);

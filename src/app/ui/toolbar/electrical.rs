@@ -34,7 +34,7 @@ impl FloorPlanApp {
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Projeto (NBR 5410)", |ui| {
             if tip(
-                ribbon_button(ui, Icon::Plan, "Gerar pontos", false, false),
+                ribbon_button(ui, Icon::Bolt, "Gerar pontos", false, false),
                 "Adiciona o que a NBR 5410 exige e falta em cada cômodo: ponto de luz, tomadas distribuídas nas paredes, interruptor junto à porta e TUE no chuveiro",
             )
             .clicked()
@@ -52,7 +52,7 @@ impl FloorPlanApp {
             if tip(
                 ribbon_button(
                     ui,
-                    Icon::Info,
+                    Icon::Table,
                     "Quadro de cargas",
                     self.active_doc_dialog == DocDialog::Electrical,
                     false,
@@ -71,7 +71,7 @@ impl FloorPlanApp {
                 let voltage = self.project.electrical.voltage_v;
                 let label = format!("Tensão {voltage:.0} V");
                 if tip(
-                    ribbon_small(ui, Icon::Info, &label, false),
+                    ribbon_small(ui, Icon::Bolt, &label, false),
                     "Tensão fase-neutro dos circuitos de iluminação e tomadas. Clique para alternar entre 127 V e 220 V",
                 )
                 .clicked()
@@ -80,7 +80,7 @@ impl FloorPlanApp {
                 }
                 let only = self.electrical_only;
                 if tip(
-                    ribbon_small(ui, Icon::Plan, "Só elétrica", only),
+                    ribbon_small(ui, Icon::Layers, "Só elétrica", only),
                     "Esmaece arquitetura e mobiliário para destacar a instalação elétrica",
                 )
                 .clicked()
@@ -88,8 +88,13 @@ impl FloorPlanApp {
                     self.electrical_only = !only;
                 }
                 let visible = self.project.category_visible(LayerCategory::Electrical);
+                let (vis_icon, vis_label) = if visible {
+                    (Icon::Eye, "Ocultar elétrica")
+                } else {
+                    (Icon::EyeOff, "Mostrar elétrica")
+                };
                 if tip(
-                    ribbon_small(ui, Icon::Close, "Ocultar elétrica", !visible),
+                    ribbon_small(ui, vis_icon, vis_label, !visible),
                     "Mostra ou oculta a camada Instalações elétricas",
                 )
                 .clicked()

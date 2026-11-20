@@ -86,7 +86,7 @@ impl FloorPlanApp {
                 };
                 if menu_item(
                     ui,
-                    Some(Icon::Plan),
+                    Some(Icon::Update),
                     "Verificar atualizações...",
                     update_hint,
                 )
@@ -170,11 +170,11 @@ impl FloorPlanApp {
             self.request_new_project();
             ui.close();
         }
-        if menu_item(ui, Some(Icon::Plan), "Duplicar em nova aba", "").clicked() {
+        if menu_item(ui, Some(Icon::DuplicateTab), "Duplicar em nova aba", "").clicked() {
             self.duplicate_tab();
             ui.close();
         }
-        if menu_item(ui, Some(Icon::PanelRight), "Lado a lado", "").clicked() {
+        if menu_item(ui, Some(Icon::SplitView), "Lado a lado", "").clicked() {
             let other = (0..self.tab_count()).find(|index| *index != self.active_tab());
             if self.split_tab.is_some() || other.is_none() {
                 self.toggle_side_by_side(None);
@@ -205,7 +205,7 @@ impl FloorPlanApp {
             ui.close();
         }
         menu_separator(ui);
-        if menu_item(ui, Some(Icon::Open), "Importar DXF (AutoCAD)...", "").clicked() {
+        if menu_item(ui, Some(Icon::Import), "Importar DXF (AutoCAD)...", "").clicked() {
             self.import_dxf();
             ui.close();
         }
@@ -226,7 +226,7 @@ impl FloorPlanApp {
             self.export_dxf();
             ui.close();
         }
-        if menu_item(ui, Some(Icon::Export), "Exportar quantitativos CSV...", "").clicked() {
+        if menu_item(ui, Some(Icon::Table), "Exportar quantitativos CSV...", "").clicked() {
             self.export_csv();
             ui.close();
         }
@@ -349,7 +349,7 @@ impl FloorPlanApp {
             self.show_properties = !self.show_properties;
         }
         menu_separator(ui);
-        if menu_item(ui, Some(Icon::Plan), "Camadas...", "").clicked() {
+        if menu_item(ui, Some(Icon::Layers), "Camadas...", "").clicked() {
             self.active_doc_dialog = super::super::DocDialog::Layers;
             ui.close();
         }
@@ -357,15 +357,22 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::Dimensions;
             ui.close();
         }
-        if menu_item(ui, Some(Icon::Info), "Textos, notas e símbolos...", "").clicked() {
+        if menu_item(ui, Some(Icon::TextNote), "Textos, notas e símbolos...", "").clicked() {
             self.active_doc_dialog = super::super::DocDialog::Notes;
             ui.close();
         }
-        if menu_item(ui, Some(Icon::Export), "Quadros técnicos...", "").clicked() {
+        if menu_item(ui, Some(Icon::Table), "Quadros técnicos...", "").clicked() {
             self.active_doc_dialog = super::super::DocDialog::Schedules;
             ui.close();
         }
-        if menu_item(ui, Some(Icon::Wall), "Cortes, fachadas e detalhes...", "").clicked() {
+        if menu_item(
+            ui,
+            Some(Icon::SectionView),
+            "Cortes, fachadas e detalhes...",
+            "",
+        )
+        .clicked()
+        {
             self.active_doc_dialog = super::super::DocDialog::Views;
             ui.close();
         }
@@ -380,11 +387,11 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::SheetSet;
             ui.close();
         }
-        if menu_item(ui, Some(Icon::Plan), "Escadas, rampas e desníveis...", "").clicked() {
+        if menu_item(ui, Some(Icon::Stairs), "Escadas, rampas e desníveis...", "").clicked() {
             self.active_doc_dialog = super::super::DocDialog::Circulation;
             ui.close();
         }
-        if menu_item(ui, Some(Icon::Room), "Pavimentos e níveis...", "").clicked() {
+        if menu_item(ui, Some(Icon::Floors), "Pavimentos e níveis...", "").clicked() {
             self.active_doc_dialog = super::super::DocDialog::Floors;
             ui.close();
         }
@@ -401,7 +408,7 @@ impl FloorPlanApp {
         }
         if menu_item(
             ui,
-            Some(Icon::Info),
+            Some(Icon::CirculationCheck),
             "Verificar circulação e interferências...",
             "",
         )
@@ -439,7 +446,7 @@ impl FloorPlanApp {
         let all_on = self.osnap == crate::domain::snap::OsnapSettings::default();
         if menu_item(
             ui,
-            None,
+            Some(if all_on { Icon::Close } else { Icon::Check }),
             if all_on {
                 "Desativar todos"
             } else {
@@ -487,6 +494,7 @@ impl FloorPlanApp {
                 Tool::Opening(OpeningKind::SaloonDoor),
             ),
             (Icon::Gap, "Vão livre", "", Tool::Opening(OpeningKind::Gap)),
+            (Icon::Gate, "Portão", "", Tool::Opening(OpeningKind::Gate)),
             (Icon::Ruler, "Medir distâncias", "M", Tool::Measure),
         ];
         let drafting = crate::app::tools::DrawKind::ALL.map(|kind| {
@@ -539,7 +547,7 @@ impl FloorPlanApp {
             self.export_dxf();
             ui.close();
         }
-        if menu_item(ui, Some(Icon::Export), "Quantitativos CSV...", "").clicked() {
+        if menu_item(ui, Some(Icon::Table), "Quantitativos CSV...", "").clicked() {
             self.export_csv();
             ui.close();
         }

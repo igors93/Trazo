@@ -32,7 +32,7 @@ impl FloorPlanApp {
                 ui.set_width(640.0);
                 super::dialogs::dialog_title(
                     ui,
-                    Icon::Plan,
+                    Icon::Layers,
                     "Camadas do projeto",
                     "Configure cor, espessura (mm), tipo de linha, visibilidade e bloqueio.",
                 );

@@ -147,9 +147,12 @@ impl FloorPlanApp {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add_space(8.0);
                 let (icon, hint) = if self.ribbon_collapsed {
-                    (Icon::ChevronDown, "Expandir o ribbon")
+                    (Icon::ChevronDown, "Expandir a faixa de opções")
                 } else {
-                    (Icon::ChevronUp, "Recolher o ribbon para ganhar espaço")
+                    (
+                        Icon::ChevronUp,
+                        "Recolher a faixa de opções para ganhar espaço",
+                    )
                 };
                 if icon_button_sized(ui, icon, hint, false, 22.0, 13.0).clicked() {
                     self.ribbon_collapsed = !self.ribbon_collapsed;
@@ -221,7 +224,7 @@ impl FloorPlanApp {
             if tip(
                 ribbon_button(
                     ui,
-                    Icon::Plan,
+                    Icon::Stairs,
                     "Escadas",
                     self.active_doc_dialog == super::super::DocDialog::Circulation,
                     false,
@@ -235,7 +238,7 @@ impl FloorPlanApp {
             if tip(
                 ribbon_button(
                     ui,
-                    Icon::Room,
+                    Icon::Floors,
                     "Pavimentos",
                     self.active_doc_dialog == super::super::DocDialog::Floors,
                     false,
@@ -253,7 +256,7 @@ impl FloorPlanApp {
             self.opening_tile(ui, OpeningKind::Window, "Janela", Icon::Window);
             self.opening_tile(ui, OpeningKind::SaloonDoor, "Vai-e-vem", Icon::SaloonDoor);
             self.opening_tile(ui, OpeningKind::Gap, "Vão livre", Icon::Gap);
-            self.opening_tile(ui, OpeningKind::Gate, "Portão", Icon::Door);
+            self.opening_tile(ui, OpeningKind::Gate, "Portão", Icon::Gate);
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Modificar", |ui| {
@@ -389,8 +392,8 @@ impl FloorPlanApp {
             self.fixture_button(ui, FixtureKind::Counter, "Bancada");
             self.fixture_button(ui, FixtureKind::KitchenSink, "Pia");
             self.fixture_button(ui, FixtureKind::Stove, "Fogão");
-            self.fixture_button(ui, FixtureKind::WoodStove, "F. a lenha");
-            self.fixture_button(ui, FixtureKind::Grill, "Churrasq.");
+            self.fixture_button(ui, FixtureKind::WoodStove, "Fogão a lenha");
+            self.fixture_button(ui, FixtureKind::Grill, "Churrasqueira");
             self.fixture_button(ui, FixtureKind::Fridge, "Geladeira");
         });
         vertical_divider(ui, 72.0);
@@ -405,7 +408,7 @@ impl FloorPlanApp {
             self.fixture_button(ui, FixtureKind::BedDouble, "Cama");
             self.fixture_button(ui, FixtureKind::Wardrobe, "Armário");
             self.fixture_button(ui, FixtureKind::Table, "Mesa");
-            self.fixture_button(ui, FixtureKind::Desk, "Escrit.");
+            self.fixture_button(ui, FixtureKind::Desk, "Escrivaninha");
             self.fixture_button(ui, FixtureKind::Washer, "Lavadora");
             self.fixture_button(ui, FixtureKind::Shelves, "Prateleira");
             if tip(
@@ -425,7 +428,7 @@ impl FloorPlanApp {
             if tip(
                 ribbon_button(
                     ui,
-                    Icon::Info,
+                    Icon::CirculationCheck,
                     "Circulação",
                     self.show_ergonomics
                         || self.active_doc_dialog == super::super::DocDialog::Ergonomics,
@@ -447,7 +450,12 @@ impl FloorPlanApp {
                 if ui
                     .add_enabled_ui(can_rotate, |ui| {
                         tip(
-                            ribbon_small(ui, Icon::Redo, "Girar 90°", false),
+                            ribbon_small(
+                                ui,
+                                Icon::Glyph(super::Glyph::RotateCw),
+                                "Girar 90°",
+                                false,
+                            ),
                             "Gira o objeto selecionado, ou o próximo a ser colocado (G)",
                         )
                     })
@@ -542,7 +550,7 @@ impl FloorPlanApp {
             if tip(
                 ribbon_button(
                     ui,
-                    Icon::Plan,
+                    Icon::Layers,
                     "Camadas",
                     self.active_doc_dialog == super::super::DocDialog::Layers,
                     false,
@@ -671,7 +679,15 @@ impl FloorPlanApp {
                 self.export_svg();
             }
             if tip(
-                ribbon_button(ui, Icon::Export, "Planilha CSV", false, false),
+                ribbon_button(ui, Icon::Export, "Desenho DXF", false, false),
+                "Exportar a planta em formato AutoCAD DXF (camadas, cotas e unidades em metros)",
+            )
+            .clicked()
+            {
+                self.export_dxf();
+            }
+            if tip(
+                ribbon_button(ui, Icon::Table, "Planilha CSV", false, false),
                 "Exportar áreas, esquadrias e quantitativos para planilha",
             )
             .clicked()
@@ -698,7 +714,7 @@ impl FloorPlanApp {
             if tip(
                 ribbon_button(
                     ui,
-                    Icon::Info,
+                    Icon::Table,
                     "Quadros",
                     self.active_doc_dialog == super::super::DocDialog::Schedules,
                     false,
@@ -712,7 +728,7 @@ impl FloorPlanApp {
             if tip(
                 ribbon_button(
                     ui,
-                    Icon::Wall,
+                    Icon::SectionView,
                     "Vistas",
                     self.active_doc_dialog == super::super::DocDialog::Views,
                     false,

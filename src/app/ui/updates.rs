@@ -20,7 +20,7 @@ impl FloorPlanApp {
                 ui.set_width(480.0);
                 dialog_title(
                     ui,
-                    Icon::Info,
+                    Icon::Update,
                     "Atualizações do Trazo",
                     &format!("Versão instalada: v{}", crash_log::app_version()),
                 );

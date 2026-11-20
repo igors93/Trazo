@@ -5,7 +5,7 @@ use super::super::{FloorPlanApp, RibbonTab, Selection, Tool, canvas::overlay, th
 use super::icons::{self, Icon};
 use super::options_bar::{tool_icon, tool_name};
 use super::widgets::{
-    MENU_WIDTH, caps_galley, icon_button_sized, menu_check, menu_item, menu_separator, menu_submenu,
+    MENU_WIDTH, caps_galley, icon_button_sized, menu_check, menu_item, menu_separator, submenu,
 };
 use crate::domain::{geometry::format_meters, model::OpeningKind};
 use eframe::egui::{self, Pos2, Rect, Sense, Stroke, Ui, UiBuilder, vec2};
@@ -20,7 +20,12 @@ impl FloorPlanApp {
         const DIVIDER_GAP: f32 = 12.0;
         const VIEW_ICON: f32 = 15.0;
         const TOOL_ICON: f32 = 13.0;
-        let title = painter.layout_no_wrap("Planta baixa · Térreo".to_owned(), strong(12.5), TEXT);
+        let floor = self
+            .project
+            .active_floor()
+            .map(|level| level.name.as_str())
+            .unwrap_or("Térreo");
+        let title = painter.layout_no_wrap(format!("Planta baixa · {floor}"), strong(12.5), TEXT);
         let tool = painter.layout_no_wrap(tool_name(self.tool).to_owned(), regular(11.5), TEXT_2);
         let unit = painter.layout_no_wrap("metros".to_owned(), regular(11.5), MUTED);
         let (title_width, tool_width, unit_width) = (title.size().x, tool.size().x, unit.size().x);
@@ -211,7 +216,11 @@ impl FloorPlanApp {
             };
             let galley = caps_galley(ui.painter(), &title, 10.5, MUTED);
             let (rect, _) = ui.allocate_exact_size(vec2(MENU_WIDTH, 22.0), Sense::hover());
-            ui.painter().galley(
+            let title_clip = Rect::from_min_max(
+                Pos2::new(rect.left() + 10.0, rect.top()),
+                Pos2::new(rect.right() - 10.0, rect.bottom()),
+            );
+            ui.painter().with_clip_rect(title_clip).galley(
                 Pos2::new(rect.left() + 10.0, rect.center().y - galley.size().y / 2.0),
                 galley,
                 MUTED,
@@ -226,7 +235,13 @@ impl FloorPlanApp {
             }
             if !multi
                 && matches!(selection, Selection::Fixture(_))
-                && menu_item(ui, Some(Icon::Redo), "Girar 90°", "G").clicked()
+                && menu_item(
+                    ui,
+                    Some(Icon::Glyph(super::Glyph::RotateCw)),
+                    "Girar 90°",
+                    "G",
+                )
+                .clicked()
             {
                 self.rotate_fixture_or_next();
                 ui.close();
@@ -245,26 +260,40 @@ impl FloorPlanApp {
                     self.flip_selected_door(true, false);
                     ui.close();
                 }
-                if menu_item(ui, Some(Icon::Undo), "Trocar lado da dobradiça", "Shift+I").clicked()
+                if menu_item(
+                    ui,
+                    Some(Icon::Glyph(super::Glyph::Mirror)),
+                    "Trocar lado da dobradiça",
+                    "Shift+I",
+                )
+                .clicked()
                 {
                     self.flip_selected_door(false, true);
                     ui.close();
                 }
             }
-            if menu_item(ui, None, "Selecionar semelhantes", "").clicked() {
+            if menu_item(
+                ui,
+                Some(Icon::Glyph(super::Glyph::SelectSimilar)),
+                "Selecionar semelhantes",
+                "",
+            )
+            .clicked()
+            {
                 self.select_similar();
                 ui.close();
             }
             menu_separator(ui);
             self.clipboard_menu_items(ui);
-            let transform = menu_submenu(ui, Icon::Glyph(super::Glyph::Rotate), "Girar e espelhar");
-            egui::containers::menu::SubMenu::new().show(ui, &transform, |ui| {
-                ui.set_width(MENU_WIDTH);
-                self.transform_menu_items(ui);
-            });
-            let arrange = menu_submenu(ui, Icon::Glyph(super::Glyph::Group), "Organizar");
-            egui::containers::menu::SubMenu::new().show(ui, &arrange, |ui| {
-                ui.set_width(MENU_WIDTH);
+            submenu(
+                ui,
+                Icon::Glyph(super::Glyph::Rotate),
+                "Girar e espelhar",
+                |ui| {
+                    self.transform_menu_items(ui);
+                },
+            );
+            submenu(ui, Icon::Glyph(super::Glyph::Group), "Organizar", |ui| {
                 self.arrange_menu_items(ui);
             });
             let delete = if multi { "Excluir todos" } else { "Excluir" };
@@ -287,7 +316,14 @@ impl FloorPlanApp {
             }
             menu_separator(ui);
         }
-        if menu_item(ui, Some(Icon::Select), "Selecionar tudo", "Ctrl+A").clicked() {
+        if menu_item(
+            ui,
+            Some(Icon::Glyph(super::Glyph::SelectAll)),
+            "Selecionar tudo",
+            "Ctrl+A",
+        )
+        .clicked()
+        {
             self.select_all();
             ui.close();
         }
@@ -295,9 +331,7 @@ impl FloorPlanApp {
             self.fit_view_requested();
             ui.close();
         }
-        let draw = menu_submenu(ui, Icon::Wall, "Desenhar");
-        egui::containers::menu::SubMenu::new().show(ui, &draw, |ui| {
-            ui.set_width(MENU_WIDTH);
+        submenu(ui, Icon::Wall, "Desenhar", |ui| {
             for (icon, label, key, tool) in [
                 (Icon::Select, "Selecionar", "V", Tool::Move),
                 (Icon::Terrain, "Terreno", "T", Tool::Terrain),
@@ -310,6 +344,7 @@ impl FloorPlanApp {
                     "J",
                     Tool::Opening(OpeningKind::Window),
                 ),
+                (Icon::Gate, "Portão", "", Tool::Opening(OpeningKind::Gate)),
             ] {
                 if menu_item(ui, Some(icon), label, key).clicked() {
                     self.set_tool(tool);

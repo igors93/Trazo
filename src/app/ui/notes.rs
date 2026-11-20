@@ -24,7 +24,7 @@ impl FloorPlanApp {
                 ui.set_width(620.0);
                 super::dialogs::dialog_title(
                     ui,
-                    Icon::Info,
+                    Icon::TextNote,
                     "Textos, notas, chamadas e símbolos",
                     "Adicione textos técnicos, notas em caixa, linhas de chamada e símbolos de planta baixa.",
                 );

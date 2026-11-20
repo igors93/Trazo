@@ -5,7 +5,7 @@ use eframe::egui::Ui;
 
 use crate::app::tools::DrawKind;
 use crate::app::ui::icons::Icon;
-use crate::app::ui::widgets::{ribbon_panel, vertical_divider};
+use crate::app::ui::widgets::ribbon_panel;
 use crate::app::{FloorPlanApp, Tool};
 
 impl FloorPlanApp {
@@ -23,6 +23,5 @@ impl FloorPlanApp {
                 );
             }
         });
-        vertical_divider(ui, 72.0);
     }
 }

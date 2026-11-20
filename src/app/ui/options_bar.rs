@@ -18,7 +18,7 @@ pub(super) fn tool_icon(tool: Tool) -> Icon {
         Tool::Opening(OpeningKind::Window) => Icon::Window,
         Tool::Opening(OpeningKind::SaloonDoor) => Icon::SaloonDoor,
         Tool::Opening(OpeningKind::Gap) => Icon::Gap,
-        Tool::Opening(OpeningKind::Gate) => Icon::Door,
+        Tool::Opening(OpeningKind::Gate) => Icon::Gate,
         Tool::Fixture(kind) => Icon::Fixture(kind),
         Tool::Measure => Icon::Ruler,
         Tool::Draw(kind) => Icon::Glyph(kind.glyph()),
