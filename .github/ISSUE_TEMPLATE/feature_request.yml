@@ -1,0 +1,42 @@
+name: Feature request
+description: Suggest an idea or an improvement for Trazo.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [roadmap](https://github.com/igors93/Trazo/blob/main/ROADMAP.md) first: your idea may already be planned, and you can mention its number (for example #38).
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation in your work where Trazo falls short.
+      placeholder: I send plans to an engineer who uses AutoCAD, and I have to redraw everything there.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like to happen?
+      placeholder: Export the plan as DXF with walls, doors and dimensions on separate layers, in metres.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: input
+    id: roadmap
+    attributes:
+      label: Related roadmap item
+      placeholder: "#38"
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Who benefits most?
+      options:
+        - People new to CAD
+        - Architecture and engineering professionals
+        - Builders and construction sites
+        - AI assistant users
+        - Everyone

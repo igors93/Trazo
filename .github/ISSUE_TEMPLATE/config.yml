@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/igors93/Trazo/security/advisories/new
+    about: Please report security problems privately, never in a public issue.
+  - name: User guide
+    url: https://github.com/igors93/Trazo/blob/main/docs/user-guide.md
+    about: How to use Trazo, with every tool and shortcut.

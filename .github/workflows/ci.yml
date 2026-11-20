@@ -12,26 +12,26 @@ env:
 
 jobs:
   quality:
-    name: Formatação, Clippy e testes
+    name: Format, Clippy and tests
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar o código
+      - name: Check out the code
         uses: actions/checkout@v4
 
-      - name: Instalar Rust estável
+      - name: Install stable Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Restaurar cache do Cargo
+      - name: Restore the Cargo cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Conferir formatação
+      - name: Check formatting
         run: cargo fmt --all -- --check
 
-      - name: Executar Clippy
+      - name: Run Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Executar testes
+      - name: Run tests
         run: cargo test --all-targets --all-features
