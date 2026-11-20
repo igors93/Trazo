@@ -800,7 +800,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 22);
+        assert_eq!(tools.len(), 35);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -881,7 +881,7 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 22);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 35);
     }
 }
 

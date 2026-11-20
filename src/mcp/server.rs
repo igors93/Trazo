@@ -453,7 +453,8 @@ mod tests {
         assert_eq!(content_type, "text/event-stream");
         assert!(body.starts_with("event: message\ndata: {"));
 
-        assert_eq!(http(port, "GET", "text/event-stream", "").0, 405);
+        // GET with text/event-stream now opens a live stream: see
+        // `event_stream_tests`.
         let (status, _, body) = http(port, "GET", "text/html", "");
         assert_eq!(status, 200);
         assert!(body.contains("Servidor MCP do Trazo ativo"));
