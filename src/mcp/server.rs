@@ -198,8 +198,8 @@ fn is_local_host(host: &str) -> bool {
     name.eq_ignore_ascii_case("localhost") || name == "127.0.0.1" || name == "::1"
 }
 
-/// True when the request came directly from this computer, not through a
-/// Cloudflare tunnel or another reverse proxy.
+/// True when the request came from a native client on this computer, not
+/// from a web page, Cloudflare tunnel or another reverse proxy.
 fn is_local_request(request: &Request) -> bool {
     const PROXY_HEADERS: [&str; 5] = [
         "Cf-Connecting-Ip",
@@ -212,6 +212,13 @@ fn is_local_request(request: &Request) -> bool {
         .iter()
         .any(|name| !request_header(request, name).trim().is_empty())
     {
+        return false;
+    }
+    // Browsers add Origin to cross-origin requests. Treat those as remote so
+    // an arbitrary web page cannot use the unauthenticated loopback endpoint
+    // to read or edit the open project. Browser-based MCP clients use the
+    // tunnel URL and its token instead.
+    if !request_header(request, "Origin").trim().is_empty() {
         return false;
     }
     is_local_host(&request_header(request, "Host"))
@@ -523,6 +530,15 @@ mod tests {
 
         // Local requests need no token.
         assert_eq!(send_raw("/mcp", "Host: 127.0.0.1\r\n"), 200);
+        // A web page is not a trusted local client, even though it connects to
+        // the loopback address. Without this check any site could edit a plan.
+        assert_eq!(
+            send_raw(
+                "/mcp",
+                "Host: 127.0.0.1\r\nOrigin: https://malicious.example\r\n"
+            ),
+            403
+        );
         // Tunneled requests without a token or with a wrong token are rejected.
         let tunnel_headers = "Host: demo.trycloudflare.com\r\nCf-Connecting-Ip: 203.0.113.5\r\n";
         assert_eq!(send_raw("/mcp", tunnel_headers), 403);
