@@ -315,6 +315,7 @@ pub fn menu_item(ui: &mut Ui, icon: Option<Icon>, label: &str, shortcut: &str) -
 
 /// A menu entry that opens a submenu, marked with an arrow.
 pub fn menu_submenu(ui: &mut Ui, icon: Icon, label: &str) -> Response {
+    let enabled = ui.is_enabled();
     let response = menu_row(ui, label, "", |painter, slot, enabled| {
         let (ink, accent) = tones(enabled, false);
         icons::paint(painter, slot, icon, ink, accent);
@@ -323,8 +324,26 @@ pub fn menu_submenu(ui: &mut Ui, icon: Icon, label: &str) -> Response {
         Pos2::new(response.rect.right() - 14.0, response.rect.center().y),
         vec2(13.0, 13.0),
     );
-    icons::paint(ui.painter(), arrow, Icon::ChevronRight, MUTED, MUTED);
+    let arrow_tone = if enabled { MUTED } else { FAINT };
+    icons::paint(
+        ui.painter(),
+        arrow,
+        Icon::ChevronRight,
+        arrow_tone,
+        arrow_tone,
+    );
     response
+}
+
+/// Renders an icon-aligned submenu entry and opens its popup menu on hover/click.
+pub fn submenu(ui: &mut Ui, icon: Icon, label: &str, add_contents: impl FnOnce(&mut Ui)) {
+    let trigger = menu_submenu(ui, icon, label);
+    if ui.is_enabled() {
+        egui::containers::menu::SubMenu::new().show(ui, &trigger, |ui| {
+            ui.set_width(MENU_WIDTH);
+            add_contents(ui);
+        });
+    }
 }
 
 /// A menu entry that shows a check mark while `checked`.

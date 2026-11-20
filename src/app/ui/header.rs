@@ -1,6 +1,9 @@
 use super::super::{FloorPlanApp, RibbonTab, Tool, theme::*};
+use super::Glyph;
 use super::icons::{self, Icon};
-use super::widgets::{MENU_WIDTH, icon_button, menu_check, menu_item, menu_separator, tip};
+use super::widgets::{
+    MENU_WIDTH, icon_button, menu_check, menu_item, menu_separator, submenu, tip,
+};
 use crate::domain::model::OpeningKind;
 use eframe::egui::{self, Align, Pos2, Rect, Sense, Stroke, StrokeKind, Style, Ui, vec2};
 
@@ -260,11 +263,12 @@ impl FloorPlanApp {
         self.clipboard_menu_items(ui);
         menu_separator(ui);
         self.transform_menu_items(ui);
-        ui.menu_button("Organizar", |ui| {
-            ui.set_width(MENU_WIDTH);
+        submenu(ui, Icon::Glyph(Glyph::Group), "Organizar", |ui| {
             self.arrange_menu_items(ui);
         });
-        ui.menu_button("Restrições", |ui| self.constraint_menu_items(ui));
+        submenu(ui, Icon::Glyph(Glyph::FixedDistance), "Restrições", |ui| {
+            self.constraint_menu_items(ui);
+        });
         menu_separator(ui);
         self.selection_menu_items(ui);
         menu_separator(ui);
@@ -280,7 +284,12 @@ impl FloorPlanApp {
         }
         if ui
             .add_enabled_ui(self.selection.is_some(), |ui| {
-                menu_item(ui, None, "Limpar seleção", "Esc")
+                menu_item(
+                    ui,
+                    Some(Icon::Glyph(Glyph::ClearSelection)),
+                    "Limpar seleção",
+                    "Esc",
+                )
             })
             .inner
             .clicked()
@@ -326,7 +335,9 @@ impl FloorPlanApp {
         if menu_check(ui, "Encaixe magnético", "F3", self.snap_enabled).clicked() {
             self.toggle_snap();
         }
-        ui.menu_button("Encaixes avançados (OSNAP)", |ui| self.osnap_menu(ui));
+        submenu(ui, Icon::Snap, "Encaixes avançados (OSNAP)", |ui| {
+            self.osnap_menu(ui);
+        });
         if menu_check(ui, "Modo orto", "F8", self.ortho_enabled).clicked() {
             self.toggle_ortho();
         }

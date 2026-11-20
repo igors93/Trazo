@@ -5,10 +5,11 @@
 use eframe::egui::{Margin, RichText, Ui};
 
 use super::super::{FloorPlanApp, Selection, theme::*};
+use super::Glyph;
 use super::icons::Icon;
 use super::widgets::{
     MENU_WIDTH, danger_button, hint, menu_check, menu_item, menu_separator, property_label,
-    property_value, secondary_button, section,
+    property_value, secondary_button, section, submenu,
 };
 use crate::domain::element::{ElementKind, SelectionFilter};
 use crate::domain::model::OpeningKind;
@@ -78,29 +79,45 @@ impl FloorPlanApp {
 
     /// Select all, by kind, similar, inverted; the filter.
     pub(in crate::app) fn selection_menu_items(&mut self, ui: &mut Ui) {
-        if menu_item(ui, Some(Icon::Select), "Selecionar tudo", "Ctrl+A").clicked() {
+        if menu_item(
+            ui,
+            Some(Icon::Glyph(Glyph::SelectAll)),
+            "Selecionar tudo",
+            "Ctrl+A",
+        )
+        .clicked()
+        {
             self.select_all();
             ui.close();
         }
-        ui.menu_button("Selecionar por tipo", |ui| {
-            ui.set_width(MENU_WIDTH);
-            for (label, icon) in BY_KIND {
-                let count = self.elements_by_kind(label).len();
-                if ui
-                    .add_enabled_ui(count > 0, |ui| {
-                        menu_item(ui, Some(icon), label, &count.to_string())
-                    })
-                    .inner
-                    .clicked()
-                {
-                    self.select_by_kind(label);
-                    ui.close();
+        submenu(
+            ui,
+            Icon::Glyph(Glyph::SelectByKind),
+            "Selecionar por tipo",
+            |ui| {
+                for (label, icon) in BY_KIND {
+                    let count = self.elements_by_kind(label).len();
+                    if ui
+                        .add_enabled_ui(count > 0, |ui| {
+                            menu_item(ui, Some(icon), label, &count.to_string())
+                        })
+                        .inner
+                        .clicked()
+                    {
+                        self.select_by_kind(label);
+                        ui.close();
+                    }
                 }
-            }
-        });
+            },
+        );
         if ui
             .add_enabled_ui(self.selection.is_some(), |ui| {
-                menu_item(ui, None, "Selecionar semelhantes", "")
+                menu_item(
+                    ui,
+                    Some(Icon::Glyph(Glyph::SelectSimilar)),
+                    "Selecionar semelhantes",
+                    "",
+                )
             })
             .inner
             .on_hover_text("Mesmo tipo do elemento selecionado: portas da mesma medida, objetos iguais, paredes da mesma espessura...")
@@ -109,11 +126,20 @@ impl FloorPlanApp {
             self.select_similar();
             ui.close();
         }
-        if menu_item(ui, None, "Inverter seleção", "").clicked() {
+        if menu_item(
+            ui,
+            Some(Icon::Glyph(Glyph::InvertSelection)),
+            "Inverter seleção",
+            "",
+        )
+        .clicked()
+        {
             self.invert_selection();
             ui.close();
         }
-        ui.menu_button("Filtro de seleção", |ui| self.selection_filter_menu(ui));
+        submenu(ui, Icon::Glyph(Glyph::Filter), "Filtro de seleção", |ui| {
+            self.selection_filter_menu(ui)
+        });
     }
 
     /// Which kinds a box or "select all" picks.
@@ -133,7 +159,7 @@ impl FloorPlanApp {
         menu_separator(ui);
         if ui
             .add_enabled_ui(!self.selection_filter.is_open(), |ui| {
-                menu_item(ui, None, "Incluir todos os tipos", "")
+                menu_item(ui, Some(Icon::Check), "Incluir todos os tipos", "")
             })
             .inner
             .clicked()

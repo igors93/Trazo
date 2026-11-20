@@ -106,13 +106,13 @@ impl FloorPlanApp {
             ribbon_stack(ui, |ui| {
                 for (icon, label, hint, action) in [
                     (
-                        Icon::Redo,
+                        Icon::Glyph(Glyph::RotateCw),
                         "Girar 90° ↻",
                         "Girar a seleção 90° no sentido horário, em torno do centro (G)",
                         0,
                     ),
                     (
-                        Icon::Undo,
+                        Icon::Glyph(Glyph::RotateCcw),
                         "Girar 90° ↺",
                         "Girar a seleção 90° no sentido anti-horário (Shift+G)",
                         1,
@@ -263,7 +263,7 @@ impl FloorPlanApp {
         ribbon_panel(ui, "Seleção", |ui| {
             ribbon_stack(ui, |ui| {
                 if tip(
-                    ribbon_small(ui, Icon::Select, "Selecionar tudo", false),
+                    ribbon_small(ui, Icon::Glyph(Glyph::SelectAll), "Selecionar tudo", false),
                     "Selecionar tudo o que o filtro deixa passar (Ctrl+A)",
                 )
                 .clicked()
@@ -273,7 +273,12 @@ impl FloorPlanApp {
                 if ui
                     .add_enabled_ui(selected, |ui| {
                         tip(
-                            ribbon_small(ui, Icon::Search, "Semelhantes", false),
+                            ribbon_small(
+                                ui,
+                                Icon::Glyph(Glyph::SelectSimilar),
+                                "Semelhantes",
+                                false,
+                            ),
                             "Selecionar os elementos do mesmo tipo do selecionado",
                         )
                     })
@@ -283,7 +288,7 @@ impl FloorPlanApp {
                     self.select_similar();
                 }
                 if tip(
-                    ribbon_small(ui, Icon::Undo, "Inverter", false),
+                    ribbon_small(ui, Icon::Glyph(Glyph::InvertSelection), "Inverter", false),
                     "Selecionar o que não está selecionado (segue o filtro)",
                 )
                 .clicked()

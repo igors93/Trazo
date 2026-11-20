@@ -6,7 +6,7 @@ use eframe::egui::Ui;
 use super::super::{FloorPlanApp, RibbonTab, Tool};
 use super::Glyph;
 use super::icons::Icon;
-use super::widgets::{MENU_WIDTH, menu_item};
+use super::widgets::{MENU_WIDTH, menu_item, submenu};
 use crate::app::tools::{ConstraintTool, ModifyKind};
 use crate::domain::model::{Alignment, Axis, Entity};
 
@@ -49,7 +49,14 @@ impl FloorPlanApp {
     pub(in crate::app) fn align_menu_items(&mut self, ui: &mut Ui) {
         ui.set_width(MENU_WIDTH);
         for alignment in Alignment::ALL {
-            if menu_item(ui, None, alignment.label(), "").clicked() {
+            if menu_item(
+                ui,
+                Some(Icon::Glyph(Glyph::AlignLeft)),
+                alignment.label(),
+                "",
+            )
+            .clicked()
+            {
                 self.align_selection(alignment);
                 ui.close();
             }
@@ -99,10 +106,14 @@ impl FloorPlanApp {
             }
         }
         ui.add_enabled_ui(several, |ui| {
-            ui.menu_button("Alinhar", |ui| self.align_menu_items(ui));
+            submenu(ui, Icon::Glyph(Glyph::AlignLeft), "Alinhar", |ui| {
+                self.align_menu_items(ui);
+            });
         });
         ui.add_enabled_ui(self.selection_count() >= 3, |ui| {
-            ui.menu_button("Distribuir", |ui| self.distribute_menu_items(ui));
+            submenu(ui, Icon::Glyph(Glyph::Distribute), "Distribuir", |ui| {
+                self.distribute_menu_items(ui);
+            });
         });
     }
 
@@ -140,22 +151,17 @@ impl FloorPlanApp {
     pub(in crate::app) fn transform_menu_items(&mut self, ui: &mut Ui) {
         let selected = self.selection.is_some();
         let quick = [
-            (Icon::Redo, "Girar 90° no sentido horário", "G", 0),
+            (Icon::Glyph(Glyph::RotateCw), "Girar 90° (horário)", "G", 0),
             (
-                Icon::Undo,
-                "Girar 90° no sentido anti-horário",
+                Icon::Glyph(Glyph::RotateCcw),
+                "Girar 90° (anti-horário)",
                 "Shift+G",
                 1,
             ),
-            (
-                Icon::Glyph(Glyph::Mirror),
-                "Espelhar ↔ (esquerda e direita)",
-                "H",
-                2,
-            ),
+            (Icon::Glyph(Glyph::Mirror), "Espelhar horizontal", "H", 2),
             (
                 Icon::Glyph(Glyph::MirrorVertical),
-                "Espelhar ↕ (cima e baixo)",
+                "Espelhar vertical",
                 "Shift+H",
                 3,
             ),
@@ -175,24 +181,28 @@ impl FloorPlanApp {
                 ui.close();
             }
         }
-        ui.menu_button("Ferramentas de modificação", |ui| {
-            ui.set_width(MENU_WIDTH);
-            for kind in ModifyKind::ALL {
-                let enabled = !kind.uses_selection() || selected;
-                let keys = kind.key().map_or("", |(_, keys)| keys);
-                if ui
-                    .add_enabled_ui(enabled, |ui| {
-                        menu_item(ui, Some(Icon::Glyph(kind.glyph())), kind.label(), keys)
-                    })
-                    .inner
-                    .on_hover_text(kind.hint())
-                    .clicked()
-                {
-                    self.choose_modify_tool(kind);
-                    self.ribbon_tab = RibbonTab::Edit;
-                    ui.close();
+        submenu(
+            ui,
+            Icon::Glyph(Glyph::Offset),
+            "Ferramentas de modificação",
+            |ui| {
+                for kind in ModifyKind::ALL {
+                    let enabled = !kind.uses_selection() || selected;
+                    let keys = kind.key().map_or("", |(_, keys)| keys);
+                    if ui
+                        .add_enabled_ui(enabled, |ui| {
+                            menu_item(ui, Some(Icon::Glyph(kind.glyph())), kind.label(), keys)
+                        })
+                        .inner
+                        .on_hover_text(kind.hint())
+                        .clicked()
+                    {
+                        self.choose_modify_tool(kind);
+                        self.ribbon_tab = RibbonTab::Edit;
+                        ui.close();
+                    }
                 }
-            }
-        });
+            },
+        );
     }
 }

@@ -21,6 +21,8 @@ pub enum Glyph {
     Paste,
     Duplicate,
     Rotate,
+    RotateCw,
+    RotateCcw,
     Mirror,
     /// Mirror upside down (a level axis).
     MirrorVertical,
@@ -38,6 +40,12 @@ pub enum Glyph {
     Perpendicular,
     Coincident,
     FixedDistance,
+    SelectAll,
+    SelectByKind,
+    SelectSimilar,
+    InvertSelection,
+    Filter,
+    ClearSelection,
 }
 
 /// Paints `glyph` with `pen`; `soft` fills, `thin` draws details.
@@ -140,6 +148,18 @@ pub(super) fn paint(pen: &Pen, glyph: Glyph, soft: Color32, thin: Stroke) {
             pen.arc(5.0, 19.0, 9.0, -0.05, -0.85, accent);
             pen.polyline(&[(11.0, 12.0), (11.6, 14.6), (14.2, 14.2)], accent);
         }
+        Glyph::RotateCw => {
+            // 270° clockwise circular arrow around a centre pivot.
+            pen.arc(12.0, 12.0, 7.2, 0.25 * PI, 1.75 * PI, ink);
+            pen.polyline(&[(13.2, 7.1), (17.1, 6.9), (16.9, 3.0)], accent);
+            pen.dot(12.0, 12.0, 1.8, accent.color);
+        }
+        Glyph::RotateCcw => {
+            // 270° counter-clockwise circular arrow around a centre pivot.
+            pen.arc(12.0, 12.0, 7.2, 0.75 * PI, -0.75 * PI, ink);
+            pen.polyline(&[(10.8, 7.1), (6.9, 6.9), (7.1, 3.0)], accent);
+            pen.dot(12.0, 12.0, 1.8, accent.color);
+        }
         Glyph::Mirror | Glyph::MirrorVertical => {
             let flip = |(x, y): (f32, f32)| {
                 if glyph == Glyph::MirrorVertical {
@@ -148,12 +168,12 @@ pub(super) fn paint(pen: &Pen, glyph: Glyph, soft: Color32, thin: Stroke) {
                     (x, y)
                 }
             };
-            let left = [(3.5, 18.0), (9.5, 6.0), (9.5, 18.0)].map(flip);
-            let right = [(20.5, 18.0), (14.5, 6.0), (14.5, 18.0)].map(flip);
+            let left = [(3.0, 18.5), (9.5, 5.5), (9.5, 18.5)].map(flip);
+            let right = [(21.0, 18.5), (14.5, 5.5), (14.5, 18.5)].map(flip);
             pen.fill(&right, soft);
             pen.closed(&left, ink);
             pen.closed(&right, accent);
-            pen.dashed(&[flip((12.0, 2.5)), flip((12.0, 21.5))], 2.0, 1.6, thin);
+            pen.dashed(&[flip((12.0, 2.5)), flip((12.0, 21.5))], 2.2, 1.6, accent);
         }
         Glyph::Offset => {
             pen.polyline(&[(4.0, 20.0), (4.0, 9.0), (15.0, 9.0)], ink);
@@ -257,6 +277,73 @@ pub(super) fn paint(pen: &Pen, glyph: Glyph, soft: Color32, thin: Stroke) {
             pen.polyline(&[(4.0, 12.0), (20.0, 12.0)], accent);
             pen.polyline(&[(7.0, 9.5), (4.5, 12.0), (7.0, 14.5)], accent);
             pen.polyline(&[(17.0, 9.5), (19.5, 12.0), (17.0, 14.5)], accent);
+        }
+        Glyph::SelectAll => {
+            pen.dashed(
+                &[
+                    (3.0, 3.0),
+                    (21.0, 3.0),
+                    (21.0, 21.0),
+                    (3.0, 21.0),
+                    (3.0, 3.0),
+                ],
+                2.2,
+                1.6,
+                accent,
+            );
+            pen.fill(&[(6.5, 6.5), (13.0, 6.5), (13.0, 13.0), (6.5, 13.0)], soft);
+            pen.rect(6.5, 6.5, 13.0, 13.0, ink);
+            pen.circle(15.2, 15.2, 2.8, ink);
+        }
+        Glyph::SelectByKind => {
+            pen.fill(&[(3.5, 4.0), (10.5, 4.0), (10.5, 11.0), (3.5, 11.0)], soft);
+            pen.rect(3.5, 4.0, 10.5, 11.0, accent);
+            pen.circle(7.0, 17.0, 3.2, thin);
+            // Selection pointer targeting the matching kind.
+            pen.fill(
+                &[(13.0, 7.0), (21.0, 13.0), (16.5, 14.0), (13.0, 19.5)],
+                soft,
+            );
+            pen.closed(
+                &[(13.0, 7.0), (21.0, 13.0), (16.5, 14.0), (13.0, 19.5)],
+                ink,
+            );
+        }
+        Glyph::SelectSimilar => {
+            // Two matching highlighted shapes + one unpicked different shape.
+            pen.fill(&[(3.5, 4.0), (10.5, 4.0), (10.5, 11.0), (3.5, 11.0)], soft);
+            pen.rect(3.5, 4.0, 10.5, 11.0, accent);
+            pen.fill(
+                &[(13.5, 13.0), (20.5, 13.0), (20.5, 20.0), (13.5, 20.0)],
+                soft,
+            );
+            pen.rect(13.5, 13.0, 20.5, 20.0, accent);
+            pen.circle(17.0, 7.5, 2.8, thin);
+            pen.circle(7.0, 16.5, 2.8, thin);
+        }
+        Glyph::InvertSelection => {
+            pen.fill(&[(4.0, 4.0), (20.0, 4.0), (4.0, 20.0)], accent.color);
+            pen.rect(4.0, 4.0, 20.0, 20.0, ink);
+            pen.polyline(&[(4.0, 20.0), (20.0, 4.0)], ink);
+        }
+        Glyph::Filter => {
+            let funnel = [
+                (3.5, 4.5),
+                (20.5, 4.5),
+                (14.0, 12.5),
+                (14.0, 19.5),
+                (10.0, 17.5),
+                (10.0, 12.5),
+            ];
+            pen.fill(&funnel, soft);
+            pen.closed(&funnel, ink);
+            pen.polyline(&[(3.5, 4.5), (20.5, 4.5)], accent);
+        }
+        Glyph::ClearSelection => {
+            pen.dashed(&[(3.5, 3.5), (17.5, 3.5), (17.5, 11.0)], 2.2, 1.6, ink);
+            pen.dashed(&[(3.5, 3.5), (3.5, 17.5), (11.0, 17.5)], 2.2, 1.6, ink);
+            pen.polyline(&[(14.0, 14.0), (20.5, 20.5)], accent);
+            pen.polyline(&[(20.5, 14.0), (14.0, 20.5)], accent);
         }
     }
 }
