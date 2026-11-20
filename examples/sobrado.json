@@ -1,0 +1,1679 @@
+{
+  "version": 2,
+  "name": "Sobrado 2 Pavimentos — Exemplo Trazo",
+  "walls": [
+    {
+      "id": 2,
+      "start": {
+        "x": 1.5,
+        "y": 4.5
+      },
+      "end": {
+        "x": 5.5,
+        "y": 4.5
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 3,
+      "start": {
+        "x": 5.5,
+        "y": 4.5
+      },
+      "end": {
+        "x": 5.5,
+        "y": 8.5
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 4,
+      "start": {
+        "x": 5.5,
+        "y": 9.0
+      },
+      "end": {
+        "x": 3.5,
+        "y": 9.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 5,
+      "start": {
+        "x": 1.5,
+        "y": 9.0
+      },
+      "end": {
+        "x": 1.5,
+        "y": 4.5
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 7,
+      "start": {
+        "x": 5.5,
+        "y": 4.5
+      },
+      "end": {
+        "x": 8.5,
+        "y": 4.5
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 8,
+      "start": {
+        "x": 8.5,
+        "y": 4.5
+      },
+      "end": {
+        "x": 8.5,
+        "y": 8.5
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 9,
+      "start": {
+        "x": 8.5,
+        "y": 8.5
+      },
+      "end": {
+        "x": 5.5,
+        "y": 8.5
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 10,
+      "start": {
+        "x": 5.5,
+        "y": 8.5
+      },
+      "end": {
+        "x": 5.5,
+        "y": 9.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 12,
+      "start": {
+        "x": 8.5,
+        "y": 8.5
+      },
+      "end": {
+        "x": 8.5,
+        "y": 12.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 13,
+      "start": {
+        "x": 8.5,
+        "y": 12.0
+      },
+      "end": {
+        "x": 5.5,
+        "y": 12.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 14,
+      "start": {
+        "x": 5.5,
+        "y": 12.0
+      },
+      "end": {
+        "x": 5.5,
+        "y": 11.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 16,
+      "start": {
+        "x": 8.5,
+        "y": 12.0
+      },
+      "end": {
+        "x": 8.5,
+        "y": 13.5
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 17,
+      "start": {
+        "x": 8.5,
+        "y": 13.5
+      },
+      "end": {
+        "x": 5.5,
+        "y": 13.5
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 18,
+      "start": {
+        "x": 5.5,
+        "y": 13.5
+      },
+      "end": {
+        "x": 5.5,
+        "y": 12.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 20,
+      "start": {
+        "x": 3.5,
+        "y": 9.0
+      },
+      "end": {
+        "x": 1.5,
+        "y": 9.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 21,
+      "start": {
+        "x": 3.5,
+        "y": 9.0
+      },
+      "end": {
+        "x": 3.5,
+        "y": 11.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 22,
+      "start": {
+        "x": 3.5,
+        "y": 11.0
+      },
+      "end": {
+        "x": 1.5,
+        "y": 11.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 23,
+      "start": {
+        "x": 1.5,
+        "y": 11.0
+      },
+      "end": {
+        "x": 1.5,
+        "y": 9.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 25,
+      "start": {
+        "x": 3.5,
+        "y": 11.0
+      },
+      "end": {
+        "x": 5.5,
+        "y": 11.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 26,
+      "start": {
+        "x": 5.5,
+        "y": 11.0
+      },
+      "end": {
+        "x": 5.5,
+        "y": 9.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 27,
+      "start": {
+        "x": 5.5,
+        "y": 13.5
+      },
+      "end": {
+        "x": 1.5,
+        "y": 13.5
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    },
+    {
+      "id": 28,
+      "start": {
+        "x": 1.5,
+        "y": 13.5
+      },
+      "end": {
+        "x": 1.5,
+        "y": 11.0
+      },
+      "masonry": {
+        "name": "Tijolo cerâmico 6 furos (em pé)",
+        "block_width": 0.09,
+        "block_length": 0.19,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.14
+      }
+    }
+  ],
+  "rooms": [
+    {
+      "id": 6,
+      "name": "Sala de Estar",
+      "wall_ids": [
+        2,
+        3,
+        10,
+        4,
+        20,
+        5
+      ],
+      "hatch": {
+        "pattern": "stone_grid",
+        "spacing_m": 0.6,
+        "angle_deg": 0.0,
+        "color": [
+          148,
+          166,
+          184
+        ]
+      }
+    },
+    {
+      "id": 11,
+      "name": "Sala de Jantar",
+      "wall_ids": [
+        7,
+        8,
+        9,
+        3
+      ],
+      "hatch": {
+        "pattern": "stone_grid",
+        "spacing_m": 0.6,
+        "angle_deg": 0.0,
+        "color": [
+          148,
+          166,
+          184
+        ]
+      }
+    },
+    {
+      "id": 15,
+      "name": "Cozinha",
+      "wall_ids": [
+        9,
+        12,
+        13,
+        14,
+        26,
+        10
+      ],
+      "hatch": {
+        "pattern": "ceramic_grid",
+        "spacing_m": 0.3,
+        "angle_deg": 0.0,
+        "color": [
+          152,
+          178,
+          204
+        ]
+      }
+    },
+    {
+      "id": 19,
+      "name": "Área de Serviço",
+      "wall_ids": [
+        13,
+        16,
+        17,
+        18
+      ],
+      "hatch": {
+        "pattern": "ceramic_grid",
+        "spacing_m": 0.3,
+        "angle_deg": 0.0,
+        "color": [
+          152,
+          178,
+          204
+        ]
+      }
+    },
+    {
+      "id": 24,
+      "name": "Lavabo",
+      "wall_ids": [
+        20,
+        21,
+        22,
+        23
+      ],
+      "hatch": {
+        "pattern": "ceramic_grid",
+        "spacing_m": 0.3,
+        "angle_deg": 0.0,
+        "color": [
+          152,
+          178,
+          204
+        ]
+      }
+    },
+    {
+      "id": 29,
+      "name": "Hall da Escada",
+      "wall_ids": [
+        22,
+        25,
+        14,
+        18,
+        27,
+        28
+      ],
+      "hatch": {
+        "pattern": "stone_grid",
+        "spacing_m": 0.6,
+        "angle_deg": 0.0,
+        "color": [
+          148,
+          166,
+          184
+        ]
+      }
+    }
+  ],
+  "openings": [
+    {
+      "id": 30,
+      "wall_id": 2,
+      "kind": "Door",
+      "t": 0.25
+    },
+    {
+      "id": 31,
+      "wall_id": 2,
+      "kind": "Window",
+      "t": 0.72
+    },
+    {
+      "id": 32,
+      "wall_id": 7,
+      "kind": "Window",
+      "t": 0.5
+    },
+    {
+      "id": 33,
+      "wall_id": 3,
+      "kind": "Gap",
+      "t": 0.5
+    },
+    {
+      "id": 34,
+      "wall_id": 9,
+      "kind": "Gap",
+      "t": 0.5
+    },
+    {
+      "id": 35,
+      "wall_id": 13,
+      "kind": "Door",
+      "t": 0.45
+    },
+    {
+      "id": 36,
+      "wall_id": 21,
+      "kind": "Door",
+      "t": 0.5
+    },
+    {
+      "id": 37,
+      "wall_id": 12,
+      "kind": "Window",
+      "t": 0.5
+    }
+  ],
+  "terrain": {
+    "id": 1,
+    "min": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "max": {
+      "x": 10.0,
+      "y": 20.0
+    }
+  },
+  "setbacks": {
+    "front": 4.5,
+    "rear": 3.0,
+    "side": 1.5
+  },
+  "fixtures": [
+    {
+      "id": 38,
+      "kind": "sofa",
+      "center": {
+        "x": 2.6,
+        "y": 6.7
+      },
+      "width": 2.2,
+      "depth": 0.9,
+      "quarter_turns": 1
+    },
+    {
+      "id": 39,
+      "kind": "tv_stand",
+      "center": {
+        "x": 4.9,
+        "y": 6.7
+      },
+      "width": 1.6,
+      "depth": 0.45,
+      "quarter_turns": 3
+    },
+    {
+      "id": 40,
+      "kind": "dining_set",
+      "center": {
+        "x": 7.0,
+        "y": 6.5
+      },
+      "width": 1.8,
+      "depth": 1.0,
+      "quarter_turns": 0
+    },
+    {
+      "id": 41,
+      "kind": "kitchen_sink",
+      "center": {
+        "x": 7.0,
+        "y": 11.4
+      },
+      "width": 1.6,
+      "depth": 0.6,
+      "quarter_turns": 2
+    },
+    {
+      "id": 42,
+      "kind": "stove",
+      "center": {
+        "x": 8.0,
+        "y": 9.8
+      },
+      "width": 0.6,
+      "depth": 0.6,
+      "quarter_turns": 3
+    },
+    {
+      "id": 43,
+      "kind": "fridge",
+      "center": {
+        "x": 8.0,
+        "y": 8.95
+      },
+      "width": 0.7,
+      "depth": 0.7,
+      "quarter_turns": 3
+    },
+    {
+      "id": 44,
+      "kind": "washbasin",
+      "center": {
+        "x": 2.1,
+        "y": 9.45
+      },
+      "width": 0.55,
+      "depth": 0.4,
+      "quarter_turns": 0
+    },
+    {
+      "id": 45,
+      "kind": "toilet",
+      "center": {
+        "x": 2.9,
+        "y": 9.55
+      },
+      "width": 0.4,
+      "depth": 0.65,
+      "quarter_turns": 0
+    },
+    {
+      "id": 46,
+      "kind": "washer",
+      "center": {
+        "x": 7.9,
+        "y": 12.9
+      },
+      "width": 0.65,
+      "depth": 0.65,
+      "quarter_turns": 2
+    }
+  ],
+  "masonry": {
+    "name": "Tijolo cerâmico 6 furos (em pé)",
+    "block_width": 0.09,
+    "block_length": 0.19,
+    "joint": 0.01,
+    "plaster": 0.015,
+    "block_height": 0.14
+  },
+  "wall_height": 2.8,
+  "layers": [
+    {
+      "id": 1,
+      "name": "Terreno",
+      "color": [
+        94,
+        139,
+        191
+      ],
+      "line_weight_mm": 0.25,
+      "line_type": "dash_dot",
+      "visible": true,
+      "locked": false,
+      "category": "terrain"
+    },
+    {
+      "id": 2,
+      "name": "Paredes",
+      "color": [
+        29,
+        40,
+        54
+      ],
+      "line_weight_mm": 0.35,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "walls"
+    },
+    {
+      "id": 3,
+      "name": "Aberturas",
+      "color": [
+        40,
+        120,
+        210
+      ],
+      "line_weight_mm": 0.2,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "openings"
+    },
+    {
+      "id": 4,
+      "name": "Cômodos",
+      "color": [
+        142,
+        174,
+        212
+      ],
+      "line_weight_mm": 0.15,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "rooms"
+    },
+    {
+      "id": 5,
+      "name": "Mobiliário",
+      "color": [
+        59,
+        78,
+        99
+      ],
+      "line_weight_mm": 0.18,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "fixtures"
+    },
+    {
+      "id": 6,
+      "name": "Desenho 2D",
+      "color": [
+        28,
+        43,
+        60
+      ],
+      "line_weight_mm": 0.2,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "drawings"
+    },
+    {
+      "id": 7,
+      "name": "Cotas",
+      "color": [
+        98,
+        116,
+        137
+      ],
+      "line_weight_mm": 0.13,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "dimensions"
+    },
+    {
+      "id": 8,
+      "name": "Anotações",
+      "color": [
+        28,
+        43,
+        60
+      ],
+      "line_weight_mm": 0.18,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "annotations"
+    },
+    {
+      "id": 9,
+      "name": "Instalações elétricas",
+      "color": [
+        200,
+        40,
+        40
+      ],
+      "line_weight_mm": 0.18,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "electrical"
+    }
+  ],
+  "notes": [
+    {
+      "id": 1,
+      "position": {
+        "x": 2.5,
+        "y": 3.7
+      },
+      "text": "ACESSO SOCIAL",
+      "kind": {
+        "kind": "symbol",
+        "symbol": "entry_arrow"
+      },
+      "font_size": 12.0,
+      "rotation_deg": 0.0
+    },
+    {
+      "id": 2,
+      "position": {
+        "x": 9.2,
+        "y": 1.5
+      },
+      "text": "N",
+      "kind": {
+        "kind": "symbol",
+        "symbol": "north_arrow"
+      },
+      "font_size": 12.0,
+      "rotation_deg": 0.0
+    }
+  ],
+  "sheet": {
+    "size": {
+      "paper": "a3"
+    },
+    "orientation": "landscape",
+    "margins": {
+      "left_mm": 25.0,
+      "right_mm": 7.0,
+      "top_mm": 7.0,
+      "bottom_mm": 7.0
+    },
+    "scale": {
+      "scale": "s1_50"
+    },
+    "title_block": {
+      "client": "Projeto de Exemplo",
+      "address": "",
+      "author": "Trazo CAD",
+      "registration": "",
+      "drawing_title": "Planta Baixa — Sobrado (Térreo e Superior)",
+      "date": "",
+      "sheet_number": "01/01",
+      "revision": "R00",
+      "notes": "",
+      "show_title_block": true,
+      "show_legend": true,
+      "show_north": true,
+      "show_scale_bar": true
+    }
+  },
+  "schedules": {
+    "show_area_schedule": true,
+    "show_openings_schedule": true,
+    "show_rooms_schedule": true,
+    "show_materials_schedule": true,
+    "show_perimeter": true,
+    "show_sill": true,
+    "show_occupancy": true,
+    "waste_percent": 10.0,
+    "include_on_sheet": true
+  },
+  "doc_style": {
+    "preset": "abnt_nbr6492",
+    "monochrome": false,
+    "tick": "oblique45",
+    "unit": "centimetres",
+    "wall_pen_mm": 0.35,
+    "opening_pen_mm": 0.2,
+    "dimension_pen_mm": 0.13,
+    "hatch_pen_mm": 0.13,
+    "font_family": "Arial, Helvetica, sans-serif"
+  },
+  "circulations": [
+    {
+      "id": 1,
+      "name": "Escada 1",
+      "origin": {
+        "x": 2.0,
+        "y": 11.4
+      },
+      "rotation_deg": 0.0,
+      "railing": "both",
+      "kind": {
+        "kind": "stair",
+        "shape": "u_shaped",
+        "width_m": 1.0,
+        "total_rise_m": 2.85,
+        "tread_m": 0.28,
+        "landing_depth_m": 1.2
+      }
+    }
+  ],
+  "floors": {
+    "levels": [
+      {
+        "id": 1,
+        "name": "Térreo",
+        "elevation_m": 0.0,
+        "ceiling_height_m": 2.8,
+        "slab_thickness_m": 0.15,
+        "data": {}
+      },
+      {
+        "id": 2,
+        "name": "Pavimento Superior",
+        "elevation_m": 2.95,
+        "ceiling_height_m": 2.8,
+        "slab_thickness_m": 0.15,
+        "data": {
+          "walls": [
+            {
+              "id": 47,
+              "start": {
+                "x": 1.5,
+                "y": 4.5
+              },
+              "end": {
+                "x": 5.5,
+                "y": 4.5
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 48,
+              "start": {
+                "x": 5.5,
+                "y": 4.5
+              },
+              "end": {
+                "x": 5.5,
+                "y": 7.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 49,
+              "start": {
+                "x": 5.5,
+                "y": 8.0
+              },
+              "end": {
+                "x": 4.5,
+                "y": 8.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 50,
+              "start": {
+                "x": 1.5,
+                "y": 8.0
+              },
+              "end": {
+                "x": 1.5,
+                "y": 4.5
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 52,
+              "start": {
+                "x": 5.5,
+                "y": 4.5
+              },
+              "end": {
+                "x": 8.5,
+                "y": 4.5
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 53,
+              "start": {
+                "x": 8.5,
+                "y": 4.5
+              },
+              "end": {
+                "x": 8.5,
+                "y": 7.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 54,
+              "start": {
+                "x": 8.5,
+                "y": 7.0
+              },
+              "end": {
+                "x": 5.5,
+                "y": 7.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 55,
+              "start": {
+                "x": 5.5,
+                "y": 7.0
+              },
+              "end": {
+                "x": 5.5,
+                "y": 8.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 57,
+              "start": {
+                "x": 8.5,
+                "y": 7.0
+              },
+              "end": {
+                "x": 8.5,
+                "y": 10.5
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 58,
+              "start": {
+                "x": 8.5,
+                "y": 10.5
+              },
+              "end": {
+                "x": 5.5,
+                "y": 10.5
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 59,
+              "start": {
+                "x": 5.5,
+                "y": 10.5
+              },
+              "end": {
+                "x": 5.5,
+                "y": 8.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 61,
+              "start": {
+                "x": 4.5,
+                "y": 8.0
+              },
+              "end": {
+                "x": 1.5,
+                "y": 8.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 62,
+              "start": {
+                "x": 4.5,
+                "y": 8.0
+              },
+              "end": {
+                "x": 4.5,
+                "y": 11.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 63,
+              "start": {
+                "x": 4.5,
+                "y": 11.0
+              },
+              "end": {
+                "x": 1.5,
+                "y": 11.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 64,
+              "start": {
+                "x": 1.5,
+                "y": 11.0
+              },
+              "end": {
+                "x": 1.5,
+                "y": 8.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 66,
+              "start": {
+                "x": 8.5,
+                "y": 10.5
+              },
+              "end": {
+                "x": 8.5,
+                "y": 13.5
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 67,
+              "start": {
+                "x": 8.5,
+                "y": 13.5
+              },
+              "end": {
+                "x": 5.5,
+                "y": 13.5
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 68,
+              "start": {
+                "x": 5.5,
+                "y": 13.5
+              },
+              "end": {
+                "x": 5.5,
+                "y": 11.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 70,
+              "start": {
+                "x": 4.5,
+                "y": 11.0
+              },
+              "end": {
+                "x": 5.5,
+                "y": 11.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 71,
+              "start": {
+                "x": 5.5,
+                "y": 11.0
+              },
+              "end": {
+                "x": 5.5,
+                "y": 10.5
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 72,
+              "start": {
+                "x": 5.5,
+                "y": 13.5
+              },
+              "end": {
+                "x": 1.5,
+                "y": 13.5
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            },
+            {
+              "id": 73,
+              "start": {
+                "x": 1.5,
+                "y": 13.5
+              },
+              "end": {
+                "x": 1.5,
+                "y": 11.0
+              },
+              "masonry": {
+                "name": "Tijolo cerâmico 6 furos (em pé)",
+                "block_width": 0.09,
+                "block_length": 0.19,
+                "joint": 0.01,
+                "plaster": 0.015,
+                "block_height": 0.14
+              }
+            }
+          ],
+          "rooms": [
+            {
+              "id": 51,
+              "name": "Suíte Master",
+              "wall_ids": [
+                47,
+                48,
+                55,
+                49,
+                61,
+                50
+              ],
+              "hatch": {
+                "pattern": "wood_plank",
+                "spacing_m": 0.18,
+                "angle_deg": 0.0,
+                "color": [
+                  184,
+                  152,
+                  118
+                ]
+              }
+            },
+            {
+              "id": 56,
+              "name": "Banheiro Suíte",
+              "wall_ids": [
+                52,
+                53,
+                54,
+                48
+              ],
+              "hatch": {
+                "pattern": "ceramic_grid",
+                "spacing_m": 0.3,
+                "angle_deg": 0.0,
+                "color": [
+                  152,
+                  178,
+                  204
+                ]
+              }
+            },
+            {
+              "id": 60,
+              "name": "Quarto 2",
+              "wall_ids": [
+                54,
+                57,
+                58,
+                59,
+                55
+              ],
+              "hatch": {
+                "pattern": "wood_plank",
+                "spacing_m": 0.18,
+                "angle_deg": 0.0,
+                "color": [
+                  184,
+                  152,
+                  118
+                ]
+              }
+            },
+            {
+              "id": 65,
+              "name": "Quarto 3",
+              "wall_ids": [
+                61,
+                62,
+                63,
+                64
+              ],
+              "hatch": {
+                "pattern": "wood_plank",
+                "spacing_m": 0.18,
+                "angle_deg": 0.0,
+                "color": [
+                  184,
+                  152,
+                  118
+                ]
+              }
+            },
+            {
+              "id": 69,
+              "name": "Banheiro Social",
+              "wall_ids": [
+                58,
+                66,
+                67,
+                68,
+                71
+              ],
+              "hatch": {
+                "pattern": "ceramic_grid",
+                "spacing_m": 0.3,
+                "angle_deg": 0.0,
+                "color": [
+                  152,
+                  178,
+                  204
+                ]
+              }
+            },
+            {
+              "id": 74,
+              "name": "Hall Superior",
+              "wall_ids": [
+                63,
+                70,
+                68,
+                72,
+                73
+              ],
+              "hatch": {
+                "pattern": "stone_grid",
+                "spacing_m": 0.6,
+                "angle_deg": 0.0,
+                "color": [
+                  148,
+                  166,
+                  184
+                ]
+              }
+            }
+          ],
+          "openings": [
+            {
+              "id": 75,
+              "wall_id": 47,
+              "kind": "Window",
+              "t": 0.5
+            },
+            {
+              "id": 76,
+              "wall_id": 48,
+              "kind": "Door",
+              "t": 0.5
+            },
+            {
+              "id": 77,
+              "wall_id": 53,
+              "kind": "Window",
+              "t": 0.5
+            },
+            {
+              "id": 78,
+              "wall_id": 57,
+              "kind": "Window",
+              "t": 0.5
+            },
+            {
+              "id": 79,
+              "wall_id": 64,
+              "kind": "Window",
+              "t": 0.5
+            },
+            {
+              "id": 80,
+              "wall_id": 66,
+              "kind": "Window",
+              "t": 0.5
+            }
+          ],
+          "fixtures": [
+            {
+              "id": 81,
+              "kind": "bed_double",
+              "center": {
+                "x": 3.3,
+                "y": 6.2
+              },
+              "width": 1.6,
+              "depth": 2.0,
+              "quarter_turns": 0
+            },
+            {
+              "id": 82,
+              "kind": "wardrobe",
+              "center": {
+                "x": 2.0,
+                "y": 6.2
+              },
+              "width": 1.8,
+              "depth": 0.6,
+              "quarter_turns": 1
+            },
+            {
+              "id": 83,
+              "kind": "washbasin",
+              "center": {
+                "x": 6.3,
+                "y": 5.0
+              },
+              "width": 0.7,
+              "depth": 0.45,
+              "quarter_turns": 0
+            },
+            {
+              "id": 84,
+              "kind": "toilet",
+              "center": {
+                "x": 7.2,
+                "y": 5.1
+              },
+              "width": 0.4,
+              "depth": 0.65,
+              "quarter_turns": 0
+            },
+            {
+              "id": 85,
+              "kind": "shower",
+              "center": {
+                "x": 7.85,
+                "y": 6.2
+              },
+              "width": 1.0,
+              "depth": 1.2,
+              "quarter_turns": 3
+            },
+            {
+              "id": 86,
+              "kind": "bed_single",
+              "center": {
+                "x": 7.2,
+                "y": 8.8
+              },
+              "width": 0.95,
+              "depth": 1.95,
+              "quarter_turns": 3
+            },
+            {
+              "id": 87,
+              "kind": "bed_single",
+              "center": {
+                "x": 2.8,
+                "y": 9.5
+              },
+              "width": 0.95,
+              "depth": 1.95,
+              "quarter_turns": 1
+            },
+            {
+              "id": 88,
+              "kind": "washbasin",
+              "center": {
+                "x": 6.3,
+                "y": 11.0
+              },
+              "width": 0.7,
+              "depth": 0.45,
+              "quarter_turns": 0
+            },
+            {
+              "id": 89,
+              "kind": "toilet",
+              "center": {
+                "x": 7.2,
+                "y": 11.1
+              },
+              "width": 0.4,
+              "depth": 0.65,
+              "quarter_turns": 0
+            },
+            {
+              "id": 90,
+              "kind": "shower",
+              "center": {
+                "x": 7.85,
+                "y": 12.6
+              },
+              "width": 1.0,
+              "depth": 1.4,
+              "quarter_turns": 3
+            }
+          ]
+        }
+      }
+    ],
+    "active_floor_id": 1,
+    "show_underlay": true
+  },
+  "next_id": 91
+}

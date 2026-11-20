@@ -3,7 +3,7 @@ use eframe::egui::{self, Margin, RichText, Stroke};
 use super::super::{DocDialog, FloorPlanApp, theme::*};
 use super::icons::Icon;
 use super::widgets::{primary_button, secondary_button};
-use crate::domain::templates::ProjectTemplate;
+use crate::domain::{samples::SampleProject, templates::ProjectTemplate};
 
 impl FloorPlanApp {
     pub(super) fn templates_dialog(&mut self, ctx: &egui::Context) {
@@ -12,6 +12,7 @@ impl FloorPlanApp {
         }
         let mut close = false;
         let mut chosen: Option<ProjectTemplate> = None;
+        let mut chosen_sample: Option<SampleProject> = None;
 
         let response = egui::Modal::new(egui::Id::unique("templates_dialog"))
             .frame(super::dialogs::dialog_frame())
@@ -21,50 +22,115 @@ impl FloorPlanApp {
                 super::dialogs::dialog_title(
                     ui,
                     Icon::Plan,
-                    "Modelos de projeto",
-                    "Escolha um ponto de partida pronto para planta baixa, implantação ou detalhamento.",
+                    "Modelos e projetos de exemplo",
+                    "Escolha um modelo técnico ou abra um dos projetos prontos da pasta examples/.",
                 );
 
-                for template in ProjectTemplate::ALL {
-                    egui::Frame::new()
-                        .fill(PANEL_ALT)
-                        .stroke(Stroke::new(1.0, BORDER))
-                        .corner_radius(8)
-                        .inner_margin(Margin::same(12))
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.vertical(|ui| {
+                egui::ScrollArea::vertical()
+                    .max_height(430.0)
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        ui.label(
+                            RichText::new("PROJETOS DE EXEMPLO")
+                                .font(strong(11.0))
+                                .color(MUTED),
+                        );
+                        ui.add_space(6.0);
+                        for sample in SampleProject::ALL {
+                            egui::Frame::new()
+                                .fill(PANEL_ALT)
+                                .stroke(Stroke::new(1.0, BORDER))
+                                .corner_radius(8)
+                                .inner_margin(Margin::same(12))
+                                .show(ui, |ui| {
                                     ui.horizontal(|ui| {
-                                        ui.label(
-                                            RichText::new(template.title())
-                                                .font(strong(13.0))
-                                                .color(TEXT),
-                                        );
-                                        ui.label(
-                                            RichText::new(format!("· {}", template.category()))
-                                                .size(11.5)
-                                                .color(ACCENT),
+                                        ui.vertical(|ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.label(
+                                                    RichText::new(sample.title())
+                                                        .font(strong(13.0))
+                                                        .color(TEXT),
+                                                );
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "· examples/{}",
+                                                        sample.file_name()
+                                                    ))
+                                                    .size(11.5)
+                                                    .color(ACCENT),
+                                                );
+                                            });
+                                            ui.add_space(2.0);
+                                            ui.label(
+                                                RichText::new(sample.summary())
+                                                    .size(11.5)
+                                                    .color(TEXT_2),
+                                            );
+                                        });
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if primary_button(ui, "Abrir exemplo").clicked() {
+                                                    chosen_sample = Some(sample);
+                                                }
+                                            },
                                         );
                                     });
-                                    ui.add_space(2.0);
-                                    ui.label(
-                                        RichText::new(template.summary())
-                                            .size(11.5)
-                                            .color(TEXT_2),
-                                    );
                                 });
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if primary_button(ui, "Usar modelo").clicked() {
-                                            chosen = Some(template);
-                                        }
-                                    },
-                                );
-                            });
-                        });
-                    ui.add_space(8.0);
-                }
+                            ui.add_space(8.0);
+                        }
+
+                        ui.add_space(6.0);
+                        ui.label(
+                            RichText::new("MODELOS RÁPIDOS")
+                                .font(strong(11.0))
+                                .color(MUTED),
+                        );
+                        ui.add_space(6.0);
+                        for template in ProjectTemplate::ALL {
+                            egui::Frame::new()
+                                .fill(PANEL_ALT)
+                                .stroke(Stroke::new(1.0, BORDER))
+                                .corner_radius(8)
+                                .inner_margin(Margin::same(12))
+                                .show(ui, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.vertical(|ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.label(
+                                                    RichText::new(template.title())
+                                                        .font(strong(13.0))
+                                                        .color(TEXT),
+                                                );
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "· {}",
+                                                        template.category()
+                                                    ))
+                                                    .size(11.5)
+                                                    .color(ACCENT),
+                                                );
+                                            });
+                                            ui.add_space(2.0);
+                                            ui.label(
+                                                RichText::new(template.summary())
+                                                    .size(11.5)
+                                                    .color(TEXT_2),
+                                            );
+                                        });
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(egui::Align::Center),
+                                            |ui| {
+                                                if primary_button(ui, "Usar modelo").clicked() {
+                                                    chosen = Some(template);
+                                                }
+                                            },
+                                        );
+                                    });
+                                });
+                            ui.add_space(8.0);
+                        }
+                    });
 
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
@@ -83,7 +149,16 @@ impl FloorPlanApp {
                 });
             });
 
-        if let Some(template) = chosen {
+        if let Some(sample) = chosen_sample {
+            let prev = self.project.clone();
+            self.project = sample.load_embedded();
+            self.clear_selection();
+            self.file_path = None;
+            self.record_change(prev);
+            self.fit_view_requested();
+            self.message = format!("Projeto de exemplo carregado: {}", sample.title());
+            self.active_doc_dialog = DocDialog::None;
+        } else if let Some(template) = chosen {
             let prev = self.project.clone();
             self.project = template.build();
             self.clear_selection();

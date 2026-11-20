@@ -193,7 +193,7 @@ A chosen level must never be a wall. A newcomer can open an advanced tool when n
 | 77 | Release pipeline: tagged GitHub Releases with Windows, Linux and macOS binaries, checksums and changelog notes | P0 | M | M1 | ✅ |
 | 63 | Windows installer, `.json` project association and update check | P0 | M | M1 | ✅ |
 | 79 | Crash log and *Relatar problema* (report a problem): panic hook, rotating log file, pre-filled GitHub issue | P0 | S | M1 | ✅ |
-| 81 | Sample projects in `examples/` (single-storey house, two-storey house, apartment), used by docs and tests | P1 | S | M1 | ⬜ |
+| 81 | Sample projects in `examples/` (single-storey house, two-storey house, apartment), used by docs and tests | P1 | S | M1 | ✅ |
 | 80 | Documented project file format (JSON Schema) for third-party tools | P1 | M | M1 | ⬜ |
 | 78 | Signed Windows binaries | P2 | S | M1 | ⬜ |
 | 62 | Performance with large plans: spatial index for picking, cached rendering, benchmarks in CI | P1 | L | M7 | ⬜ |

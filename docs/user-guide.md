@@ -160,7 +160,7 @@ Wire sections assume copper with PVC insulation, method B1, two loaded conductor
 - **Quadros** (schedules): areas, doors and windows, rooms and materials, configurable and placed on sheets.
 - **Vistas** (views): sections, elevations and detail callouts with cross-references between drawings.
 - **Pranchas** (sheet sets): multi-sheet sets with automatic numbering (`01/03`), revisions (`R00`, `R01`…), issue status and a master document list.
-- **Modelos** (templates): ready-made floor plan, site plan and wet-area detail setups.
+- **Modelos** (templates and sample projects): ready-made floor plan, site plan and wet-area detail setups, plus three full sample projects (`examples/casa-terrea.json`, `examples/sobrado.json`, `examples/apartamento.json`).
 - Documentation styles follow ABNT NBR 6492:2021 and NBR 16752, with visual and monochrome site presets. Checking the requirements that apply to a given project remains the designer's responsibility.
 
 ### Export
