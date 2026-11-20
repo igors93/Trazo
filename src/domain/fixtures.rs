@@ -23,10 +23,20 @@ pub enum FixtureKind {
     Shower,
     Table,
     Shelves,
+    BedDouble,
+    BedSingle,
+    Sofa,
+    Armchair,
+    Wardrobe,
+    Desk,
+    DiningSet,
+    Washer,
+    TvStand,
+    Bathtub,
 }
 
 impl FixtureKind {
-    pub const ALL: [FixtureKind; 11] = [
+    pub const ALL: [FixtureKind; 21] = [
         FixtureKind::Counter,
         FixtureKind::KitchenSink,
         FixtureKind::Stove,
@@ -38,6 +48,16 @@ impl FixtureKind {
         FixtureKind::Shower,
         FixtureKind::Table,
         FixtureKind::Shelves,
+        FixtureKind::BedDouble,
+        FixtureKind::BedSingle,
+        FixtureKind::Sofa,
+        FixtureKind::Armchair,
+        FixtureKind::Wardrobe,
+        FixtureKind::Desk,
+        FixtureKind::DiningSet,
+        FixtureKind::Washer,
+        FixtureKind::TvStand,
+        FixtureKind::Bathtub,
     ];
 
     pub fn label(self) -> &'static str {
@@ -53,6 +73,16 @@ impl FixtureKind {
             Self::Shower => "Chuveiro",
             Self::Table => "Mesa",
             Self::Shelves => "Prateleira",
+            Self::BedDouble => "Cama de casal",
+            Self::BedSingle => "Cama de solteiro",
+            Self::Sofa => "Sofá",
+            Self::Armchair => "Poltrona",
+            Self::Wardrobe => "Guarda-roupa",
+            Self::Desk => "Escrivaninha",
+            Self::DiningSet => "Mesa de jantar",
+            Self::Washer => "Máquina de lavar",
+            Self::TvStand => "Rack / TV",
+            Self::Bathtub => "Banheira",
         }
     }
 
@@ -70,6 +100,16 @@ impl FixtureKind {
             Self::Shower => "chuveiro",
             Self::Table => "mesa",
             Self::Shelves => "prateleira",
+            Self::BedDouble => "cama_casal",
+            Self::BedSingle => "cama_solteiro",
+            Self::Sofa => "sofa",
+            Self::Armchair => "poltrona",
+            Self::Wardrobe => "guarda_roupa",
+            Self::Desk => "escrivaninha",
+            Self::DiningSet => "mesa_jantar",
+            Self::Washer => "lavadora",
+            Self::TvStand => "rack_tv",
+            Self::Bathtub => "banheira",
         }
     }
 
@@ -91,6 +131,33 @@ impl FixtureKind {
             Self::Shower => (0.9, 0.9),
             Self::Table => (2.0, 0.9),
             Self::Shelves => (1.0, 0.4),
+            Self::BedDouble => (1.6, 2.0),
+            Self::BedSingle => (0.9, 1.95),
+            Self::Sofa => (2.1, 0.85),
+            Self::Armchair => (0.85, 0.85),
+            Self::Wardrobe => (1.8, 0.6),
+            Self::Desk => (1.4, 0.65),
+            Self::DiningSet => (1.8, 0.9),
+            Self::Washer => (0.6, 0.6),
+            Self::TvStand => (1.6, 0.45),
+            Self::Bathtub => (1.7, 0.8),
+        }
+    }
+
+    /// Recommended functional clearance in front of the fixture (metres) for
+    /// ergonomics and accessibility checks.
+    pub fn front_clearance_m(self) -> f64 {
+        match self {
+            Self::Toilet | Self::Washbasin | Self::KitchenSink | Self::Stove | Self::Counter => {
+                0.60
+            }
+            Self::Fridge | Self::Washer | Self::Wardrobe => 0.75,
+            Self::Desk | Self::DiningSet | Self::Table => 0.70,
+            Self::Sofa | Self::Armchair => 0.60,
+            Self::BedDouble | Self::BedSingle => 0.55,
+            Self::Shower | Self::Bathtub => 0.60,
+            Self::WoodStove | Self::Grill => 0.80,
+            Self::Shelves | Self::TvStand => 0.50,
         }
     }
 
@@ -99,7 +166,13 @@ impl FixtureKind {
     pub fn needs_label(self) -> bool {
         matches!(
             self,
-            Self::Counter | Self::Fridge | Self::Grill | Self::WoodStove | Self::Shelves
+            Self::Counter
+                | Self::Fridge
+                | Self::Grill
+                | Self::WoodStove
+                | Self::Shelves
+                | Self::Wardrobe
+                | Self::TvStand
         )
     }
 }
@@ -358,6 +431,93 @@ pub fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolShape> {
             outline,
             line(&[(-hw, -hd), (hw, hd)], true, Detail),
             line(&[(-hw, hd), (hw, -hd)], true, Detail),
+        ],
+        FixtureKind::BedDouble => {
+            let head = -hd + 0.12;
+            let pillow_y1 = (-hd + 0.50).min(0.0);
+            let fold_y = (-hd + depth * 0.42).min(hd - 0.15);
+            vec![
+                outline,
+                line(&[(-hw, head), (hw, head)], false, Detail),
+                rect(-hw + 0.10, head + 0.04, -0.05, pillow_y1, Detail),
+                rect(0.05, head + 0.04, hw - 0.10, pillow_y1, Detail),
+                line(&[(-hw, fold_y), (hw, fold_y)], false, Detail),
+            ]
+        }
+        FixtureKind::BedSingle => {
+            let head = -hd + 0.10;
+            let pillow_y1 = (-hd + 0.46).min(0.0);
+            let fold_y = (-hd + depth * 0.42).min(hd - 0.15);
+            vec![
+                outline,
+                line(&[(-hw, head), (hw, head)], false, Detail),
+                rect(-hw + 0.10, head + 0.04, hw - 0.10, pillow_y1, Detail),
+                line(&[(-hw, fold_y), (hw, fold_y)], false, Detail),
+            ]
+        }
+        FixtureKind::Sofa => {
+            let back = -hd + (depth * 0.24).clamp(0.12, 0.25);
+            let arm = (width * 0.09).clamp(0.10, 0.22);
+            let inner_w = (width - 2.0 * arm).max(0.2);
+            let seats = (inner_w / 0.65).round().clamp(2.0, 4.0) as usize;
+            let mut shapes = vec![
+                outline,
+                rect(-hw, -hd, -hw + arm, hd, Detail),
+                rect(hw - arm, -hd, hw, hd, Detail),
+                rect(-hw + arm, -hd, hw - arm, back, Detail),
+            ];
+            for i in 1..seats {
+                let x = -hw + arm + inner_w * i as f64 / seats as f64;
+                shapes.push(line(&[(x, back), (x, hd)], false, Detail));
+            }
+            shapes
+        }
+        FixtureKind::Armchair => {
+            let back = -hd + (depth * 0.26).clamp(0.12, 0.24);
+            let arm = (width * 0.18).clamp(0.10, 0.20);
+            vec![
+                outline,
+                rect(-hw, -hd, -hw + arm, hd, Detail),
+                rect(hw - arm, -hd, hw, hd, Detail),
+                rect(-hw + arm, -hd, hw - arm, back, Detail),
+            ]
+        }
+        FixtureKind::Wardrobe => vec![
+            outline,
+            line(&[(-hw, -hd), (hw, hd)], true, Detail),
+            line(&[(-hw, hd), (hw, -hd)], true, Detail),
+            line(&[(-hw, hd - 0.05), (hw, hd - 0.05)], false, Detail),
+        ],
+        FixtureKind::Desk => vec![
+            outline,
+            rect(-0.22, hd + 0.06, 0.22, hd + 0.46, Detail),
+            line(&[(-0.22, hd + 0.36), (0.22, hd + 0.36)], false, Detail),
+        ],
+        FixtureKind::DiningSet => {
+            let mut shapes = vec![outline];
+            let per_side = (width / 0.6).floor().clamp(1.0, 4.0) as usize;
+            for i in 0..per_side {
+                let x = -hw + width * (i as f64 + 0.5) / per_side as f64;
+                shapes.push(rect(x - 0.20, -hd - 0.42, x + 0.20, -hd - 0.06, Detail));
+                shapes.push(rect(x - 0.20, hd + 0.06, x + 0.20, hd + 0.42, Detail));
+            }
+            shapes.push(rect(-hw - 0.42, -0.20, -hw - 0.06, 0.20, Detail));
+            shapes.push(rect(hw + 0.06, -0.20, hw + 0.42, 0.20, Detail));
+            shapes
+        }
+        FixtureKind::Washer => vec![
+            outline,
+            circle(0.0, 0.02, small * 0.32, Detail),
+            line(&[(-hw, -hd + 0.10), (hw, -hd + 0.10)], false, Detail),
+        ],
+        FixtureKind::TvStand => vec![
+            outline,
+            rect(-hw * 0.72, -hd + 0.06, hw * 0.72, -hd + 0.14, Outline),
+        ],
+        FixtureKind::Bathtub => vec![
+            outline,
+            rect(-hw + 0.08, -hd + 0.08, hw - 0.08, hd - 0.08, Detail),
+            circle(hw - 0.22, 0.0, 0.035, Detail),
         ],
     }
 }

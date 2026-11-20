@@ -48,6 +48,7 @@ enum DocDialog {
     SheetSet,
     Circulation,
     Floors,
+    Library,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -185,6 +186,12 @@ pub struct FloorPlanApp {
     new_layer_name: String,
     new_note_text: String,
     new_revision_text: String,
+    library_search: String,
+    library_category_filter: Option<crate::domain::library::LibraryCategory>,
+    new_library_name: String,
+    new_library_width: f64,
+    new_library_depth: f64,
+    new_library_base: Option<FixtureKind>,
     browser_filter: String,
     browser_hover: Option<Selection>,
     cursor_world: Option<Point>,
@@ -331,6 +338,12 @@ impl FloorPlanApp {
             new_layer_name: String::new(),
             new_note_text: String::new(),
             new_revision_text: String::new(),
+            library_search: String::new(),
+            library_category_filter: None,
+            new_library_name: String::new(),
+            new_library_width: 1.20,
+            new_library_depth: 0.60,
+            new_library_base: Some(FixtureKind::Counter),
             browser_filter: String::new(),
             browser_hover: None,
             cursor_world: None,

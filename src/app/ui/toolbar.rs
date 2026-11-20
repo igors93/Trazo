@@ -379,8 +379,27 @@ impl FloorPlanApp {
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Mobiliário", |ui| {
+            self.fixture_button(ui, FixtureKind::Sofa, "Sofá");
+            self.fixture_button(ui, FixtureKind::BedDouble, "Cama");
+            self.fixture_button(ui, FixtureKind::Wardrobe, "Armário");
             self.fixture_button(ui, FixtureKind::Table, "Mesa");
+            self.fixture_button(ui, FixtureKind::Desk, "Escrit.");
+            self.fixture_button(ui, FixtureKind::Washer, "Lavadora");
             self.fixture_button(ui, FixtureKind::Shelves, "Prateleira");
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::Search,
+                    "Biblioteca",
+                    self.active_doc_dialog == super::super::DocDialog::Library,
+                    false,
+                ),
+                "Abrir biblioteca completa e personalizável de móveis, equipamentos e símbolos",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Library;
+            }
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Ajustar", |ui| {

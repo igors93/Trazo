@@ -13,6 +13,7 @@ pub mod hatch;
 pub mod history;
 pub mod junctions;
 pub mod layers;
+pub mod library;
 pub mod masonry;
 pub mod model;
 pub mod notes;

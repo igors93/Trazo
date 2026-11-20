@@ -318,6 +318,17 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::Floors;
             ui.close();
         }
+        if menu_item(
+            ui,
+            Some(Icon::Fixture(crate::domain::fixtures::FixtureKind::Sofa)),
+            "Biblioteca de móveis e símbolos...",
+            "",
+        )
+        .clicked()
+        {
+            self.active_doc_dialog = super::super::DocDialog::Library;
+            ui.close();
+        }
     }
 
     pub(super) fn osnap_menu(&mut self, ui: &mut Ui) {

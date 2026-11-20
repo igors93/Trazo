@@ -120,6 +120,10 @@ pub struct Project {
     )]
     pub floors: super::floors::ProjectFloors,
 
+    /// User-defined custom furniture, equipment and technical symbol presets.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub library: Vec<super::library::LibraryItem>,
+
     next_id: u64,
 }
 
@@ -178,6 +182,8 @@ impl Default for Project {
             circulations: Vec::new(),
 
             floors: super::floors::ProjectFloors::default(),
+
+            library: Vec::new(),
 
             next_id: 1,
         }

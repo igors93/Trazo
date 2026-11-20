@@ -12,6 +12,7 @@ pub(super) mod icons;
 pub(in crate::app) use icons::Glyph;
 mod inspector;
 mod layers;
+mod library;
 mod modify_menu;
 mod notes;
 mod options_bar;
@@ -111,5 +112,6 @@ impl FloorPlanApp {
         self.sheet_set_dialog(&context);
         self.circulation_dialog(&context);
         self.floors_dialog(&context);
+        self.library_dialog(&context);
     }
 }
