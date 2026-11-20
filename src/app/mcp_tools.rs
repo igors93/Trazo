@@ -436,8 +436,11 @@ impl FloorPlanApp {
             "novo_projeto" => {
                 self.check_discard(args)?;
                 self.new_project();
-                if let Some(name) = text(args, "nome") {
+                if let Some(name) = text(args, "nome")
+                    && self.project.name != name
+                {
                     self.project.name = name;
+                    self.mark_edited_outside_history();
                 }
                 self.fit_view_requested();
                 Ok(ToolOutput::ok(format!(
@@ -1579,6 +1582,8 @@ mod tests {
         );
         assert!(app.project.walls.is_empty());
         assert_eq!(app.project.name, "Casa nova");
+        assert!(app.dirty);
+        assert!(app.recovery_pending);
     }
 
     #[test]
