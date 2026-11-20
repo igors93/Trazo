@@ -13,56 +13,79 @@ use eframe::egui::{self, Pos2, Rect, Sense, Stroke, Ui, UiBuilder, vec2};
 impl FloorPlanApp {
     /// The view's name at the top left of the plan, on a light plate.
     pub(in crate::app) fn paint_view_label(&self, painter: &egui::Painter, rect: Rect) {
+        // Padding at the plate's ends, the gap between an icon and its
+        // text, and the room on each side of the divider.
+        const PAD: f32 = 12.0;
+        const ICON_GAP: f32 = 7.0;
+        const DIVIDER_GAP: f32 = 12.0;
+        const VIEW_ICON: f32 = 15.0;
+        const TOOL_ICON: f32 = 13.0;
         let title = painter.layout_no_wrap("Planta baixa · Térreo".to_owned(), strong(12.5), TEXT);
-        let detail = painter.layout_no_wrap(
-            format!("{} · metros", tool_name(self.tool)),
-            regular(11.5),
-            MUTED,
-        );
+        let tool = painter.layout_no_wrap(tool_name(self.tool).to_owned(), regular(11.5), TEXT_2);
+        let unit = painter.layout_no_wrap("metros".to_owned(), regular(11.5), MUTED);
+        let (title_width, tool_width, unit_width) = (title.size().x, tool.size().x, unit.size().x);
+        let width = PAD
+            + VIEW_ICON
+            + ICON_GAP
+            + title_width
+            + 2.0 * DIVIDER_GAP
+            + TOOL_ICON
+            + ICON_GAP
+            + tool_width
+            + DIVIDER_GAP
+            + unit_width
+            + PAD;
         let plate = Rect::from_min_size(
             Pos2::new(rect.left() + 12.0, rect.top() + 12.0),
-            vec2(title.size().x + detail.size().x + 62.0, 28.0),
+            vec2(width, 30.0),
         );
         if !rect.contains_rect(plate) {
             return;
         }
         overlay::paint_floating_plate(painter, plate);
+        let middle = plate.center().y;
+        let divider = |x: f32| {
+            painter.line_segment(
+                [
+                    Pos2::new(x, plate.top() + 8.0),
+                    Pos2::new(x, plate.bottom() - 8.0),
+                ],
+                Stroke::new(1.0, BORDER),
+            );
+        };
+        let mut x = plate.left() + PAD;
         icons::paint(
             painter,
-            Rect::from_center_size(
-                Pos2::new(plate.left() + 16.0, plate.center().y),
-                vec2(15.0, 15.0),
+            Rect::from_min_size(
+                Pos2::new(x, middle - VIEW_ICON / 2.0),
+                vec2(VIEW_ICON, VIEW_ICON),
             ),
             Icon::Plan,
             TEXT_2,
             ACCENT,
         );
-        let title_width = title.size().x;
-        painter.galley(
-            Pos2::new(plate.left() + 30.0, plate.center().y - title.size().y / 2.0),
-            title,
-            TEXT,
-        );
-        let x = plate.left() + 30.0 + title_width + 10.0;
-        painter.line_segment(
-            [
-                Pos2::new(x, plate.top() + 7.0),
-                Pos2::new(x, plate.bottom() - 7.0),
-            ],
-            Stroke::new(1.0, BORDER),
-        );
+        x += VIEW_ICON + ICON_GAP;
+        painter.galley(Pos2::new(x, middle - title.size().y / 2.0), title, TEXT);
+        x += title_width + DIVIDER_GAP;
+        divider(x);
+        x += DIVIDER_GAP;
         icons::paint(
             painter,
-            Rect::from_center_size(Pos2::new(x + 13.0, plate.center().y), vec2(13.0, 13.0)),
+            Rect::from_min_size(
+                Pos2::new(x, middle - TOOL_ICON / 2.0),
+                vec2(TOOL_ICON, TOOL_ICON),
+            ),
             tool_icon(self.tool),
             ACCENT_TEXT,
             ACCENT,
         );
-        painter.galley(
-            Pos2::new(x + 23.0, plate.center().y - detail.size().y / 2.0),
-            detail,
-            MUTED,
-        );
+        x += TOOL_ICON + ICON_GAP;
+        painter.galley(Pos2::new(x, middle - tool.size().y / 2.0), tool, TEXT_2);
+        // The unit, set apart by a dot.
+        x += tool_width + DIVIDER_GAP / 2.0;
+        painter.circle_filled(Pos2::new(x, middle), 1.5, FAINT);
+        x += DIVIDER_GAP / 2.0;
+        painter.galley(Pos2::new(x, middle - unit.size().y / 2.0), unit, MUTED);
     }
 
     /// A short name for the selected element, for the context menu.

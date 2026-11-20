@@ -68,21 +68,33 @@ pub fn paint_scale_bar(painter: &Painter, view: ViewTransform) {
     if length < 20.0 {
         return;
     }
-    let origin = Pos2::new(view.rect.left() + 22.0, view.rect.bottom() - 22.0);
+    let font = theme::regular(10.5);
+    let end_label = format!("{} m", meters_label(meters));
+    // The labels are centred on the ticks: the plate leaves the same room
+    // past the "0" on the left and past the end label on the right.
+    let half_zero = painter
+        .layout_no_wrap("0".to_owned(), font.clone(), theme::TEXT_2)
+        .size()
+        .x
+        / 2.0;
+    let half_end = painter
+        .layout_no_wrap(end_label.clone(), font.clone(), theme::TEXT_2)
+        .size()
+        .x
+        / 2.0;
+    const PAD: f32 = 10.0;
+    let origin = Pos2::new(
+        view.rect.left() + 12.0 + PAD + half_zero,
+        view.rect.bottom() - 22.0,
+    );
     let plate = Rect::from_min_max(
-        Pos2::new(origin.x - 12.0, origin.y - 30.0),
-        Pos2::new(origin.x + length + 30.0, origin.y + 10.0),
+        Pos2::new(origin.x - half_zero - PAD, origin.y - 30.0),
+        Pos2::new(origin.x + length + half_end + PAD, origin.y + 10.0),
     );
     if !view.rect.contains_rect(plate) {
         return;
     }
-    painter.rect(
-        plate,
-        6.0,
-        Color32::from_rgba_unmultiplied(255, 255, 255, 225),
-        Stroke::new(1.0, theme::BORDER),
-        StrokeKind::Inside,
-    );
+    paint_floating_plate(painter, plate);
     let bar = Rect::from_min_size(Pos2::new(origin.x, origin.y - 5.0), vec2(length, 5.0));
     for part in 0..4 {
         let segment = Rect::from_min_size(
@@ -105,21 +117,21 @@ pub fn paint_scale_bar(painter: &Painter, view: ViewTransform) {
         Pos2::new(bar.left(), label_y),
         Align2::CENTER_CENTER,
         "0",
-        theme::regular(10.5),
+        font.clone(),
         theme::TEXT_2,
     );
     painter.text(
         Pos2::new(bar.center().x, label_y),
         Align2::CENTER_CENTER,
         meters_label(meters / 2.0),
-        theme::regular(10.5),
+        font.clone(),
         theme::TEXT_2,
     );
     painter.text(
         Pos2::new(bar.right(), label_y),
         Align2::CENTER_CENTER,
-        format!("{} m", meters_label(meters)),
-        theme::regular(10.5),
+        end_label,
+        font,
         theme::TEXT_2,
     );
 }
