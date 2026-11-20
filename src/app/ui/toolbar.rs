@@ -443,6 +443,12 @@ impl FloorPlanApp {
             }
         });
         vertical_divider(ui, 72.0);
+        ribbon_panel(ui, "Garagem e lazer", |ui| {
+            self.fixture_button(ui, FixtureKind::Car, "Carro");
+            self.fixture_button(ui, FixtureKind::Umbrella, "Guarda-sol");
+            self.fixture_button(ui, FixtureKind::SunLounger, "Cadeira de sol");
+        });
+        vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Ajustar", |ui| {
             ribbon_stack(ui, |ui| {
                 let can_rotate = matches!(self.selection, Some(Selection::Fixture(_)))

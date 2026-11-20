@@ -23,18 +23,20 @@ pub enum LibraryCategory {
     Bathroom,
     Office,
     Laundry,
+    Outdoor,
     Symbols,
     Custom,
 }
 
 impl LibraryCategory {
-    pub const ALL: [LibraryCategory; 8] = [
+    pub const ALL: [LibraryCategory; 9] = [
         LibraryCategory::Living,
         LibraryCategory::Bedroom,
         LibraryCategory::Kitchen,
         LibraryCategory::Bathroom,
         LibraryCategory::Office,
         LibraryCategory::Laundry,
+        LibraryCategory::Outdoor,
         LibraryCategory::Symbols,
         LibraryCategory::Custom,
     ];
@@ -47,6 +49,7 @@ impl LibraryCategory {
             Self::Bathroom => "Banheiro",
             Self::Office => "Escritório",
             Self::Laundry => "Área de serviço",
+            Self::Outdoor => "Garagem e lazer",
             Self::Symbols => "Símbolos técnicos",
             Self::Custom => "Personalizados",
         }
@@ -268,6 +271,46 @@ impl LibraryItem {
                 None,
             ),
             mk(
+                "Carro (passeio médio)",
+                LibraryCategory::Outdoor,
+                1.85,
+                4.50,
+                Some(FixtureKind::Car),
+                None,
+            ),
+            mk(
+                "Carro compacto",
+                LibraryCategory::Outdoor,
+                1.75,
+                4.00,
+                Some(FixtureKind::Car),
+                None,
+            ),
+            mk(
+                "SUV / Caminhonete",
+                LibraryCategory::Outdoor,
+                2.00,
+                5.10,
+                Some(FixtureKind::Car),
+                None,
+            ),
+            mk(
+                "Guarda-sol",
+                LibraryCategory::Outdoor,
+                2.40,
+                2.40,
+                Some(FixtureKind::Umbrella),
+                None,
+            ),
+            mk(
+                "Cadeira de sol (espreguiçadeira)",
+                LibraryCategory::Outdoor,
+                0.75,
+                1.95,
+                Some(FixtureKind::SunLounger),
+                None,
+            ),
+            mk(
                 "Ponto de luz no teto",
                 LibraryCategory::Symbols,
                 0.30,
@@ -373,7 +416,7 @@ mod tests {
 
     #[test]
     fn expanded_fixture_catalog_and_custom_library_place_and_round_trip() {
-        assert_eq!(FixtureKind::ALL.len(), 21);
+        assert_eq!(FixtureKind::ALL.len(), 24);
         for kind in FixtureKind::ALL {
             let (w, d) = kind.default_size();
             assert!(!crate::domain::fixtures::symbol(kind, w, d).is_empty());

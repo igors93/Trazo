@@ -33,6 +33,9 @@ pub enum FixtureKind {
     Washer,
     TvStand,
     Bathtub,
+    Car,
+    Umbrella,
+    SunLounger,
     // Electrical devices (see `electrical.rs`).
     OutletLow,
     OutletMid,
@@ -47,7 +50,7 @@ pub enum FixtureKind {
 }
 
 impl FixtureKind {
-    pub const ALL: [FixtureKind; 21] = [
+    pub const ALL: [FixtureKind; 24] = [
         FixtureKind::Counter,
         FixtureKind::KitchenSink,
         FixtureKind::Stove,
@@ -69,6 +72,9 @@ impl FixtureKind {
         FixtureKind::Washer,
         FixtureKind::TvStand,
         FixtureKind::Bathtub,
+        FixtureKind::Car,
+        FixtureKind::Umbrella,
+        FixtureKind::SunLounger,
     ];
 
     pub fn label(self) -> &'static str {
@@ -94,6 +100,9 @@ impl FixtureKind {
             Self::Washer => "Máquina de lavar",
             Self::TvStand => "Rack / TV",
             Self::Bathtub => "Banheira",
+            Self::Car => "Carro",
+            Self::Umbrella => "Guarda-sol",
+            Self::SunLounger => "Cadeira de sol",
             Self::OutletLow => "Tomada baixa",
             Self::OutletMid => "Tomada média",
             Self::OutletHigh => "Tomada alta",
@@ -131,6 +140,9 @@ impl FixtureKind {
             Self::Washer => "lavadora",
             Self::TvStand => "rack_tv",
             Self::Bathtub => "banheira",
+            Self::Car => "carro",
+            Self::Umbrella => "guarda_sol",
+            Self::SunLounger => "cadeira_sol",
             Self::OutletLow => "tomada_baixa",
             Self::OutletMid => "tomada_media",
             Self::OutletHigh => "tomada_alta",
@@ -175,6 +187,9 @@ impl FixtureKind {
             Self::Washer => (0.6, 0.6),
             Self::TvStand => (1.6, 0.45),
             Self::Bathtub => (1.7, 0.8),
+            Self::Car => (1.85, 4.50),
+            Self::Umbrella => (2.40, 2.40),
+            Self::SunLounger => (0.75, 1.95),
             Self::OutletLow | Self::OutletMid | Self::OutletHigh | Self::OutletSpecific => {
                 (0.3, 0.22)
             }
@@ -200,6 +215,8 @@ impl FixtureKind {
             Self::Shower | Self::Bathtub => 0.60,
             Self::WoodStove | Self::Grill => 0.80,
             Self::Shelves | Self::TvStand => 0.50,
+            Self::Car => 0.60,
+            Self::SunLounger | Self::Umbrella => 0.50,
             // Wall and ceiling devices take no floor space; the panel needs
             // free access in front of it.
             Self::Panel => 0.70,
@@ -586,6 +603,121 @@ pub fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolShape> {
             rect(-hw + 0.08, -hd + 0.08, hw - 0.08, hd - 0.08, Detail),
             circle(hw - 0.22, 0.0, 0.035, Detail),
         ],
+        FixtureKind::Car => {
+            // Top-view passenger car: tapered bumpers, windshield, roof, rear
+            // glass, side mirrors and headlight markers (+Y is the front hood).
+            let body = SymbolShape::Polyline {
+                points: vec![
+                    Point::new(-hw * 0.80, -hd),
+                    Point::new(hw * 0.80, -hd),
+                    Point::new(hw, -hd * 0.86),
+                    Point::new(hw, hd * 0.82),
+                    Point::new(hw * 0.78, hd),
+                    Point::new(-hw * 0.78, hd),
+                    Point::new(-hw, hd * 0.82),
+                    Point::new(-hw, -hd * 0.86),
+                ],
+                closed: true,
+                dashed: false,
+                weight: Outline,
+            };
+            let windshield = SymbolShape::Polyline {
+                points: vec![
+                    Point::new(-hw * 0.72, hd * 0.06),
+                    Point::new(hw * 0.72, hd * 0.06),
+                    Point::new(hw * 0.84, hd * 0.42),
+                    Point::new(-hw * 0.84, hd * 0.42),
+                ],
+                closed: true,
+                dashed: false,
+                weight: Detail,
+            };
+            let rear_glass = SymbolShape::Polyline {
+                points: vec![
+                    Point::new(-hw * 0.72, -hd * 0.46),
+                    Point::new(hw * 0.72, -hd * 0.46),
+                    Point::new(hw * 0.82, -hd * 0.74),
+                    Point::new(-hw * 0.82, -hd * 0.74),
+                ],
+                closed: true,
+                dashed: false,
+                weight: Detail,
+            };
+            let roof = rect(-hw * 0.72, -hd * 0.46, hw * 0.72, hd * 0.06, Detail);
+            let left_mirror = rect(-hw - 0.09, hd * 0.22, -hw, hd * 0.34, Detail);
+            let right_mirror = rect(hw, hd * 0.22, hw + 0.09, hd * 0.34, Detail);
+            let left_headlight = line(
+                &[(-hw * 0.78, hd * 0.90), (-hw * 0.44, hd * 0.94)],
+                false,
+                Detail,
+            );
+            let right_headlight = line(
+                &[(hw * 0.44, hd * 0.94), (hw * 0.78, hd * 0.90)],
+                false,
+                Detail,
+            );
+            let left_hood = line(
+                &[(-hw * 0.78, hd * 0.42), (-hw * 0.68, hd * 0.88)],
+                false,
+                Detail,
+            );
+            let right_hood = line(
+                &[(hw * 0.78, hd * 0.42), (hw * 0.68, hd * 0.88)],
+                false,
+                Detail,
+            );
+            vec![
+                body,
+                windshield,
+                rear_glass,
+                roof,
+                left_mirror,
+                right_mirror,
+                left_headlight,
+                right_headlight,
+                left_hood,
+                right_hood,
+            ]
+        }
+        FixtureKind::Umbrella => {
+            // Classic octagonal patio / poolside umbrella with 8 radial ribs
+            // and central pole cap.
+            let r = small * 0.5;
+            let mut vertices = Vec::with_capacity(8);
+            let mut shapes = Vec::with_capacity(10);
+            for i in 0..8 {
+                let angle = (i as f64) * std::f64::consts::FRAC_PI_4 + std::f64::consts::FRAC_PI_8;
+                vertices.push(Point::new(r * angle.cos(), r * angle.sin()));
+            }
+            shapes.push(SymbolShape::Polyline {
+                points: vertices.clone(),
+                closed: true,
+                dashed: false,
+                weight: Outline,
+            });
+            for v in vertices {
+                shapes.push(line(&[(0.0, 0.0), (v.x, v.y)], false, Detail));
+            }
+            shapes.push(circle(0.0, 0.0, (r * 0.09).max(0.05), Outline));
+            shapes
+        }
+        FixtureKind::SunLounger => {
+            // Poolside reclining sun lounger (espreguiçadeira): outer frame,
+            // mattress pad, reclined backrest fold, headrest pillow and knee fold.
+            let pad = rect(-hw + 0.06, -hd + 0.06, hw - 0.06, hd - 0.06, Detail);
+            let backrest_y = -hd + depth * 0.34;
+            let knee_y = -hd + depth * 0.68;
+            let backrest_line = line(&[(-hw, backrest_y), (hw, backrest_y)], false, Outline);
+            let knee_line = line(&[(-hw + 0.06, knee_y), (hw - 0.06, knee_y)], true, Detail);
+            let pillow = rect(
+                -hw * 0.58,
+                -hd + (depth * 0.08).min(0.16),
+                hw * 0.58,
+                -hd + (depth * 0.20).min(0.38),
+                Detail,
+            );
+            vec![outline, pad, backrest_line, knee_line, pillow]
+        }
     }
 }
 
@@ -642,5 +774,24 @@ mod tests {
         let double = symbol(FixtureKind::Washbasin, 1.2, 0.5);
         let single = symbol(FixtureKind::Washbasin, 0.6, 0.45);
         assert!(double.len() > single.len());
+
+        // Garage and poolside fixtures: realistic average dimensions and rich CAD symbols.
+        assert_eq!(FixtureKind::from_key("carro"), Some(FixtureKind::Car));
+        assert_eq!(FixtureKind::Car.default_size(), (1.85, 4.50));
+        assert!(symbol(FixtureKind::Car, 1.85, 4.50).len() >= 8);
+
+        assert_eq!(
+            FixtureKind::from_key("guarda_sol"),
+            Some(FixtureKind::Umbrella)
+        );
+        assert_eq!(FixtureKind::Umbrella.default_size(), (2.40, 2.40));
+        assert!(symbol(FixtureKind::Umbrella, 2.40, 2.40).len() >= 9);
+
+        assert_eq!(
+            FixtureKind::from_key("cadeira_sol"),
+            Some(FixtureKind::SunLounger)
+        );
+        assert_eq!(FixtureKind::SunLounger.default_size(), (0.75, 1.95));
+        assert!(symbol(FixtureKind::SunLounger, 0.75, 1.95).len() >= 4);
     }
 }

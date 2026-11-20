@@ -353,7 +353,7 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "inserir_objeto",
             title: "Inserir objeto",
-            description: "Insere um objeto ou mobiliário: bancada, pia, fogao, fogao_lenha, churrasqueira, geladeira, lavatorio (com largura >= 0,90 m vira pia dupla), vaso, chuveiro, mesa (com cadeiras), prateleira, cama_casal, cama_solteiro, sofa, poltrona, guarda_roupa, escrivaninha, mesa_jantar, lavadora, rack_tv ou banheira. x e y são o centro. A rotação diz para onde fica o fundo (o lado encostado na parede): 0 = fundo para +Y, 90 = +X, 180 = -Y, 270 = -X. Com encostar_na_parede = true o Trazo vira o fundo para a parede reta mais próxima (até 0,8 m) e encosta na face dos tijolos, descontando meia espessura de parede (veja espessura_parede_m em obter_planta).",
+            description: "Insere um objeto ou mobiliário: bancada, pia, fogao, fogao_lenha, churrasqueira, geladeira, lavatorio (com largura >= 0,90 m vira pia dupla), vaso, chuveiro, mesa (com cadeiras), prateleira, cama_casal, cama_solteiro, sofa, poltrona, guarda_roupa, escrivaninha, mesa_jantar, lavadora, rack_tv, banheira, carro (padrão 1,85 × 4,50 m), guarda_sol (2,40 × 2,40 m) ou cadeira_sol (0,75 × 1,95 m). x e y são o centro. A rotação diz para onde fica o fundo (o lado encostado na parede): 0 = fundo para +Y, 90 = +X, 180 = -Y, 270 = -X. Com encostar_na_parede = true o Trazo vira o fundo para a parede reta mais próxima (até 0,8 m) e encosta na face dos tijolos, descontando meia espessura de parede (veja espessura_parede_m em obter_planta).",
             properties: json!({
                 "tipo": {
                     "type": "string",
@@ -378,7 +378,10 @@ fn catalogue() -> Vec<Tool> {
                         "mesa_jantar",
                         "lavadora",
                         "rack_tv",
-                        "banheira"
+                        "banheira",
+                        "carro",
+                        "guarda_sol",
+                        "cadeira_sol"
                     ],
                     "description": "Tipo do objeto ou móvel.",
                 },
