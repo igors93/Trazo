@@ -271,6 +271,28 @@ pub enum FixtureTone {
 }
 
 /// Draws a fixture's plan symbol (see `domain::fixtures`).
+/// Draws only the electrical layer (devices and tags), for the electrical
+/// plan view that fades everything else.
+pub fn paint_electrical_overlay(
+    painter: &Painter,
+    view: ViewTransform,
+    project: &Project,
+    selected: &dyn Fn(u64) -> bool,
+) {
+    if !project.category_visible(crate::domain::layers::LayerCategory::Electrical) {
+        return;
+    }
+    for fixture in project.electrical_devices() {
+        let tone = if selected(fixture.id) {
+            FixtureTone::Selected
+        } else {
+            FixtureTone::Normal
+        };
+        paint_fixture(painter, view, fixture, tone);
+    }
+    labels::paint_electrical_tags(painter, view, project);
+}
+
 pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, tone: FixtureTone) {
     let (ink, detail, fill) = match tone {
         FixtureTone::Normal => (theme::TEXT_2, theme::MUTED, Color32::WHITE),
@@ -281,6 +303,16 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
             theme::ACCENT.gamma_multiply(0.8),
             theme::ACCENT.gamma_multiply(0.08),
         ),
+    };
+    // Electrical devices are drawn in the electrical colour, with no
+    // backing, so walls and furniture show through.
+    let electrical = fixture.kind.is_electrical();
+    let (ink, detail, fill) = if electrical && tone == FixtureTone::Normal {
+        (theme::ELECTRICAL, theme::ELECTRICAL, Color32::TRANSPARENT)
+    } else if electrical {
+        (ink, detail, Color32::TRANSPARENT)
+    } else {
+        (ink, detail, fill)
     };
     let screen = |local: Point| view.to_screen(fixture.to_world(local));
     let (hw, hd) = (fixture.width / 2.0, fixture.depth / 2.0);
@@ -595,8 +627,11 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         paint_wall(painter, view, wall, project, tone, marks);
     }
 
-    if project.category_visible(crate::domain::layers::LayerCategory::Fixtures) {
+    {
         for fixture in &project.fixtures {
+            if !project.category_visible(Project::fixture_category(fixture)) {
+                continue;
+            }
             let tone = if marks.selected(Selection::Fixture(fixture.id)) {
                 FixtureTone::Selected
             } else if marks.hovered(Selection::Fixture(fixture.id)) {
@@ -606,6 +641,9 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
             };
             paint_fixture(painter, view, fixture, tone);
         }
+    }
+    if project.category_visible(crate::domain::layers::LayerCategory::Electrical) {
+        labels::paint_electrical_tags(painter, view, project);
     }
     drawings::paint_drawings(painter, view, project, marks);
 
@@ -1420,7 +1458,7 @@ fn paint_wall(
             );
         }
         match opening.kind {
-            OpeningKind::Door => {
+            OpeningKind::Door | OpeningKind::Gate => {
                 use crate::domain::openings::DoorType;
                 let leaf_color = if op_color == Color32::TRANSPARENT {
                     theme::WALL

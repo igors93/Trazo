@@ -37,6 +37,16 @@ impl FloorPlanApp {
                     self.show_mcp_dialog = true;
                     ui.close();
                 }
+                menu_separator(ui);
+                let crash_hint = if crate::io::crash_log::has_crash_log() {
+                    "log"
+                } else {
+                    ""
+                };
+                if menu_item(ui, Some(Icon::Info), "Relatar problema...", crash_hint).clicked() {
+                    self.show_report_dialog = true;
+                    ui.close();
+                }
             });
 
             ui.add_space(6.0);
@@ -137,6 +147,10 @@ impl FloorPlanApp {
         ui.set_width(MENU_WIDTH);
         if menu_item(ui, Some(Icon::New), "Nova planta", "Ctrl+N").clicked() {
             self.request_new_project();
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::PanelRight), "Nova janela", "Ctrl+Shift+N").clicked() {
+            self.open_new_window();
             ui.close();
         }
         if menu_item(ui, Some(Icon::Plan), "Novo a partir de modelo...", "").clicked() {

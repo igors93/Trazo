@@ -10,11 +10,13 @@ use eframe::egui::{self, Margin, PointerButton, Pos2, Sense, Stroke, Ui, vec2};
 
 mod drafting;
 mod edit;
+mod electrical;
 
-const TABS: [(RibbonTab, &str); 6] = [
+const TABS: [(RibbonTab, &str); 7] = [
     (RibbonTab::Architecture, "Arquitetura"),
     (RibbonTab::Edit, "Editar"),
     (RibbonTab::Interiors, "Interiores"),
+    (RibbonTab::Electrical, "Elétrica"),
     (RibbonTab::Drafting, "Desenho"),
     (RibbonTab::View, "Vista"),
     (RibbonTab::Output, "Saída"),
@@ -47,6 +49,7 @@ impl FloorPlanApp {
                     match self.ribbon_tab {
                         RibbonTab::Architecture => self.architecture_tab(ui),
                         RibbonTab::Interiors => self.interiors_tab(ui),
+                        RibbonTab::Electrical => self.electrical_tab(ui),
                         RibbonTab::Edit => self.edit_tab(ui),
                         RibbonTab::Drafting => self.drafting_tab(ui),
                         RibbonTab::View => self.view_tab(ui),
@@ -232,6 +235,7 @@ impl FloorPlanApp {
             self.opening_tile(ui, OpeningKind::Window, "Janela", Icon::Window);
             self.opening_tile(ui, OpeningKind::SaloonDoor, "Vai-e-vem", Icon::SaloonDoor);
             self.opening_tile(ui, OpeningKind::Gap, "Vão livre", Icon::Gap);
+            self.opening_tile(ui, OpeningKind::Gate, "Portão", Icon::Door);
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Modificar", |ui| {
@@ -727,6 +731,9 @@ impl FloorPlanApp {
             }
             OpeningKind::Gap => {
                 "Abrir um vão livre (sem porta), como o lado aberto de uma área coberta; até 30 m"
+            }
+            OpeningKind::Gate => {
+                "Inserir portão de entrada num muro ou parede: de correr por padrão, de 0,80 m (social) a 8 m (garagem)"
             }
         };
         let response = tip(

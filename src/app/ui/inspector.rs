@@ -170,8 +170,13 @@ impl FloorPlanApp {
             ui,
             Icon::Fixture(fixture.kind),
             fixture.kind.label(),
-            "Objeto · equipamento",
+            if fixture.kind.is_electrical() {
+                "Instalação elétrica"
+            } else {
+                "Objeto · equipamento"
+            },
         );
+        self.electrical_device_section(ui, &fixture);
         let mut submit = false;
         section(ui, "fixture_dimensions", "Dimensões", |ui| {
             grid(ui, "fixture_dimensions_grid", |ui| {
@@ -655,6 +660,11 @@ impl FloorPlanApp {
         };
         let (icon, title, subtitle) = match opening.kind {
             OpeningKind::Door => (Icon::Door, "Porta", opening.effective_door_type().label()),
+            OpeningKind::Gate => (
+                Icon::Door,
+                "Portão",
+                opening.effective_door_type().short_label(),
+            ),
             OpeningKind::Window => (
                 Icon::Window,
                 "Janela",
@@ -669,9 +679,14 @@ impl FloorPlanApp {
         };
         type_card(ui, icon, title, subtitle);
 
-        if opening.kind == OpeningKind::Door {
+        if matches!(opening.kind, OpeningKind::Door | OpeningKind::Gate) {
             let mut chosen_door_type = None;
-            section(ui, "door_typology", "Tipologia da porta", |ui| {
+            let typology = if opening.kind == OpeningKind::Gate {
+                "Tipologia do portão"
+            } else {
+                "Tipologia da porta"
+            };
+            section(ui, "door_typology", typology, |ui| {
                 let current = opening.effective_door_type();
                 egui::ComboBox::from_id_salt("door_type_combo")
                     .selected_text(current.label())
@@ -807,7 +822,7 @@ impl FloorPlanApp {
                         flip.0 = secondary_button(ui, "Inverter (I)").clicked();
                     });
                     ui.end_row();
-                    if opening.kind == OpeningKind::Door {
+                    if matches!(opening.kind, OpeningKind::Door | OpeningKind::Gate) {
                         property_label(ui, "Dobradiça");
                         ui.horizontal(|ui| {
                             property_value(
@@ -834,6 +849,7 @@ impl FloorPlanApp {
             OpeningKind::Window => "Excluir janela",
             OpeningKind::SaloonDoor => "Excluir porta",
             OpeningKind::Gap => "Fechar o vão",
+            OpeningKind::Gate => "Excluir portão",
         };
         let (apply, delete) = actions(ui, Some("Aplicar"), Some(delete_label));
         if apply || submit {
@@ -1167,7 +1183,7 @@ impl FloorPlanApp {
             .project
             .openings
             .iter()
-            .filter(|o| o.kind == OpeningKind::Door)
+            .filter(|o| matches!(o.kind, OpeningKind::Door | OpeningKind::Gate))
             .count();
         let windows = self.project.openings.len() - doors;
         let (wall_area, blocks) = self.project.masonry_estimate();

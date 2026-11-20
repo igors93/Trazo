@@ -230,7 +230,7 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
                 "<line x1=\"{cursor:.2}\" y1=\"0\" x2=\"{left:.2}\" y2=\"0\" stroke=\"{wall_color}\" stroke-width=\"{wall_w_mm:.2}\" stroke-linecap=\"square\"/>"
             );
             match op.kind {
-                OpeningKind::Door => {
+                OpeningKind::Door | OpeningKind::Gate => {
                     use crate::domain::openings::DoorType;
                     let leaf = half * 2.0;
                     let side = if op.flip_side { -1.0 } else { 1.0 };
@@ -439,10 +439,23 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
     }
 
     // Fixtures.
-    if project.category_visible(LayerCategory::Fixtures) {
+    {
         for fixture in &project.fixtures {
+            if !project.category_visible(Project::fixture_category(fixture)) {
+                continue;
+            }
+            let electrical = fixture.kind.is_electrical();
             for shape in fixture.symbol() {
                 let (color, stroke_w) = match &shape {
+                    SymbolShape::Polyline {
+                        weight: Weight::Outline,
+                        ..
+                    }
+                    | SymbolShape::Circle {
+                        weight: Weight::Outline,
+                        ..
+                    } if electrical => (crate::io::export::ELECTRICAL_INK, 0.2),
+                    _ if electrical => (crate::io::export::ELECTRICAL_INK, 0.12),
                     SymbolShape::Polyline {
                         weight: Weight::Outline,
                         ..

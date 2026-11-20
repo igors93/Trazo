@@ -210,7 +210,11 @@ impl Project {
             Element::Terrain(_) => self.category_visible(LayerCategory::Terrain),
             Element::Room(_) => self.category_visible(LayerCategory::Rooms),
             Element::Opening(_) => self.category_visible(LayerCategory::Openings),
-            Element::Fixture(_) => self.category_visible(LayerCategory::Fixtures),
+            Element::Fixture(id) => self
+                .fixtures
+                .iter()
+                .find(|fixture| fixture.id == id)
+                .is_none_or(|fixture| self.category_visible(Self::fixture_category(fixture))),
             Element::Wall(id) => self
                 .walls
                 .iter()

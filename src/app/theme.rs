@@ -62,6 +62,8 @@ pub const SELECTION: Color32 = ACCENT;
 pub const HOVER: Color32 = rgb(0x5B9CE8);
 /// What the connected AI assistant is doing on the plan.
 pub const AI: Color32 = rgb(0x7C3AED);
+/// Electrical devices and their tags, as on electrical drawings.
+pub const ELECTRICAL: Color32 = rgb(0xC62828);
 
 /// The semibold family, used for titles and strong labels.
 pub fn strong_family() -> FontFamily {

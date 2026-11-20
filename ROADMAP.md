@@ -1,6 +1,6 @@
 # Trazo Roadmap
 
-*Last updated 2026-11-20.*
+*Last updated 2026-11-20, after the electrical design, gates and multiple windows.*
 
 This is the plan for what comes next. Work through it **milestone by milestone, in order**: each milestone builds on the previous one and ends with a concrete test of "done". [Next up](#next-up) lists the first ten items on that path. Everything already shipped, items #01–#37 and more, is in the [changelog](CHANGELOG.md).
 
@@ -38,10 +38,13 @@ Trazo should serve both ends of the spectrum on the same project and file:
 | Architecture (#11–#25) | ✅ Complete: junctions, shared walls, multilayer walls, door and window types, stairs, floors, library, finishes, circulation checks |
 | Documentation (#26–#37) | ✅ Complete: associative dimensions, layers, sheets, scales, title blocks, hatches, schedules, sections, sheet sets, ABNT styles |
 | Exchange (#38–#45) | 🟡 SVG and CSV export only; no DXF or DWG yet |
-| AI (#46–#52) | 🟡 35 MCP tools, real-time sync, tunnel token; it covers only part of the model, and there is no approval or read-only mode |
+| AI (#46–#52) | 🟡 39 MCP tools (the electrical design included), real-time sync, tunnel token; it covers only part of the model, and there is no approval or read-only mode |
 | Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
 | Release (#58–#64) | 🟡 CI, licence, property tests and file migrations done; no binaries, installer or crash reports |
 | Experience (#65–#67) | ⬜ Not started |
+| Electrical design | ✅ Devices, NBR 5410 forecast, generated points, circuits and load schedule · 🟡 no conduits or single-line diagram yet (#88, #89) |
+| Plumbing and structure | ⬜ Not started (#72, #92–#94) |
+| Several projects | ✅ One project per window, each with its own recovery draft and AI server · 🟡 no tabs yet (#95) |
 
 ## How to read this roadmap
 
@@ -94,21 +97,28 @@ The differentiator: everything a builder needs comes straight from the plan.
 - **Items:** #53, #54, #55, #56, #57, #71
 - **Done when:** from the sample house, one click produces an A3 1:50 set with a dimensioned plan that locates every opening, a first-course plan with lintels, a setting-out plan and a quantity list. The quantities (blocks with waste, half blocks, U-blocks, lintels, mortar, plaster, flooring) must match a manual takeoff within 2 %.
 
-### M4: AI co-pilot
+### M4: Engineering disciplines
+
+Complementary designs on the same floor plan: the electrical design completed, then plumbing, then 2D structure. The architecture stays the base of every discipline.
+
+- **Items:** #88, #89, #96, #90, #72, #92, #93, #91
+- **Done when:** from the sample house, Trazo produces an electrical sheet (devices, conduits with wire counts, load schedule and single-line diagram), a plumbing sheet and a formwork plan with columns, beams and slabs, each a view of the same model, all exported to PDF and DXF.
+
+### M5: AI co-pilot
 
 Assistants that can do everything, explain problems and leave the person in control.
 
 - **Items:** #74, #75, #46, #51, #49, #73, #48, #76, #50, #52
 - **Done when:** an assistant draws a two-storey house with stairs, finishes, dimensions and a sheet set **using MCP only**. The person can review and approve each proposed change before it applies, compare and revert any AI action, and see every validation problem explained with a suggested fix.
 
-### M5: Progressive experience
+### M6: Progressive experience
 
 Simple for newcomers, fast for professionals.
 
 - **Items:** #65, #66, #67, #68, #69, #82
 - **Done when:** in a usability test with three people new to CAD, each completes *Minha primeira casa* (my first house) without help in under 15 minutes, while professional mode offers a command line, and the interface is available in English.
 
-### M6: Scale and robustness
+### M7: Scale and robustness
 
 Runs in parallel with the other milestones.
 
@@ -117,7 +127,7 @@ Runs in parallel with the other milestones.
 
 ### Exploratory
 
-Worth prototyping after M5, when the core is solid: #85, #86, #87, #72, #44, #45.
+Worth prototyping after M6, when the core is solid: #85, #86, #87, #94, #44, #45.
 
 ## Backlog
 
@@ -143,33 +153,33 @@ Worth prototyping after M5, when the core is solid: #85, #86, #87, #72, #44, #45
 | 56 | Construction quantities: blocks with waste, half blocks and U-blocks, lintels per opening, laying mortar, plaster, flooring and wall finishes per room | P0 | M | M3 | 🟡 Block estimate, wall area and finish quantities exist separately; no consolidated takeoff |
 | 57 | One-click construction set: A3 at 1:50 with dimensions, openings, schedules, first course, setting-out and legend | P0 | M | M3 | 🟡 Sheets, scales, templates and title blocks exist |
 | 71 | Roof plan (*planta de cobertura*): roof planes, slopes, ridges, gutters and downpipes | P1 | L | M3 | ⬜ |
-| 72 | Electrical and plumbing points (outlets, switches, lights, water points) with legend and counts; layout only, not engineering design | P2 | M | Exploratory | ⬜ The library has some technical symbols |
+| 72 | Plumbing points (water, drains, gas) with legend, counts and a fixture schedule | P1 | M | M4 | 🟡 Electrical points shipped on the *Elétrica* tab; plumbing not yet |
 
 ### C. AI assistants
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 74 | MCP covers the whole model: floors, stairs and ramps, finishes, layers, dimensions, notes, hatches, library items, sheets and views | P0 | L | M4 | 🟡 35 tools cover lot, walls, rooms, openings, 11 fixture kinds, drawings and CAD editing |
-| 75 | Read-only switch in *Conectar uma IA*, for assistants that should only analyse | P1 | S | M4 | ⬜ |
-| 46 | Approval mode: the assistant proposes, the plan shows a preview, the person accepts or rejects | P1 | M | M4 | ⬜ |
-| 51 | AI history with a diff per action, comparison and selective revert | P1 | M | M4 | 🟡 Live highlight, action log and revisions exist |
-| 49 | Plan validation with explanations and one-click fixes: unclosed rooms, overlaps, rooms without doors, unreachable spaces | P1 | M | M4 | 🟡 The circulation check (#25) covers clearances and door swings |
-| 73 | Building-code checks: minimum room areas and widths, lighting and ventilation ratios, door widths; rule sets configurable per municipality | P1 | L | M4 | ⬜ |
-| 48 | Built-in assistant panel: natural-language commands inside Trazo, using the user's own AI provider | P1 | L | M4 | 🟡 Works today through external assistants over MCP |
-| 76 | MCP prompts (for example "draw a house from this brief") and richer resources: sheet images, schedules | P2 | S | M4 | ⬜ |
-| 50 | Room layout proposals from a brief (rooms, areas, adjacencies), shown as alternatives | P2 | L | M4 | ⬜ |
-| 52 | An assistant that teaches the editor: context tips and guided exercises | P2 | M | M4 | ⬜ |
+| 74 | MCP covers the whole model: floors, stairs and ramps, finishes, layers, dimensions, notes, hatches, library items, sheets and views | P0 | L | M5 | 🟡 39 tools cover lot, walls, rooms, openings and gates, 21 fixture kinds, the electrical design, drawings and CAD editing |
+| 75 | Read-only switch in *Conectar uma IA*, for assistants that should only analyse | P1 | S | M5 | ⬜ |
+| 46 | Approval mode: the assistant proposes, the plan shows a preview, the person accepts or rejects | P1 | M | M5 | ⬜ |
+| 51 | AI history with a diff per action, comparison and selective revert | P1 | M | M5 | 🟡 Live highlight, action log and revisions exist |
+| 49 | Plan validation with explanations and one-click fixes: unclosed rooms, overlaps, rooms without doors, unreachable spaces | P1 | M | M5 | 🟡 The circulation check (#25) covers clearances and door swings |
+| 73 | Building-code checks: minimum room areas and widths, lighting and ventilation ratios, door widths; rule sets configurable per municipality | P1 | L | M5 | ⬜ |
+| 48 | Built-in assistant panel: natural-language commands inside Trazo, using the user's own AI provider | P1 | L | M5 | 🟡 Works today through external assistants over MCP |
+| 76 | MCP prompts (for example "draw a house from this brief") and richer resources: sheet images, schedules | P2 | S | M5 | ⬜ |
+| 50 | Room layout proposals from a brief (rooms, areas, adjacencies), shown as alternatives | P2 | L | M5 | ⬜ |
+| 52 | An assistant that teaches the editor: context tips and guided exercises | P2 | M | M5 | ⬜ |
 
 ### D. Experience
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 65 | Simple, Intermediate and Professional interface levels on the same project and file | P1 | L | M5 | ⬜ |
-| 66 | Guided flow *Minha primeira casa*: lot, desired rooms, adjustable layout, openings and a final check | P1 | L | M5 | ⬜ |
-| 67 | Guided documentation flow: build and review a sheet set before exporting | P2 | M | M5 | ⬜ |
-| 68 | English interface (internationalisation), keeping Brazilian Portuguese as the default | P1 | L | M5 | ⬜ |
-| 69 | Command line and command palette with typed commands, aliases and recent commands | P1 | M | M5 | ⬜ |
-| 82 | Dark theme, interface scale and full keyboard navigation | P2 | M | M5 | ⬜ |
+| 65 | Simple, Intermediate and Professional interface levels on the same project and file | P1 | L | M6 | ⬜ |
+| 66 | Guided flow *Minha primeira casa*: lot, desired rooms, adjustable layout, openings and a final check | P1 | L | M6 | ⬜ |
+| 67 | Guided documentation flow: build and review a sheet set before exporting | P2 | M | M6 | ⬜ |
+| 68 | English interface (internationalisation), keeping Brazilian Portuguese as the default | P1 | L | M6 | ⬜ |
+| 69 | Command line and command palette with typed commands, aliases and recent commands | P1 | M | M6 | ⬜ |
+| 82 | Dark theme, interface scale and full keyboard navigation | P2 | M | M6 | ⬜ |
 
 A chosen level must never be a wall. A newcomer can open an advanced tool when needed, and a professional keeps the simple actions. For example, *create a 3.00 × 4.00 m bedroom*:
 
@@ -182,14 +192,30 @@ A chosen level must never be a wall. A newcomer can open an advanced tool when n
 | --- | --- | --- | --- | --- | --- |
 | 77 | Release pipeline: tagged GitHub Releases with Windows, Linux and macOS binaries, checksums and changelog notes | P0 | M | M1 | ✅ |
 | 63 | Windows installer, `.json` project association and update check | P0 | M | M1 | ⬜ |
-| 79 | Crash log and *Relatar problema* (report a problem): panic hook, rotating log file, pre-filled GitHub issue | P0 | S | M1 | ⬜ |
+| 79 | Crash log and *Relatar problema* (report a problem): panic hook, rotating log file, pre-filled GitHub issue | P0 | S | M1 | ✅ |
 | 81 | Sample projects in `examples/` (single-storey house, two-storey house, apartment), used by docs and tests | P1 | S | M1 | ⬜ |
 | 80 | Documented project file format (JSON Schema) for third-party tools | P1 | M | M1 | ⬜ |
 | 78 | Signed Windows binaries | P2 | S | M1 | ⬜ |
-| 62 | Performance with large plans: spatial index for picking, cached rendering, benchmarks in CI | P1 | L | M6 | ⬜ |
-| 61 | Visual regression tests for PDF, PNG and SVG export | P1 | M | M6 | ⬜ |
-| 84 | Transaction-based undo history (diffs instead of full project copies) | P2 | L | M6 | ⬜ |
-| 83 | Undo history panel: list of steps, jump to any step | P2 | S | M6 | ⬜ |
+| 62 | Performance with large plans: spatial index for picking, cached rendering, benchmarks in CI | P1 | L | M7 | ⬜ |
+| 61 | Visual regression tests for PDF, PNG and SVG export | P1 | M | M7 | ⬜ |
+| 84 | Transaction-based undo history (diffs instead of full project copies) | P2 | L | M7 | ⬜ |
+| 83 | Undo history panel: list of steps, jump to any step | P2 | S | M7 | ⬜ |
+
+### G. Engineering disciplines
+
+| # | Item | Priority | Size | Milestone | Status |
+| --- | --- | --- | --- | --- | --- |
+| 88 | Conduits (*eletrodutos*) from devices to the panel, drawn on the plan along walls and ceiling, with the wires of each run | P0 | L | M4 | ⬜ Devices, circuits and the load schedule exist |
+| 89 | Single-line diagram (*diagrama unifilar*) and panel schedule generated from the circuits | P0 | M | M4 | ⬜ |
+| 96 | Discipline views: architecture, electrical, plumbing and structure as views of one model, each with its own visibility, colours and sheets | P1 | M | M4 | 🟡 The electrical layer and the *Só elétrica* view exist |
+| 90 | Voltage drop, demand factors and service entrance sizing (*padrão de entrada*) | P1 | M | M4 | ⬜ |
+| 92 | Structural elements on the plan: columns, beams, slabs and footings as 2D elements with sections and a layer of their own (formwork plan, *planta de forma*) | P1 | L | M4 | ⬜ |
+| 93 | Structural pre-sizing: spans, tributary areas and rules of thumb for columns, beams and slabs, with warnings | P2 | M | M4 | ⬜ |
+| 91 | Phase balancing for two- and three-phase panels | P2 | S | M4 | ⬜ |
+| 94 | Structural analysis and simulation: loads, internal forces and deflections of the 2D frame | P2 | XL | Exploratory | ⬜ Needs #92 and #93 first |
+| 95 | Tabbed documents: several projects in one window, with copy and paste between them | P2 | L | M6 | 🟡 One project per window works today (`Ctrl+Shift+N`) |
+
+Structural results must always be checked by a licensed engineer: Trazo will present them as pre-sizing, never as a final design.
 
 ### F. Exploratory
 
@@ -215,8 +241,8 @@ To stay an excellent, approachable 2D architectural editor, these are not planne
 
 - photorealistic 3D rendering (a simple massing view is exploratory, #85);
 - full BIM authoring (IFC export is exploratory, #86);
-- structural calculation;
-- electrical and plumbing engineering design (points layout is #72);
+- final structural design and calculation (pre-sizing is #93; simulation is exploratory, #94);
+- fire-safety, HVAC and gas engineering design.
 - real-time cloud collaboration between people (AI collaboration is in scope).
 
 Want to suggest a change to the roadmap? Open a [feature request](https://github.com/igors93/Trazo/issues/new?template=feature_request.yml) and explain the problem it solves.

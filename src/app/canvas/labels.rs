@@ -179,6 +179,27 @@ pub(super) fn paint_room_labels(
     }
 }
 
+/// Circuit and power tags beside each electrical device, once the plan is
+/// zoomed in enough to read them.
+pub(super) fn paint_electrical_tags(painter: &Painter, view: ViewTransform, project: &Project) {
+    // Below this zoom the tags would pile up; the symbols still show.
+    if view.scale < 50.0 {
+        return;
+    }
+    let size = (view.scale * 0.13).clamp(9.5, 13.0);
+    for (anchor, text) in project.electrical_tags() {
+        let galley = painter.layout_no_wrap(text, FontId::proportional(size), theme::ELECTRICAL);
+        let rect = Rect::from_center_size(view.to_screen(anchor), galley.size());
+        // A light backdrop keeps the tag readable over walls and furniture.
+        painter.rect_filled(
+            rect.expand2(egui::vec2(3.0, 1.0)),
+            3.0,
+            Color32::from_white_alpha(215),
+        );
+        painter.galley(rect.min, galley, theme::ELECTRICAL);
+    }
+}
+
 pub(super) fn paint_wall_labels(
     painter: &Painter,
     view: ViewTransform,

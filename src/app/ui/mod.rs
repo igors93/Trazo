@@ -6,6 +6,7 @@ mod connect;
 mod constraints;
 mod dialogs;
 mod dimensions;
+mod electrical;
 mod ergonomics;
 mod floors;
 mod header;
@@ -18,6 +19,7 @@ mod modify_menu;
 mod notes;
 mod options_bar;
 mod repeat;
+mod report_problem;
 mod schedules;
 mod selection;
 mod sheet;
@@ -101,6 +103,7 @@ impl FloorPlanApp {
         self.room_name_dialog(ui);
         self.unsaved_changes_dialog(&context);
         self.help_dialog(&context);
+        self.report_problem_dialog(&context);
         self.repeat_dialog(&context);
         self.connect_dialog(&context);
         self.layers_dialog(&context);
@@ -115,5 +118,6 @@ impl FloorPlanApp {
         self.floors_dialog(&context);
         self.library_dialog(&context);
         self.ergonomics_dialog(&context);
+        self.electrical_dialog(&context);
     }
 }

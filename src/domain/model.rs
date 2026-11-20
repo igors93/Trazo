@@ -126,6 +126,13 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub library: Vec<super::library::LibraryItem>,
 
+    /// Voltages of the electrical design (NBR 5410).
+    #[serde(
+        default,
+        skip_serializing_if = "super::electrical::ElectricalSettings::is_default"
+    )]
+    pub electrical: super::electrical::ElectricalSettings,
+
     next_id: u64,
 }
 
@@ -186,6 +193,8 @@ impl Default for Project {
             floors: super::floors::ProjectFloors::default(),
 
             library: Vec::new(),
+
+            electrical: super::electrical::ElectricalSettings::default(),
 
             next_id: 1,
         }
@@ -380,6 +389,10 @@ pub enum OpeningKind {
 
     /// An open span with no leaf, such as the open side of a covered area.
     Gap,
+
+    /// An entrance gate in a boundary or front wall: a pedestrian gate from
+    /// 0.80 m or a vehicle gate up to 8 m, sliding by default.
+    Gate,
 }
 
 impl OpeningKind {
@@ -392,6 +405,8 @@ impl OpeningKind {
             Self::SaloonDoor => "Porta vai-e-vem",
 
             Self::Gap => "Vão livre",
+
+            Self::Gate => "Portão",
         }
     }
 
@@ -400,13 +415,14 @@ impl OpeningKind {
     pub fn default_height(self) -> Option<f64> {
         match self {
             Self::Door | Self::SaloonDoor => Some(2.10),
+            Self::Gate => Some(2.20),
             Self::Window => Some(1.00),
             Self::Gap => None,
         }
     }
 
     pub fn is_door(self) -> bool {
-        matches!(self, Self::Door | Self::SaloonDoor)
+        matches!(self, Self::Door | Self::SaloonDoor | Self::Gate)
     }
 
     pub fn default_width(self) -> f64 {
@@ -418,6 +434,8 @@ impl OpeningKind {
             Self::SaloonDoor => 0.8,
 
             Self::Gap => 2.0,
+
+            Self::Gate => 3.0,
         }
     }
 
@@ -434,6 +452,8 @@ impl OpeningKind {
             Self::SaloonDoor => 0.60,
 
             Self::Gap => 0.50,
+
+            Self::Gate => 0.80,
         }
     }
 
@@ -446,6 +466,8 @@ impl OpeningKind {
             Self::SaloonDoor => 1.80,
 
             Self::Gap => 30.00,
+
+            Self::Gate => 8.00,
         }
     }
 }
@@ -480,7 +502,12 @@ pub struct Opening {
 
 impl Opening {
     pub fn effective_door_type(&self) -> super::openings::DoorType {
-        self.door_type.unwrap_or_default()
+        // Gates slide unless told otherwise; doors swing.
+        match (self.door_type, self.kind) {
+            (Some(door_type), _) => door_type,
+            (None, OpeningKind::Gate) => super::openings::DoorType::Sliding,
+            (None, _) => super::openings::DoorType::default(),
+        }
     }
 
     pub fn effective_window_type(&self) -> super::openings::WindowType {
@@ -766,6 +793,7 @@ impl Project {
             width,
             depth,
             quarter_turns: quarter_turns % 4,
+            electrical: kind.default_electrical(),
         };
         if !self.fixture_fits(&fixture) {
             return None;

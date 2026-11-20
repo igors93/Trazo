@@ -8,7 +8,7 @@
 [![CI](https://github.com/igors93/Trazo/actions/workflows/ci.yml/badge.svg)](https://github.com/igors93/Trazo/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust 2024](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org)
-[![MCP: 35 tools](https://img.shields.io/badge/MCP-35%20tools-7C3AED.svg)](docs/mcp.md)
+[![MCP: 39 tools](https://img.shields.io/badge/MCP-39%20tools-7C3AED.svg)](docs/mcp.md)
 
 [Features](#features) · [Getting started](#getting-started) · [AI assistants](#ai-assistants) · [Documentation](#documentation) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
@@ -45,11 +45,18 @@
 - Masonry with real bricks and blocks, modulation and block estimates
 - Multilayer walls; walls placed by axis or by face
 - Hinged, sliding, pocket, pivot, bifold and saloon doors; seven window types
+- Entrance gates: pedestrian (from 0.80 m) and vehicle (up to 8 m), sliding or swinging
 - Stairs, accessible ramps, landings, railings and multiple floors
 - Irregular lots, setbacks, and usable, built and lot areas
 
 </td>
 <td width="50%" valign="top">
+
+**Electrical design (NBR 5410)**
+- Outlets (low, mid, high, specific use), switches, lights, panel and data points
+- Minimum points per room generated from the norm: lighting by area, outlets by perimeter
+- Automatic circuits, and a load schedule with current, wire gauge, breaker and RCD
+- An electrical-only view, and the same symbols and tags on screen and on paper
 
 **Interiors**
 - Furniture and fixtures that stand against the nearest wall face
@@ -67,6 +74,7 @@
 
 **Safety**
 - Atomic saves with a backup, crash recovery, and undo for every edit
+- Several projects at once, one per window (`Ctrl+Shift+N`)
 
 </td>
 </tr>
@@ -114,7 +122,8 @@ Trazo runs an MCP server while it is open, at `http://127.0.0.1:7799/mcp`. Conne
 
 ![An assistant adding a porch: the new room flashes purple and a badge shows the tool at work](docs/images/ai-live-edit.png)
 
-- **35 tools** cover reading the plan, rooms, walls, openings, fixtures, CAD editing, constraints, batches, files and export.
+- **39 tools** cover reading the plan, rooms, walls, openings and gates, fixtures, the electrical design, CAD editing, constraints, batches, files and export.
+- **Several projects at once.** Each Trazo window has its own server (7799, 7800, …), so one assistant can work on more than one project.
 - **Live and visible.** Each AI edit flashes on the plan, and *Conectar uma IA* logs what the assistant did.
 - **Safe to try.** Every tool call is one undo step, and failed calls change nothing.
 - **Real-time collaboration.** Revisions and change notifications let the assistant notice your edits instead of overwriting them.
@@ -140,7 +149,8 @@ The next milestones are:
 1. **Ready to share:** downloadable releases, an installer and crash reports.
 2. **Works with other CAD:** DXF import and export, printing to scale, image underlays.
 3. **The construction-site set:** opening dimensions, a first-course plan, setting-out and quantities, in one click.
-4. **AI co-pilot:** MCP for the whole model, approval mode, and explained validation.
+4. **Engineering disciplines:** wiring and single-line diagrams for the electrical design, plumbing, and 2D structural design with pre-sizing.
+5. **AI co-pilot:** MCP for the whole model, approval mode, and explained validation.
 
 Read the full [roadmap](ROADMAP.md) for details and the order of work.
 

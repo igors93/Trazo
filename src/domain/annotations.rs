@@ -84,6 +84,12 @@ impl FrameType {
     /// Human-readable opening description including door/window typology when applicable.
     pub fn description(&self) -> String {
         match (self.kind, self.door_type, self.window_type) {
+            (OpeningKind::Gate, door_type, _) => format!(
+                "Portão ({})",
+                door_type
+                    .unwrap_or(super::openings::DoorType::Sliding)
+                    .short_label()
+            ),
             (OpeningKind::Door, Some(dt), _) if dt != super::openings::DoorType::Swing => {
                 format!("Porta ({})", dt.short_label())
             }
@@ -114,6 +120,7 @@ fn prefix(kind: OpeningKind) -> &'static str {
         OpeningKind::SaloonDoor => "PV",
         OpeningKind::Window => "J",
         OpeningKind::Gap => "V",
+        OpeningKind::Gate => "PT",
     }
 }
 
@@ -123,6 +130,7 @@ fn kind_order(kind: OpeningKind) -> u8 {
         OpeningKind::SaloonDoor => 1,
         OpeningKind::Window => 2,
         OpeningKind::Gap => 3,
+        OpeningKind::Gate => 4,
     }
 }
 
@@ -132,7 +140,8 @@ pub fn frame_types(project: &Project) -> Vec<FrameType> {
     let mut types: Vec<FrameType> = Vec::new();
     let same = |a: f64, b: f64| (a - b).abs() < 0.005;
     for opening in &project.openings {
-        let door_type = (opening.kind == OpeningKind::Door).then(|| opening.effective_door_type());
+        let door_type = matches!(opening.kind, OpeningKind::Door | OpeningKind::Gate)
+            .then(|| opening.effective_door_type());
         let window_type =
             (opening.kind == OpeningKind::Window).then(|| opening.effective_window_type());
         let fits = |frame: &FrameType| {

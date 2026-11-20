@@ -5,6 +5,7 @@ pub mod curves;
 pub mod dimensions;
 pub mod doc_style;
 pub mod drawing;
+pub mod electrical;
 pub mod element;
 pub mod ergonomics;
 pub mod finishes;

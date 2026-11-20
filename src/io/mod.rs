@@ -1,4 +1,6 @@
+pub mod crash_log;
 pub mod export;
+pub mod instance;
 pub mod project_file;
 pub mod recovery;
 pub mod settings;

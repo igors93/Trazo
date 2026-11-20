@@ -526,6 +526,12 @@ impl FloorPlanApp {
                 wall_reference: self.wall_reference,
             },
         );
+        if self.electrical_only {
+            // The electrical plan: architecture behind a veil, devices on top.
+            painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(190));
+            let selected = |id: u64| self.is_selected(Selection::Fixture(id));
+            canvas::paint_electrical_overlay(&painter, view, &self.project, &selected);
+        }
         self.paint_view_aids(&painter, view);
         if self.show_ergonomics {
             canvas::paint_ergonomics_overlay(
@@ -988,6 +994,24 @@ impl FloorPlanApp {
     /// and sinks sit where the bricks end.
     pub(super) fn fixture_placement(&self, kind: FixtureKind, point: Point) -> Fixture {
         let (width, depth) = kind.default_size();
+        if !kind.mounts_on_wall() {
+            let step = |value: f64| {
+                if self.snap_enabled {
+                    (value / 0.05).round() * 0.05
+                } else {
+                    value
+                }
+            };
+            return Fixture {
+                id: 0,
+                kind,
+                center: Point::new(step(point.x), step(point.y)),
+                width,
+                depth,
+                quarter_turns: 0,
+                electrical: kind.default_electrical(),
+            };
+        }
         self.place_against_wall(kind, point, width, depth, self.fixture_turns)
     }
 
@@ -1014,6 +1038,7 @@ impl FloorPlanApp {
             width,
             depth,
             quarter_turns: turns % 4,
+            electrical: kind.default_electrical(),
         };
         let wall = self
             .project

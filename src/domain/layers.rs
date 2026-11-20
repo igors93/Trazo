@@ -75,6 +75,8 @@ pub enum LayerCategory {
     Drawings,
     Dimensions,
     Annotations,
+    /// Electrical devices: outlets, switches, lights, panel.
+    Electrical,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -192,6 +194,16 @@ pub fn default_layers() -> Vec<Layer> {
             locked: false,
             category: Some(LayerCategory::Annotations),
         },
+        Layer {
+            id: 9,
+            name: "Instalações elétricas".to_owned(),
+            color: [200, 40, 40],
+            line_weight_mm: 0.18,
+            line_type: LineType::Solid,
+            visible: true,
+            locked: false,
+            category: Some(LayerCategory::Electrical),
+        },
     ]
 }
 
@@ -228,6 +240,16 @@ impl Project {
         self.layer_for_category(category)
             .map(|layer| layer.visible)
             .unwrap_or(true)
+    }
+
+    /// The layer category a fixture belongs to: electrical devices have a
+    /// layer of their own, so the electrical plan shows on its own.
+    pub fn fixture_category(fixture: &super::fixtures::Fixture) -> LayerCategory {
+        if fixture.kind.is_electrical() {
+            LayerCategory::Electrical
+        } else {
+            LayerCategory::Fixtures
+        }
     }
 
     pub fn category_locked(&self, category: LayerCategory) -> bool {
@@ -420,7 +442,7 @@ mod tests {
     #[test]
     fn default_layers_support_visibility_lock_custom_layers_and_assignment() {
         let mut project = Project::default();
-        assert_eq!(project.layers.len(), 8);
+        assert_eq!(project.layers.len(), 9);
         assert!(project.category_visible(LayerCategory::Walls));
         assert!(!project.category_locked(LayerCategory::Walls));
 

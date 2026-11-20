@@ -41,7 +41,8 @@ flowchart LR
 | `junctions.rs`, `wall_reference.rs`, `wall_layers.rs`, `masonry.rs` | Wall junctions at any angle, axis/face references, multilayer walls, bricks and blocks, modulation and block estimates |
 | `openings.rs`, `annotations.rs`, `dimensions.rs` | Door and window types, schedules and tags, dimension chains, associative dimensions |
 | `fixtures.rs`, `library.rs` | Fixture kinds, sizes and plan symbols; the customisable furniture and symbol library |
-| `label_layout.rs` | Where room labels go, clear of furniture and door swings (shared by canvas and export) |
+| `label_layout.rs` | Where room labels go, clear of furniture, door swings and electrical tags (shared by canvas and export) |
+| `electrical.rs` | Electrical devices, NBR 5410 load forecast, point generation, circuit distribution and sizing, device tags |
 | `areas.rs`, `finishes.rs`, `schedules.rs`, `setbacks.rs` | Area summary, per-room finishes, configurable schedules, setbacks and buildable limit |
 | `circulation.rs`, `ergonomics.rs`, `floors.rs` | Stairs, ramps and level changes; circulation and clearance checks; floors and levels |
 | `layers.rs`, `hatch.rs`, `notes.rs`, `doc_style.rs` | Layers, hatch patterns, texts and symbols, ABNT documentation styles |
@@ -69,6 +70,7 @@ flowchart LR
 | --- | --- |
 | `io/project_file.rs` | Atomic save with `.trazo.bak`, versioned schema and migrations |
 | `io/recovery.rs`, `io/settings.rs` | Crash-recovery draft; interface preferences |
+| `io/instance.rs` | Window slots (an OS file lock each): per-window recovery draft and MCP port |
 | `io/export.rs`, `io/export/` | SVG generation (plan, labels, drawings, sheets), PDF via `svg2pdf`, PNG via `resvg`, CSV schedules |
 | `mcp/protocol.rs` | JSON-RPC handling, the tool catalogue and server instructions |
 | `mcp/server.rs` | Streamable HTTP endpoint (`tiny_http`) and the event stream |

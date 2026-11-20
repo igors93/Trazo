@@ -8,7 +8,8 @@ use crate::domain::model::Project;
 use super::project_file;
 
 fn recovery_path() -> PathBuf {
-    super::data_dir().join("recovery.json")
+    // Each open window keeps its own draft (see `instance`).
+    super::data_dir().join(super::instance::recovery_file_name())
 }
 
 fn backup_path(path: &Path) -> PathBuf {

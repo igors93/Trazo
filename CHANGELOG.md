@@ -46,6 +46,16 @@ Everything below is on `main` and will become the first release, 0.1.0.
 
 - Continuous integration with formatting, Clippy and tests (#58), geometry property tests (#60), and a versioned file format with tested migrations (#64).
 - Dual licence, MIT or Apache-2.0 (#59), contributing guide, code of conduct, security policy, and issue and pull request templates.
+- Tagged GitHub Release pipeline with Windows, Linux and macOS archives, `SHA256SUMS.txt` checksums and extracted changelog notes (#77).
+- Rotating crash log (`crash.log` via panic hook) and *Ajuda → Relatar problema...* dialog with one-click pre-filled GitHub bug report and diagnostic bundle (#79).
+
+**Electrical design, gates and multiple projects**
+
+- An *Elétrica* tab for the electrical design on the floor plan (ABNT NBR 5410): outlets at three heights and for specific use, switches, ceiling and wall lights, distribution board and data points, on a layer of their own.
+- Minimum points generated per room from the norm, automatic circuits, and a load schedule with current, wire section, breaker and RCD, plus warnings. Symbols and tags are the same on screen and in exports; *Só elétrica* fades the architecture.
+- Four MCP tools for the electrical design: `inserir_ponto_eletrico`, `editar_ponto_eletrico`, `projeto_eletrico` and `quadro_de_cargas`.
+- Entrance gates (*Portão*): pedestrian or vehicle, from 0.80 to 8 m, sliding by default, tagged "PT" and available to assistants.
+- Several projects at once: *Nova janela* (`Ctrl+Shift+N`) opens another window, with its own recovery draft and MCP port.
 
 ### Changed
 

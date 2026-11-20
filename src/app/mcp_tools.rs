@@ -16,6 +16,7 @@ use super::{FloorPlanApp, OpenResult, Selection};
 mod batch;
 mod drawings;
 mod editing;
+mod electrical;
 mod shapes;
 use crate::{
     domain::{
@@ -333,6 +334,10 @@ impl FloorPlanApp {
             }
             "editar_abertura" => self.tool_edit_opening(args),
             "inserir_objeto" => self.tool_insert_fixture(args),
+            "inserir_ponto_eletrico" => self.tool_insert_electrical(args),
+            "editar_ponto_eletrico" => self.tool_edit_electrical(args),
+            "projeto_eletrico" => self.tool_electrical_design(args),
+            "quadro_de_cargas" => self.tool_load_schedule(),
             "desenhar" => self.tool_draw(args),
             "definir_alvenaria" => self.tool_masonry(args),
             "editar_objeto" => self.tool_edit_fixture(args),
@@ -723,9 +728,11 @@ impl FloorPlanApp {
             Some("janela") => OpeningKind::Window,
             Some("porta_vai_e_vem" | "vai_e_vem" | "porta_faroeste") => OpeningKind::SaloonDoor,
             Some("vao_livre" | "vao" | "vão_livre" | "vão") => OpeningKind::Gap,
+            Some("portao" | "portão") => OpeningKind::Gate,
             _ => {
                 return Err(
-                    "Informe 'tipo': porta, janela, porta_vai_e_vem ou vao_livre.".to_owned(),
+                    "Informe 'tipo': porta, janela, porta_vai_e_vem, vao_livre ou portao."
+                        .to_owned(),
                 );
             }
         };
@@ -846,6 +853,7 @@ impl FloorPlanApp {
                 width,
                 depth,
                 quarter_turns: turns,
+                electrical: kind.default_electrical(),
             }
         };
         let moved_to_wall = against_wall && placed.center != point;
@@ -1139,6 +1147,7 @@ impl FloorPlanApp {
                         OpeningKind::Window => "janela",
                         OpeningKind::SaloonDoor => "porta_vai_e_vem",
                         OpeningKind::Gap => "vao_livre",
+                        OpeningKind::Gate => "portao",
                     },
                     "parede_id": opening.wall_id,
                     "codigo": crate::domain::annotations::frame_of(&frame_types, opening)
@@ -1638,6 +1647,65 @@ mod tests {
         assert!(
             resolve_path("casa", "json").ends_with("Trazo/casa.json")
                 || resolve_path("casa", "json").ends_with("Trazo\\casa.json")
+        );
+    }
+}
+
+#[cfg(test)]
+mod gate_tests {
+    use crate::app::FloorPlanApp;
+    use crate::domain::model::OpeningKind;
+    use crate::domain::openings::DoorType;
+    use eframe::egui;
+    use serde_json::json;
+
+    #[test]
+    fn an_entrance_gate_goes_in_the_front_wall_and_slides_by_default() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        app.run_mcp_tool(
+            "definir_terreno",
+            &json!({ "largura": 12, "comprimento": 25 }),
+        );
+        let wall = app.run_mcp_tool(
+            "criar_parede",
+            &json!({ "x1": 0.5, "y1": 0.5, "x2": 11.5, "y2": 0.5 }),
+        );
+        let wall = wall.structured.unwrap()["id"].as_u64().unwrap();
+        let gate = app.run_mcp_tool(
+            "inserir_abertura",
+            &json!({ "parede_id": wall, "tipo": "portao", "posicao": 0.7 }),
+        );
+        assert!(!gate.is_error, "{}", gate.text);
+        let opening = app.project.openings.last().unwrap().clone();
+        assert_eq!(opening.kind, OpeningKind::Gate);
+        assert_eq!(opening.width(), 3.0);
+        assert_eq!(opening.effective_door_type(), DoorType::Sliding);
+        assert_eq!(opening.height(), Some(2.2));
+        // Gates are tagged PT in the schedule, apart from doors.
+        let types = crate::domain::annotations::frame_types(&app.project);
+        let tag = crate::domain::annotations::frame_of(&types, &opening);
+        assert_eq!(tag.map(|frame| frame.code.as_str()), Some("PT1"));
+        // From a pedestrian gate (0.80 m) to a garage gate (8 m).
+        assert!(
+            app.run_mcp_tool(
+                "inserir_abertura",
+                &json!({ "parede_id": wall, "tipo": "portao", "posicao": 0.2, "largura": 0.5 }),
+            )
+            .is_error
+        );
+        let pedestrian = app.run_mcp_tool(
+            "inserir_abertura",
+            &json!({ "parede_id": wall, "tipo": "portao", "posicao": 0.2, "largura": 0.9 }),
+        );
+        assert!(!pedestrian.is_error, "{}", pedestrian.text);
+        let listed = app.run_mcp_tool("obter_planta", &json!({}));
+        let openings = listed.structured.unwrap()["aberturas"].clone();
+        assert!(
+            openings
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|o| o["tipo"] == "portao")
         );
     }
 }

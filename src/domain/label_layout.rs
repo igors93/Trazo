@@ -96,8 +96,11 @@ impl Project {
     /// sweeps. Hidden layers are left out.
     pub fn label_obstacles(&self) -> Vec<(Point, Point)> {
         let mut boxes = Vec::new();
-        if self.category_visible(LayerCategory::Fixtures) {
+        {
             for fixture in &self.fixtures {
+                if !self.category_visible(Self::fixture_category(fixture)) {
+                    continue;
+                }
                 let (mut low, mut high) = fixture.bounds();
                 let mut include = |point: Point| {
                     low = Point::new(low.x.min(point.x), low.y.min(point.y));
@@ -120,6 +123,13 @@ impl Project {
                 boxes.push((low, high));
             }
         }
+        if self.category_visible(LayerCategory::Electrical) {
+            for (anchor, text) in self.electrical_tags() {
+                let (width, height) = super::electrical::tag_size(&text);
+                let half = Point::new(width / 2.0, height / 2.0);
+                boxes.push((anchor.minus(half), anchor.translated(half)));
+            }
+        }
         if self.category_visible(LayerCategory::Openings) {
             for opening in &self.openings {
                 let Some(wall) = self.walls.iter().find(|wall| wall.id == opening.wall_id) else {
@@ -131,7 +141,7 @@ impl Project {
                 let half = opening.width() / 2.0;
                 // How far the leaves reach, and whether they swing both ways.
                 let (reach, both_sides) = match opening.kind {
-                    OpeningKind::Door => match opening.effective_door_type() {
+                    OpeningKind::Door | OpeningKind::Gate => match opening.effective_door_type() {
                         DoorType::Sliding | DoorType::PocketSliding => continue,
                         DoorType::DoubleSwing => (half, false),
                         DoorType::Pivot => (opening.width() * 0.8, false),

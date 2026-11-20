@@ -1,3 +1,4 @@
 /target/
 *.trazo.json
+__pycache__/
 

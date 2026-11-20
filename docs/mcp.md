@@ -21,7 +21,8 @@ The server starts together with the window at `http://127.0.0.1:7799/mcp`, using
 ![The Conectar uma IA panel with the server address and the assistant's recent actions](images/ai-connect.png)
 
 - Keep Trazo open while the assistant works. Only one Trazo window serves MCP at a time.
-- Set the `TRAZO_MCP_PORT` environment variable to use another port.
+- Each Trazo window serves its own project: the first on 7799, the next ones on 7800, 7801 and so on. An assistant can connect to several windows to work on more than one project.
+- Set the `TRAZO_MCP_PORT` environment variable to change the first port.
 - Every change runs on a copy of the project and is applied only if it succeeds. A failing tool explains why, so the assistant can correct itself.
 
 ## Connecting a client
@@ -56,14 +57,15 @@ Create a connector with that address and no authentication; in ChatGPT this is d
 
 ## Tools
 
-Trazo exposes 35 tools. Their names and messages are in Portuguese, like the interface.
+Trazo exposes 39 tools. Their names and messages are in Portuguese, like the interface.
 
 | Group | Tools |
 | --- | --- |
 | **Reading** | `obter_planta` (the plan: ids, coordinates, sizes, areas, wall thickness and material, opening codes, the door and window schedule, groups, constraints, the person's selection and the current revision), `imagem_da_planta` (a PNG preview), `mudancas_desde` (what changed since a revision) |
 | **Lot and walls** | `definir_terreno`, `criar_parede`, `editar_parede`, `definir_alvenaria` (brick or block, joint, plaster, ceiling height) |
 | **Rooms** | `criar_comodo` (rectangle or any polygon), `editar_comodo` |
-| **Openings** | `inserir_abertura` (door, window, saloon door or open span), `editar_abertura` (width, position, height, sill, side and hinge) |
+| **Openings** | `inserir_abertura` (door, window, saloon door, open span or gate), `editar_abertura` (width, position, height, sill, side and hinge) |
+| **Electrical (NBR 5410)** | `inserir_ponto_eletrico` (outlets, switches, lights, panel, data), `editar_ponto_eletrico` (circuit, power, height), `projeto_eletrico` (generate the minimum points, distribute circuits, set the voltage), `quadro_de_cargas` (forecast, circuits with wire and breaker, warnings) |
 | **Fixtures and drawing** | `inserir_objeto` and `editar_objeto` (optionally placed against the nearest wall), `desenhar` (lines, polylines, rectangles, arcs, circles, splines) |
 | **CAD editing** | `selecionar` (shows the person which elements the assistant means), `mover_elemento`, `transformar` (move, rotate, mirror or copy several elements), `alinhar`, `distribuir`, `agrupar`, `desagrupar`, `repetir` (grid or polar), `editar_geometria` (trim, extend, offset, divide), `unir`, `restringir`, `remover_restricao`, `excluir_elemento` |
 | **Batch** | `executar_lote`: up to 200 tool calls in one request, all or nothing, as a single undo step |
@@ -96,7 +98,7 @@ While a tunnel is open, anyone who knows its full address, including the secret 
 
 | Problem | Fix |
 | --- | --- |
-| The **IA** switch is off | Another program, or another Trazo window, is using port 7799. Close it, or start Trazo with a different `TRAZO_MCP_PORT`. |
+| The **IA** switch is off | Another program is using this window's port (7799 for the first window, 7800 for the second…). Close it, or start Trazo with a different `TRAZO_MCP_PORT`. |
 | Claude Desktop does not list Trazo | Restart Claude Desktop after configuring it, and check that the path in `claude_desktop_config.json` points to the current `trazo.exe`. |
 | `cargo build` fails with "access denied" on Windows | Claude Desktop is running `trazo.exe --mcp-stdio`, and Windows locks the running executable. Close Claude Desktop, then rebuild. |
 | The cloud assistant cannot connect | Check that the tunnel is still open and that you copied the full address, including `/mcp/<token>`. |

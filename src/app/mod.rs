@@ -52,6 +52,7 @@ enum DocDialog {
     Floors,
     Library,
     Ergonomics,
+    Electrical,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,6 +70,7 @@ enum RibbonTab {
     Architecture,
     Edit,
     Interiors,
+    Electrical,
     Drafting,
     View,
     Output,
@@ -185,6 +187,9 @@ pub struct FloorPlanApp {
     show_browser: bool,
     show_properties: bool,
     show_help: bool,
+    show_report_dialog: bool,
+    report_summary: String,
+    report_include_log: bool,
     active_doc_dialog: DocDialog,
     new_layer_name: String,
     new_note_text: String,
@@ -197,6 +202,8 @@ pub struct FloorPlanApp {
     new_library_base: Option<FixtureKind>,
     show_ergonomics: bool,
     ergonomics_min_passage: f64,
+    /// Fades architecture and furniture so the electrical design stands out.
+    electrical_only: bool,
     browser_filter: String,
     browser_hover: Option<Selection>,
     cursor_world: Option<Point>,
@@ -354,6 +361,9 @@ impl FloorPlanApp {
             show_browser: preferences.show_browser,
             show_properties: preferences.show_properties,
             show_help: false,
+            show_report_dialog: false,
+            report_summary: String::new(),
+            report_include_log: true,
             active_doc_dialog: DocDialog::None,
             new_layer_name: String::new(),
             new_note_text: String::new(),
@@ -365,6 +375,7 @@ impl FloorPlanApp {
             new_library_depth: 0.60,
             new_library_base: Some(FixtureKind::Counter),
             show_ergonomics: false,
+            electrical_only: false,
             ergonomics_min_passage: 0.70,
             browser_filter: String::new(),
             browser_hover: None,
@@ -427,12 +438,26 @@ impl FloorPlanApp {
     ) -> (Option<mpsc::Receiver<ToolCall>>, McpStatus) {
         let (sender, receiver) = mpsc::channel();
         let waker = context.clone();
-        match mcp::server::start_with_token(mcp::port(), sender, tunnel_token, events, move || {
+        // Each window has its own port (7799, 7800, ...), so an assistant can
+        // work on several projects at once.
+        let port = crate::io::instance::mcp_port(mcp::port());
+        match mcp::server::start_with_token(port, sender, tunnel_token, events, move || {
             waker.request_repaint()
         }) {
             Ok(port) => (Some(receiver), McpStatus::Listening(port)),
             Err(error) => (None, McpStatus::Failed(error)),
         }
+    }
+
+    /// Opens another Trazo window for a second project.
+    fn open_new_window(&mut self) {
+        self.message = match crate::io::instance::open_new_window() {
+            Ok(()) => {
+                "Nova janela aberta: cada janela edita um projeto, com servidor de IA próprio."
+                    .to_owned()
+            }
+            Err(error) => error,
+        };
     }
 
     /// Runs the tool calls the MCP server has queued, answering each.
@@ -558,6 +583,9 @@ impl FloorPlanApp {
             }
             Tool::Move => "Clique para selecionar. Arraste parede, cômodo ou terreno para mover.",
             Tool::Opening(OpeningKind::Door) => "Clique em uma parede para colocar uma porta.",
+            Tool::Opening(OpeningKind::Gate) => {
+                "Clique no muro ou na parede da frente para colocar o portão (de correr, 3,00 m)."
+            }
             Tool::Opening(OpeningKind::Window) => "Clique em uma parede para colocar uma janela.",
             Tool::Opening(OpeningKind::SaloonDoor) => {
                 "Clique em uma parede para colocar uma porta vai-e-vem."
@@ -1179,7 +1207,15 @@ impl FloorPlanApp {
             Selection::Terrain(_) => self.project.category_locked(LayerCategory::Terrain),
             Selection::Room(_) => self.project.category_locked(LayerCategory::Rooms),
             Selection::Opening(_) => self.project.category_locked(LayerCategory::Openings),
-            Selection::Fixture(_) => self.project.category_locked(LayerCategory::Fixtures),
+            Selection::Fixture(id) => self
+                .project
+                .fixtures
+                .iter()
+                .find(|fixture| fixture.id == id)
+                .is_some_and(|fixture| {
+                    self.project
+                        .category_locked(crate::domain::model::Project::fixture_category(fixture))
+                }),
             Selection::Wall(id) => self
                 .project
                 .walls
@@ -2180,6 +2216,7 @@ impl FloorPlanApp {
                 save: shortcut(Key::S, false) && free,
                 open: shortcut(Key::O, false) && free,
                 new: shortcut(Key::N, false) && free,
+                new_window: shortcut(Key::N, true) && free,
                 undo: shortcut(Key::Z, false) && !editing_text && free,
                 redo: (shortcut(Key::Y, false) || shortcut(Key::Z, true)) && !editing_text && free,
                 select_all: shortcut(Key::A, false) && !editing_text && free,
@@ -2218,6 +2255,9 @@ impl FloorPlanApp {
         }
         if actions.open {
             self.request_open();
+        }
+        if actions.new_window {
+            self.open_new_window();
         }
         if actions.new {
             self.request_new_project();
@@ -2361,6 +2401,7 @@ struct ShortcutActions {
     save: bool,
     open: bool,
     new: bool,
+    new_window: bool,
     undo: bool,
     redo: bool,
     select_all: bool,

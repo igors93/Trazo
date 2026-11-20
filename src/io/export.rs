@@ -7,6 +7,9 @@ use crate::domain::{
     model::{OpeningKind, Project},
 };
 
+/// Electrical devices and their tags.
+pub(crate) const ELECTRICAL_INK: &str = "#c62828";
+
 mod csv;
 mod drawings;
 mod labels;
@@ -198,7 +201,7 @@ fn document(project: &Project) -> SvgDocument {
                 }
             }
             match opening.kind {
-                OpeningKind::Door => {
+                OpeningKind::Door | OpeningKind::Gate => {
                     use crate::domain::openings::DoorType;
                     let leaf = half * 2.0;
                     let side = if opening.flip_side { -1.0 } else { 1.0 };
@@ -436,28 +439,36 @@ fn document(project: &Project) -> SvgDocument {
         svg.push_str("</g>\n");
     }
     for fixture in &project.fixtures {
+        if !project.category_visible(Project::fixture_category(fixture)) {
+            continue;
+        }
+        let electrical = fixture.kind.is_electrical();
         let corner = |x: f64, y: f64| {
             let (px, py) = point(fixture.to_world(Point::new(x, y)));
             format!("{px:.1},{py:.1}")
         };
         let (hw, hd) = (fixture.width / 2.0, fixture.depth / 2.0);
-        let _ = writeln!(
-            svg,
-            "<polygon points=\"{} {} {} {}\" fill=\"#ffffff\"/>",
-            corner(-hw, -hd),
-            corner(hw, -hd),
-            corner(hw, hd),
-            corner(-hw, hd)
-        );
+        if !electrical {
+            let _ = writeln!(
+                svg,
+                "<polygon points=\"{} {} {} {}\" fill=\"#ffffff\"/>",
+                corner(-hw, -hd),
+                corner(hw, -hd),
+                corner(hw, hd),
+                corner(-hw, hd)
+            );
+        }
         for shape in fixture.symbol() {
             let weight = match &shape {
                 SymbolShape::Polyline { weight, .. } | SymbolShape::Circle { weight, .. } => {
                     *weight
                 }
             };
-            let (color, width) = match weight {
-                Weight::Outline => ("#3b4e63", 2.0),
-                Weight::Detail => ("#627489", 1.2),
+            let (color, width) = match (weight, electrical) {
+                (Weight::Outline, false) => ("#3b4e63", 2.0),
+                (Weight::Detail, false) => ("#627489", 1.2),
+                (Weight::Outline, true) => (ELECTRICAL_INK, 1.8),
+                (Weight::Detail, true) => (ELECTRICAL_INK, 1.0),
             };
             match shape {
                 SymbolShape::Polyline {
@@ -491,6 +502,17 @@ fn document(project: &Project) -> SvgDocument {
                     );
                 }
             }
+        }
+    }
+    if project.category_visible(crate::domain::layers::LayerCategory::Electrical) {
+        for (anchor, text) in project.electrical_tags() {
+            let (x, y) = point(anchor);
+            let _ = writeln!(
+                svg,
+                "<text x=\"{x:.1}\" y=\"{y:.1}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"{:.1}\" fill=\"{ELECTRICAL_INK}\" stroke=\"#ffffff\" stroke-width=\"3\" paint-order=\"stroke\">{}</text>",
+                (pixels_per_meter * 0.14).clamp(9.0, 16.0),
+                escaped(&text)
+            );
         }
     }
     // Dimension chains in centimetres above and left of the building.

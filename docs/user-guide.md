@@ -61,6 +61,7 @@ Drag **Porta** (door, `R`) or **Janela** (window, `J`) from the ribbon onto a wa
 - **Door types:** hinged, double, sliding, pocket, pivot, bifold and revolving; **Vai-e-vem** adds double-acting saloon doors.
 - **Window types:** sliding, top-hung (*basculante*), awning (*maxim-ar*), casement, tilt-and-turn, fixed and bay, each with its technical plan symbol.
 - **Vão livre** (open span) leaves an opening with no frame.
+- **Portão** (gate) goes in a boundary or front wall: 3.00 m sliding by default, from 0.80 m (pedestrian gate) to 8 m (vehicle gate). In Properties choose sliding, swing, double, pivot or folding. Gates are tagged "PT1 300/220".
 - Openings keep a minimum distance from wall ends and never overlap. In Properties set width, height and, for windows, the sill; turn a door to the other side of the wall (`I`) or move its hinge to the other jamb (`Shift+I`).
 
 ### 5. Levels, stairs and floors
@@ -116,6 +117,29 @@ Near a straight wall, a fixture turns its back to the wall and stands against th
 
 Room names and sizes find the free spot nearest the middle of each room, clear of furniture and door swings, both on screen and in exported drawings.
 
+## Electrical design
+
+The *Elétrica* (electrical) tab designs the installation on the floor plan, following ABNT NBR 5410. Devices are drawn in red on their own layer, *Instalações elétricas*, which can be hidden.
+
+| Group | Tools |
+| --- | --- |
+| **Tomadas** (outlets) | **Baixa** (0.30 m), **Média** (1.20 m), **Alta** (2.20 m) and **TUE** (specific use, such as an electric shower or oven) |
+| **Iluminação e comando** | **Luz teto** (ceiling light), **Arandela** (wall light), **Interruptor** (switch) and **Paralelo** (two-way switch) |
+| **Quadro e dados** | **Quadro** (distribution board) and **Dados/TV** |
+| **Projeto (NBR 5410)** | **Gerar pontos**, **Circuitos** and **Quadro de cargas** |
+| **Exibição** | The circuit voltage (127 or 220 V), **Só elétrica** (fades everything else) and **Ocultar elétrica** |
+
+Wall devices stand on the face of the nearest wall, like furniture; ceiling lights go where you click. In Properties, each device has its circuit, power in VA and mounting height. Tags such as "C2 · 600 VA" show the circuit and power once the plan is zoomed in, and always on paper.
+
+- **Gerar pontos** (generate points) adds what the norm asks for and each room still lacks, classifying rooms by name (*Cozinha*, *Banheiro*, *Quarto*…):
+  - a ceiling light with the minimum lighting load (100 VA for the first 6 m², plus 60 VA per 4 m² beyond);
+  - general outlets spread along the walls, clear of doors and windows: one per 3.5 m of perimeter in kitchens and service areas, one per 5 m in other rooms, at least one in bathrooms, with 600 VA for the first three in wet rooms;
+  - a switch beside the door, and a 5,500 VA specific-use point at each shower.
+- **Circuitos** numbers the circuits again: lighting apart from outlets (up to 10 A each), kitchens and service areas on circuits of their own, and one circuit per specific-use outlet. Switches follow the lights of their room.
+- **Quadro de cargas** (load schedule) shows the forecast of each room next to what is drawn, and each circuit's power, voltage, current, wire section, breaker and the need for a 30 mA RCD (wet and outdoor areas), with warnings for anything the norm asks to change.
+
+Wire sections assume copper with PVC insulation, method B1, two loaded conductors at 30 °C (NBR 5410 table 36), with minimums of 1.5 mm² for lighting and 2.5 mm² for outlets. The design is a starting point: have it checked by a licensed professional.
+
 ## Documentation and output
 
 ### Annotation
@@ -154,6 +178,8 @@ Room names and sizes find the free spot nearest the middle of each room, clear o
 - A crash-recovery draft is written in the background and offered at the next start.
 - The draft and the interface preferences live in `%LOCALAPPDATA%\Trazo\` (`recovery.json`, `settings.json`), or in the system temporary folder when `LOCALAPPDATA` is not set.
 - Opening or creating a project never drops unsaved changes without asking.
+- **Several projects at once:** *Arquivo* › **Nova janela** (`Ctrl+Shift+N`) opens another Trazo window. Each window has its own project, its own crash-recovery draft (`recovery.json`, `recovery-1.json`…) and its own AI server port.
+- **Crash logs and bug reports:** unexpected crashes are written to a rotating log under `%LOCALAPPDATA%\Trazo\logs\crash.log`. Open *Ajuda* › **Relatar problema...** to inspect the log, copy a diagnostic bundle, open the logs folder, or open a pre-filled GitHub issue.
 
 ## Keyboard and mouse
 
@@ -163,6 +189,7 @@ Room names and sizes find the free spot nearest the middle of each room, clear o
 | `M` | Measure |
 | `I` / `Shift+I` | Turn the selected door to the other side / move its hinge |
 | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` | New, open, save |
+| `Ctrl+Shift+N` | New window, for another project |
 | `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`) | Undo, redo |
 | `Delete` | Delete the selection |
 | `Ctrl+A` | Select all (following the selection filter) |

@@ -8,6 +8,8 @@ mod mcp;
 use eframe::egui;
 
 fn main() -> eframe::Result {
+    io::crash_log::install_panic_hook();
+
     // `trazo --mcp-stdio`: no window of its own; it serves MCP on
     // stdin/stdout for clients such as Claude Desktop.
     if std::env::args()

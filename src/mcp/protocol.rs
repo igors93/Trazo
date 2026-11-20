@@ -32,6 +32,11 @@ mantém nas edições seguintes). Use selecionar para mostrar ao usuário os ele
 está falando; 'selecao' em obter_planta diz o que ele selecionou. Para muitas mudanças de uma \
 vez, use executar_lote: tudo vira um só passo de desfazer e nada é aplicado se uma ação \
 falhar.
+Projeto elétrico (NBR 5410): projeto_eletrico com acao gerar_pontos coloca o mínimo da \
+norma em cada cômodo; distribuir_circuitos numera os circuitos; quadro_de_cargas mostra \
+previsão, circuitos, fio, disjuntor e alertas. Ajuste pontos com inserir_ponto_eletrico e \
+editar_ponto_eletrico. Nomeie os cômodos pelo uso (Cozinha, Banheiro, Quarto...), porque a \
+norma muda conforme o tipo de cômodo.
 O usuário pode editar a planta ao mesmo tempo que você. Guarde a 'revisao' de obter_planta \
 e, antes de cada nova rodada de edições, chame mudancas_desde com ela para ver o que ele \
 mudou (origem 'usuario'). Clientes que assinam o recurso trazo://planta recebem um aviso a \
@@ -337,7 +342,7 @@ fn catalogue() -> Vec<Tool> {
             description: "Insere uma porta (largura padrão 0,90 m, de 0,60 a 2,00), janela (padrão 1,20 m, de 0,40 a 4,00) porta vai-e-vem (padrão 0,80 m, de 0,60 a 1,80) ou vão livre (sem porta, de 0,50 a 30 m, para lados abertos) numa parede. Não pode sobrepor outra abertura nem encostar nas pontas da parede.",
             properties: json!({
                 "parede_id": id_of("da parede"),
-                "tipo": { "type": "string", "enum": ["porta", "janela", "porta_vai_e_vem", "vao_livre"], "description": "porta, janela, porta_vai_e_vem (tipo faroeste, duas folhas que abrem para os dois lados) ou vao_livre (trecho aberto, sem porta)." },
+                "tipo": { "type": "string", "enum": ["porta", "janela", "porta_vai_e_vem", "vao_livre", "portao"], "description": "porta, janela, porta_vai_e_vem (tipo faroeste, duas folhas que abrem para os dois lados), vao_livre (trecho aberto, sem porta) ou portao (portão de entrada no muro ou na parede da frente: de correr, padrão 3,00 m, de 0,80 a 8,00 m)." },
                 "posicao": number("Centro da abertura ao longo da parede, de 0 (início) a 1 (fim). Padrão 0,5 (meio)."),
                 "largura": number("Opcional: largura em metros."),
             }),
@@ -717,6 +722,62 @@ fn catalogue() -> Vec<Tool> {
             destructive: false,
         },
         Tool {
+            name: "inserir_ponto_eletrico",
+            title: "Inserir ponto elétrico",
+            description: "Insere um ponto da instalação elétrica (NBR 5410): tomada_baixa (0,30 m), tomada_media (1,20 m), tomada_alta (2,20 m), tomada_tue (uso específico, como chuveiro ou forno), interruptor, interruptor_paralelo (three-way), luz_teto, arandela, quadro (de distribuição) ou ponto_dados. Pontos de parede encostam sozinhos na face da parede mais próxima (até 0,8 m); luz_teto fica no ponto informado. Opcional: circuito, potência e altura.",
+            properties: json!({
+                "tipo": {
+                    "type": "string",
+                    "enum": ["tomada_baixa", "tomada_media", "tomada_alta", "tomada_tue", "interruptor", "interruptor_paralelo", "luz_teto", "arandela", "quadro", "ponto_dados"],
+                    "description": "Tipo do ponto.",
+                },
+                "x": number("X do ponto, em metros."),
+                "y": number("Y do ponto, em metros."),
+                "circuito": integer("Opcional: número do circuito (1 a 999)."),
+                "potencia_va": number("Opcional: potência em VA (padrão do tipo: 100 VA para tomadas e luzes)."),
+                "altura_m": number("Opcional: altura de instalação em metros."),
+                "rotacao": integer("0, 90, 180 ou 270, para pontos longe de paredes."),
+            }),
+            required: &["tipo", "x", "y"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "editar_ponto_eletrico",
+            title: "Editar ponto elétrico",
+            description: "Muda o circuito (0 tira do circuito), a potência em VA ou a altura de um ponto elétrico. Para mover, use editar_objeto.",
+            properties: json!({
+                "id": id_of("do ponto elétrico"),
+                "circuito": integer("Número do circuito, ou 0 para tirar do circuito."),
+                "potencia_va": number("Potência em VA."),
+                "altura_m": number("Altura de instalação em metros."),
+            }),
+            required: &["id"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "projeto_eletrico",
+            title: "Projeto elétrico (NBR 5410)",
+            description: "Comandos do projeto elétrico. gerar_pontos: adiciona o que a NBR 5410 exige e falta em cada cômodo (ponto de luz com a potência mínima, tomadas distribuídas nas paredes longe de portas e janelas, interruptor junto à porta, TUE de 5500 VA em cada chuveiro). distribuir_circuitos: renumera os circuitos (iluminação separada das tomadas, cozinha e serviço em circuitos próprios, um circuito por TUE). definir_tensao: 127 ou 220 V. Cômodos são classificados pelo nome (banheiro, cozinha, área de serviço, varanda, sala, quarto...).",
+            properties: json!({
+                "acao": { "type": "string", "enum": ["gerar_pontos", "distribuir_circuitos", "definir_tensao"], "description": "O que fazer." },
+                "tensao": number("Para definir_tensao: 127 ou 220."),
+            }),
+            required: &["acao"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "quadro_de_cargas",
+            title: "Quadro de cargas",
+            description: "Previsão de cargas por cômodo (mínimos da NBR 5410 e o que já está desenhado) e o quadro de circuitos com potência, corrente, seção do fio, disjuntor e necessidade de DR, mais os alertas do projeto.",
+            properties: json!({}),
+            required: &[],
+            read_only: true,
+            destructive: false,
+        },
+        Tool {
             name: "centralizar_planta",
             title: "Centralizar planta",
             description: "Centraliza paredes e cômodos dentro do terreno.",
@@ -822,7 +883,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 35);
+        assert_eq!(tools.len(), 39);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -903,7 +964,7 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 35);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 39);
     }
 }
 

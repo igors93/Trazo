@@ -33,6 +33,17 @@ pub enum FixtureKind {
     Washer,
     TvStand,
     Bathtub,
+    // Electrical devices (see `electrical.rs`).
+    OutletLow,
+    OutletMid,
+    OutletHigh,
+    OutletSpecific,
+    Switch,
+    SwitchTwoWay,
+    CeilingLight,
+    WallLight,
+    Panel,
+    DataPoint,
 }
 
 impl FixtureKind {
@@ -83,6 +94,16 @@ impl FixtureKind {
             Self::Washer => "Máquina de lavar",
             Self::TvStand => "Rack / TV",
             Self::Bathtub => "Banheira",
+            Self::OutletLow => "Tomada baixa",
+            Self::OutletMid => "Tomada média",
+            Self::OutletHigh => "Tomada alta",
+            Self::OutletSpecific => "Tomada de uso específico (TUE)",
+            Self::Switch => "Interruptor simples",
+            Self::SwitchTwoWay => "Interruptor paralelo",
+            Self::CeilingLight => "Ponto de luz no teto",
+            Self::WallLight => "Arandela",
+            Self::Panel => "Quadro de distribuição",
+            Self::DataPoint => "Ponto de dados/TV",
         }
     }
 
@@ -110,11 +131,24 @@ impl FixtureKind {
             Self::Washer => "lavadora",
             Self::TvStand => "rack_tv",
             Self::Bathtub => "banheira",
+            Self::OutletLow => "tomada_baixa",
+            Self::OutletMid => "tomada_media",
+            Self::OutletHigh => "tomada_alta",
+            Self::OutletSpecific => "tomada_tue",
+            Self::Switch => "interruptor",
+            Self::SwitchTwoWay => "interruptor_paralelo",
+            Self::CeilingLight => "luz_teto",
+            Self::WallLight => "arandela",
+            Self::Panel => "quadro",
+            Self::DataPoint => "ponto_dados",
         }
     }
 
     pub fn from_key(key: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|kind| kind.key() == key)
+        Self::ALL
+            .into_iter()
+            .chain(Self::ELECTRICAL)
+            .find(|kind| kind.key() == key)
     }
 
     /// Usual width (along the wall) and depth, in metres.
@@ -141,6 +175,14 @@ impl FixtureKind {
             Self::Washer => (0.6, 0.6),
             Self::TvStand => (1.6, 0.45),
             Self::Bathtub => (1.7, 0.8),
+            Self::OutletLow | Self::OutletMid | Self::OutletHigh | Self::OutletSpecific => {
+                (0.3, 0.22)
+            }
+            Self::Switch | Self::SwitchTwoWay => (0.24, 0.24),
+            Self::CeilingLight => (0.4, 0.4),
+            Self::WallLight => (0.3, 0.2),
+            Self::Panel => (0.5, 0.2),
+            Self::DataPoint => (0.26, 0.2),
         }
     }
 
@@ -158,6 +200,18 @@ impl FixtureKind {
             Self::Shower | Self::Bathtub => 0.60,
             Self::WoodStove | Self::Grill => 0.80,
             Self::Shelves | Self::TvStand => 0.50,
+            // Wall and ceiling devices take no floor space; the panel needs
+            // free access in front of it.
+            Self::Panel => 0.70,
+            Self::OutletLow
+            | Self::OutletMid
+            | Self::OutletHigh
+            | Self::OutletSpecific
+            | Self::Switch
+            | Self::SwitchTwoWay
+            | Self::CeilingLight
+            | Self::WallLight
+            | Self::DataPoint => 0.0,
         }
     }
 
@@ -193,6 +247,9 @@ pub struct Fixture {
     /// the right, 2 down and 3 to the left.
     #[serde(default)]
     pub quarter_turns: u8,
+    /// Circuit, power and height, for electrical devices.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub electrical: Option<super::electrical::ElectricalData>,
 }
 
 pub fn valid_size(width: f64, depth: f64) -> bool {
@@ -329,6 +386,16 @@ pub fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolShape> {
     let outline = rect(-hw, -hd, hw, hd, Outline);
     let small = width.min(depth);
     match kind {
+        FixtureKind::OutletLow
+        | FixtureKind::OutletMid
+        | FixtureKind::OutletHigh
+        | FixtureKind::OutletSpecific
+        | FixtureKind::Switch
+        | FixtureKind::SwitchTwoWay
+        | FixtureKind::CeilingLight
+        | FixtureKind::WallLight
+        | FixtureKind::Panel
+        | FixtureKind::DataPoint => super::electrical::symbol(kind, width, depth),
         FixtureKind::Counter => vec![
             outline,
             line(&[(-hw, hd - 0.05), (hw, hd - 0.05)], false, Detail),
@@ -534,6 +601,7 @@ mod tests {
             width: 2.0,
             depth: 0.6,
             quarter_turns: turns,
+            electrical: None,
         }
     }
 
