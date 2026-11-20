@@ -39,7 +39,6 @@ impl Element {
         }
     }
 
-    #[cfg(test)]
     pub fn id(self) -> u64 {
         match self {
             Element::Fixture(id)

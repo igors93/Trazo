@@ -24,7 +24,12 @@ churrasqueira, louças e mesas. As paredes têm espessura (espessura_parede_m): 
 coordenadas de cômodos são o eixo das paredes, e a face interna fica meia espessura para \
 dentro. Paredes e cômodos precisam ficar dentro \
 do terreno. Confira o resultado com imagem_da_planta. Salve com salvar_projeto quando o \
-usuário pedir.";
+usuário pedir.
+Para editar como num CAD: transformar (mover, girar, espelhar, copiar vários elementos), \
+alinhar, distribuir, agrupar, repetir, editar_geometria (aparar, estender, deslocar, \
+dividir), unir e restringir (paralelas, perpendiculares, distâncias fixas que o Trazo \
+mantém nas edições seguintes). Use selecionar para mostrar ao usuário os elementos de que \
+está falando; 'selecao' em obter_planta diz o que ele selecionou.";
 
 /// Runs a tool by name with its arguments and returns the `CallToolResult`.
 pub type ToolRunner<'a> = dyn FnMut(&str, &Value) -> Value + 'a;
@@ -152,6 +157,14 @@ fn string(description: &str) -> Value {
 
 fn boolean(description: &str) -> Value {
     json!({ "type": "boolean", "description": description })
+}
+
+fn ids() -> Value {
+    json!({
+        "type": "array",
+        "items": { "type": "integer" },
+        "description": "Ids dos elementos (veja obter_planta).",
+    })
 }
 
 struct Tool {
@@ -410,6 +423,158 @@ fn catalogue() -> Vec<Tool> {
             required: &["id", "dx", "dy"],
             read_only: false,
             destructive: false,
+        },
+        Tool {
+            name: "selecionar",
+            title: "Selecionar na tela",
+            description: "Seleciona elementos na tela do usuário para mostrar do que você está falando (não altera a planta). Use ids, tipo ou tudo; sem nada, limpa a seleção. obter_planta devolve em 'selecao' o que o usuário selecionou.",
+            properties: json!({
+                "ids": ids(),
+                "tipo": string("comodos, paredes, aberturas, objetos, desenhos ou terreno."),
+                "tudo": boolean("Seleciona todos os elementos visíveis."),
+                "aproximar": boolean("Aproxima a vista da seleção."),
+            }),
+            required: &[],
+            read_only: true,
+            destructive: false,
+        },
+        Tool {
+            name: "transformar",
+            title: "Mover, girar, espelhar ou copiar",
+            description: "Move, gira ou espelha vários elementos juntos (cômodos levam paredes, portas e janelas), ou cria cópias assim com copiar=true. Girar e espelhar usam o centro dos elementos, a menos que centro_x/centro_y ou um eixo x1,y1–x2,y2 sejam dados. Objetos só giram em múltiplos de 90°.",
+            properties: json!({
+                "ids": ids(),
+                "operacao": string("mover, girar ou espelhar."),
+                "dx": number("Mover: deslocamento em X (metros)."),
+                "dy": number("Mover: deslocamento em Y, positivo para cima (metros)."),
+                "angulo": number("Girar: graus, positivo no sentido anti-horário."),
+                "centro_x": number("Centro do giro ou do espelhamento (X)."),
+                "centro_y": number("Centro do giro ou do espelhamento (Y)."),
+                "eixo": string("Espelhar: vertical (esquerda↔direita) ou horizontal (cima↔baixo)."),
+                "x1": number("Espelhar por um eixo qualquer: X do 1º ponto."),
+                "y1": number("Y do 1º ponto do eixo."),
+                "x2": number("X do 2º ponto do eixo."),
+                "y2": number("Y do 2º ponto do eixo."),
+                "copiar": boolean("Mantém os originais e cria cópias transformadas."),
+            }),
+            required: &["ids", "operacao"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "alinhar",
+            title: "Alinhar elementos",
+            description: "Alinha dois ou mais elementos pela borda ou pelo centro do conjunto. Cômodos com paredes em comum se movem como um bloco.",
+            properties: json!({
+                "ids": ids(),
+                "alinhamento": string("esquerda, direita, centro_horizontal, topo, base ou centro_vertical."),
+            }),
+            required: &["ids", "alinhamento"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "distribuir",
+            title: "Distribuir elementos",
+            description: "Deixa espaços iguais entre três ou mais elementos, mantendo o primeiro e o último.",
+            properties: json!({
+                "ids": ids(),
+                "direcao": string("horizontal (padrão) ou vertical."),
+            }),
+            required: &["ids"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "agrupar",
+            title: "Agrupar elementos",
+            description: "Agrupa cômodos, paredes, objetos e desenhos: no Trazo um clique passa a selecionar o grupo todo, e cópias mantêm o grupo.",
+            properties: json!({
+                "ids": ids(),
+                "nome": string("Nome do grupo (opcional)."),
+            }),
+            required: &["ids"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "desagrupar",
+            title: "Desagrupar",
+            description: "Desfaz os grupos dos elementos indicados (os elementos continuam na planta).",
+            properties: json!({ "ids": ids() }),
+            required: &["ids"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "repetir",
+            title: "Repetir elementos",
+            description: "Cria cópias em grade (colunas × linhas, o original é a primeira célula) ou em volta de um centro (modo polar). Até 400 cópias por vez.",
+            properties: json!({
+                "ids": ids(),
+                "modo": string("grade (padrão) ou polar."),
+                "colunas": integer("Grade: colunas, para a direita."),
+                "linhas": integer("Grade: linhas, para cima."),
+                "espacamento_x": number("Grade: distância entre colunas (metros)."),
+                "espacamento_y": number("Grade: distância entre linhas (metros)."),
+                "quantidade": integer("Polar: itens no total, contando o original."),
+                "angulo_total": number("Polar: graus (360 espalha por igual em volta)."),
+                "centro_x": number("Polar: X do centro (padrão: centro dos elementos)."),
+                "centro_y": number("Polar: Y do centro."),
+            }),
+            required: &["ids"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "editar_geometria",
+            title: "Aparar, estender, deslocar ou dividir",
+            description: "Edita uma parede ou um desenho: aparar remove o trecho em x,y até os cruzamentos mais próximos; estender leva a ponta mais próxima de x,y até a próxima parede, desenho ou divisa; deslocar cria uma cópia paralela a 'distancia' metros do lado de x,y; dividir corta em x,y ou em 'partes' iguais. Portas e janelas ficam no lugar.",
+            properties: json!({
+                "id": id_of("da parede ou do desenho"),
+                "operacao": string("aparar, estender, deslocar ou dividir."),
+                "x": number("Ponto de referência (X)."),
+                "y": number("Ponto de referência (Y)."),
+                "distancia": number("Deslocar: distância em metros (paredes: de eixo a eixo)."),
+                "partes": integer("Dividir em partes iguais (2 a 100)."),
+            }),
+            required: &["id", "operacao"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "unir",
+            title: "Unir",
+            description: "Une paredes alinhadas que se tocam pelas pontas (mesmo material) em uma só, ou linhas, polilinhas abertas e arcos do mesmo círculo em um só desenho.",
+            properties: json!({ "ids": ids() }),
+            required: &["ids"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "restringir",
+            title: "Criar restrição",
+            description: "Cria uma restrição que o Trazo mantém em todas as edições seguintes (suas e do usuário): paralelas ou perpendiculares (a e b: paredes ou linhas), coincidentes (ponto_a de a vai até ponto_b de b), distancia entre dois pontos, afastamento entre duas linhas paralelas, ou comprimento fixo de a. O segundo elemento se ajusta ao primeiro. Pontos: 0 = início, 1 = fim.",
+            properties: json!({
+                "tipo": string("paralelas, perpendiculares, coincidentes, distancia, afastamento ou comprimento."),
+                "a": id_of("da parede ou linha de referência"),
+                "b": id_of("da parede ou linha que se ajusta"),
+                "ponto_a": integer("Ponto de a: 0 início, 1 fim."),
+                "ponto_b": integer("Ponto de b: 0 início, 1 fim."),
+                "distancia": number("Distância a manter, em metros (padrão: a atual)."),
+            }),
+            required: &["tipo", "a"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "remover_restricao",
+            title: "Remover restrição",
+            description: "Remove uma restrição pelo id (veja 'restricoes' em obter_planta); a geometria fica como está.",
+            properties: json!({ "id": id_of("da restrição") }),
+            required: &["id"],
+            read_only: false,
+            destructive: true,
         },
         Tool {
             name: "excluir_elemento",

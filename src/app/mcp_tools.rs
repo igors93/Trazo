@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use super::{FloorPlanApp, OpenResult, Selection};
 
 mod drawings;
+mod editing;
 mod shapes;
 use crate::{
     domain::{
@@ -309,6 +310,17 @@ impl FloorPlanApp {
             "definir_alvenaria" => self.tool_masonry(args),
             "editar_objeto" => self.tool_edit_fixture(args),
             "mover_elemento" => self.tool_move(args),
+            "selecionar" => self.tool_select(args),
+            "transformar" => self.tool_transform(args),
+            "alinhar" => self.tool_arrange(args, false),
+            "distribuir" => self.tool_arrange(args, true),
+            "agrupar" => self.tool_group(args, false),
+            "desagrupar" => self.tool_group(args, true),
+            "repetir" => self.tool_repeat(args),
+            "editar_geometria" => self.tool_geometry(args),
+            "unir" => self.tool_join(args),
+            "restringir" => self.tool_constrain(args),
+            "remover_restricao" => self.tool_remove_constraint(args),
             "excluir_elemento" => {
                 let id = element_id(args, "id")?;
                 let selection = self.find_element(id)?;
@@ -1133,6 +1145,31 @@ impl FloorPlanApp {
             },
             "objetos": fixtures,
             "desenhos": drawings::drawings_summary(project),
+            // What the person has selected on screen, so "this one" makes sense.
+            "selecao": self.selected().iter().map(|item| item.id()).collect::<Vec<_>>(),
+            "grupos": project
+                .groups
+                .iter()
+                .map(|group| json!({
+                    "id": group.id,
+                    "nome": group.name,
+                    "membros": group.members.iter().map(|member| member.id()).collect::<Vec<_>>(),
+                }))
+                .collect::<Vec<_>>(),
+            "restricoes": project
+                .constraints
+                .iter()
+                .map(|constraint| {
+                    let [a, b] = constraint.kind.entities();
+                    json!({
+                        "id": constraint.id,
+                        "tipo": constraint.kind.label(),
+                        "a": a.element().id(),
+                        "b": b.element().id(),
+                        "distancia": constraint.kind.distance().map(round),
+                    })
+                })
+                .collect::<Vec<_>>(),
             "projeto": {
                 "nome": project.name,
                 "arquivo": self.file_path.as_ref().map(|path| path.display().to_string()),
