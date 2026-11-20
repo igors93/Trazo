@@ -190,6 +190,10 @@ pub struct FloorPlanApp {
     show_report_dialog: bool,
     report_summary: String,
     report_include_log: bool,
+    show_updates_dialog: bool,
+    check_updates_on_start: bool,
+    update_status: crate::io::updates::UpdateStatus,
+    update_receiver: Option<mpsc::Receiver<crate::io::updates::UpdateStatus>>,
     active_doc_dialog: DocDialog,
     new_layer_name: String,
     new_note_text: String,
@@ -295,8 +299,16 @@ pub enum OpenResult {
 
 impl FloorPlanApp {
     pub fn new(context: &egui::Context) -> Self {
+        Self::new_with_file(context, None)
+    }
+
+    pub fn new_with_file(context: &egui::Context, initial_file: Option<PathBuf>) -> Self {
         theme::apply(context);
-        let recovered = if cfg!(test) { None } else { recovery::load() };
+        let recovered = if cfg!(test) || initial_file.is_some() {
+            None
+        } else {
+            recovery::load()
+        };
         let restored = recovered.is_some();
         let preferences = if cfg!(test) {
             Settings::default()
@@ -364,6 +376,10 @@ impl FloorPlanApp {
             show_report_dialog: false,
             report_summary: String::new(),
             report_include_log: true,
+            show_updates_dialog: false,
+            check_updates_on_start: preferences.check_updates,
+            update_status: crate::io::updates::UpdateStatus::Idle,
+            update_receiver: None,
             active_doc_dialog: DocDialog::None,
             new_layer_name: String::new(),
             new_note_text: String::new(),
@@ -426,7 +442,43 @@ impl FloorPlanApp {
             constraint_texts: std::collections::HashMap::new(),
         };
         app.sync_masonry_fields();
+        if let Some(path) = initial_file {
+            app.open_file(&path);
+        }
+        if !cfg!(test) && app.check_updates_on_start {
+            app.start_update_check(context);
+        }
         app
+    }
+
+    pub(super) fn start_update_check(&mut self, context: &egui::Context) {
+        let waker = context.clone();
+        self.update_status = crate::io::updates::UpdateStatus::Checking;
+        self.update_receiver = Some(crate::io::updates::spawn_check(
+            crate::io::crash_log::app_version(),
+            move || waker.request_repaint(),
+        ));
+    }
+
+    fn poll_update_check(&mut self) {
+        let Some(receiver) = &self.update_receiver else {
+            return;
+        };
+        let status = match receiver.try_recv() {
+            Ok(status) => status,
+            Err(mpsc::TryRecvError::Empty) => return,
+            Err(mpsc::TryRecvError::Disconnected) => crate::io::updates::UpdateStatus::Failed(
+                "A verificação de atualizações foi interrompida.".to_owned(),
+            ),
+        };
+        if let crate::io::updates::UpdateStatus::Available(ref release) = status {
+            self.message = format!(
+                "Nova versão disponível: Trazo {} (Ajuda → Verificar atualizações).",
+                release.tag
+            );
+        }
+        self.update_status = status;
+        self.update_receiver = None;
     }
 
     /// Starts the MCP server. A busy port (another Trazo window, say) only
@@ -501,6 +553,7 @@ impl FloorPlanApp {
             dimensions: self.show_dimensions,
             selection_filter: self.selection_filter,
             follow_ai: self.follow_ai,
+            check_updates: self.check_updates_on_start,
         }
     }
 
@@ -716,7 +769,7 @@ impl FloorPlanApp {
 
     pub fn open(&mut self) -> OpenResult {
         let Some(path) = rfd::FileDialog::new()
-            .add_filter("Projeto Trazo", &["json"])
+            .add_filter("Projeto Trazo", &["trazo", "json"])
             .pick_file()
         else {
             return OpenResult::Cancelled;
@@ -758,8 +811,8 @@ impl FloorPlanApp {
         let path = match self.file_path.clone() {
             Some(path) => path,
             None => match rfd::FileDialog::new()
-                .add_filter("Projeto Trazo", &["json"])
-                .set_file_name("minha-planta.trazo.json")
+                .add_filter("Projeto Trazo", &["trazo", "json"])
+                .set_file_name("minha-planta.trazo")
                 .save_file()
             {
                 Some(path) => path,
@@ -2454,6 +2507,7 @@ impl eframe::App for FloorPlanApp {
     /// an assistant's tool calls are answered even then.
     fn logic(&mut self, _context: &egui::Context, _frame: &mut eframe::Frame) {
         self.process_mcp_calls();
+        self.poll_update_check();
         self.publish_plan_changes();
         self.save_recovery_if_pending();
     }
@@ -3243,5 +3297,26 @@ mod tests {
         assert!((corners[2].x - (4.0 + half)).abs() < 1e-4);
         assert!((corners[0].y - (1.0 - half)).abs() < 1e-4);
         assert!((corners[2].y - (5.0 + half)).abs() < 1e-4);
+    }
+
+    #[test]
+    fn startup_with_file_argument_loads_project() {
+        let mut project = Project::default();
+        project.name = "Projeto por duplo clique".to_owned();
+        project
+            .add_wall(Point::new(0.0, 0.0), Point::new(4.0, 0.0))
+            .unwrap();
+        let path =
+            std::env::temp_dir().join(format!("trazo-startup-open-{}.trazo", std::process::id()));
+        project_file::save(&project, &path).unwrap();
+
+        let context = egui::Context::default();
+        let app = FloorPlanApp::new_with_file(&context, Some(path.clone()));
+        assert_eq!(app.project.name, "Projeto por duplo clique");
+        assert_eq!(app.project.walls.len(), 1);
+        assert_eq!(app.file_path.as_deref(), Some(path.as_path()));
+        assert!(!app.dirty);
+
+        let _ = std::fs::remove_file(&path);
     }
 }

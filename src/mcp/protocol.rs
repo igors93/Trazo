@@ -801,9 +801,9 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "abrir_projeto",
             title: "Abrir projeto",
-            description: "Abre um projeto .json do Trazo. Caminho relativo é procurado em Documentos\\Trazo. Se houver alterações não salvas, falha a menos que descartar_alteracoes seja true.",
+            description: "Abre um projeto .trazo ou .json do Trazo. Caminho relativo é procurado em Documentos\\Trazo. Se houver alterações não salvas, falha a menos que descartar_alteracoes seja true.",
             properties: json!({
-                "caminho": string("Caminho do arquivo .json."),
+                "caminho": string("Caminho do arquivo .trazo ou .json."),
                 "descartar_alteracoes": boolean("Descarta alterações não salvas da planta atual."),
             }),
             required: &["caminho"],
@@ -815,7 +815,7 @@ fn catalogue() -> Vec<Tool> {
             title: "Salvar projeto",
             description: "Salva o projeto. Sem caminho: no arquivo atual ou, se ainda não foi salvo, em Documentos\\Trazo com o nome do projeto. Devolve o caminho usado.",
             properties: json!({
-                "caminho": string("Opcional: caminho do arquivo .json (relativo a Documentos\\Trazo)."),
+                "caminho": string("Opcional: caminho do arquivo .trazo ou .json (relativo a Documentos\\Trazo)."),
             }),
             required: &[],
             read_only: false,

@@ -454,8 +454,9 @@ impl FloorPlanApp {
                 )))
             }
             "abrir_projeto" => {
-                let input = text(args, "caminho").ok_or("Informe 'caminho' do arquivo .json.")?;
-                let path = resolve_path(&input, "json");
+                let input =
+                    text(args, "caminho").ok_or("Informe 'caminho' do arquivo .trazo ou .json.")?;
+                let path = resolve_path(&input, "trazo");
                 if !path.is_file() {
                     return Err(format!("Arquivo não encontrado: {}", path.display()));
                 }
@@ -471,12 +472,12 @@ impl FloorPlanApp {
             }
             "salvar_projeto" => {
                 let path = match text(args, "caminho") {
-                    Some(input) => resolve_path(&input, "json"),
+                    Some(input) => resolve_path(&input, "trazo"),
                     None => match &self.file_path {
                         Some(path) => path.clone(),
                         None => unique_path(
                             documents_dir()
-                                .join(format!("{}.trazo.json", file_stem(&self.project.name))),
+                                .join(format!("{}.trazo", file_stem(&self.project.name))),
                         ),
                     },
                 };
@@ -1610,7 +1611,7 @@ mod tests {
             "salvar_projeto",
             json!({ "caminho": project_path.display().to_string() }),
         );
-        let saved = folder.join("casa.json");
+        let saved = folder.join("casa.trazo");
         assert!(saved.is_file());
         assert!(!app.dirty);
         let pdf = folder.join("casa.pdf");
@@ -1645,8 +1646,8 @@ mod tests {
         assert_eq!(unique_path(first.clone()), folder.join("planta (2).pdf"));
         let _ = std::fs::remove_dir_all(folder);
         assert!(
-            resolve_path("casa", "json").ends_with("Trazo/casa.json")
-                || resolve_path("casa", "json").ends_with("Trazo\\casa.json")
+            resolve_path("casa", "trazo").ends_with("Trazo/casa.trazo")
+                || resolve_path("casa", "trazo").ends_with("Trazo\\casa.trazo")
         );
     }
 }

@@ -174,12 +174,13 @@ Wire sections assume copper with PVC insulation, method B1, two loaded conductor
 
 ## Files and data safety
 
-- Projects are `.json` files, saved atomically with a `.trazo.bak` backup of the previous version. Older file versions are migrated on open.
+- Projects are JSON internally and use the `.trazo` extension, saved atomically with a `.trazo.bak` backup of the previous version. Older `.trazo.json` and `.json` files remain supported and are migrated on open.
 - A crash-recovery draft is written in the background and offered at the next start.
 - The draft and the interface preferences live in `%LOCALAPPDATA%\Trazo\` (`recovery.json`, `settings.json`), or in the system temporary folder when `LOCALAPPDATA` is not set.
 - Opening or creating a project never drops unsaved changes without asking.
 - **Several projects at once:** *Arquivo* › **Nova janela** (`Ctrl+Shift+N`) opens another Trazo window. Each window has its own project, its own crash-recovery draft (`recovery.json`, `recovery-1.json`…) and its own AI server port.
 - **Crash logs and bug reports:** unexpected crashes are written to a rotating log under `%LOCALAPPDATA%\Trazo\logs\crash.log`. Open *Ajuda* › **Relatar problema...** to inspect the log, copy a diagnostic bundle, open the logs folder, or open a pre-filled GitHub issue.
+- **Opening by double-click and updates:** new projects use the dedicated `.trazo` extension; existing `.trazo.json` and `.json` projects remain compatible. The Windows installer associates `.trazo` with Trazo and adds Trazo to the non-destructive `.json` *Open with* menu. Check for newer releases anytime via *Ajuda* › **Verificar atualizações...**.
 
 ## Keyboard and mouse
 

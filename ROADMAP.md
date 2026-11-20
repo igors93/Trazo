@@ -40,7 +40,7 @@ Trazo should serve both ends of the spectrum on the same project and file:
 | Exchange (#38–#45) | 🟡 SVG and CSV export only; no DXF or DWG yet |
 | AI (#46–#52) | 🟡 39 MCP tools (the electrical design included), real-time sync, tunnel token; it covers only part of the model, and there is no approval or read-only mode |
 | Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
-| Release (#58–#64) | 🟡 CI, licence, property tests, file migrations, release binaries and crash reports done; no installer yet |
+| Release (#58–#64) | 🟡 CI, licence, property tests, file migrations, release binaries, crash reports and Windows installer done; samples, schema and signing remain |
 | Experience (#65–#67) | ⬜ Not started |
 | Electrical design | ✅ Devices, NBR 5410 forecast, generated points, circuits and load schedule · 🟡 no conduits or single-line diagram yet (#88, #89) |
 | Plumbing and structure | ⬜ Not started (#72, #92–#94) |
@@ -191,7 +191,7 @@ A chosen level must never be a wall. A newcomer can open an advanced tool when n
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
 | 77 | Release pipeline: tagged GitHub Releases with Windows, Linux and macOS binaries, checksums and changelog notes | P0 | M | M1 | ✅ |
-| 63 | Windows installer, `.json` project association and update check | P0 | M | M1 | ⬜ |
+| 63 | Windows installer, `.json` project association and update check | P0 | M | M1 | ✅ |
 | 79 | Crash log and *Relatar problema* (report a problem): panic hook, rotating log file, pre-filled GitHub issue | P0 | S | M1 | ✅ |
 | 81 | Sample projects in `examples/` (single-storey house, two-storey house, apartment), used by docs and tests | P1 | S | M1 | ⬜ |
 | 80 | Documented project file format (JSON Schema) for third-party tools | P1 | M | M1 | ⬜ |

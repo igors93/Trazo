@@ -47,6 +47,28 @@ impl FloorPlanApp {
                     self.show_report_dialog = true;
                     ui.close();
                 }
+                let update_hint = match self.update_status {
+                    crate::io::updates::UpdateStatus::Available(_) => "nova!",
+                    _ => "",
+                };
+                if menu_item(
+                    ui,
+                    Some(Icon::Plan),
+                    "Verificar atualizações...",
+                    update_hint,
+                )
+                .clicked()
+                {
+                    self.show_updates_dialog = true;
+                    if matches!(
+                        self.update_status,
+                        crate::io::updates::UpdateStatus::Idle
+                            | crate::io::updates::UpdateStatus::Failed(_)
+                    ) {
+                        self.start_update_check(ui.ctx());
+                    }
+                    ui.close();
+                }
             });
 
             ui.add_space(6.0);

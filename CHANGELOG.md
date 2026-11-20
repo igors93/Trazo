@@ -48,6 +48,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 - Dual licence, MIT or Apache-2.0 (#59), contributing guide, code of conduct, security policy, and issue and pull request templates.
 - Tagged GitHub Release pipeline with Windows, Linux and macOS archives, `SHA256SUMS.txt` checksums and extracted changelog notes (#77).
 - Rotating crash log (`crash.log` via panic hook) and *Ajuda → Relatar problema...* dialog with one-click pre-filled GitHub bug report and diagnostic bundle (#79).
+- Windows Inno Setup installer (`installer/trazo.iss`), dedicated `.trazo` association and non-destructive `.json` *Open with* support (with CLI startup open for double-click), and non-blocking GitHub Releases update check under *Ajuda → Verificar atualizações...* (#63).
 
 **Electrical design, gates and multiple projects**
 

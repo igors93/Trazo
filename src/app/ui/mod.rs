@@ -27,6 +27,7 @@ mod sheet_set;
 mod status_bar;
 mod templates;
 mod toolbar;
+mod updates;
 mod view;
 mod views;
 mod widgets;
@@ -104,6 +105,7 @@ impl FloorPlanApp {
         self.unsaved_changes_dialog(&context);
         self.help_dialog(&context);
         self.report_problem_dialog(&context);
+        self.updates_dialog(&context);
         self.repeat_dialog(&context);
         self.connect_dialog(&context);
         self.layers_dialog(&context);

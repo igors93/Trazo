@@ -4,6 +4,7 @@ pub mod instance;
 pub mod project_file;
 pub mod recovery;
 pub mod settings;
+pub mod updates;
 
 use std::path::PathBuf;
 

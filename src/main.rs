@@ -20,6 +20,8 @@ fn main() -> eframe::Result {
         return Ok(());
     }
 
+    let initial_file = io::updates::parse_startup_file(std::env::args_os());
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Trazo")
@@ -32,6 +34,12 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Trazo",
         options,
-        Box::new(|context| Ok(Box::new(app::FloorPlanApp::new(&context.egui_ctx)))),
+        Box::new(move |context| {
+            let app = match initial_file {
+                Some(path) => app::FloorPlanApp::new_with_file(&context.egui_ctx, Some(path)),
+                None => app::FloorPlanApp::new(&context.egui_ctx),
+            };
+            Ok(Box::new(app))
+        }),
     )
 }

@@ -29,6 +29,8 @@ pub struct Settings {
     pub selection_filter: SelectionFilter,
     /// The view follows what a connected AI assistant changes.
     pub follow_ai: bool,
+    /// Check GitHub Releases for a newer version at startup.
+    pub check_updates: bool,
 }
 
 impl Default for Settings {
@@ -46,6 +48,7 @@ impl Default for Settings {
             dimensions: true,
             selection_filter: SelectionFilter::default(),
             follow_ai: true,
+            check_updates: true,
         }
     }
 }
