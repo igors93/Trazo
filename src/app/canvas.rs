@@ -982,6 +982,51 @@ fn paint_floor_underlay(painter: &Painter, view: ViewTransform, project: &Projec
     }
 }
 
+/// Paints furniture functional clearance zones and circulation/interference alerts.
+pub fn paint_ergonomics_overlay(
+    painter: &Painter,
+    view: ViewTransform,
+    project: &Project,
+    min_passage_m: f64,
+) {
+    use crate::domain::ergonomics::{IssueSeverity, analyze_ergonomics};
+    let report = analyze_ergonomics(project, min_passage_m);
+    let zone_fill = Color32::from_rgba_unmultiplied(38, 152, 122, 34);
+    let zone_border = Stroke::new(1.1, Color32::from_rgba_unmultiplied(28, 128, 102, 165));
+    for zone in &report.clearance_zones {
+        let rect = Rect::from_two_pos(view.to_screen(zone.min), view.to_screen(zone.max));
+        painter.rect_filled(rect, 0.0, zone_fill);
+        let pts = [
+            rect.left_top(),
+            rect.right_top(),
+            rect.right_bottom(),
+            rect.left_bottom(),
+            rect.left_top(),
+        ];
+        painter.extend(Shape::dashed_line(&pts, zone_border, 5.0, 4.0));
+    }
+    for issue in &report.issues {
+        let pos = view.to_screen(issue.location);
+        let (fill, glyph) = match issue.severity {
+            IssueSeverity::Error => (theme::DANGER, "!"),
+            IssueSeverity::Warning => (theme::WARNING, "▲"),
+        };
+        painter.circle(
+            pos,
+            10.0,
+            fill.gamma_multiply(0.92),
+            Stroke::new(1.5, Color32::WHITE),
+        );
+        painter.text(
+            pos,
+            egui::Align2::CENTER_CENTER,
+            glyph,
+            theme::strong(11.0),
+            Color32::WHITE,
+        );
+    }
+}
+
 fn paint_associative_dimensions(painter: &Painter, view: ViewTransform, project: &Project) {
     use crate::domain::dimensions::ResolvedDimension;
     let line_stroke = Stroke::new(1.0, theme::TEXT_2);

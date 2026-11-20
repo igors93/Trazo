@@ -6,6 +6,7 @@ mod connect;
 mod constraints;
 mod dialogs;
 mod dimensions;
+mod ergonomics;
 mod floors;
 mod header;
 pub(super) mod icons;
@@ -113,5 +114,6 @@ impl FloorPlanApp {
         self.circulation_dialog(&context);
         self.floors_dialog(&context);
         self.library_dialog(&context);
+        self.ergonomics_dialog(&context);
     }
 }

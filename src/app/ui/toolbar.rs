@@ -400,6 +400,22 @@ impl FloorPlanApp {
             {
                 self.active_doc_dialog = super::super::DocDialog::Library;
             }
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::Info,
+                    "Circulação",
+                    self.show_ergonomics
+                        || self.active_doc_dialog == super::super::DocDialog::Ergonomics,
+                    false,
+                ),
+                "Verificar circulação, interferências, raio de portas e áreas de uso do mobiliário",
+            )
+            .clicked()
+            {
+                self.show_ergonomics = true;
+                self.active_doc_dialog = super::super::DocDialog::Ergonomics;
+            }
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Ajustar", |ui| {

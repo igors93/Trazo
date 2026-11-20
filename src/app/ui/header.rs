@@ -329,6 +329,17 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::Library;
             ui.close();
         }
+        if menu_item(
+            ui,
+            Some(Icon::Info),
+            "Verificar circulação e interferências...",
+            "",
+        )
+        .clicked()
+        {
+            self.active_doc_dialog = super::super::DocDialog::Ergonomics;
+            ui.close();
+        }
     }
 
     pub(super) fn osnap_menu(&mut self, ui: &mut Ui) {

@@ -49,6 +49,7 @@ enum DocDialog {
     Circulation,
     Floors,
     Library,
+    Ergonomics,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -192,6 +193,8 @@ pub struct FloorPlanApp {
     new_library_width: f64,
     new_library_depth: f64,
     new_library_base: Option<FixtureKind>,
+    show_ergonomics: bool,
+    ergonomics_min_passage: f64,
     browser_filter: String,
     browser_hover: Option<Selection>,
     cursor_world: Option<Point>,
@@ -344,6 +347,8 @@ impl FloorPlanApp {
             new_library_width: 1.20,
             new_library_depth: 0.60,
             new_library_base: Some(FixtureKind::Counter),
+            show_ergonomics: false,
+            ergonomics_min_passage: 0.70,
             browser_filter: String::new(),
             browser_hover: None,
             cursor_world: None,

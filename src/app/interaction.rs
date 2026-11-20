@@ -283,6 +283,14 @@ impl FloorPlanApp {
             );
             canvas::paint_polygon_draft(&painter, view, corners, None, true);
             self.paint_view_aids(&painter, view);
+            if self.show_ergonomics {
+                canvas::paint_ergonomics_overlay(
+                    &painter,
+                    view,
+                    &self.project,
+                    self.ergonomics_min_passage,
+                );
+            }
             self.canvas_navigation(ui, navigation);
             return;
         }
@@ -519,6 +527,14 @@ impl FloorPlanApp {
             },
         );
         self.paint_view_aids(&painter, view);
+        if self.show_ergonomics {
+            canvas::paint_ergonomics_overlay(
+                &painter,
+                view,
+                &self.project,
+                self.ergonomics_min_passage,
+            );
+        }
         // Selected groups show their extent and name.
         for group in &self.project.groups {
             if group.members.iter().all(|member| self.is_selected(*member))
