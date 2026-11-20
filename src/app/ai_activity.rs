@@ -129,10 +129,23 @@ impl FloorPlanApp {
             }
         }
         let margin = 1.5;
-        self.zoom_target = Some((
-            crate::domain::geometry::Point::new(low.x - margin, low.y - margin),
-            crate::domain::geometry::Point::new(high.x + margin, high.y + margin),
-        ));
+        let low = crate::domain::geometry::Point::new(low.x - margin, low.y - margin);
+        let high = crate::domain::geometry::Point::new(high.x + margin, high.y + margin);
+        if let Some(rect) = self.last_canvas_rect {
+            // Off screen: slide the view to the edit and keep the person's
+            // zoom; zoom out only when the edit does not fit, never in.
+            let scale = f64::from(self.scale);
+            let fits = (high.x - low.x) * scale <= f64::from(rect.width() - 100.0)
+                && (high.y - low.y) * scale <= f64::from(rect.height() - 100.0);
+            if fits {
+                self.pan = eframe::egui::vec2(
+                    (-(low.x + high.x) * scale / 2.0) as f32,
+                    (-(low.y + high.y) * scale / 2.0) as f32,
+                );
+                return;
+            }
+        }
+        self.zoom_target = Some((low, high));
     }
 
     /// The highlight of the assistant's edits and its "working" badge.
@@ -241,12 +254,29 @@ mod tests {
         ));
         app.pan = egui::vec2(5000.0, 5000.0);
         app.zoom_target = None;
+        let scale = app.scale;
         app.run_mcp_tool(
             "criar_parede",
             &serde_json::json!({ "x1": 0, "y1": 5, "x2": 4, "y2": 5 }),
         );
-        assert!(app.zoom_target.is_some());
-        let (low, high) = app.zoom_target.unwrap();
-        assert!(low.x < 0.0 && high.x > 4.0 && low.y < -5.0 + 0.1);
+        // It slides to the edit and keeps the person's zoom.
+        assert!(app.zoom_target.is_none());
+        assert_eq!(app.scale, scale);
+        let view = crate::app::canvas::ViewTransform {
+            rect: app.last_canvas_rect.unwrap(),
+            scale: app.scale,
+            pan: app.pan,
+        };
+        let middle = view.to_screen(crate::domain::geometry::Point::new(2.0, -5.0));
+        assert!(app.last_canvas_rect.unwrap().shrink(40.0).contains(middle));
+
+        // An edit too big for this zoom zooms out to show it whole.
+        app.pan = egui::vec2(5000.0, 5000.0);
+        app.run_mcp_tool(
+            "criar_parede",
+            &serde_json::json!({ "x1": 0, "y1": 40, "x2": 60, "y2": 40 }),
+        );
+        let (low, high) = app.zoom_target.expect("zooms out to fit");
+        assert!(low.x < 0.0 && high.x > 60.0);
     }
 }
