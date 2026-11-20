@@ -32,19 +32,19 @@ impl FloorPlanApp {
                     if primary_button(ui, "+ Pavimento superior").clicked() {
                         let prev = self.project.clone();
                         self.project.add_floor("", true, false);
-                        self.selection = None;
+                        self.clear_selection();
                         self.record_change(prev);
                     }
                     if secondary_button(ui, "+ Superior (copiar paredes)").clicked() {
                         let prev = self.project.clone();
                         self.project.add_floor("", true, true);
-                        self.selection = None;
+                        self.clear_selection();
                         self.record_change(prev);
                     }
                     if secondary_button(ui, "+ Subsolo").clicked() {
                         let prev = self.project.clone();
                         self.project.add_floor("", false, false);
-                        self.selection = None;
+                        self.clear_selection();
                         self.record_change(prev);
                     }
                 });
@@ -201,7 +201,7 @@ impl FloorPlanApp {
                 if let Some(id) = switch_to {
                     let prev = self.project.clone();
                     if self.project.switch_floor(id).is_ok() {
-                        self.selection = None;
+                        self.clear_selection();
                         self.record_change(prev);
                         if let Some(level) = self.project.active_floor() {
                             self.message =
@@ -212,7 +212,7 @@ impl FloorPlanApp {
                 if let Some(id) = remove_id {
                     let prev = self.project.clone();
                     if self.project.remove_floor(id).is_ok() {
-                        self.selection = None;
+                        self.clear_selection();
                         self.record_change(prev);
                     }
                 }

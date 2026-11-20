@@ -120,7 +120,7 @@ impl FloorPlanApp {
                 if let Some(id) = switch_to {
                     let prev = self.project.clone();
                     if self.project.switch_floor(id).is_ok() {
-                        self.selection = None;
+                        self.clear_selection();
                         self.record_change(prev);
                     }
                 }
