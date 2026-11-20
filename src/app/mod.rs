@@ -1,9 +1,11 @@
 mod ai_activity;
+pub mod app_icon;
 mod canvas;
 mod interaction;
 mod mcp_tools;
 mod plan_sync;
 mod selection;
+mod tabs;
 mod theme;
 mod tools;
 mod ui;
@@ -57,8 +59,8 @@ enum DocDialog {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PendingAction {
-    NewProject,
-    OpenProject,
+    /// Closing the active tab, which has unsaved changes.
+    CloseTab,
     CloseApp,
 }
 
@@ -288,12 +290,17 @@ pub struct FloorPlanApp {
     constraint_pick: Option<tools::ConstraintPick>,
     /// The distances of the constraints, as typed in the properties panel.
     constraint_texts: std::collections::HashMap<u64, String>,
+    /// Every open tab; the active one is `None`, its project lives in the
+    /// fields above (see `tabs.rs`).
+    tabs: Vec<Option<tabs::Document>>,
+    active_tab: usize,
+    /// The tab shown beside the active one, with the same view.
+    split_tab: Option<usize>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum OpenResult {
     Success,
-    Cancelled,
     Error,
 }
 
@@ -440,7 +447,13 @@ impl FloorPlanApp {
             mcp_running: None,
             constraint_pick: None,
             constraint_texts: std::collections::HashMap::new(),
+            tabs: vec![None],
+            active_tab: 0,
+            split_tab: None,
         };
+        if restored {
+            app.restore_tab_drafts();
+        }
         app.sync_masonry_fields();
         if let Some(path) = initial_file {
             app.open_file(&path);
@@ -659,27 +672,31 @@ impl FloorPlanApp {
         .to_owned();
     }
 
+    /// A blank plan in a new tab; the current project stays open in its own.
     pub fn request_new_project(&mut self) {
-        if self.dirty {
-            self.pending_action = Some(PendingAction::NewProject);
-        } else {
-            self.new_project();
-        }
+        self.new_tab();
     }
 
+    /// Opens a project in a new tab (or in the active one when it is blank).
     pub fn request_open(&mut self) {
-        if self.dirty {
-            self.pending_action = Some(PendingAction::OpenProject);
-        } else {
-            self.open();
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Projeto Trazo", &["trazo", "json"])
+            .pick_file()
+        {
+            let _ = self.open_in_tab(&path);
         }
     }
 
     pub fn request_close(&mut self, ctx: &egui::Context) {
-        if self.dirty {
+        if self.any_tab_dirty() {
+            if !self.dirty {
+                // Show the tab that needs saving.
+                let _ = self.next_unsaved_before_closing();
+            }
             self.pending_action = Some(PendingAction::CloseApp);
         } else {
             recovery::clear();
+            recovery::clear_tabs();
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
     }
@@ -687,41 +704,24 @@ impl FloorPlanApp {
     pub fn execute_pending_action(&mut self, ctx: &egui::Context) {
         if let Some(action) = self.pending_action.take() {
             match action {
-                PendingAction::NewProject => self.new_project(),
-                PendingAction::OpenProject => {
-                    let _ = self.open();
-                }
+                PendingAction::CloseTab => self.close_active_tab(),
                 PendingAction::CloseApp => {
-                    recovery::clear();
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    if !self.next_unsaved_before_closing() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
                 }
             }
         }
     }
 
     pub fn discard_changes_and_proceed(&mut self, ctx: &egui::Context) {
-        if let Some(action) = self.pending_action {
+        if let Some(action) = self.pending_action.take() {
             match action {
-                PendingAction::NewProject => {
-                    self.pending_action = None;
-                    self.new_project();
-                }
-                PendingAction::OpenProject => match self.open() {
-                    OpenResult::Success => {
-                        self.pending_action = None;
-                    }
-                    OpenResult::Cancelled => {
-                        self.pending_action = None;
-                        self.message = "Abertura cancelada. Projeto atual mantido.".to_owned();
-                    }
-                    OpenResult::Error => {
-                        self.pending_action = None;
-                    }
-                },
+                PendingAction::CloseTab => self.close_active_tab(),
                 PendingAction::CloseApp => {
-                    self.pending_action = None;
-                    recovery::clear();
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    if !self.next_unsaved_before_closing() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
                 }
             }
         }
@@ -765,16 +765,6 @@ impl FloorPlanApp {
         self.terrain_height_text = "10,00".to_owned();
         self.sync_masonry_fields();
         self.message = "Nova planta criada.".to_owned();
-    }
-
-    pub fn open(&mut self) -> OpenResult {
-        let Some(path) = rfd::FileDialog::new()
-            .add_filter("Projeto Trazo", &["trazo", "json"])
-            .pick_file()
-        else {
-            return OpenResult::Cancelled;
-        };
-        self.open_file(&path)
     }
 
     pub fn open_file(&mut self, path: &Path) -> OpenResult {
@@ -2305,8 +2295,16 @@ impl FloorPlanApp {
                 mirror_up_down: shifted(Key::H),
                 save: shortcut(Key::S, false) && free,
                 open: shortcut(Key::O, false) && free,
-                new: shortcut(Key::N, false) && free,
+                new: (shortcut(Key::N, false) || shortcut(Key::T, false)) && free,
                 new_window: shortcut(Key::N, true) && free,
+                close_tab: shortcut(Key::W, false) && free,
+                tab_step: if free && shortcut(Key::Tab, false) {
+                    1
+                } else if free && shortcut(Key::Tab, true) {
+                    -1
+                } else {
+                    0
+                },
                 undo: shortcut(Key::Z, false) && !editing_text && free,
                 redo: (shortcut(Key::Y, false) || shortcut(Key::Z, true)) && !editing_text && free,
                 select_all: shortcut(Key::A, false) && !editing_text && free,
@@ -2351,6 +2349,12 @@ impl FloorPlanApp {
         }
         if actions.new {
             self.request_new_project();
+        }
+        if actions.close_tab {
+            self.request_close_tab(self.active_tab);
+        }
+        if actions.tab_step != 0 {
+            self.next_tab(actions.tab_step);
         }
         if actions.undo {
             self.undo();
@@ -2492,6 +2496,8 @@ struct ShortcutActions {
     open: bool,
     new: bool,
     new_window: bool,
+    close_tab: bool,
+    tab_step: isize,
     undo: bool,
     redo: bool,
     select_all: bool,
@@ -2610,7 +2616,7 @@ mod tests {
         };
 
         // "Save changes?" is open: Delete, Esc and Ctrl+Z leave everything alone.
-        app.pending_action = Some(PendingAction::NewProject);
+        app.pending_action = Some(PendingAction::CloseTab);
         press(&mut app, &context, Key::Delete, egui::Modifiers::NONE);
         press(&mut app, &context, Key::Escape, egui::Modifiers::NONE);
         press(&mut app, &context, Key::Z, ctrl);
@@ -2618,7 +2624,7 @@ mod tests {
         assert_eq!(app.project.walls.len(), 1);
         assert_eq!(app.selection, Some(Selection::Wall(id)));
         assert_eq!(app.tool, Tool::Move);
-        assert_eq!(app.pending_action, Some(PendingAction::NewProject));
+        assert_eq!(app.pending_action, Some(PendingAction::CloseTab));
 
         // The help is open: editing keys wait, Esc closes it.
         app.pending_action = None;
@@ -2927,7 +2933,7 @@ mod tests {
     }
 
     #[test]
-    fn dirty_project_requests_confirmation_before_new_project() {
+    fn a_new_plan_opens_in_a_tab_and_keeps_the_unsaved_one() {
         let context = egui::Context::default();
         let mut app = FloorPlanApp::new(&context);
         let prev = app.project.clone();
@@ -2936,21 +2942,15 @@ mod tests {
         app.record_change(prev);
         assert!(app.dirty);
 
+        // Nothing is asked and nothing is lost: the new plan gets a tab.
         app.request_new_project();
-        assert_eq!(app.pending_action, Some(PendingAction::NewProject));
-        // Wall was not discarded
-        assert_eq!(app.project.walls.len(), 1);
-
-        app.cancel_pending_action();
         assert_eq!(app.pending_action, None);
+        assert_eq!(app.tab_count(), 2);
+        assert!(app.project.walls.is_empty() && !app.dirty);
+
+        app.switch_tab(0);
         assert_eq!(app.project.walls.len(), 1);
         assert!(app.dirty);
-
-        app.request_new_project();
-        app.discard_changes_and_proceed(&context);
-        assert_eq!(app.pending_action, None);
-        assert_eq!(app.project.walls.len(), 0);
-        assert!(!app.dirty);
     }
 
     #[test]

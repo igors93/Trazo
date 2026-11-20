@@ -37,25 +37,43 @@ impl FloorPlanApp {
         let body = egui::Frame::new()
             .fill(PANEL_ALT)
             .inner_margin(Margin {
-                left: 8,
-                right: 8,
-                top: 4,
-                bottom: 0,
+                left: 10,
+                right: 10,
+                top: 5,
+                bottom: 2,
             })
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing = vec2(2.0, 2.0);
-                    match self.ribbon_tab {
-                        RibbonTab::Architecture => self.architecture_tab(ui),
-                        RibbonTab::Interiors => self.interiors_tab(ui),
-                        RibbonTab::Electrical => self.electrical_tab(ui),
-                        RibbonTab::Edit => self.edit_tab(ui),
-                        RibbonTab::Drafting => self.drafting_tab(ui),
-                        RibbonTab::View => self.view_tab(ui),
-                        RibbonTab::Output => self.output_tab(ui),
-                    }
-                });
+                // Too narrow a window scrolls the ribbon sideways instead of
+                // cutting its last groups off. Dragging stays free for doors
+                // and windows dragged from the ribbon onto a wall.
+                // A solid bar, shown only when the groups do not fit, so it is
+                // clear there is more to the side.
+                ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+                egui::ScrollArea::horizontal()
+                    .id_salt("ribbon_body")
+                    .scroll_source(egui::scroll_area::ScrollSource {
+                        scroll_bar: true,
+                        mouse_wheel: true,
+                        ..egui::scroll_area::ScrollSource::NONE
+                    })
+                    .scroll_bar_visibility(
+                        egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded,
+                    )
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = vec2(3.0, 2.0);
+                            match self.ribbon_tab {
+                                RibbonTab::Architecture => self.architecture_tab(ui),
+                                RibbonTab::Interiors => self.interiors_tab(ui),
+                                RibbonTab::Electrical => self.electrical_tab(ui),
+                                RibbonTab::Edit => self.edit_tab(ui),
+                                RibbonTab::Drafting => self.drafting_tab(ui),
+                                RibbonTab::View => self.view_tab(ui),
+                                RibbonTab::Output => self.output_tab(ui),
+                            }
+                        });
+                    });
             });
         let rect = body.response.rect;
         let painter = ui.painter();
@@ -77,7 +95,7 @@ impl FloorPlanApp {
                 let color = if active { ACCENT_TEXT } else { TEXT_2 };
                 let galley = ui.painter().layout_no_wrap(label.to_owned(), font, color);
                 let (rect, response) =
-                    ui.allocate_exact_size(vec2(galley.size().x + 26.0, 27.0), Sense::click());
+                    ui.allocate_exact_size(vec2(galley.size().x + 30.0, 27.0), Sense::click());
                 let painter = ui.painter();
                 if active && !self.ribbon_collapsed {
                     painter.rect_filled(

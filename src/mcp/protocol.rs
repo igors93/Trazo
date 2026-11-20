@@ -778,6 +778,18 @@ fn catalogue() -> Vec<Tool> {
             destructive: false,
         },
         Tool {
+            name: "abas",
+            title: "Abas (vários projetos)",
+            description: "Lista, troca, cria ou duplica abas. Cada aba é um projeto aberto na mesma janela do Trazo, e todas as outras ferramentas agem na aba ativa. duplicar copia o projeto ativo para uma nova aba, base para outra disciplina do mesmo imóvel (elétrica, estrutural). As abas são numeradas a partir de 1.",
+            properties: json!({
+                "acao": { "type": "string", "enum": ["listar", "trocar", "nova", "duplicar"], "description": "O que fazer; padrão listar." },
+                "aba": integer("Para trocar: o número da aba."),
+            }),
+            required: &[],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
             name: "centralizar_planta",
             title: "Centralizar planta",
             description: "Centraliza paredes e cômodos dentro do terreno.",
@@ -894,7 +906,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 40);
+        assert_eq!(tools.len(), 41);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -975,7 +987,7 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 40);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 41);
     }
 }
 

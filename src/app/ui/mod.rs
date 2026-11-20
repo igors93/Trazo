@@ -25,6 +25,7 @@ mod selection;
 mod sheet;
 mod sheet_set;
 mod status_bar;
+mod tabs;
 mod templates;
 mod toolbar;
 mod updates;
@@ -38,9 +39,12 @@ impl FloorPlanApp {
     pub(super) fn show_layout(&mut self, ui: &mut Ui) {
         let context = ui.ctx().clone();
 
-        if context.input(|i| i.viewport().close_requested()) && self.dirty {
+        if context.input(|i| i.viewport().close_requested())
+            && self.any_tab_dirty()
+            && self.pending_action.is_none()
+        {
             context.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.pending_action = Some(super::PendingAction::CloseApp);
+            self.request_close(&context);
         }
 
         self.handle_shortcuts(&context);
@@ -99,7 +103,7 @@ impl FloorPlanApp {
             .frame(egui::Frame::new().fill(theme::BAND))
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
-                self.canvas(ui);
+                self.plan_area(ui);
             });
         self.room_name_dialog(ui);
         self.unsaved_changes_dialog(&context);

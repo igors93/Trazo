@@ -213,7 +213,7 @@ A chosen level must never be a wall. A newcomer can open an advanced tool when n
 | 93 | Structural pre-sizing: spans, tributary areas and rules of thumb for columns, beams and slabs, with warnings | P2 | M | M4 | ⬜ |
 | 91 | Phase balancing for two- and three-phase panels | P2 | S | M4 | ⬜ |
 | 94 | Structural analysis and simulation: loads, internal forces and deflections of the 2D frame | P2 | XL | Exploratory | ⬜ Needs #92 and #93 first |
-| 95 | Tabbed documents: several projects in one window, with copy and paste between them | P2 | L | M6 | 🟡 One project per window works today (`Ctrl+Shift+N`) |
+| 95 | Tabbed documents: several projects in one window, with copy and paste between them | P2 | L | M6 | ✅ |
 
 Structural results must always be checked by a licensed engineer: Trazo will present them as pre-sizing, never as a final design.
 

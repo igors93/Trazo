@@ -59,6 +59,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 - Four MCP tools for the electrical design: `inserir_ponto_eletrico`, `editar_ponto_eletrico`, `projeto_eletrico` and `quadro_de_cargas`.
 - Entrance gates (*Portão*): pedestrian or vehicle, from 0.80 to 8 m, sliding by default, tagged "PT" and available to assistants.
 - Several projects at once: *Nova janela* (`Ctrl+Shift+N`) opens another window, with its own recovery draft and MCP port.
+- Tabs: new and opened projects go to tabs of the same window, each with its own undo history, selection and view, a shared clipboard, crash-recovery drafts for every tab, and an `abas` MCP tool. *Duplicar aba* starts another discipline of the same building, and *Lado a lado* compares two tabs with synchronised views (#95).
 
 ### Changed
 

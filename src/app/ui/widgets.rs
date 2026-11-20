@@ -126,7 +126,7 @@ pub fn ribbon_button(
     let galley = ui
         .painter()
         .layout_no_wrap(label.to_owned(), regular(12.0), color);
-    let width = (galley.size().x + 16.0).max(52.0);
+    let width = (galley.size().x + 20.0).max(56.0);
     let sense = if draggable {
         Sense::click_and_drag()
     } else {
@@ -189,7 +189,7 @@ pub fn ribbon_small(ui: &mut Ui, icon: Icon, label: &str, selected: bool) -> Res
         .painter()
         .layout_no_wrap(label.to_owned(), regular(12.0), color);
     let (rect, response) = ui.allocate_exact_size(
-        vec2(galley.size().x + 38.0, (RIBBON_ROW - 4.0) / 3.0),
+        vec2(galley.size().x + 42.0, (RIBBON_ROW - 4.0) / 3.0),
         Sense::click(),
     );
     let painter = ui.painter();
@@ -223,7 +223,7 @@ pub fn ribbon_panel<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R)
         .painter()
         .layout_no_wrap(title.to_owned(), regular(11.0), MUTED);
     ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing = vec2(2.0, 0.0);
+        ui.spacing_mut().item_spacing = vec2(3.0, 0.0);
         ui.set_min_width(title_galley.size().x + 16.0);
         let row = ui.horizontal(|ui| {
             ui.set_min_height(RIBBON_ROW);
@@ -254,7 +254,7 @@ pub fn ribbon_stack<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 }
 
 pub fn vertical_divider(ui: &mut Ui, height: f32) {
-    let (rect, _) = ui.allocate_exact_size(vec2(13.0, height), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(17.0, height), Sense::hover());
     ui.painter().line_segment(
         [
             Pos2::new(rect.center().x, rect.top() + 4.0),

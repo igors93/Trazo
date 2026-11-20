@@ -2,12 +2,12 @@ use super::super::{FloorPlanApp, RibbonTab, Tool, theme::*};
 use super::icons::{self, Icon};
 use super::widgets::{MENU_WIDTH, icon_button, menu_check, menu_item, menu_separator, tip};
 use crate::domain::model::OpeningKind;
-use eframe::egui::{self, Align, Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Style, Ui, vec2};
+use eframe::egui::{self, Align, Pos2, Rect, Sense, Stroke, StrokeKind, Style, Ui, vec2};
 
 fn menu_bar_style(style: &mut Style) {
     egui::containers::menu::menu_style(style);
-    style.spacing.button_padding = vec2(9.0, 5.0);
-    style.spacing.item_spacing.x = 2.0;
+    style.spacing.button_padding = vec2(10.0, 5.0);
+    style.spacing.item_spacing.x = 4.0;
     style.visuals.widgets.hovered.weak_bg_fill = ACCENT_SOFTER;
     style.visuals.widgets.open.weak_bg_fill = ACCENT_SOFT;
     style.visuals.widgets.active.weak_bg_fill = ACCENT_SOFT;
@@ -17,11 +17,41 @@ impl FloorPlanApp {
     pub(super) fn menu_bar(&mut self, ui: &mut Ui) {
         egui::MenuBar::new().style(menu_bar_style).ui(ui, |ui| {
             ui.set_min_height(28.0);
-            let (logo, _) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::hover());
-            icons::paint_logo(ui.painter(), logo);
+            // The Trazo mark lives in the window's title bar and taskbar.
+            ui.add_space(2.0);
+
+            // Quick access toolbar, first on the line, as in CAD programs.
+            if icon_button(ui, Icon::New, "Nova planta em nova aba (Ctrl+N)", false).clicked() {
+                self.request_new_project();
+            }
+            if icon_button(ui, Icon::Open, "Abrir projeto numa aba (Ctrl+O)", false).clicked() {
+                self.request_open();
+            }
+            if icon_button(ui, Icon::Save, "Salvar projeto (Ctrl+S)", false).clicked() {
+                self.save();
+            }
+            separator(ui);
+            if ui
+                .add_enabled_ui(self.history.can_undo(), |ui| {
+                    icon_button(ui, Icon::Undo, "Desfazer (Ctrl+Z)", false)
+                })
+                .inner
+                .clicked()
+            {
+                self.undo();
+            }
+            if ui
+                .add_enabled_ui(self.history.can_redo(), |ui| {
+                    icon_button(ui, Icon::Redo, "Refazer (Ctrl+Y)", false)
+                })
+                .inner
+                .clicked()
+            {
+                self.redo();
+            }
             ui.add_space(4.0);
-            ui.label(RichText::new("Trazo").font(strong(14.5)).color(TEXT));
-            ui.add_space(10.0);
+            separator(ui);
+            ui.add_space(6.0);
 
             ui.menu_button("Arquivo", |ui| self.file_menu(ui));
             ui.menu_button("Editar", |ui| self.edit_menu(ui));
@@ -70,40 +100,6 @@ impl FloorPlanApp {
                     ui.close();
                 }
             });
-
-            ui.add_space(6.0);
-            separator(ui);
-            ui.add_space(4.0);
-
-            // Quick access toolbar.
-            if icon_button(ui, Icon::New, "Nova planta (Ctrl+N)", false).clicked() {
-                self.request_new_project();
-            }
-            if icon_button(ui, Icon::Open, "Abrir projeto (Ctrl+O)", false).clicked() {
-                self.request_open();
-            }
-            if icon_button(ui, Icon::Save, "Salvar projeto (Ctrl+S)", false).clicked() {
-                self.save();
-            }
-            separator(ui);
-            if ui
-                .add_enabled_ui(self.history.can_undo(), |ui| {
-                    icon_button(ui, Icon::Undo, "Desfazer (Ctrl+Z)", false)
-                })
-                .inner
-                .clicked()
-            {
-                self.undo();
-            }
-            if ui
-                .add_enabled_ui(self.history.can_redo(), |ui| {
-                    icon_button(ui, Icon::Redo, "Refazer (Ctrl+Y)", false)
-                })
-                .inner
-                .clicked()
-            {
-                self.redo();
-            }
 
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 let export = export_button(ui);
@@ -171,6 +167,24 @@ impl FloorPlanApp {
             self.request_new_project();
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Plan), "Duplicar em nova aba", "").clicked() {
+            self.duplicate_tab();
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::PanelRight), "Lado a lado", "").clicked() {
+            let other = (0..self.tab_count()).find(|index| *index != self.active_tab());
+            if self.split_tab.is_some() || other.is_none() {
+                self.toggle_side_by_side(None);
+            } else {
+                self.toggle_side_by_side(other);
+            }
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::Close), "Fechar aba", "Ctrl+W").clicked() {
+            self.request_close_tab(self.active_tab());
+            ui.close();
+        }
+        menu_separator(ui);
         if menu_item(ui, Some(Icon::PanelRight), "Nova janela", "Ctrl+Shift+N").clicked() {
             self.open_new_window();
             ui.close();

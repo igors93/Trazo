@@ -580,25 +580,3 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
         }
     }
 }
-
-/// The Trazo mark: a blue tile with a white plan corner and a door swing.
-pub fn paint_logo(painter: &Painter, rect: Rect) {
-    painter.rect_filled(rect, 6.0, crate::app::theme::ACCENT);
-    let scale = rect.width() / 24.0;
-    let origin = rect.min;
-    let p = |x: f32, y: f32| origin + vec2(x * scale, y * scale);
-    let white = Color32::WHITE;
-    let wall = Stroke::new(2.6 * scale, white);
-    painter.line_segment([p(5.5, 6.5), p(18.5, 6.5)], wall);
-    painter.line_segment([p(12.0, 6.5), p(12.0, 18.5)], wall);
-    let arc: Vec<Pos2> = (0..=10)
-        .map(|i| {
-            let a = FRAC_PI_2 * i as f32 / 10.0;
-            p(12.0 + 6.0 * a.sin(), 18.5 - 6.0 * a.cos())
-        })
-        .collect();
-    painter.add(Shape::line(
-        arc,
-        Stroke::new(1.2 * scale, white.gamma_multiply(0.85)),
-    ));
-}

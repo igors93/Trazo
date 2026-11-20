@@ -179,7 +179,10 @@ Wire sections assume copper with PVC insulation, method B1, two loaded conductor
 - A crash-recovery draft is written in the background and offered at the next start.
 - The draft and the interface preferences live in `%LOCALAPPDATA%\Trazo\` (`recovery.json`, `settings.json`), or in the system temporary folder when `LOCALAPPDATA` is not set.
 - Opening or creating a project never drops unsaved changes without asking.
-- **Several projects at once:** *Arquivo* › **Nova janela** (`Ctrl+Shift+N`) opens another Trazo window. Each window has its own project, its own crash-recovery draft (`recovery.json`, `recovery-1.json`…) and its own AI server port.
+- **Several projects in tabs:** **Nova planta** (`Ctrl+N` or `Ctrl+T`) and **Abrir** (`Ctrl+O`) open in a new tab of the same window, above the plan; the current project stays open in its own tab. Each tab keeps its project, undo history, selection and zoom, and the clipboard is shared, so you can copy in one tab and paste in another. `Ctrl+Tab` / `Ctrl+Shift+Tab` switch tabs and `Ctrl+W` closes one, asking to save when needed.
+  - **Duplicar aba** copies the project into a new tab: the base for another design of the same building, such as the electrical or the structural one.
+  - **Lado a lado** shows a second tab beside the active one, with the same view, to compare designs of the same building. Click the right-hand plan to edit it; the two trade places.
+  - Unsaved tabs are protected by crash-recovery drafts, and closing the window asks about each one. *Arquivo* › **Nova janela** (`Ctrl+Shift+N`) still opens a separate window when you want one.
 - **Crash logs and bug reports:** unexpected crashes are written to a rotating log under `%LOCALAPPDATA%\Trazo\logs\crash.log`. Open *Ajuda* › **Relatar problema...** to inspect the log, copy a diagnostic bundle, open the logs folder, or open a pre-filled GitHub issue.
 - **Opening by double-click and updates:** new projects use the dedicated `.trazo` extension; existing `.trazo.json` and `.json` projects remain compatible. The Windows installer associates `.trazo` with Trazo and adds Trazo to the non-destructive `.json` *Open with* menu. Check for newer releases anytime via *Ajuda* › **Verificar atualizações...**.
 
@@ -191,7 +194,9 @@ Wire sections assume copper with PVC insulation, method B1, two loaded conductor
 | `M` | Measure |
 | `I` / `Shift+I` | Turn the selected door to the other side / move its hinge |
 | `Ctrl+N` / `Ctrl+O` / `Ctrl+S` | New, open, save |
-| `Ctrl+Shift+N` | New window, for another project |
+| `Ctrl+T` / `Ctrl+W` | New tab, close tab |
+| `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous tab |
+| `Ctrl+Shift+N` | New window |
 | `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`) | Undo, redo |
 | `Delete` | Delete the selection |
 | `Ctrl+A` | Select all (following the selection filter) |

@@ -8,7 +8,7 @@
 [![CI](https://github.com/igors93/Trazo/actions/workflows/ci.yml/badge.svg)](https://github.com/igors93/Trazo/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust 2024](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org)
-[![MCP: 39 tools](https://img.shields.io/badge/MCP-39%20tools-7C3AED.svg)](docs/mcp.md)
+[![MCP: 41 tools](https://img.shields.io/badge/MCP-41%20tools-7C3AED.svg)](docs/mcp.md)
 
 [Features](#features) · [Getting started](#getting-started) · [AI assistants](#ai-assistants) · [Documentation](#documentation) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
 
@@ -74,7 +74,7 @@
 
 **Safety**
 - Atomic saves with a backup, crash recovery, and undo for every edit
-- Several projects at once, one per window (`Ctrl+Shift+N`)
+- Several projects in tabs, side by side with synchronised views (`Ctrl+T`, `Ctrl+Tab`)
 
 </td>
 </tr>
@@ -122,8 +122,8 @@ Trazo runs an MCP server while it is open, at `http://127.0.0.1:7799/mcp`. Conne
 
 ![An assistant adding a porch: the new room flashes purple and a badge shows the tool at work](docs/images/ai-live-edit.png)
 
-- **39 tools** cover reading the plan, rooms, walls, openings and gates, fixtures, the electrical design, CAD editing, constraints, batches, files and export.
-- **Several projects at once.** Each Trazo window has its own server (7799, 7800, …), so one assistant can work on more than one project.
+- **41 tools** cover reading the plan, rooms, walls, openings and gates, fixtures, the electrical design, CAD editing, constraints, batches, files and export.
+- **Several projects at once.** Assistants list, switch, create and duplicate tabs with `abas`; each Trazo window also has its own server (7799, 7800, …).
 - **Live and visible.** Each AI edit flashes on the plan, and *Conectar uma IA* logs what the assistant did.
 - **Safe to try.** Every tool call is one undo step, and failed calls change nothing.
 - **Real-time collaboration.** Revisions and change notifications let the assistant notice your edits instead of overwriting them.

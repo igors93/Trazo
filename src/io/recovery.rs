@@ -49,6 +49,51 @@ fn save_to(project: &Project, path: &Path) -> Result<(), String> {
     fs::rename(temporary, path).map_err(|error| error.to_string())
 }
 
+/// The draft of the `n`-th waiting tab (from 1), next to this window's draft.
+fn tab_path(n: usize) -> PathBuf {
+    let main = recovery_path();
+    let stem = main
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "recovery".to_owned());
+    main.with_file_name(format!("{stem}-aba-{n}.json"))
+}
+
+/// The most waiting tabs a window keeps drafts for.
+const MAX_TAB_DRAFTS: usize = 64;
+
+/// Keeps a draft of each tab with unsaved changes other than the active one
+/// (whose draft is `save`'s), replacing the previous set.
+pub fn save_tabs(projects: &[&Project]) -> Result<(), String> {
+    clear_tabs();
+    for (index, project) in projects.iter().take(MAX_TAB_DRAFTS).enumerate() {
+        save_to(project, &tab_path(index + 1))?;
+    }
+    Ok(())
+}
+
+/// The waiting tabs' drafts, in order.
+pub fn load_tabs() -> Vec<Project> {
+    (1..=MAX_TAB_DRAFTS)
+        .map_while(|n| load_from(&tab_path(n)))
+        .collect()
+}
+
+pub fn clear_tabs() {
+    for n in 1..=MAX_TAB_DRAFTS {
+        let path = tab_path(n);
+        let mut found = false;
+        for file in [&path, &backup_path(&path), &temporary_path(&path)] {
+            if fs::remove_file(file).is_ok() {
+                found = true;
+            }
+        }
+        if !found {
+            break;
+        }
+    }
+}
+
 pub fn clear() {
     let path = recovery_path();
     for file in [&path, &backup_path(&path), &temporary_path(&path)] {
