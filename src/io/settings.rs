@@ -27,6 +27,8 @@ pub struct Settings {
     pub dimensions: bool,
     /// Which kinds a selection box or "select all" picks.
     pub selection_filter: SelectionFilter,
+    /// The view follows what a connected AI assistant changes.
+    pub follow_ai: bool,
 }
 
 impl Default for Settings {
@@ -43,6 +45,7 @@ impl Default for Settings {
             modulation: true,
             dimensions: true,
             selection_filter: SelectionFilter::default(),
+            follow_ai: true,
         }
     }
 }

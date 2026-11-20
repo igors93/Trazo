@@ -254,6 +254,8 @@ impl FloorPlanApp {
                     );
                 }
             });
+        ui.add_space(12.0);
+        self.ai_log_section(ui);
         ui.add_space(16.0);
 
         // Claude Desktop.
@@ -390,5 +392,76 @@ impl FloorPlanApp {
             "Deixe o Trazo aberto enquanto usa a IA. Tudo o que ela faz aparece ao vivo na planta e pode ser desfeito com Ctrl+Z.",
             ACCENT,
         );
+    }
+}
+
+impl FloorPlanApp {
+    /// What the assistant did in this session, newest first, and whether
+    /// the view follows it.
+    fn ai_log_section(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            ui.label(RichText::new("Ações da IA").font(strong(13.0)).color(TEXT));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if super::widgets::toggle_pill(
+                    ui,
+                    "Acompanhar a IA",
+                    self.follow_ai,
+                    "Aproxima a vista do que a IA cria ou altera quando está fora da tela",
+                )
+                .clicked()
+                {
+                    self.follow_ai = !self.follow_ai;
+                }
+            });
+        });
+        ui.add_space(4.0);
+        if self.ai_activity.log.is_empty() {
+            ui.label(
+                RichText::new(
+                    "Nenhuma ação ainda. Cada alteração da IA aparece na planta com um contorno roxo.",
+                )
+                .size(12.0)
+                .color(MUTED),
+            );
+            return;
+        }
+        egui::ScrollArea::vertical()
+            .max_height(132.0)
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                for action in self.ai_activity.log.iter().rev().take(40) {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 6.0;
+                        let (dot, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
+                        ui.painter().circle_filled(
+                            dot.center(),
+                            3.5,
+                            if action.ok { SUCCESS } else { DANGER },
+                        );
+                        ui.label(
+                            RichText::new(&action.tool)
+                                .monospace()
+                                .size(11.5)
+                                .color(TEXT_2),
+                        );
+                        let detail = if action.changed > 0 {
+                            format!("{} · {} alteração(ões)", action.summary, action.changed)
+                        } else {
+                            action.summary.clone()
+                        };
+                        ui.add(
+                            egui::Label::new(RichText::new(detail).size(11.5).color(MUTED))
+                                .truncate(),
+                        );
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(
+                                RichText::new(super::super::ai_activity::time_ago(action.at))
+                                    .size(11.0)
+                                    .color(FAINT),
+                            );
+                        });
+                    });
+                }
+            });
     }
 }

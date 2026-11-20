@@ -1,3 +1,4 @@
+mod ai_activity;
 mod canvas;
 mod interaction;
 mod mcp_tools;
@@ -257,6 +258,12 @@ pub struct FloorPlanApp {
     /// Why the last edit was refused, shown again at the end of the frame
     /// over any message written after it.
     edit_notice: Option<String>,
+    /// What the connected assistant did in this session, shown on the plan.
+    ai_activity: ai_activity::AiActivity,
+    /// The view follows what the assistant changes.
+    follow_ai: bool,
+    /// Where the plan was drawn last frame.
+    last_canvas_rect: Option<egui::Rect>,
     /// The first pick of a constraint tool.
     constraint_pick: Option<tools::ConstraintPick>,
     /// The distances of the constraints, as typed in the properties panel.
@@ -387,6 +394,9 @@ impl FloorPlanApp {
             repeat_form: None,
             group_name_text: String::new(),
             edit_notice: None,
+            ai_activity: ai_activity::AiActivity::default(),
+            follow_ai: preferences.follow_ai,
+            last_canvas_rect: None,
             constraint_pick: None,
             constraint_texts: std::collections::HashMap::new(),
         };
@@ -450,6 +460,7 @@ impl FloorPlanApp {
             modulation: self.modulation_enabled,
             dimensions: self.show_dimensions,
             selection_filter: self.selection_filter,
+            follow_ai: self.follow_ai,
         }
     }
 
@@ -628,6 +639,7 @@ impl FloorPlanApp {
     /// Drops everything in progress on the plan (drafts, drags, the
     /// selection) when another project takes its place.
     fn reset_editing_state(&mut self) {
+        self.ai_activity.forget_highlight();
         self.cancel_creation();
         self.clear_selection();
         self.box_select = None;
@@ -1004,6 +1016,7 @@ impl FloorPlanApp {
             self.pan += previous_center - rect.center();
         }
         self.last_canvas_center = Some(rect.center());
+        self.last_canvas_rect = Some(rect);
     }
 
     /// Zooms by `factor` around the centre of the view.

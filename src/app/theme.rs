@@ -60,6 +60,8 @@ pub const DOOR_ARC: Color32 = rgb(0x8EA2B8);
 pub const WINDOW: Color32 = rgb(0x2878D2);
 pub const SELECTION: Color32 = ACCENT;
 pub const HOVER: Color32 = rgb(0x5B9CE8);
+/// What the connected AI assistant is doing on the plan.
+pub const AI: Color32 = rgb(0x7C3AED);
 
 /// The semibold family, used for titles and strong labels.
 pub fn strong_family() -> FontFamily {

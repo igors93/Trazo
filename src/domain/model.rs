@@ -8,6 +8,7 @@ use super::geometry::{
 
 mod arrange;
 mod auto_rooms;
+mod changes;
 mod constraints;
 mod drawings;
 mod elements;
@@ -20,6 +21,7 @@ mod site;
 mod vertices;
 use super::masonry::{self, Masonry};
 pub use arrange::{Alignment, Axis, MAX_COPIES};
+pub use changes::ChangeSet;
 pub use constraints::{Constraint, ConstraintKind, Entity, Vertex};
 pub use fragment::Fragment;
 pub use groups::Group;

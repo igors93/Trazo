@@ -232,14 +232,15 @@ impl FloorPlanApp {
     /// plan as it was instead of taking the app down.
     pub(super) fn run_mcp_tool(&mut self, name: &str, args: &Value) -> ToolOutput {
         self.commit_item_drag();
-        let backup = (self.project.clone(), self.selected());
+        let before = self.project.clone();
+        let before_selection = self.selected();
         let outcome = catch_unwind(AssertUnwindSafe(|| self.dispatch_tool(name, args)));
         let output = match outcome {
             Ok(Ok(output)) => output,
             Ok(Err(message)) => ToolOutput::error(message),
             Err(_) => {
-                self.project = backup.0;
-                self.set_selection_set(backup.1);
+                self.project = before.clone();
+                self.set_selection_set(before_selection);
                 ToolOutput::error(
                     "Erro interno do Trazo ao executar a ferramenta; a planta foi mantida como estava.",
                 )
@@ -248,6 +249,8 @@ impl FloorPlanApp {
         self.revalidate_selection();
         self.sync_inspector_fields();
         self.mcp_actions += 1;
+        // Shown on the plan: the highlight, the badge and the log.
+        self.note_ai_action(name, &output, &before);
         self.message = if output.is_error {
             format!("IA · {}", output.text)
         } else if protocol::is_read_only(name) {
