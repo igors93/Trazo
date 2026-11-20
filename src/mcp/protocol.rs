@@ -348,12 +348,34 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "inserir_objeto",
             title: "Inserir objeto",
-            description: "Insere um objeto ou equipamento: bancada, pia, fogao, fogao_lenha, churrasqueira, geladeira, lavatorio (com largura >= 0,90 m vira pia dupla), vaso, chuveiro, mesa (com cadeiras) ou prateleira. x e y são o centro. A rotação diz para onde fica o fundo (o lado encostado na parede): 0 = fundo para +Y, 90 = +X, 180 = -Y, 270 = -X. Com encostar_na_parede = true o Trazo vira o fundo para a parede reta mais próxima (até 0,8 m) e encosta na face dos tijolos, descontando meia espessura de parede (veja espessura_parede_m em obter_planta).",
+            description: "Insere um objeto ou mobiliário: bancada, pia, fogao, fogao_lenha, churrasqueira, geladeira, lavatorio (com largura >= 0,90 m vira pia dupla), vaso, chuveiro, mesa (com cadeiras), prateleira, cama_casal, cama_solteiro, sofa, poltrona, guarda_roupa, escrivaninha, mesa_jantar, lavadora, rack_tv ou banheira. x e y são o centro. A rotação diz para onde fica o fundo (o lado encostado na parede): 0 = fundo para +Y, 90 = +X, 180 = -Y, 270 = -X. Com encostar_na_parede = true o Trazo vira o fundo para a parede reta mais próxima (até 0,8 m) e encosta na face dos tijolos, descontando meia espessura de parede (veja espessura_parede_m em obter_planta).",
             properties: json!({
                 "tipo": {
                     "type": "string",
-                    "enum": ["bancada", "pia", "fogao", "fogao_lenha", "churrasqueira", "geladeira", "lavatorio", "vaso", "chuveiro", "mesa", "prateleira"],
-                    "description": "Tipo do objeto.",
+                    "enum": [
+                        "bancada",
+                        "pia",
+                        "fogao",
+                        "fogao_lenha",
+                        "churrasqueira",
+                        "geladeira",
+                        "lavatorio",
+                        "vaso",
+                        "chuveiro",
+                        "mesa",
+                        "prateleira",
+                        "cama_casal",
+                        "cama_solteiro",
+                        "sofa",
+                        "poltrona",
+                        "guarda_roupa",
+                        "escrivaninha",
+                        "mesa_jantar",
+                        "lavadora",
+                        "rack_tv",
+                        "banheira"
+                    ],
+                    "description": "Tipo do objeto ou móvel.",
                 },
                 "x": number("X do centro, em metros."),
                 "y": number("Y do centro, em metros."),
@@ -936,5 +958,32 @@ mod resource_tests {
         assert_eq!(text["revisao"], 7);
         assert!(tool_names().contains(&"mudancas_desde"));
         assert!(is_read_only("mudancas_desde"));
+    }
+
+    #[test]
+    fn insert_fixture_tool_advertises_every_fixture_kind() {
+        let listed = handle_message(
+            &json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
+            &mut |_, _| unreachable!(),
+        )
+        .unwrap();
+        let tools = listed["result"]["tools"].as_array().unwrap();
+        let insert = tools
+            .iter()
+            .find(|t| t["name"] == "inserir_objeto")
+            .unwrap();
+        let advertised: Vec<&str> = insert["inputSchema"]["properties"]["tipo"]["enum"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        for kind in crate::domain::fixtures::FixtureKind::ALL {
+            assert!(
+                advertised.contains(&kind.key()),
+                "MCP inserir_objeto missing fixture kind '{}'",
+                kind.key()
+            );
+        }
     }
 }
