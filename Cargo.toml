@@ -14,12 +14,12 @@ eframe = { version = "0.37", default-features = false, features = ["glow", "defa
 rfd = "0.18"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-base64 = "0.22"
+base64 = "0.23"
 # A small blocking HTTP server for the MCP endpoint (no async runtime).
 tiny_http = "0.12"
 resvg = "0.50"
 # The font parser egui uses, to check a system font before handing it over.
-skrifa = { version = "0.44", default-features = false, features = ["std"] }
+skrifa = { version = "0.49", default-features = false, features = ["std"] }
 svg2pdf = "0.13"
 
 [dev-dependencies]
