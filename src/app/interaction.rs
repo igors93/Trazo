@@ -164,13 +164,23 @@ impl FloorPlanApp {
         })
     }
 
-    /// The element a click at `point` selects: openings first, then walls,
-    /// rooms and the terrain.
+    /// The element a click at `point` selects, strictly filtered to the active
+    /// discipline so faded architectural underlay elements cannot be picked or
+    /// modified from a specialized discipline tab (e.g. Structure or Electrical),
+    /// and hidden structural/electrical elements cannot be picked in Visão geral.
     fn pick(&self, point: Point) -> Option<Selection> {
+        let pick_fixture = || {
+            self.project
+                .fixture_at_in_discipline(point, self.discipline)
+                .map(Selection::Fixture)
+        };
+        if !self.discipline.allows_architecture_edit() {
+            return pick_fixture();
+        }
         self.project
             .nearest_opening(point, self.screen_metres(14.0))
             .map(Selection::Opening)
-            .or_else(|| self.project.fixture_at(point).map(Selection::Fixture))
+            .or_else(pick_fixture)
             .or_else(|| {
                 self.project
                     .drawing_at(point, self.screen_metres(8.0))
@@ -543,30 +553,43 @@ impl FloorPlanApp {
                 selection_box.start.distance(selection_box.end) >= self.screen_metres(4.0)
             })
             .map(|selection_box| {
-                self.project.elements_in_box(
-                    selection_box.start,
-                    selection_box.end,
-                    selection_box.crossing(),
-                    self.selection_filter,
-                )
+                self.project
+                    .elements_in_box(
+                        selection_box.start,
+                        selection_box.end,
+                        selection_box.crossing(),
+                        self.selection_filter,
+                    )
+                    .into_iter()
+                    .filter(|item| self.selection_allowed_in_discipline(*item))
+                    .collect()
             })
             .unwrap_or_default();
-        // The discipline and per-tab layer overrides in view leave hidden layers out.
-        let shown = self
-            .project
-            .for_view(self.discipline, &self.active_hidden_layers);
+        // In specialized discipline tabs (Structure, Foundations, Electrical,
+        // Plumbing), paint the clean general floor plan as a faded read-only
+        // contrast reference photo behind the active discipline's crisp overlay.
+        let focused = self.discipline.focus().is_some();
+        let shown = if focused {
+            self.project.for_view(
+                crate::domain::discipline::Discipline::All,
+                &self.active_hidden_layers,
+            )
+        } else {
+            self.project
+                .for_view(self.discipline, &self.active_hidden_layers)
+        };
         canvas::paint(
             &painter,
             view,
             &shown,
             PaintOptions {
-                selection: self.selection,
-                extra_selection: &self.selection_extra,
-                pending: &boxed,
-                hover,
+                selection: if focused { None } else { self.selection },
+                extra_selection: if focused { &[] } else { &self.selection_extra },
+                pending: if focused { &[] } else { &boxed },
+                hover: if focused { None } else { hover },
                 preview,
                 show_grid: self.show_grid,
-                ghost,
+                ghost: if focused { None } else { ghost },
                 dimensions: self.show_dimensions,
                 wall_reference: self.wall_reference,
                 underlay_textures: &underlay_textures,
@@ -575,10 +598,13 @@ impl FloorPlanApp {
         drop(shown);
         self.paint_xrefs_overlay(&painter, view);
         self.paint_compare_overlay(&painter, view);
-        if self.discipline.focus().is_some() {
-            // One discipline: the architecture behind a veil, it on top.
-            painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(190));
-            let selected = |id: u64| self.is_selected(Selection::Fixture(id));
+        if focused {
+            // Soft contrast veil turning the general plan into a reference underlay.
+            painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(195));
+            let selected = |id: u64| {
+                let sel = Selection::Fixture(id);
+                self.is_selected(sel) || boxed.contains(&sel)
+            };
             canvas::paint_discipline_overlay(
                 &painter,
                 view,
@@ -586,6 +612,11 @@ impl FloorPlanApp {
                 self.discipline,
                 &selected,
             );
+            if let Some(ghost_fixture) = ghost
+                && self.discipline.allows_fixture(ghost_fixture.kind)
+            {
+                canvas::paint_fixture(&painter, view, &ghost_fixture, canvas::FixtureTone::Ghost);
+            }
         }
         self.paint_view_aids(&painter, view);
         self.paint_dependency_review_badges(ui, &painter, view);
@@ -1144,6 +1175,20 @@ impl FloorPlanApp {
     }
 
     pub(super) fn place_fixture(&mut self, kind: FixtureKind, point: Point) {
+        if !self.discipline.allows_fixture(kind) {
+            self.message = if kind.is_structural() {
+                "Elementos estruturais devem ser inseridos na aba Estrutura ou Fundações (não aparecem na Visão geral).".to_owned()
+            } else if kind.is_electrical() {
+                "Pontos elétricos devem ser inseridos na aba Elétrica.".to_owned()
+            } else {
+                format!(
+                    "Na aba {} o mobiliário da visão geral é somente referência. Troque para Visão geral ou Arquitetura para inserir {}.",
+                    self.discipline.label(),
+                    kind.label().to_lowercase()
+                )
+            };
+            return;
+        }
         let placed = self.fixture_placement(kind, point);
         let previous = self.project.clone();
         match self.project.add_fixture(
@@ -1896,5 +1941,90 @@ mod tests {
         app.undo();
         assert!((area(&app.project, q1) - 12.0).abs() < 1e-3);
         assert!((area(&app.project, q2) - 12.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn structure_is_hidden_in_general_view_and_architecture_is_read_only_in_structure_tab() {
+        use crate::domain::discipline::Discipline;
+        use crate::domain::fixtures::FixtureKind;
+        use crate::domain::layers::LayerCategory;
+        use crate::domain::model::OpeningKind;
+
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        app.project
+            .set_terrain(Point::new(0.0, 0.0), Point::new(12.0, 12.0));
+        let room_id = app
+            .project
+            .add_room(Point::new(1.0, 1.0), Point::new(5.0, 5.0), "Sala")
+            .unwrap();
+        let wall_id = app.project.rooms[0].wall_ids[0];
+        let table_id = app
+            .project
+            .add_fixture(FixtureKind::Table, Point::new(3.0, 3.0), 1.0, 1.0, 0)
+            .unwrap();
+        let col_id = app
+            .project
+            .add_fixture(FixtureKind::Column, Point::new(1.0, 1.0), 0.3, 0.2, 0)
+            .unwrap();
+
+        // 1. In Visão geral (Discipline::All): structure is hidden and unpickable.
+        assert_eq!(app.discipline, Discipline::All);
+        let general = app.project.for_view(app.discipline, &[]);
+        assert!(!general.category_visible(LayerCategory::Structure));
+        assert!(general.category_visible(LayerCategory::Walls));
+        assert!(general.category_visible(LayerCategory::Fixtures));
+        assert_ne!(
+            app.pick(Point::new(1.0, 1.0)),
+            Some(Selection::Fixture(col_id))
+        );
+        assert_eq!(
+            app.pick(Point::new(3.0, 3.0)),
+            Some(Selection::Fixture(table_id))
+        );
+        assert!(app.selection_is_locked(Selection::Fixture(col_id)));
+        assert!(!app.selection_is_locked(Selection::Wall(wall_id)));
+
+        // Trying to place a structural column in Visão geral is blocked.
+        let before_count = app.project.fixtures.len();
+        app.place_fixture(FixtureKind::Column, Point::new(5.0, 5.0));
+        assert_eq!(app.project.fixtures.len(), before_count);
+
+        // Select a wall in Visão geral, then switch to Structure tab: selection clears.
+        app.select(Selection::Wall(wall_id));
+        assert_eq!(app.selection, Some(Selection::Wall(wall_id)));
+        app.set_discipline(Discipline::Structure);
+        assert_eq!(app.selection, None);
+
+        // 2. In Structure tab: architecture is a read-only reference underlay.
+        assert_eq!(app.pick(Point::new(3.0, 3.0)), None); // furniture not pickable
+        assert_eq!(app.pick(Point::new(3.0, 1.0)), None); // wall not pickable
+        assert_eq!(
+            app.pick(Point::new(1.0, 1.0)),
+            Some(Selection::Fixture(col_id))
+        );
+        assert!(app.selection_is_locked(Selection::Wall(wall_id)));
+        assert!(app.selection_is_locked(Selection::Room(room_id)));
+        assert!(app.selection_is_locked(Selection::Fixture(table_id)));
+        assert!(!app.selection_is_locked(Selection::Fixture(col_id)));
+
+        // Ctrl+A in Structure selects ONLY structural elements.
+        app.select_all();
+        assert_eq!(app.selected(), vec![Selection::Fixture(col_id)]);
+
+        // Architectural creation tools are blocked in Structure tab.
+        let walls_before = app.project.walls.len();
+        app.set_tool(Tool::Wall);
+        app.apply_canvas_point(Point::new(6.0, 6.0));
+        app.complete_creation(Point::new(6.0, 6.0), Point::new(9.0, 6.0));
+        assert_eq!(app.project.walls.len(), walls_before);
+
+        let openings_before = app.project.openings.len();
+        app.add_opening_at(Point::new(3.0, 1.0), OpeningKind::Door);
+        assert_eq!(app.project.openings.len(), openings_before);
+
+        // Structural elements CAN be placed in Structure tab.
+        app.place_fixture(FixtureKind::Column, Point::new(5.0, 5.0));
+        assert_eq!(app.project.fixtures.len(), before_count + 1);
     }
 }

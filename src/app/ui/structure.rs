@@ -357,11 +357,14 @@ impl FloorPlanApp {
         self.record_change(previous);
     }
 
-    /// Shows one discipline (or everything) on the plan.
+    /// Shows one discipline (or general architectural view) on the plan.
     pub(crate) fn set_discipline(&mut self, discipline: Discipline) {
         self.discipline = discipline;
+        self.prune_selection_for_discipline();
         self.message = match discipline {
-            Discipline::All => "Mostrando todas as disciplinas.".to_owned(),
+            Discipline::All => {
+                "Visão geral da arquitetura (estrutura e elétrica ocultas).".to_owned()
+            }
             other => format!("Vista {}: o resto fica esmaecido ou oculto.", other.label()),
         };
     }
@@ -447,7 +450,7 @@ impl FloorPlanApp {
             .show(ctx, |ui| {
                 ui.label(
                     RichText::new(
-                        "Lajes, vigas, pilares e sapatas pré-dimensionados por regras práticas, com as cargas descendo das lajes às vigas, dos pilares ao solo. É um estudo inicial: o projeto estrutural é de um engenheiro habilitado (NBR 6118).",
+                        "Lajes, vigas, pilares e sapatas pré-dimensionados por regras práticas, com as cargas descendo das lajes às vigas, dos pilares ao solo.",
                     )
                     .size(12.0)
                     .color(TEXT_2),

@@ -300,6 +300,7 @@ impl FloorPlanApp {
         self.constraint_texts = view.constraint_texts;
         self.active_pane = view.pane;
         self.last_canvas_center = None;
+        self.prune_selection_for_discipline();
     }
 
     /// Ensures the active project's current floor matches the active tab's

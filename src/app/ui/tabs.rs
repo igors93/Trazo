@@ -581,10 +581,16 @@ impl FloorPlanApp {
                 scale: self.scale,
                 pan: self.pan,
             };
+            let bg_project = if side.discipline.focus().is_some() {
+                side.base_project
+                    .for_view(crate::domain::discipline::Discipline::All, &[])
+            } else {
+                std::borrow::Cow::Borrowed(side.shown_project.as_ref())
+            };
             canvas::paint(
                 &painter,
                 view,
-                &side.shown_project,
+                &bg_project,
                 PaintOptions {
                     selection: None,
                     extra_selection: &[],
@@ -599,7 +605,7 @@ impl FloorPlanApp {
                 },
             );
             if side.discipline.focus().is_some() {
-                painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(190));
+                painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(195));
                 let none_selected = |_: u64| false;
                 canvas::paint_discipline_overlay(
                     &painter,

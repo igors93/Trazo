@@ -80,15 +80,46 @@ impl Discipline {
     }
 
     /// The layers this discipline leaves out.
+    ///
+    /// Both `Visão geral` (`All`) and `Arquitetura` show the clean general
+    /// floor plan without structural or electrical overlays; structure and
+    /// electrical appear strictly in their own discipline views.
     pub fn hidden(self) -> &'static [LayerCategory] {
         match self {
-            Self::All => &[],
-            Self::Architecture => &[LayerCategory::Electrical, LayerCategory::Structure],
+            Self::All | Self::Architecture => {
+                &[LayerCategory::Electrical, LayerCategory::Structure]
+            }
             Self::Electrical => &[LayerCategory::Structure],
             Self::Plumbing => &[LayerCategory::Electrical, LayerCategory::Structure],
             Self::Structure | Self::Foundations => {
                 &[LayerCategory::Electrical, LayerCategory::Fixtures]
             }
+        }
+    }
+
+    /// Whether architectural base elements (terrain, walls, rooms, openings,
+    /// 2D drawings) can be selected and edited in this view.
+    ///
+    /// In specialized discipline views (`Structure`, `Foundations`,
+    /// `Electrical`, `Plumbing`), the general floor plan is shown solely as a
+    /// faded read-only reference underlay.
+    pub fn allows_architecture_edit(self) -> bool {
+        matches!(self, Self::All | Self::Architecture)
+    }
+
+    /// Whether a fixture of `kind` can be selected, placed or edited in this view.
+    pub fn allows_fixture(self, kind: super::fixtures::FixtureKind) -> bool {
+        match self {
+            Self::All | Self::Architecture => !kind.is_structural() && !kind.is_electrical(),
+            Self::Structure => kind.is_structural(),
+            Self::Foundations => matches!(
+                kind,
+                super::fixtures::FixtureKind::Footing
+                    | super::fixtures::FixtureKind::Column
+                    | super::fixtures::FixtureKind::TimberPost
+            ),
+            Self::Electrical => kind.is_electrical(),
+            Self::Plumbing => kind.is_plumbing(),
         }
     }
 
@@ -215,11 +246,13 @@ mod tests {
 
     #[test]
     fn each_discipline_hides_the_others() {
+        use super::super::fixtures::FixtureKind;
         let project = Project::default();
-        assert!(matches!(
-            project.for_discipline(Discipline::All),
-            Cow::Borrowed(_)
-        ));
+        let general = project.for_discipline(Discipline::All);
+        assert!(!general.category_visible(LayerCategory::Structure));
+        assert!(!general.category_visible(LayerCategory::Electrical));
+        assert!(general.category_visible(LayerCategory::Walls));
+        assert!(general.category_visible(LayerCategory::Fixtures));
         let architecture = project.for_discipline(Discipline::Architecture);
         assert!(!architecture.category_visible(LayerCategory::Electrical));
         assert!(!architecture.category_visible(LayerCategory::Structure));
@@ -249,5 +282,18 @@ mod tests {
             Discipline::Structure.focus(),
             Some(LayerCategory::Structure)
         );
+        // Editing isolation rules:
+        assert!(Discipline::All.allows_architecture_edit());
+        assert!(!Discipline::All.allows_fixture(FixtureKind::Column));
+        assert!(!Discipline::All.allows_fixture(FixtureKind::OutletLow));
+        assert!(Discipline::All.allows_fixture(FixtureKind::Table));
+        assert!(!Discipline::Structure.allows_architecture_edit());
+        assert!(Discipline::Structure.allows_fixture(FixtureKind::Column));
+        assert!(Discipline::Structure.allows_fixture(FixtureKind::Footing));
+        assert!(Discipline::Structure.allows_fixture(FixtureKind::TimberPost));
+        assert!(!Discipline::Structure.allows_fixture(FixtureKind::Table));
+        assert!(!Discipline::Electrical.allows_architecture_edit());
+        assert!(Discipline::Electrical.allows_fixture(FixtureKind::OutletLow));
+        assert!(!Discipline::Electrical.allows_fixture(FixtureKind::Column));
     }
 }

@@ -912,6 +912,12 @@ impl FloorPlanApp {
     }
 
     fn complete_creation(&mut self, start: Point, end: Point) {
+        if matches!(self.tool, Tool::Terrain | Tool::Wall | Tool::Room)
+            && !self.discipline.allows_architecture_edit()
+        {
+            self.message = self.architecture_edit_blocked_message();
+            return;
+        }
         match self.tool {
             Tool::Terrain => {
                 let previous = self.project.clone();
@@ -1409,11 +1415,49 @@ impl FloorPlanApp {
         }
     }
 
+    pub(super) fn selection_allowed_in_discipline(&self, selection: Selection) -> bool {
+        match selection {
+            Selection::Terrain(_)
+            | Selection::Room(_)
+            | Selection::Wall(_)
+            | Selection::Opening(_)
+            | Selection::Drawing(_) => self.discipline.allows_architecture_edit(),
+            Selection::Fixture(id) => self
+                .project
+                .fixtures
+                .iter()
+                .find(|fixture| fixture.id == id)
+                .is_some_and(|fixture| self.discipline.allows_fixture(fixture.kind)),
+        }
+    }
+
+    pub(super) fn prune_selection_for_discipline(&mut self) {
+        let kept: Vec<Selection> = self
+            .selected()
+            .into_iter()
+            .filter(|sel| self.selection_allowed_in_discipline(*sel))
+            .collect();
+        if kept.len() != self.selected().len() {
+            self.set_selection_set(kept);
+            self.sync_inspector_fields();
+        }
+    }
+
+    pub(super) fn architecture_edit_blocked_message(&self) -> String {
+        format!(
+            "Na aba {} a visão geral aparece somente como referência (fundo). Troque para Visão geral ou Arquitetura para editar paredes, cômodos e aberturas.",
+            self.discipline.label()
+        )
+    }
+
     /// Moves the selected element by `delta` metres as one undo step,
     /// within the terrain like a drag. Doors and windows slide along their
     /// wall, so only the part of `delta` along the wall counts.
     fn selection_is_locked(&self, selection: Selection) -> bool {
         use crate::domain::layers::LayerCategory;
+        if !self.selection_allowed_in_discipline(selection) {
+            return true;
+        }
         match selection {
             Selection::Terrain(_) => self.project.category_locked(LayerCategory::Terrain),
             Selection::Room(_) => self.project.category_locked(LayerCategory::Rooms),
@@ -2225,6 +2269,10 @@ impl FloorPlanApp {
     }
 
     fn add_opening_at(&mut self, point: Point, kind: OpeningKind) {
+        if !self.discipline.allows_architecture_edit() {
+            self.message = self.architecture_edit_blocked_message();
+            return;
+        }
         if let Some((wall_id, t)) = self.project.nearest_wall(point, 0.35) {
             let previous = self.project.clone();
             if let Some(id) = self.project.add_opening(wall_id, kind, t) {
@@ -2269,6 +2317,15 @@ impl FloorPlanApp {
     }
 
     pub(super) fn apply_canvas_point(&mut self, point: Point) {
+        if matches!(
+            self.tool,
+            Tool::Wall | Tool::Room | Tool::Terrain | Tool::RoomPolygon | Tool::Draw(_)
+        ) && !self.discipline.allows_architecture_edit()
+        {
+            self.creation_state = CreationState::Idle;
+            self.message = self.architecture_edit_blocked_message();
+            return;
+        }
         match self.tool {
             Tool::Wall | Tool::Room | Tool::Terrain | Tool::Measure => match self.creation_state {
                 CreationState::Idle => {

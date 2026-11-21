@@ -497,7 +497,25 @@ impl FloorPlanApp {
             if response.double_clicked() {
                 self.zoom_to_selection(row.selection);
             } else if response.clicked() {
-                self.select_many(row.members.clone(), adding);
+                let allowed: Vec<Selection> = row
+                    .members
+                    .iter()
+                    .copied()
+                    .filter(|sel| self.selection_allowed_in_discipline(*sel))
+                    .collect();
+                if allowed.is_empty() {
+                    self.zoom_to_selection(row.selection);
+                    self.message = self.architecture_edit_blocked_message();
+                } else {
+                    self.select_many(allowed, adding);
+                }
+            }
+            return;
+        }
+        if !self.selection_allowed_in_discipline(row.selection) {
+            if response.clicked() || response.double_clicked() {
+                self.zoom_to_selection(row.selection);
+                self.message = self.architecture_edit_blocked_message();
             }
             return;
         }

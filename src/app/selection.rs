@@ -147,9 +147,14 @@ impl FloorPlanApp {
         }
     }
 
-    /// Ctrl+A: every element the selection filter lets through.
+    /// Ctrl+A: every element the selection filter and active discipline let through.
     pub(super) fn select_all(&mut self) {
-        let items = self.project.filtered_elements(self.selection_filter);
+        let items: Vec<Selection> = self
+            .project
+            .filtered_elements(self.selection_filter)
+            .into_iter()
+            .filter(|item| self.selection_allowed_in_discipline(*item))
+            .collect();
         self.select_many(items, false);
     }
 
@@ -159,10 +164,17 @@ impl FloorPlanApp {
             self.message = "Selecione um elemento para buscar os semelhantes.".to_owned();
             return;
         };
-        let mut items = self.project.similar_elements(model);
+        let mut items: Vec<Selection> = self
+            .project
+            .similar_elements(model)
+            .into_iter()
+            .filter(|item| self.selection_allowed_in_discipline(*item))
+            .collect();
         // The model stays the primary one.
         items.retain(|item| *item != model);
-        items.push(model);
+        if self.selection_allowed_in_discipline(model) {
+            items.push(model);
+        }
         self.select_many(items, false);
     }
 
@@ -172,7 +184,7 @@ impl FloorPlanApp {
             .project
             .filtered_elements(self.selection_filter)
             .into_iter()
-            .filter(|item| !self.is_selected(*item))
+            .filter(|item| !self.is_selected(*item) && self.selection_allowed_in_discipline(*item))
             .collect();
         self.select_many(items, false);
     }
@@ -218,14 +230,19 @@ impl FloorPlanApp {
             self.after_selection_change();
             return;
         }
-        let picked = self.project.elements_in_box(
-            start,
-            end,
-            selection_box.crossing(),
-            self.selection_filter,
-        );
-        // Groups come whole.
-        let items = self.project.with_whole_groups(&picked);
+        let picked: Vec<Selection> = self
+            .project
+            .elements_in_box(start, end, selection_box.crossing(), self.selection_filter)
+            .into_iter()
+            .filter(|item| self.selection_allowed_in_discipline(*item))
+            .collect();
+        // Groups come whole (only members editable in the active discipline).
+        let items: Vec<Selection> = self
+            .project
+            .with_whole_groups(&picked)
+            .into_iter()
+            .filter(|item| self.selection_allowed_in_discipline(*item))
+            .collect();
         let mut all = if selection_box.additive {
             self.selected()
         } else {

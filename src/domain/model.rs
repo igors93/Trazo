@@ -957,12 +957,16 @@ impl Project {
         self.fixtures.len() < before
     }
 
-    pub fn fixture_at(&self, point: Point) -> Option<u64> {
+    pub fn fixture_at_in_discipline(
+        &self,
+        point: Point,
+        discipline: super::discipline::Discipline,
+    ) -> Option<u64> {
         // The last placed is drawn on top, so it is picked first.
         self.fixtures
             .iter()
             .rev()
-            .find(|fixture| fixture.contains(point))
+            .find(|fixture| discipline.allows_fixture(fixture.kind) && fixture.contains(point))
             .map(|fixture| fixture.id)
     }
 
