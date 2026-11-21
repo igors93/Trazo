@@ -268,4 +268,17 @@ mod tests {
         assert!((side_for_slenderness(4.3) - 0.20).abs() < 1e-9);
         assert!(slenderness(2.8, 0.14) < MAX_SIMPLE_SLENDERNESS);
     }
+
+    #[test]
+    fn the_cached_structure_report_follows_a_new_wall_height() {
+        let (mut project, id) = project_with_wall();
+        project
+            .add_fixture(FixtureKind::Column, Point::new(5.0, 0.0), 0.14, 0.30, 0)
+            .unwrap();
+        let before = project.cached_structure_report().columns[0].height_m;
+        project.set_wall_height(id, Some(4.3), None).unwrap();
+        let after = project.cached_structure_report().columns[0].height_m;
+        assert!((before - 2.8).abs() < 1e-9, "{before}");
+        assert!((after - 4.3).abs() < 1e-9, "{after}");
+    }
 }

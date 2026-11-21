@@ -58,6 +58,8 @@ fn hash_wall(h: &mut DefaultHasher, wall: &Wall) {
     hash_point(h, wall.start);
     hash_point(h, wall.end);
     hash_f64(h, wall.thickness());
+    hash_f64(h, wall.height_m.unwrap_or(-1.0));
+    hash_f64(h, wall.height_end_m.unwrap_or(-1.0));
 }
 
 fn hash_room(h: &mut DefaultHasher, room: &Room) {
