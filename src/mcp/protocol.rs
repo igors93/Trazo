@@ -216,6 +216,15 @@ fn call_tool(params: &Value, run: &mut ToolRunner) -> Result<Value, (i64, String
     Ok(run(name, &arguments))
 }
 
+/// The keys of `extra` added to the object `base`, for schemas too large
+/// for one `json!` call.
+fn merge(mut base: Value, extra: Value) -> Value {
+    if let (Some(base), Value::Object(extra)) = (base.as_object_mut(), extra) {
+        base.extend(extra);
+    }
+    base
+}
+
 fn number(description: &str) -> Value {
     json!({ "type": "number", "description": description })
 }
@@ -803,51 +812,67 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "projeto_estrutural",
             title: "Projeto estrutural (pré-dimensionamento)",
-            description: "Comandos da estrutura (planta de forma e fundações). gerar_estrutura: pilares, vigas, lajes e sapatas. inserir_pilar / inserir_sapata. inserir_carga / editar_carga / remover_carga: caixa-d'água ou equipamento pesado, com carga concentrada transmitida à laje ou viga. ligar_pilares e apoiar_em_viga. editar_viga / remover_viga. definir_laje / remover_laje. configurar materiais e cargas. ajustar_sapatas. gerar_vigas_alavanca: viga alavanca de cada pilar de divisa (sapata fora do centro) ao pilar interno mais próximo; ligar_viga_alavanca: do pilar 'de' (divisa) ao pilar 'para' (interno); remover_viga_alavanca: pela 'id'. gerar_fundacao_paredes: viga baldrame nas paredes entre pilares e sapata corrida nas demais (as abertas ficam de fora); definir_fundacao_parede: parede 'id', 'tipo' baldrame ou sapata_corrida, largura_cm opcional; remover_fundacao_paredes. definir_sondagem: sondagem SPT do terreno em 'leituras' (uma por metro, com o N e o solo), 'nivel_agua_m' e 'cota_sapata_m' opcionais; por padrão leva a tensão do solo para a das sapatas (aplicar_ao_solo) e devolve o estudo de fundações. remover_sondagem. simular_fundacoes: compara sapatas, radier e brocas com baldrame para as cargas reais (σadm = 20·N̄ kPa; brocas por Décourt-Quaresma) e recomenda a viável com menos concreto. vista: seleciona a disciplina da aba ativa.",
-            properties: json!({
-                "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "gerar_fundacao_paredes", "definir_fundacao_parede", "remover_fundacao_paredes", "definir_sondagem", "remover_sondagem", "simular_fundacoes", "vista"], "description": "O que fazer." },
-                "x": number("Para inserir pilar, sapata ou carga: posição x, em metros."),
-                "y": number("Para inserir pilar, sapata ou carga: posição y, em metros."),
-                "largura_cm": number("Largura do pilar, da sapata ou da viga, em cm."),
-                "profundidade_cm": number("Profundidade do pilar ou da sapata, em cm."),
-                "altura_cm": number("Altura da viga, em cm."),
-                "de": integer("Para ligar_pilares ou apoiar_em_viga: id do pilar inicial."),
-                "para": integer("Para ligar_pilares ou apoiar_em_viga: id do pilar final."),
-                "viga_de": integer("Para apoiar_em_viga: id da viga que apoia o início."),
-                "t_de": number("Para apoiar_em_viga: posição fracionária (0,01 a 0,99) em viga_de."),
-                "viga_para": integer("Para apoiar_em_viga: id da viga que apoia o fim."),
-                "t_para": number("Para apoiar_em_viga: posição fracionária (0,01 a 0,99) em viga_para."),
-                "id": integer("Para editar/remover viga ou carga: id do elemento."),
-                "comodo": { "type": ["string", "integer"], "description": "Para definir_laje e remover_laje: nome ou id do cômodo." },
-                "tipo": { "type": "string", "enum": ["trelicada", "macica", "caixa_agua", "equipamento_pesado", "baldrame", "sapata_corrida"], "description": "Tipo da laje ou da carga concentrada." },
-                "carga_kn": number("Para inserir_carga ou editar_carga: carga característica em kN (0,1 a 2.000)."),
-                "espessura_cm": number("Para definir_laje: espessura, em cm."),
-                "fck_mpa": number("Para configurar: resistência do concreto, MPa (20 a 50)."),
-                "solo_kpa": number("Para configurar: tensão admissível do solo, kPa (50 a 600)."),
-                "classe_solo": { "type": "string", "enum": ["argila_mole", "argila_media", "areia_media", "areia_compacta", "rocha"], "description": "Para configurar: classe indicativa do solo (NBR 6122)." },
-                "ocupacao": { "type": "string", "enum": ["residencial", "escritorio", "garagem", "comercial"], "description": "Para configurar: ocupação (NBR 6120)." },
-                "pavimentos": integer("Para configurar: pavimentos que os pilares carregam (1 a 10)."),
-                "sobrecarga_kn_m2": number("Para configurar: carga variável nas lajes, kN/m²."),
-                "revestimento_kn_m2": number("Para configurar: revestimento e contrapiso, kN/m²."),
-                "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Para vista." },
-                "leituras": {
-                    "type": "array",
-                    "description": "Para definir_sondagem: leituras do SPT, uma por metro.",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "profundidade_m": { "type": "number", "description": "Profundidade da leitura, em metros (0,5 a 40)." },
-                            "n": { "type": "integer", "description": "Golpes do SPT (N) nos últimos 30 cm." },
-                            "solo": { "type": "string", "enum": ["argila", "silte_argiloso", "silte_arenoso", "areia"], "description": "Solo na profundidade." }
-                        },
-                        "required": ["profundidade_m", "n"]
-                    }
-                },
-                "nome": { "type": "string", "description": "Para definir_sondagem: nome do furo (ex: SP-01)." },
-                "nivel_agua_m": number("Para definir_sondagem: profundidade do lençol freático, em metros."),
-                "cota_sapata_m": number("Para definir_sondagem: profundidade da base das sapatas, em metros (padrão 1,00)."),
-                "aplicar_ao_solo": { "type": "boolean", "description": "Para definir_sondagem: leva a tensão admissível das sapatas para a configuração (padrão true)." },
-            }),
+            description: "Comandos da estrutura (planta de forma e fundações). gerar_estrutura: pilares, vigas, lajes e sapatas. inserir_pilar / inserir_sapata. inserir_carga / editar_carga / remover_carga: caixa-d'água ou equipamento pesado, com carga concentrada transmitida à laje ou viga. ligar_pilares e apoiar_em_viga. editar_viga / remover_viga. definir_laje / remover_laje. configurar materiais e cargas. ajustar_sapatas. gerar_vigas_alavanca: viga alavanca de cada pilar de divisa (sapata fora do centro) ao pilar interno mais próximo; ligar_viga_alavanca: do pilar 'de' (divisa) ao pilar 'para' (interno); remover_viga_alavanca: pela 'id'. gerar_fundacao_paredes: viga baldrame nas paredes entre pilares e sapata corrida nas demais (as abertas ficam de fora); definir_fundacao_parede: parede 'id', 'tipo' baldrame ou sapata_corrida, largura_cm opcional; remover_fundacao_paredes. definir_sondagem: sondagem SPT do terreno em 'leituras' (uma por metro, com o N e o solo), 'nivel_agua_m' e 'cota_sapata_m' opcionais; por padrão leva a tensão do solo para a das sapatas (aplicar_ao_solo) e devolve o estudo de fundações. remover_sondagem. definir_telhado: meia-água de madeira sobre o retângulo x, y, largura_m, comprimento_m, com lado_alto, altura_alta_m e altura_baixa_m (telha, madeira, espaçamentos e aparente opcionais; com 'id' edita um telhado); dimensiona ripas, caibros, terças e vigas (NBR 7190), descarrega cada ponta de viga no pilar ou viga embaixo e, por padrão, ajusta as paredes à altura do telhado (ajustar_paredes). remover_telhado: pela 'id'. simular_fundacoes: compara sapatas, radier e brocas com baldrame para as cargas reais (σadm = 20·N̄ kPa; brocas por Décourt-Quaresma) e recomenda a viável com menos concreto. vista: seleciona a disciplina da aba ativa.",
+            properties: merge(
+                json!({
+                    "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "gerar_fundacao_paredes", "definir_fundacao_parede", "remover_fundacao_paredes", "definir_sondagem", "remover_sondagem", "simular_fundacoes", "definir_telhado", "remover_telhado", "vista"], "description": "O que fazer." },
+                    "x": number("Para inserir pilar, sapata ou carga, ou o canto do telhado: posição x, em metros."),
+                    "y": number("Para inserir pilar, sapata ou carga, ou o canto do telhado: posição y, em metros."),
+                    "largura_cm": number("Largura do pilar, da sapata ou da viga, em cm."),
+                    "profundidade_cm": number("Profundidade do pilar ou da sapata, em cm."),
+                    "altura_cm": number("Altura da viga, em cm."),
+                    "de": integer("Para ligar_pilares ou apoiar_em_viga: id do pilar inicial."),
+                    "para": integer("Para ligar_pilares ou apoiar_em_viga: id do pilar final."),
+                    "viga_de": integer("Para apoiar_em_viga: id da viga que apoia o início."),
+                    "t_de": number("Para apoiar_em_viga: posição fracionária (0,01 a 0,99) em viga_de."),
+                    "viga_para": integer("Para apoiar_em_viga: id da viga que apoia o fim."),
+                    "t_para": number("Para apoiar_em_viga: posição fracionária (0,01 a 0,99) em viga_para."),
+                    "id": integer("Para editar/remover viga ou carga: id do elemento."),
+                    "comodo": { "type": ["string", "integer"], "description": "Para definir_laje e remover_laje: nome ou id do cômodo." },
+                    "tipo": { "type": "string", "enum": ["trelicada", "macica", "caixa_agua", "equipamento_pesado", "baldrame", "sapata_corrida"], "description": "Tipo da laje ou da carga concentrada." },
+                    "carga_kn": number("Para inserir_carga ou editar_carga: carga característica em kN (0,1 a 2.000)."),
+                    "espessura_cm": number("Para definir_laje: espessura, em cm."),
+                    "fck_mpa": number("Para configurar: resistência do concreto, MPa (20 a 50)."),
+                    "solo_kpa": number("Para configurar: tensão admissível do solo, kPa (50 a 600)."),
+                    "classe_solo": { "type": "string", "enum": ["argila_mole", "argila_media", "areia_media", "areia_compacta", "rocha"], "description": "Para configurar: classe indicativa do solo (NBR 6122)." },
+                    "ocupacao": { "type": "string", "enum": ["residencial", "escritorio", "garagem", "comercial"], "description": "Para configurar: ocupação (NBR 6120)." },
+                    "pavimentos": integer("Para configurar: pavimentos que os pilares carregam (1 a 10)."),
+                    "sobrecarga_kn_m2": number("Para configurar: carga variável nas lajes, kN/m²."),
+                    "revestimento_kn_m2": number("Para configurar: revestimento e contrapiso, kN/m²."),
+                    "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Para vista." },
+                }),
+                json!({
+                    "leituras": {
+                        "type": "array",
+                        "description": "Para definir_sondagem: leituras do SPT, uma por metro.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "profundidade_m": { "type": "number", "description": "Profundidade da leitura, em metros (0,5 a 40)." },
+                                "n": { "type": "integer", "description": "Golpes do SPT (N) nos últimos 30 cm." },
+                                "solo": { "type": "string", "enum": ["argila", "silte_argiloso", "silte_arenoso", "areia"], "description": "Solo na profundidade." }
+                            },
+                            "required": ["profundidade_m", "n"]
+                        }
+                    },
+                    "nome": { "type": "string", "description": "Para definir_sondagem: nome do furo (ex: SP-01)." },
+                    "nivel_agua_m": number("Para definir_sondagem: profundidade do lençol freático, em metros."),
+                    "cota_sapata_m": number("Para definir_sondagem: profundidade da base das sapatas, em metros (padrão 1,00)."),
+                    "aplicar_ao_solo": { "type": "boolean", "description": "Para definir_sondagem: leva a tensão admissível das sapatas para a configuração (padrão true)." },
+                    "largura_m": number("Para definir_telhado: largura do retângulo do telhado (eixo x), em metros."),
+                    "comprimento_m": number("Para definir_telhado: comprimento do retângulo do telhado (eixo y), em metros."),
+                    "lado_alto": { "type": "string", "enum": ["oeste", "leste", "norte", "sul"], "description": "Para definir_telhado: lado mais alto da meia-água (a água corre para o oposto)." },
+                    "altura_alta_m": number("Para definir_telhado: altura do telhado no lado alto, em metros."),
+                    "altura_baixa_m": number("Para definir_telhado: altura do telhado no lado baixo, em metros."),
+                    "telha": { "type": "string", "enum": ["ceramica", "concreto", "fibrocimento", "metalica"], "description": "Para definir_telhado: telha (padrão cerâmica)." },
+                    "madeira": { "type": "string", "enum": ["c20", "c30", "c40", "c60"], "description": "Para definir_telhado: classe da madeira folhosa, NBR 7190 (padrão C30)." },
+                    "espacamento_vigas_m": number("Para definir_telhado: distância máxima entre as vigas do telhado (padrão 3 m; elas se alinham aos pilares)."),
+                    "espacamento_tercas_m": number("Para definir_telhado: espaçamento das terças na projeção (padrão 1,2 m)."),
+                    "espacamento_caibros_m": number("Para definir_telhado: espaçamento dos caibros (padrão 0,5 m)."),
+                    "aparente": { "type": "boolean", "description": "Para definir_telhado: telhado aparente, sem forro (padrão true)." },
+                    "ajustar_paredes": { "type": "boolean", "description": "Para definir_telhado: as paredes sob o telhado ganham a altura dele (padrão true)." },
+                }),
+            ),
             required: &["acao"],
             read_only: false,
             destructive: false,

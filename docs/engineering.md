@@ -226,6 +226,25 @@ The foundation study (`foundation_study`) takes the column loads with the ground
 
 It recommends the viable option that takes the least concrete. Checked by `the_footing_pressure_follows_the_mean_blow_count_in_the_bulb`, `decourt_quaresma_matches_a_hand_calculation`, `brocas_stay_above_the_water_table_and_within_six_metres`, `good_soil_recommends_footings_and_soft_soil_rules_them_out` and `the_survey_sets_the_soil_pressure_of_the_structure`. One borehole stands for the whole site; settlement is not computed, and deep piles (continuous flight auger, precast) are only named, not sized.
 
+## Timber roofs
+
+A mono-pitch roof (*meia-água*) over a plan rectangle (`src/domain/roof.rs`): tiles on battens (*ripas*), on rafters (*caibros*), on purlins (*terças*) along the eaves, on main beams (*vigas*) from the high edge to the low edge. Fibre-cement and metal sheets rest on the purlins directly.
+
+| Quantity | Rule | Source |
+| --- | --- | --- |
+| Tiles | saturated weight 0.50 kN/m² (ceramic, concrete), 0.18 (fibre-cement 6 mm), 0.10 (metal); usual minimum slope 30 / 30 / 15 / 10 %; gauge 35 / 32 cm; sheets span at most 1.69 m (fibre-cement) and 2.0 m (metal) between purlins | Manufacturers' usual values |
+| Dead load | tiles + 0.10 kN/m² (battens and rafters) on the surface, divided by cos θ for the projection; + 0.15 kN/m² of ceiling unless the roof is exposed; + each piece's own weight (apparent density) | NBR 6120 |
+| Live load | 0.25 kN/m² on the horizontal projection | NBR 6120 (roofs without access) |
+| Timber | hardwood classes C20, C30, C40, C60: fc0,k 20–60 MPa, fv0,k 4–8 MPa, Ec0,m 9,500–24,500 MPa | NBR 7190:1997, table 9 |
+| Design strength | fd = kmod · fk / γw, kmod = 0.70 · 1.0 · 0.80 = 0.56 (long-term, service class 1–2, second grade), γw = 1.4 (bending, compression) and 1.8 (shear) | NBR 7190 |
+| Bending and shear | simply supported under 1.4 (g + q): σ = M / W ≤ fc0,d, τ = 1.5 V / (b h) ≤ fv0,d; battens take the load component normal to the roof | NBR 7190 |
+| Deflection | 5 (g + 0.2 q) L⁴ / (384 Ec0,ef I), Ec0,ef = kmod · Ec0,m, within L / 200 (L along the slope for rafters and beams) | NBR 7190 |
+| Sections | the lightest that passes: battens 5 × 1.5 or 5 × 2.5; rafters 5 × 6 to 6 × 12; purlins 6 × 12 to 10 × 25; beams 6 × 16 to 15 × 30 cm | Commercial sizes |
+| Main beams | at the columns found on the high and low edges (within 35 cm), more added so none is farther apart than the spacing set (3 m by default); each carries its tributary width | — |
+| Supports | each beam end, (g + q) · run / 2, is a point load on the column under it (within 35 cm), else on the concrete beam under it (within 25 cm); a roof load is never multiplied by the *floors* setting | — |
+
+*Ajustar as paredes ao telhado* gives the walls under the roof its height at their ends (#145): the wall on the high side rises and the gables slope. The timber and tile quantities come out per piece. Checked by `the_slope_and_heights_follow_the_high_side`, `beams_line_up_with_the_columns_and_fill_wide_gaps`, `a_beam_matches_the_hand_calculation`, `the_gourmet_roof_is_framed_and_bears_on_the_columns` and `an_assistant_roofs_the_gourmet_area_and_the_columns_take_it`. Not covered yet: gable and hip roofs, overhangs, trusses, the 1 kN maintenance point load, wind uplift and anchorage (#147), and timber posts at the low edge (#146).
+
 ## Electrical installation
 
 | Calculation | Rule | Source |

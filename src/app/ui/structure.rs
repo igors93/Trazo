@@ -31,6 +31,7 @@ enum StructureEdit {
     Beam(u64, f64, f64),
     Settings(crate::domain::structure::StructureSettings),
     Soil(super::foundations::SoilAction),
+    Roof(super::roof::RoofAction),
 }
 
 fn reinforcement_tab(ui: &mut Ui, report: &ReinforcementReport) {
@@ -507,7 +508,7 @@ impl FloorPlanApp {
                 }
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    for (index, title) in ["Pré-dimensionamento", "Esforços nas vigas", "Armaduras", "Solo e fundações"].iter().enumerate() {
+                    for (index, title) in ["Pré-dimensionamento", "Esforços nas vigas", "Armaduras", "Solo e fundações", "Telhado"].iter().enumerate() {
                         if ui
                             .selectable_label(tab == index as u8, RichText::new(*title).font(strong(12.5)))
                             .clicked()
@@ -555,6 +556,12 @@ impl FloorPlanApp {
                     if tab == 3 {
                         if let Some(action) = super::foundations::soil_tab(ui, &self.project) {
                             edits.push(StructureEdit::Soil(action));
+                        }
+                        return;
+                    }
+                    if tab == 4 {
+                        if let Some(action) = super::roof::roof_tab(ui, &self.project, &report.roofs) {
+                            edits.push(StructureEdit::Roof(action));
                         }
                         return;
                     }
@@ -776,6 +783,21 @@ impl FloorPlanApp {
                     StructureEdit::Soil(super::foundations::SoilAction::Survey(survey)) => {
                         self.project.set_soil_survey(survey);
                         Ok(())
+                    }
+                    StructureEdit::Roof(super::roof::RoofAction::Add(roof)) => {
+                        self.project.add_roof(roof).map(|_| ())
+                    }
+                    StructureEdit::Roof(super::roof::RoofAction::Update(id, roof)) => {
+                        self.project.update_roof(id, roof)
+                    }
+                    StructureEdit::Roof(super::roof::RoofAction::Remove(id)) => {
+                        self.project.remove_roof(id);
+                        Ok(())
+                    }
+                    StructureEdit::Roof(super::roof::RoofAction::FitWalls(id)) => {
+                        self.project.fit_walls_to_roof(id).map(|n| {
+                            self.message = format!("{n} parede(s) ajustada(s) ao telhado.");
+                        })
                     }
                     StructureEdit::Soil(super::foundations::SoilAction::ApplyToSoil) => self
                         .project

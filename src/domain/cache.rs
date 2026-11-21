@@ -245,6 +245,25 @@ fn structure_fingerprint(project: &Project) -> u64 {
         hash_f64(&mut h, survey.footing_depth_m);
         survey.name.hash(&mut h);
     }
+    project.structure.roofs.len().hash(&mut h);
+    for roof in &project.structure.roofs {
+        roof.id.hash(&mut h);
+        hash_point(&mut h, roof.min);
+        hash_point(&mut h, roof.max);
+        (roof.high_side as u8).hash(&mut h);
+        (roof.tile as u8).hash(&mut h);
+        (roof.timber as u8).hash(&mut h);
+        roof.exposed.hash(&mut h);
+        for v in [
+            roof.high_m,
+            roof.low_m,
+            roof.beam_spacing_m,
+            roof.purlin_spacing_m,
+            roof.rafter_spacing_m,
+        ] {
+            hash_f64(&mut h, v);
+        }
+    }
     project.structure.balance_beams.len().hash(&mut h);
     for beam in &project.structure.balance_beams {
         beam.id.hash(&mut h);

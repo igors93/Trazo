@@ -563,6 +563,73 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
             checks: vec![check],
         });
     }
+    for roof in &report.roofs {
+        for element in &roof.elements {
+            let section = format!(
+                "{} {:.0}×{:.0} cm a cada {} m",
+                element.element.label(),
+                element.section_cm.0,
+                element.section_cm.1,
+                decimal(element.spacing_m, 2)
+            );
+            verdicts.push(Verdict {
+                discipline: Discipline::Structure,
+                element: format!("Telhado {} · {}", roof.label, element.element.label()),
+                checks: vec![
+                    Check::new(
+                        "Flexão",
+                        element.bending_ratio,
+                        format!("{section}, vão de {} m.", decimal(element.span_m, 2)),
+                        format!(
+                            "σ = Md / W ≤ fc0,d = kmod·fc0,k / 1,4 (NBR 7190), Md = 1,4·(g + q)·L²/8, q = {} kN/m.",
+                            decimal(element.load_kn_m, 2)
+                        ),
+                    ),
+                    Check::new(
+                        "Cisalhamento",
+                        element.shear_ratio,
+                        format!("{section}."),
+                        "τ = 1,5·Vd / (b·h) ≤ fv0,d = kmod·fv0,k / 1,8 (NBR 7190).".to_owned(),
+                    ),
+                    Check::new(
+                        "Flecha",
+                        element.deflection_ratio,
+                        format!("{section}."),
+                        "u = 5·(g + 0,2 q)·L⁴ / (384·Ec0,ef·I) ≤ L/200, Ec0,ef = kmod·Ec0,m (NBR 7190).".to_owned(),
+                    ),
+                ],
+            });
+        }
+        let loose = roof.unsupported();
+        let mut checks = vec![Check::new(
+            "Inclinação",
+            roof.min_slope_percent / roof.slope_percent.max(1e-6),
+            if roof.slope_ok() {
+                format!("{:.0} % atende à telha.", roof.slope_percent)
+            } else {
+                format!(
+                    "Aumente a inclinação para pelo menos {:.0} %.",
+                    roof.min_slope_percent
+                )
+            },
+            format!(
+                "Inclinação {:.0} % ≥ {:.0} % mínima usual da telha (confirme com o fabricante).",
+                roof.slope_percent, roof.min_slope_percent
+            ),
+        )];
+        if loose > 0 {
+            checks.push(Check::fail(
+                "Apoios",
+                format!("{loose} ponta(s) de viga sem pilar, mourão ou viga embaixo."),
+                "Cada viga do telhado descarrega metade do seu peso em cada ponta.".to_owned(),
+            ));
+        }
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Telhado {}", roof.label),
+            checks,
+        });
+    }
     for foundation in &report.wall_foundations {
         let check = match foundation.kind {
             super::wall_foundations::WallFoundationKind::GroundBeam => match foundation.height_m {

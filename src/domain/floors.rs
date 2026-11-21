@@ -44,6 +44,8 @@ pub struct FloorPlanData {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub wall_foundations: Vec<super::wall_foundations::WallFoundation>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roofs: Vec<super::roof::Roof>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub slabs: Vec<super::structure::Slab>,
 }
 
@@ -157,6 +159,7 @@ impl Project {
             beams: std::mem::take(&mut self.structure.beams),
             balance_beams: std::mem::take(&mut self.structure.balance_beams),
             wall_foundations: std::mem::take(&mut self.structure.wall_foundations),
+            roofs: std::mem::take(&mut self.structure.roofs),
             slabs: std::mem::take(&mut self.structure.slabs),
         }
     }
@@ -174,6 +177,7 @@ impl Project {
         self.structure.beams = data.beams;
         self.structure.balance_beams = data.balance_beams;
         self.structure.wall_foundations = data.wall_foundations;
+        self.structure.roofs = data.roofs;
         self.structure.slabs = data.slabs;
     }
 

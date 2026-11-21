@@ -26,6 +26,7 @@ mod quantities;
 pub(in crate::app) use print::PrintDialogState;
 mod repeat;
 mod report_problem;
+mod roof;
 mod safety;
 mod schedules;
 mod selection;

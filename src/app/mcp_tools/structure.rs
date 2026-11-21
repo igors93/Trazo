@@ -105,6 +105,115 @@ pub(super) fn foundation_study_json(study: &crate::domain::soil::FoundationStudy
     })
 }
 
+/// The roof from the arguments of definir_telhado, starting from `base`
+/// when editing one (#114).
+fn roof_arg(
+    args: &Value,
+    base: Option<crate::domain::roof::Roof>,
+) -> Result<crate::domain::roof::Roof, String> {
+    use crate::domain::roof::{Roof, RoofSide, TileKind, TimberClass};
+    let mut roof = match base {
+        Some(roof) => roof,
+        None => {
+            let x = required_number(args, "x")?;
+            let y = required_number(args, "y")?;
+            let width = required_number(args, "largura_m")?;
+            let length = required_number(args, "comprimento_m")?;
+            let high = required_number(args, "altura_alta_m")?;
+            let low = required_number(args, "altura_baixa_m")?;
+            Roof::new(
+                to_model(x, y),
+                to_model(x + width, y + length),
+                RoofSide::West,
+                high,
+                low,
+            )
+        }
+    };
+    if base.is_some() && (args.get("x").is_some() || args.get("largura_m").is_some()) {
+        let x = required_number(args, "x")?;
+        let y = required_number(args, "y")?;
+        let width = required_number(args, "largura_m")?;
+        let length = required_number(args, "comprimento_m")?;
+        let fresh = Roof::new(
+            to_model(x, y),
+            to_model(x + width, y + length),
+            roof.high_side,
+            2.0,
+            1.0,
+        );
+        roof.min = fresh.min;
+        roof.max = fresh.max;
+    }
+    if let Some(raw) = text(args, "lado_alto") {
+        roof.high_side =
+            RoofSide::parse(&raw).ok_or("'lado_alto' deve ser oeste, leste, norte ou sul.")?;
+    }
+    if let Some(v) = number(args, "altura_alta_m")? {
+        roof.high_m = v;
+    }
+    if let Some(v) = number(args, "altura_baixa_m")? {
+        roof.low_m = v;
+    }
+    if let Some(raw) = text(args, "telha") {
+        roof.tile = TileKind::parse(&raw)
+            .ok_or("'telha' deve ser ceramica, concreto, fibrocimento ou metalica.")?;
+    }
+    if let Some(raw) = text(args, "madeira") {
+        roof.timber = TimberClass::parse(&raw).ok_or("'madeira' deve ser c20, c30, c40 ou c60.")?;
+    }
+    if let Some(v) = number(args, "espacamento_vigas_m")? {
+        roof.beam_spacing_m = v;
+    }
+    if let Some(v) = number(args, "espacamento_tercas_m")? {
+        roof.purlin_spacing_m = v;
+    }
+    if let Some(v) = number(args, "espacamento_caibros_m")? {
+        roof.rafter_spacing_m = v;
+    }
+    if let Some(v) = args.get("aparente").and_then(Value::as_bool) {
+        roof.exposed = v;
+    }
+    Ok(roof)
+}
+
+/// A roof result as tool output (#114).
+pub(super) fn roof_json(result: &crate::domain::roof::RoofResult) -> Value {
+    let round2 = |v: f64| (v * 100.0).round() / 100.0;
+    json!({
+        "id": result.id,
+        "rotulo": result.label,
+        "inclinacao_pct": round2(result.slope_percent),
+        "inclinacao_minima_pct": result.min_slope_percent,
+        "carga_permanente_kn_m2": round2(result.dead_kn_m2),
+        "sobrecarga_kn_m2": result.live_kn_m2,
+        "area_telhado_m2": round2(result.surface_m2),
+        "telhas": result.tiles,
+        "madeira_m3": round2(result.timber_m3),
+        "pecas": result.elements.iter().map(|e| json!({
+            "peca": e.element.key(),
+            "secao_cm": format!("{}x{}", e.section_cm.0, e.section_cm.1),
+            "atende": e.ok,
+            "vao_m": round2(e.span_m),
+            "espacamento_m": round2(e.spacing_m),
+            "carga_kn_m": round2(e.load_kn_m),
+            "flexao": round2(e.bending_ratio),
+            "cisalhamento": round2(e.shear_ratio),
+            "flecha": round2(e.deflection_ratio),
+            "quantidade": e.count,
+            "comprimento_total_m": round2(e.total_length_m),
+            "volume_m3": round2(e.volume_m3),
+        })).collect::<Vec<_>>(),
+        "apoios": result.reactions.iter().map(|r| json!({
+            "ponto": xy(r.point),
+            "lado": if r.high { "alto" } else { "baixo" },
+            "carga_kn": round2(r.load_kn),
+            "permanente_kn": round2(r.dead_kn),
+            "apoio": r.support,
+        })).collect::<Vec<_>>(),
+    })
+}
+
 /// A size argument in centimetres, as metres.
 fn centimetres(args: &Value, key: &str) -> Result<Option<f64>, String> {
     Ok(number(args, key)?.map(|cm| cm / 100.0))
@@ -619,6 +728,70 @@ impl FloorPlanApp {
                 ))
                 .with_structured(foundation_study_json(&study)))
             }
+            "definir_telhado" => {
+                let existing = match number(args, "id")? {
+                    Some(id) => Some(
+                        self.project
+                            .structure
+                            .roofs
+                            .iter()
+                            .find(|r| r.id == id as u64)
+                            .copied()
+                            .ok_or_else(|| format!("Telhado {id} não encontrado."))?,
+                    ),
+                    None => None,
+                };
+                let roof = roof_arg(args, existing)?;
+                let fit = args
+                    .get("ajustar_paredes")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true);
+                self.apply_change(None, |project| {
+                    let id = match existing {
+                        Some(old) => {
+                            project.update_roof(old.id, roof)?;
+                            old.id
+                        }
+                        None => project.add_roof(roof)?,
+                    };
+                    let walls = if fit {
+                        project.fit_walls_to_roof(id)?
+                    } else {
+                        0
+                    };
+                    let report = project.structure_report();
+                    let result = report
+                        .roofs
+                        .iter()
+                        .find(|r| r.id == id)
+                        .ok_or("Telhado não analisado.")?;
+                    Ok(Change::new(format!(
+                        "Telhado {}: meia-água de {:.0} %, {} m³ de madeira{}{}.",
+                        result.label,
+                        result.slope_percent,
+                        format!("{:.2}", result.timber_m3).replace('.', ","),
+                        if walls > 0 {
+                            format!(", {walls} parede(s) ajustada(s) à altura do telhado")
+                        } else {
+                            String::new()
+                        },
+                        match result.unsupported() {
+                            0 => String::new(),
+                            n => format!("; {n} ponta(s) de viga sem apoio embaixo"),
+                        }
+                    ))
+                    .data(roof_json(result)))
+                })
+            }
+            "remover_telhado" => {
+                let id = element_id(args, "id")?;
+                self.apply_change(None, |project| {
+                    if !project.remove_roof(id) {
+                        return Err("Telhado não encontrado.".to_owned());
+                    }
+                    Ok(Change::new(format!("Telhado {id} removido.")))
+                })
+            }
             "remover_viga_alavanca" => {
                 let id = element_id(args, "id")?;
                 self.apply_change(None, |project| {
@@ -629,7 +802,7 @@ impl FloorPlanApp {
                 })
             }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado ou vista.".to_owned(),
             ),
         }
     }
@@ -861,6 +1034,7 @@ impl FloorPlanApp {
             "vigas": beams,
             "pilares": columns,
             "sapatas": footings,
+            "telhados": report.roofs.iter().map(roof_json).collect::<Vec<_>>(),
             "fundacao_paredes": report.wall_foundations.iter().map(|f| json!({
                 "rotulo": f.label,
                 "parede": f.wall_id,
@@ -1041,6 +1215,81 @@ mod tests {
             &json!({ "acao": "vista", "disciplina": "estrutura" }),
         );
         assert!(!view.is_error, "{}", view.text);
+    }
+
+    #[test]
+    fn an_assistant_roofs_the_gourmet_area_and_the_columns_take_it() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        let built = app.run_mcp_tool(
+            "executar_lote",
+            &json!({ "acoes": [
+                { "ferramenta": "definir_terreno", "argumentos": { "largura": 10, "comprimento": 50 } },
+                { "ferramenta": "criar_comodo", "argumentos": { "nome": "Gourmet", "x": 0, "y": 25.75, "largura": 5, "comprimento": 14.75 } },
+                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "gerar_estrutura" } },
+            ] }),
+        );
+        assert!(!built.is_error, "{}", built.text);
+        let before = app.project.structure_report();
+        let load_before: f64 = before.columns.iter().map(|c| c.load_kn).sum();
+        let roofed = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({
+                "acao": "definir_telhado",
+                "x": 0, "y": 25.75, "largura_m": 5, "comprimento_m": 14.75,
+                "lado_alto": "oeste", "altura_alta_m": 4.3, "altura_baixa_m": 2.6,
+                "telha": "ceramica", "madeira": "c30",
+            }),
+        );
+        assert!(!roofed.is_error, "{}", roofed.text);
+        let data = roofed.structured.unwrap();
+        assert_eq!(data["pecas"].as_array().unwrap().len(), 4, "{data}");
+        assert!((data["inclinacao_pct"].as_f64().unwrap() - 34.0).abs() < 0.01);
+        // The west wall now stands 4.30 m tall.
+        let west = app
+            .project
+            .walls
+            .iter()
+            .find(|w| w.start.x.abs() < 0.01 && w.end.x.abs() < 0.01)
+            .unwrap();
+        assert_eq!(west.heights(app.project.wall_height), (4.3, 4.3));
+        // The roof weight reaches the columns.
+        let after = app.project.structure_report();
+        let load_after: f64 = after.columns.iter().map(|c| c.load_kn).sum();
+        let carried: f64 = after.roofs[0]
+            .reactions
+            .iter()
+            .filter(|r| r.support.as_deref().is_some_and(|s| s.starts_with('P')))
+            .map(|r| r.load_kn)
+            .sum();
+        assert!(carried > 0.0);
+        assert!(
+            load_after > load_before + carried * 0.99,
+            "{load_before} → {load_after}"
+        );
+        let report = app
+            .run_mcp_tool("pre_dimensionamento", &json!({}))
+            .structured
+            .unwrap();
+        assert_eq!(report["telhados"].as_array().unwrap().len(), 1);
+        let id = data["id"].as_u64().unwrap();
+        let edited = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({ "acao": "definir_telhado", "id": id, "telha": "metalica", "ajustar_paredes": false }),
+        );
+        assert!(!edited.is_error, "{}", edited.text);
+        assert_eq!(
+            edited.structured.unwrap()["pecas"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        let removed = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({ "acao": "remover_telhado", "id": id }),
+        );
+        assert!(!removed.is_error, "{}", removed.text);
+        assert!(app.project.structure.roofs.is_empty());
     }
 
     #[test]

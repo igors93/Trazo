@@ -330,6 +330,9 @@ pub struct ProjectStructure {
     /// The site's soil survey (SPT), shared by every floor (#112).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub soil_survey: Option<super::soil::SoilSurvey>,
+    /// Timber roofs over this floor (#114).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub roofs: Vec<super::roof::Roof>,
 }
 
 impl ProjectStructure {
@@ -340,6 +343,7 @@ impl ProjectStructure {
             && self.balance_beams.is_empty()
             && self.wall_foundations.is_empty()
             && self.soil_survey.is_none()
+            && self.roofs.is_empty()
     }
 }
 
@@ -771,6 +775,8 @@ pub struct StructureReport {
     pub balance_beams: Vec<super::foundations::BalanceBeamResult>,
     /// Ground beams and strip footings under the walls (#143).
     pub wall_foundations: Vec<super::wall_foundations::WallFoundationResult>,
+    /// Timber roofs and where they bear (#114).
+    pub roofs: Vec<super::roof::RoofResult>,
     pub warnings: Vec<String>,
 }
 
@@ -2092,6 +2098,7 @@ impl Project {
         snap.structure.settings.floors = 1;
         snap.structure.beams = level.data.beams.clone();
         snap.structure.slabs = level.data.slabs.clone();
+        snap.structure.roofs = level.data.roofs.clone();
         snap
     }
 
@@ -2185,6 +2192,84 @@ impl Project {
         // columns transfer as point loads onto a beam below or warn if unsupported.
         let mut incoming_column_load: HashMap<u64, f64> = HashMap::new();
         let mut beam_point_loads: HashMap<u64, Vec<BeamPointLoad>> = HashMap::new();
+        // Timber roofs (#114): each main-beam end bears on the column under
+        // it, or on the concrete beam under it.
+        let mut roof_on_column: HashMap<u64, f64> = HashMap::new();
+        for roof in &self.structure.roofs {
+            let mut result = self.analyse_roof(roof);
+            for reaction in &mut result.reactions {
+                let column = self
+                    .structural_columns()
+                    .filter(|c| {
+                        c.contains(reaction.point) || c.center.distance(reaction.point) <= 0.35
+                    })
+                    .min_by(|a, b| {
+                        a.center
+                            .distance(reaction.point)
+                            .total_cmp(&b.center.distance(reaction.point))
+                    });
+                if let Some(column) = column {
+                    *roof_on_column.entry(column.id).or_default() += reaction.load_kn;
+                    reaction.support = Some(label(column.id));
+                    continue;
+                }
+                let host = beams
+                    .iter()
+                    .filter_map(|(beam, a, b)| {
+                        let (nearest, t) =
+                            super::geometry::nearest_point_on_segment(reaction.point, *a, *b);
+                        let dist = nearest.distance(reaction.point);
+                        (dist <= 0.25).then_some((dist, beam.id, t))
+                    })
+                    .min_by(|a, b| a.0.total_cmp(&b.0));
+                if let Some((_, beam_id, t)) = host {
+                    beam_point_loads
+                        .entry(beam_id)
+                        .or_default()
+                        .push(BeamPointLoad {
+                            t: t.clamp(0.02, 0.98),
+                            load_kn: reaction.load_kn,
+                            quasi_factor: reaction.dead_kn / reaction.load_kn.max(1e-9),
+                        });
+                    reaction.support = Some(label(beam_id));
+                }
+            }
+            if !result.slope_ok() {
+                report.warnings.push(format!(
+                    "Telhado {}: inclinação de {:.0} % abaixo dos {:.0} % que a telha pede.",
+                    result.label, result.slope_percent, result.min_slope_percent
+                ));
+            }
+            if result.sheet_span_exceeded {
+                report.warnings.push(format!(
+                    "Telhado {}: as telhas não vencem o espaçamento das terças; aproxime as terças.",
+                    result.label
+                ));
+            }
+            for element in result.elements.iter().filter(|e| !e.ok) {
+                report.warnings.push(format!(
+                    "Telhado {}: nem {}×{} cm resolve as {}; diminua o vão ou o espaçamento, ou use madeira mais forte.",
+                    result.label,
+                    element.section_cm.0,
+                    element.section_cm.1,
+                    element.element.label().to_lowercase()
+                ));
+            }
+            let loose: Vec<&super::roof::RoofReaction> = result
+                .reactions
+                .iter()
+                .filter(|r| r.support.is_none())
+                .collect();
+            if !loose.is_empty() {
+                report.warnings.push(format!(
+                    "Telhado {}: {} apoio(s) de viga sem pilar nem viga embaixo (até {} kN cada); ponha pilares ou mourões nesses pontos.",
+                    result.label,
+                    loose.len(),
+                    decimal(loose.iter().map(|r| r.load_kn).fold(0.0, f64::max), 1)
+                ));
+            }
+            report.roofs.push(result);
+        }
         for upper in incoming_upper {
             let aligned = self
                 .structural_columns()
@@ -2825,10 +2910,12 @@ impl Project {
             let height = self.column_height(column);
             let own = CONCRETE_KN_M3 * column.width * column.depth * height;
             let upper_load_kn = incoming_column_load.get(&column.id).copied().unwrap_or(0.0);
+            // The roof (#114) only bears on the top: never multiplied.
+            let roof = roof_on_column.get(&column.id).copied().unwrap_or(0.0);
             let load = if use_multiplier {
-                (column_load.get(&column.id).copied().unwrap_or(0.0) + own) * floors
+                (column_load.get(&column.id).copied().unwrap_or(0.0) + own) * floors + roof
             } else {
-                column_load.get(&column.id).copied().unwrap_or(0.0) + own + upper_load_kn
+                column_load.get(&column.id).copied().unwrap_or(0.0) + own + upper_load_kn + roof
             };
             let needed = 1.4 * position.factor() * load / capacity;
             let result = ColumnResult {
@@ -3227,6 +3314,7 @@ impl Project {
         let report = self.cached_structure_report();
         marks.extend(self.balance_beam_marks(&report.balance_beams));
         marks.extend(self.wall_foundation_marks(&report.wall_foundations));
+        marks.extend(self.roof_marks(&report.roofs));
         super::label_layout::resolve_plan_mark_labels(&mut marks, &[]);
         marks
     }
