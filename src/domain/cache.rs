@@ -246,6 +246,11 @@ fn structure_fingerprint(project: &Project) -> u64 {
         survey.name.hash(&mut h);
     }
     (project.structure.post_timber as u8).hash(&mut h);
+    let wind = project.structure.wind;
+    hash_f64(&mut h, wind.v0_ms);
+    wind.category.hash(&mut h);
+    hash_f64(&mut h, wind.s1);
+    hash_f64(&mut h, wind.s3);
     project.structure.roofs.len().hash(&mut h);
     for roof in &project.structure.roofs {
         roof.id.hash(&mut h);

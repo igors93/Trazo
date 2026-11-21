@@ -790,6 +790,9 @@ impl FloorPlanApp {
                     StructureEdit::Roof(super::roof::RoofAction::Update(id, roof)) => {
                         self.project.update_roof(id, roof)
                     }
+                    StructureEdit::Roof(super::roof::RoofAction::Wind(wind)) => {
+                        self.project.set_wind(wind)
+                    }
                     StructureEdit::Roof(super::roof::RoofAction::PostTimber(class)) => {
                         self.project.structure.post_timber = class;
                         Ok(())

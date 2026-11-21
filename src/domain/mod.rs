@@ -55,4 +55,5 @@ pub mod wall_foundations;
 pub mod wall_heights;
 pub mod wall_layers;
 pub mod wall_reference;
+pub mod wind;
 pub mod xref;

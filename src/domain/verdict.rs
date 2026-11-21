@@ -630,6 +630,80 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
             checks,
         });
     }
+    for column in &report.wind.columns {
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Pilar {} · vento", column.label),
+            checks: vec![Check::new(
+                "Flexão (vento)",
+                column.ratio,
+                if column.ratio <= 1.0 + 1e-9 {
+                    format!(
+                        "{} cm atravessando a parede seguram o vento ({}), {} cm² por face.",
+                        decimal(column.depth_m * 100.0, 0),
+                        if column.braced {
+                            "topo travado pelo telhado"
+                        } else {
+                            "em balanço"
+                        },
+                        decimal(column.steel_cm2, 2)
+                    )
+                } else {
+                    format!(
+                        "Gire ou aumente o pilar: {} atravessando a parede{}.",
+                        column
+                            .needed_depth_m
+                            .map_or("mais de 80 cm".to_owned(), |h| format!("{:.0} cm", h * 100.0)),
+                        if column.braced {
+                            ""
+                        } else {
+                            ", ou trave o topo com o telhado contraventado"
+                        }
+                    )
+                },
+                format!(
+                    "NBR 6123: q = {} kN/m², Cp = 1,3, faixa de {} m, H = {} m; M = w·H²/{} = {} kN·m, Md = 1,4 M, x/d ≤ 0,45.",
+                    decimal(column.q_kpa, 2),
+                    decimal(column.tributary_m, 2),
+                    decimal(column.height_m, 2),
+                    if column.braced { 8 } else { 2 },
+                    decimal(column.moment_knm, 1)
+                ),
+            )],
+        });
+    }
+    for roof in &report.wind.roofs {
+        let light = if roof.lifts() {
+            Light::Yellow
+        } else {
+            Light::Green
+        };
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Telhado {} · vento", roof.label),
+            checks: vec![Check {
+                name: "Sucção".to_owned(),
+                utilisation: 1.4 * roof.uplift_kpa / (0.9 * roof.dead_kpa).max(1e-9),
+                light,
+                simple: if roof.lifts() {
+                    format!(
+                        "O vento levanta o telhado: ancore cada ponta de viga para {} kN e amarre as telhas.",
+                        decimal(roof.anchor_kn, 1)
+                    )
+                } else {
+                    "O peso do telhado vence a sucção do vento.".to_owned()
+                },
+                detail: format!(
+                    "NBR 6123: q = {} kN/m², Cpe = −1,0, Cpi = {}; 1,4·{} − 0,9·{} = {} kN/m².",
+                    decimal(roof.q_kpa, 2),
+                    if roof.open { "+0,8 (lado aberto)" } else { "0" },
+                    decimal(roof.uplift_kpa, 2),
+                    decimal(roof.dead_kpa, 2),
+                    decimal(roof.net_design_kpa, 2)
+                ),
+            }],
+        });
+    }
     for post in &report.timber_posts {
         verdicts.push(Verdict {
             discipline: Discipline::Structure,

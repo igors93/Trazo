@@ -19,6 +19,8 @@ pub(super) enum RoofAction {
     FitWalls(u64),
     /// The strength class of every timber post.
     PostTimber(TimberClass),
+    /// The site's wind (#147).
+    Wind(crate::domain::wind::WindSettings),
 }
 
 fn decimal(value: f64, places: usize) -> String {
@@ -273,6 +275,117 @@ pub(super) fn roof_tab(
     if let Some(posts) = posts_section(ui, project, report) {
         action = Some(posts);
     }
+    if let Some(wind) = wind_section(ui, project, report) {
+        action = Some(wind);
+    }
+    action
+}
+
+/// The wind on the tall walls and on the roofs (#147).
+fn wind_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Option<RoofAction> {
+    let mut action = None;
+    ui.add_space(10.0);
+    ui.separator();
+    ui.label(RichText::new("Vento (NBR 6123)").font(strong(13.5)));
+    let mut wind = project.structure.wind;
+    ui.horizontal_wrapped(|ui| {
+        ui.label("V0");
+        let mut changed = ui
+            .add(
+                egui::DragValue::new(&mut wind.v0_ms)
+                    .range(25.0..=55.0)
+                    .speed(0.0)
+                    .max_decimals(0)
+                    .suffix(" m/s"),
+            )
+            .on_hover_text("Velocidade básica do vento da cidade, no mapa de isopletas da NBR 6123")
+            .changed();
+        ui.label("Terreno");
+        egui::ComboBox::from_id_salt("wind_category")
+            .selected_text(match wind.category {
+                1 => "I · mar aberto",
+                2 => "II · campo aberto",
+                3 => "III · subúrbio, casas",
+                4 => "IV · cidade",
+                _ => "V · centro denso",
+            })
+            .show_ui(ui, |ui| {
+                for (category, label) in [
+                    (1, "I · mar aberto"),
+                    (2, "II · campo aberto"),
+                    (3, "III · subúrbio, casas"),
+                    (4, "IV · cidade"),
+                    (5, "V · centro denso"),
+                ] {
+                    changed |= ui
+                        .selectable_value(&mut wind.category, category, label)
+                        .changed();
+                }
+            });
+        if changed {
+            action = Some(RoofAction::Wind(wind));
+        }
+    });
+    if report.wind.columns.is_empty() && report.wind.roofs.is_empty() {
+        ui.label(
+            RichText::new("Nenhuma parede mais alta que o pé-direito nem telhado para verificar.")
+                .color(MUTED),
+        );
+        return action;
+    }
+    for column in &report.wind.columns {
+        let ok = column.ratio <= 1.0 + 1e-9;
+        ui.label(
+            RichText::new(format!(
+                "Pilar {} · parede de {} m, faixa de {} m, q = {} kN/m², {}: M = {} kN·m; {} cm atravessando a parede{}",
+                column.label,
+                decimal(column.height_m, 2),
+                decimal(column.tributary_m, 2),
+                decimal(column.q_kpa, 2),
+                if column.braced { "topo travado pelo telhado" } else { "em balanço" },
+                decimal(column.moment_knm, 1),
+                decimal(column.depth_m * 100.0, 0),
+                if ok {
+                    format!(" atendem ({} cm² por face).", decimal(column.steel_cm2, 2))
+                } else {
+                    format!(
+                        " não bastam: use {}.",
+                        column
+                            .needed_depth_m
+                            .map_or("mais de 80 cm".to_owned(), |h| format!("{:.0} cm", h * 100.0))
+                    )
+                }
+            ))
+            .color(if ok { TEXT_2 } else { WARNING }),
+        );
+    }
+    for roof in &report.wind.roofs {
+        ui.label(
+            RichText::new(if roof.lifts() {
+                format!(
+                    "Telhado {}: sucção de {} kN/m²{} contra {} kN/m² de peso: ancore cada ponta de viga para {} kN e amarre as telhas.",
+                    roof.label,
+                    decimal(roof.uplift_kpa, 2),
+                    if roof.open { " (lado aberto)" } else { "" },
+                    decimal(roof.dead_kpa, 2),
+                    decimal(roof.anchor_kn, 1)
+                )
+            } else {
+                format!(
+                    "Telhado {}: o peso ({} kN/m²) vence a sucção ({} kN/m²).",
+                    roof.label,
+                    decimal(roof.dead_kpa, 2),
+                    decimal(roof.uplift_kpa, 2)
+                )
+            })
+            .color(if roof.lifts() { WARNING } else { TEXT_2 }),
+        );
+    }
+    ui.label(
+        RichText::new("Pilar travado pelo telhado só vale com o telhado contraventado até os oitões; mourões articulados na base não seguram o vento sozinhos.")
+            .size(11.0)
+            .color(MUTED),
+    );
     action
 }
 

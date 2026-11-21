@@ -214,6 +214,41 @@ pub(super) fn roof_json(result: &crate::domain::roof::RoofResult) -> Value {
     })
 }
 
+/// The wind settings and its effects as tool output (#147).
+pub(super) fn wind_json(
+    wind: &crate::domain::wind::WindSettings,
+    effects: &crate::domain::wind::WindReport,
+) -> Value {
+    let round2 = |v: f64| (v * 100.0).round() / 100.0;
+    json!({
+        "v0_ms": wind.v0_ms,
+        "categoria_terreno": wind.category,
+        "s1": wind.s1,
+        "s3": wind.s3,
+        "pilares": effects.columns.iter().map(|c| json!({
+            "rotulo": c.label,
+            "altura_m": round2(c.height_m),
+            "faixa_m": round2(c.tributary_m),
+            "q_kn_m2": round2(c.q_kpa),
+            "topo_travado": c.braced,
+            "momento_knm": round2(c.moment_knm),
+            "secao_atravessando_cm": round2(c.depth_m * 100.0),
+            "uso": round2(c.ratio.min(9.99)),
+            "armadura_por_face_cm2": round2(c.steel_cm2),
+            "secao_necessaria_cm": c.needed_depth_m.map(|h| round2(h * 100.0)),
+        })).collect::<Vec<_>>(),
+        "telhados": effects.roofs.iter().map(|r| json!({
+            "rotulo": r.label,
+            "q_kn_m2": round2(r.q_kpa),
+            "lado_aberto": r.open,
+            "succao_kn_m2": round2(r.uplift_kpa),
+            "peso_kn_m2": round2(r.dead_kpa),
+            "levanta": r.lifts(),
+            "ancoragem_por_ponta_kn": round2(r.anchor_kn),
+        })).collect::<Vec<_>>(),
+    })
+}
+
 /// A size argument in centimetres, as metres.
 fn centimetres(args: &Value, key: &str) -> Result<Option<f64>, String> {
     Ok(number(args, key)?.map(|cm| cm / 100.0))
@@ -728,6 +763,33 @@ impl FloorPlanApp {
                 ))
                 .with_structured(foundation_study_json(&study)))
             }
+            "configurar_vento" => {
+                let mut wind = self.project.structure.wind;
+                if let Some(v) = number(args, "v0_ms")? {
+                    wind.v0_ms = v;
+                }
+                if let Some(v) = number(args, "categoria_terreno")? {
+                    if v.fract() != 0.0 {
+                        return Err("'categoria_terreno' é um inteiro de 1 a 5.".to_owned());
+                    }
+                    wind.category = v as u8;
+                }
+                if let Some(v) = number(args, "s1")? {
+                    wind.s1 = v;
+                }
+                if let Some(v) = number(args, "s3")? {
+                    wind.s3 = v;
+                }
+                self.apply_change(Some("O vento já era esse."), |project| {
+                    project.set_wind(wind)?;
+                    let report = project.structure_report();
+                    Ok(Change::new(format!(
+                        "Vento: V0 = {:.0} m/s, categoria {}.",
+                        wind.v0_ms, wind.category
+                    ))
+                    .data(wind_json(&project.structure.wind, &report.wind)))
+                })
+            }
             "inserir_mourao" => {
                 let x = required_number(args, "x")?;
                 let y = required_number(args, "y")?;
@@ -830,7 +892,7 @@ impl FloorPlanApp {
                 })
             }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao, configurar_vento ou vista.".to_owned(),
             ),
         }
     }
@@ -1063,6 +1125,7 @@ impl FloorPlanApp {
             "pilares": columns,
             "sapatas": footings,
             "telhados": report.roofs.iter().map(roof_json).collect::<Vec<_>>(),
+            "vento": wind_json(&self.project.structure.wind, &report.wind),
             "mouroes": report.timber_posts.iter().map(|p| json!({
                 "id": p.id,
                 "rotulo": p.label,
@@ -1383,6 +1446,41 @@ mod tests {
         let bad = app.run_mcp_tool(
             "projeto_estrutural",
             &json!({ "acao": "inserir_mourao", "x": 2, "y": 2, "diametro_cm": 60 }),
+        );
+        assert!(bad.is_error);
+    }
+
+    #[test]
+    fn the_wind_checks_the_tall_wall_and_lifts_an_open_roof() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        let built = app.run_mcp_tool(
+            "executar_lote",
+            &json!({ "acoes": [
+                { "ferramenta": "definir_terreno", "argumentos": { "largura": 10, "comprimento": 50 } },
+                { "ferramenta": "criar_parede", "argumentos": { "x1": 0.07, "y1": 25.75, "x2": 0.07, "y2": 40.5 } },
+                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "inserir_mourao", "x": 4.92, "y": 25.83 } },
+                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "inserir_mourao", "x": 4.92, "y": 40.42 } },
+                { "ferramenta": "projeto_estrutural", "argumentos": {
+                    "acao": "definir_telhado", "x": 0, "y": 25.75, "largura_m": 5, "comprimento_m": 14.75,
+                    "lado_alto": "oeste", "altura_alta_m": 4.3, "altura_baixa_m": 2.6, "telha": "metalica",
+                } },
+                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "configurar_vento", "v0_ms": 40, "categoria_terreno": 2 } },
+            ] }),
+        );
+        assert!(!built.is_error, "{}", built.text);
+        assert_eq!(app.project.structure.wind.category, 2);
+        let report = app
+            .run_mcp_tool("pre_dimensionamento", &json!({}))
+            .structured
+            .unwrap();
+        let roof = &report["vento"]["telhados"][0];
+        // A light metal roof with an open side lifts.
+        assert_eq!(roof["lado_aberto"], true, "{report}");
+        assert_eq!(roof["levanta"], true, "{report}");
+        assert!(roof["ancoragem_por_ponta_kn"].as_f64().unwrap() > 0.0);
+        let bad = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({ "acao": "configurar_vento", "v0_ms": 90 }),
         );
         assert!(bad.is_error);
     }

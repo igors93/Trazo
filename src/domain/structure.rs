@@ -336,6 +336,13 @@ pub struct ProjectStructure {
     /// Strength class of the timber posts (#146).
     #[serde(default, skip_serializing_if = "is_default_timber")]
     pub post_timber: super::roof::TimberClass,
+    /// The site's wind (#147).
+    #[serde(default, skip_serializing_if = "is_default_wind")]
+    pub wind: super::wind::WindSettings,
+}
+
+fn is_default_wind(wind: &super::wind::WindSettings) -> bool {
+    *wind == super::wind::WindSettings::default()
 }
 
 fn is_default_timber(class: &super::roof::TimberClass) -> bool {
@@ -352,6 +359,7 @@ impl ProjectStructure {
             && self.soil_survey.is_none()
             && self.roofs.is_empty()
             && is_default_timber(&self.post_timber)
+            && is_default_wind(&self.wind)
     }
 }
 
@@ -821,6 +829,8 @@ pub struct StructureReport {
     /// Timber posts and the timber beams over them (#146).
     pub timber_posts: Vec<super::timber_posts::TimberPostResult>,
     pub eave_beams: Vec<super::timber_posts::EaveBeamResult>,
+    /// Wind on the tall walls and the roofs (#147).
+    pub wind: super::wind::WindReport,
     pub warnings: Vec<String>,
 }
 
@@ -3197,6 +3207,35 @@ impl Project {
             }
         }
         report.balance_beams = balance.results;
+        // Wind on the tall walls and the roofs (#147).
+        let wind = self.wind_effects(&report);
+        for column in wind.columns.iter().filter(|c| c.ratio > 1.0 + 1e-9) {
+            report.warnings.push(format!(
+                "{}: o vento na parede de {} m ({}) pede {} atravessando a parede; hoje tem {:.0} cm.",
+                column.label,
+                decimal(column.height_m, 2),
+                if column.braced {
+                    "topo travado pelo telhado"
+                } else {
+                    "pilar em balanço"
+                },
+                column
+                    .needed_depth_m
+                    .map_or("mais de 80 cm".to_owned(), |h| format!("{:.0} cm", h * 100.0)),
+                column.depth_m * 100.0
+            ));
+        }
+        for roof in wind.roofs.iter().filter(|r| r.lifts()) {
+            report.warnings.push(format!(
+                "Telhado {}: o vento levanta o telhado{} ({} kN/m² de sucção contra {} kN/m² de peso); ancore cada ponta de viga para {} kN e amarre as telhas.",
+                roof.label,
+                if roof.open { ", que tem lado aberto" } else { "" },
+                decimal(roof.uplift_kpa, 2),
+                decimal(roof.dead_kpa, 2),
+                decimal(roof.anchor_kn, 1)
+            ));
+        }
+        report.wind = wind;
         // The survey (#112) may allow less than the pressure adopted.
         if let Some(survey) = &self.structure.soil_survey {
             let widest = report

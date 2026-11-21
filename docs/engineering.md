@@ -258,7 +258,23 @@ A roof beam end with no concrete column or beam under it bears on a timber post 
 | Timber beam | 6 × 12 to 12 × 30 cm: σ = 1.4 M / W ≤ fc0,d, τ = 1.5 · 1.4 V / (b h) ≤ fv0,d, the deflections of each load (P b (L² − b²)^1.5 / (9√3 L E I)) and of the own weight added, within L / 200 | NBR 7190 |
 | Base | concrete block B = √(1.05 N / σadm), at least 40 cm, in 5 cm steps, with a steel anchor so the timber stays off the ground | Usual practice, NBR 7190 durability |
 
-The posts' timber class is one for all of them (C30 by default). Checked by `a_short_post_is_checked_in_plain_compression`, `a_slender_post_pays_for_buckling_and_creep`, `the_gourmet_posts_carry_the_low_edge_of_the_roof` and `timber_posts_carry_the_low_edge_of_a_roof`. Wind on the open side, which bends the posts and asks for bracing, comes with #147.
+The posts' timber class is one for all of them (C30 by default). Checked by `a_short_post_is_checked_in_plain_compression`, `a_slender_post_pays_for_buckling_and_creep`, `the_gourmet_posts_carry_the_low_edge_of_the_roof` and `timber_posts_carry_the_low_edge_of_a_roof`. Wind on the open side, which bends the posts and asks for bracing, is in [Wind](#wind).
+
+## Wind
+
+`src/domain/wind.rs` applies NBR 6123 to what an open-sided building such as a gourmet area adds to a closed house: walls taller than the storey and a roof the wind can get under.
+
+| Quantity | Rule | Source |
+| --- | --- | --- |
+| Dynamic pressure | q = 0.613 · Vk² N/m², Vk = V0 · S1 · S2 · S3; V0 from the isopleth map (35 m/s by default), S1 = S3 = 1 by default | NBR 6123, 4.2 and 5 |
+| S2 | b · Fr · (z / 10)^p with b, Fr and p of the terrain category (I to V, III by default) and the building class (A below 20 m, B from 20 to 50 m), z the top of the wall or roof | NBR 6123, table 1 |
+| Tall-wall columns | a column standing in a wall taller than the storey (+ 20 cm) takes w = 1.3 · q · (its share of the wall); 1.3 is the net coefficient of a wall of an open-sided building | NBR 6123 (walls, dominant openings) |
+| Top condition | propped by the roof when a roof beam bears on the column (M = w H² / 8, which needs the roof braced down to the gable walls), else a cantilever from its footing (M = w H² / 2) | — |
+| Column check | bending across the wall, Md = 1.4 M, μ = Md / (0.85 fcd b d²) ≤ 0.295 (x/d ≤ 0.45), steel per face Md / (z fyd); the smallest depth across the wall that passes is suggested | NBR 6118 |
+| Roof uplift | (−Cpe + Cpi) · q with Cpe = −1.0 (conservative for one slope) and Cpi = +0.8 when a side is open (a beam end on a post or on nothing), else 0 | NBR 6123, 6.2.5 |
+| Anchorage | net 1.4 · uplift − 0.9 · g; when positive, each beam end is anchored for it over its share of the roof, and the tiles are tied | NBR 8681 combinations |
+
+Checked by `the_pressure_follows_nbr_6123`, `a_tall_wall_column_is_propped_by_the_roof_or_stands_as_a_cantilever` and `the_wind_checks_the_tall_wall_and_lifts_an_open_roof`. For the gourmet area (4.30 m wall, V0 = 35 m/s, category III) a 14 cm column across the wall does not hold the wall as a cantilever; propped by a braced roof it does. Not covered: the masonry panel between columns (NBR 16868), the global stability of the building, and the bracing of the roof and of the posts themselves.
 
 ## Electrical installation
 
