@@ -32,6 +32,79 @@ fn parse_occupancy_class(raw: &str) -> Option<OccupancyClass> {
     }
 }
 
+/// The soil survey from 'leituras' [{profundidade_m, n, solo}], (#112).
+fn survey_arg(args: &Value) -> Result<crate::domain::soil::SoilSurvey, String> {
+    use crate::domain::soil::{SoilKind, SoilSurvey, SptReading};
+    let rows = args
+        .get("leituras")
+        .and_then(Value::as_array)
+        .ok_or("Informe 'leituras': [{profundidade_m, n, solo}], uma por metro.")?;
+    let mut readings = Vec::with_capacity(rows.len());
+    for (i, row) in rows.iter().enumerate() {
+        let depth = number(row, "profundidade_m")?
+            .ok_or_else(|| format!("Leitura {}: falta 'profundidade_m'.", i + 1))?;
+        let n = number(row, "n")?.ok_or_else(|| format!("Leitura {}: falta 'n'.", i + 1))?;
+        if n < 0.0 || n.fract() != 0.0 {
+            return Err(format!(
+                "Leitura {}: 'n' é um número inteiro de golpes.",
+                i + 1
+            ));
+        }
+        let soil = match text(row, "solo") {
+            Some(raw) => SoilKind::parse(&raw).ok_or_else(|| {
+                format!(
+                    "Leitura {}: 'solo' deve ser argila, silte_argiloso, silte_arenoso ou areia.",
+                    i + 1
+                )
+            })?,
+            None => SoilKind::Clay,
+        };
+        readings.push(SptReading {
+            depth_m: depth,
+            n: n as u32,
+            soil,
+        });
+    }
+    SoilSurvey::new(
+        text(args, "nome").unwrap_or_else(|| "SP-01".to_owned()),
+        readings,
+        number(args, "nivel_agua_m")?,
+        number(args, "cota_sapata_m")?.unwrap_or(1.0),
+    )
+}
+
+/// The foundation study as tool output (#112).
+pub(super) fn foundation_study_json(study: &crate::domain::soil::FoundationStudy) -> Value {
+    let round1 = |v: f64| (v * 10.0).round() / 10.0;
+    json!({
+        "com_sondagem": study.survey,
+        "carga_total_kn": round1(study.total_load_kn),
+        "projecao_m2": round1(study.footprint_m2),
+        "solo_kpa_sondagem": study.survey_footing_kpa.map(|v| v.round()),
+        "recomendada": study.recommended.map(|o| o.key()),
+        "opcoes": study.options.iter().map(|o| json!({
+            "tipo": o.option.key(),
+            "nome": o.option.label(),
+            "viavel": o.viable,
+            "resumo": o.summary,
+            "observacoes": o.notes,
+            "concreto_m3": (o.concrete_m3 * 100.0).round() / 100.0,
+            "solo_kpa": o.soil_kpa.map(|v| v.round()),
+        })).collect::<Vec<_>>(),
+        "broca": study.pile.map(|p| json!({
+            "diametro_cm": (p.diameter_m * 100.0).round(),
+            "comprimento_m": p.length_m,
+            "quantidade": study.piles,
+            "carga_admissivel_kn": round1(p.allowable_kn),
+            "ponta_ruptura_kn": round1(p.tip_kn),
+            "atrito_ruptura_kn": round1(p.shaft_kn),
+            "limite_concreto_kn": round1(p.structural_kn),
+            "n_ponta": round1(p.tip_n),
+            "n_fuste": round1(p.shaft_n),
+        })),
+    })
+}
+
 /// A size argument in centimetres, as metres.
 fn centimetres(args: &Value, key: &str) -> Result<Option<f64>, String> {
     Ok(number(args, key)?.map(|cm| cm / 100.0))
@@ -490,6 +563,62 @@ impl FloorPlanApp {
                 }
                 Ok(Change::new(format!("{count} fundação(ões) de parede removida(s).")))
             }),
+            "definir_sondagem" => {
+                let survey = survey_arg(args)?;
+                let apply = args
+                    .get("aplicar_ao_solo")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true);
+                self.apply_change(None, |project| {
+                    let name = survey.name.clone();
+                    let count = survey.readings.len();
+                    let deepest = survey.deepest_m();
+                    project.set_soil_survey(Some(survey));
+                    let soil = if apply {
+                        project.apply_survey_to_soil()
+                    } else {
+                        None
+                    };
+                    let study = project.foundation_study();
+                    Ok(Change::new(format!(
+                        "Sondagem {name}: {count} leitura(s) até {} m{}{}",
+                        format!("{deepest:.1}").replace('.', ","),
+                        soil.map_or(String::new(), |kpa| format!(
+                            "; tensão do solo agora {kpa:.0} kPa"
+                        )),
+                        study.recommended.map_or(".".to_owned(), |o| format!(
+                            "; fundação recomendada: {}.",
+                            o.label().to_lowercase()
+                        ))
+                    ))
+                    .data(foundation_study_json(&study)))
+                })
+            }
+            "remover_sondagem" => self.apply_change(None, |project| {
+                if project.structure.soil_survey.is_none() {
+                    return Err("O projeto não tem sondagem.".to_owned());
+                }
+                project.set_soil_survey(None);
+                Ok(Change::new("Sondagem removida.".to_owned()))
+            }),
+            "simular_fundacoes" => {
+                let study = self.project.foundation_study();
+                if study.options.is_empty() {
+                    return Err(
+                        "Nada para fundar ainda: gere a estrutura (pilares) e as fundações das paredes."
+                            .to_owned(),
+                    );
+                }
+                Ok(ToolOutput::ok(format!(
+                    "{} opção(ões) viável(is) de {}; recomendada: {}.",
+                    study.options.iter().filter(|o| o.viable).count(),
+                    study.options.len(),
+                    study
+                        .recommended
+                        .map_or("nenhuma (consulte um engenheiro de fundações)", |o| o.label())
+                ))
+                .with_structured(foundation_study_json(&study)))
+            }
             "remover_viga_alavanca" => {
                 let id = element_id(args, "id")?;
                 self.apply_change(None, |project| {
@@ -500,7 +629,7 @@ impl FloorPlanApp {
                 })
             }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes ou vista.".to_owned(),
             ),
         }
     }
@@ -912,5 +1041,59 @@ mod tests {
             &json!({ "acao": "vista", "disciplina": "estrutura" }),
         );
         assert!(!view.is_error, "{}", view.text);
+    }
+
+    #[test]
+    fn a_soil_survey_sets_the_soil_and_compares_the_foundations() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        let built = app.run_mcp_tool(
+            "executar_lote",
+            &json!({ "acoes": [
+                { "ferramenta": "definir_terreno", "argumentos": { "largura": 15, "comprimento": 20 } },
+                { "ferramenta": "criar_comodo", "argumentos": { "nome": "Sala", "x": 1, "y": 1, "largura": 4, "comprimento": 4 } },
+                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "gerar_estrutura" } },
+            ] }),
+        );
+        assert!(!built.is_error, "{}", built.text);
+        let defined = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({
+                "acao": "definir_sondagem",
+                "nome": "SP-01",
+                "nivel_agua_m": 5.2,
+                "leituras": [
+                    { "profundidade_m": 1, "n": 6, "solo": "argila" },
+                    { "profundidade_m": 2, "n": 7, "solo": "argila" },
+                    { "profundidade_m": 3, "n": 8, "solo": "silte_argiloso" },
+                    { "profundidade_m": 4, "n": 12, "solo": "silte_arenoso" },
+                    { "profundidade_m": 5, "n": 15, "solo": "areia" },
+                    { "profundidade_m": 6, "n": 18, "solo": "areia" },
+                ],
+            }),
+        );
+        assert!(!defined.is_error, "{}", defined.text);
+        // N̄ from 1 to 3 m = 7 → 140 kPa.
+        assert!((app.project.structure.settings.soil_kpa - 140.0).abs() < 1e-9);
+        let study = app
+            .run_mcp_tool(
+                "projeto_estrutural",
+                &json!({ "acao": "simular_fundacoes" }),
+            )
+            .structured
+            .unwrap();
+        let options = study["opcoes"].as_array().unwrap();
+        assert_eq!(options.len(), 3);
+        assert!(study["recomendada"].is_string(), "{study}");
+        // Brocas stop above the water table at 5.2 m.
+        assert!(study["broca"]["comprimento_m"].as_f64().unwrap() <= 5.0);
+        let bad = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({ "acao": "definir_sondagem", "leituras": [{ "profundidade_m": 1, "n": 5, "solo": "turfa" }] }),
+        );
+        assert!(bad.is_error);
+        let removed =
+            app.run_mcp_tool("projeto_estrutural", &json!({ "acao": "remover_sondagem" }));
+        assert!(!removed.is_error, "{}", removed.text);
+        assert!(app.project.structure.soil_survey.is_none());
     }
 }

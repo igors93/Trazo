@@ -40,6 +40,7 @@ pub mod setbacks;
 pub mod sheet;
 pub mod sheet_set;
 pub mod snap;
+pub mod soil;
 pub mod structure;
 pub mod templates;
 pub mod transform;

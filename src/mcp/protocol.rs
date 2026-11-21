@@ -803,9 +803,9 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "projeto_estrutural",
             title: "Projeto estrutural (pré-dimensionamento)",
-            description: "Comandos da estrutura (planta de forma e fundações). gerar_estrutura: pilares, vigas, lajes e sapatas. inserir_pilar / inserir_sapata. inserir_carga / editar_carga / remover_carga: caixa-d'água ou equipamento pesado, com carga concentrada transmitida à laje ou viga. ligar_pilares e apoiar_em_viga. editar_viga / remover_viga. definir_laje / remover_laje. configurar materiais e cargas. ajustar_sapatas. gerar_vigas_alavanca: viga alavanca de cada pilar de divisa (sapata fora do centro) ao pilar interno mais próximo; ligar_viga_alavanca: do pilar 'de' (divisa) ao pilar 'para' (interno); remover_viga_alavanca: pela 'id'. gerar_fundacao_paredes: viga baldrame nas paredes entre pilares e sapata corrida nas demais (as abertas ficam de fora); definir_fundacao_parede: parede 'id', 'tipo' baldrame ou sapata_corrida, largura_cm opcional; remover_fundacao_paredes. vista: seleciona a disciplina da aba ativa.",
+            description: "Comandos da estrutura (planta de forma e fundações). gerar_estrutura: pilares, vigas, lajes e sapatas. inserir_pilar / inserir_sapata. inserir_carga / editar_carga / remover_carga: caixa-d'água ou equipamento pesado, com carga concentrada transmitida à laje ou viga. ligar_pilares e apoiar_em_viga. editar_viga / remover_viga. definir_laje / remover_laje. configurar materiais e cargas. ajustar_sapatas. gerar_vigas_alavanca: viga alavanca de cada pilar de divisa (sapata fora do centro) ao pilar interno mais próximo; ligar_viga_alavanca: do pilar 'de' (divisa) ao pilar 'para' (interno); remover_viga_alavanca: pela 'id'. gerar_fundacao_paredes: viga baldrame nas paredes entre pilares e sapata corrida nas demais (as abertas ficam de fora); definir_fundacao_parede: parede 'id', 'tipo' baldrame ou sapata_corrida, largura_cm opcional; remover_fundacao_paredes. definir_sondagem: sondagem SPT do terreno em 'leituras' (uma por metro, com o N e o solo), 'nivel_agua_m' e 'cota_sapata_m' opcionais; por padrão leva a tensão do solo para a das sapatas (aplicar_ao_solo) e devolve o estudo de fundações. remover_sondagem. simular_fundacoes: compara sapatas, radier e brocas com baldrame para as cargas reais (σadm = 20·N̄ kPa; brocas por Décourt-Quaresma) e recomenda a viável com menos concreto. vista: seleciona a disciplina da aba ativa.",
             properties: json!({
-                "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "gerar_fundacao_paredes", "definir_fundacao_parede", "remover_fundacao_paredes", "vista"], "description": "O que fazer." },
+                "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "gerar_fundacao_paredes", "definir_fundacao_parede", "remover_fundacao_paredes", "definir_sondagem", "remover_sondagem", "simular_fundacoes", "vista"], "description": "O que fazer." },
                 "x": number("Para inserir pilar, sapata ou carga: posição x, em metros."),
                 "y": number("Para inserir pilar, sapata ou carga: posição y, em metros."),
                 "largura_cm": number("Largura do pilar, da sapata ou da viga, em cm."),
@@ -830,6 +830,23 @@ fn catalogue() -> Vec<Tool> {
                 "sobrecarga_kn_m2": number("Para configurar: carga variável nas lajes, kN/m²."),
                 "revestimento_kn_m2": number("Para configurar: revestimento e contrapiso, kN/m²."),
                 "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Para vista." },
+                "leituras": {
+                    "type": "array",
+                    "description": "Para definir_sondagem: leituras do SPT, uma por metro.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "profundidade_m": { "type": "number", "description": "Profundidade da leitura, em metros (0,5 a 40)." },
+                            "n": { "type": "integer", "description": "Golpes do SPT (N) nos últimos 30 cm." },
+                            "solo": { "type": "string", "enum": ["argila", "silte_argiloso", "silte_arenoso", "areia"], "description": "Solo na profundidade." }
+                        },
+                        "required": ["profundidade_m", "n"]
+                    }
+                },
+                "nome": { "type": "string", "description": "Para definir_sondagem: nome do furo (ex: SP-01)." },
+                "nivel_agua_m": number("Para definir_sondagem: profundidade do lençol freático, em metros."),
+                "cota_sapata_m": number("Para definir_sondagem: profundidade da base das sapatas, em metros (padrão 1,00)."),
+                "aplicar_ao_solo": { "type": "boolean", "description": "Para definir_sondagem: leva a tensão admissível das sapatas para a configuração (padrão true)." },
             }),
             required: &["acao"],
             read_only: false,

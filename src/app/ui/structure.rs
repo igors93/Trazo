@@ -30,6 +30,7 @@ enum StructureEdit {
     Slab(u64, SlabKind, f64),
     Beam(u64, f64, f64),
     Settings(crate::domain::structure::StructureSettings),
+    Soil(super::foundations::SoilAction),
 }
 
 fn reinforcement_tab(ui: &mut Ui, report: &ReinforcementReport) {
@@ -506,7 +507,7 @@ impl FloorPlanApp {
                 }
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    for (index, title) in ["Pré-dimensionamento", "Esforços nas vigas", "Armaduras"].iter().enumerate() {
+                    for (index, title) in ["Pré-dimensionamento", "Esforços nas vigas", "Armaduras", "Solo e fundações"].iter().enumerate() {
                         if ui
                             .selectable_label(tab == index as u8, RichText::new(*title).font(strong(12.5)))
                             .clicked()
@@ -549,6 +550,12 @@ impl FloorPlanApp {
                     }
                     if tab == 2 {
                         reinforcement_tab(ui, &reinforcement);
+                        return;
+                    }
+                    if tab == 3 {
+                        if let Some(action) = super::foundations::soil_tab(ui, &self.project) {
+                            edits.push(StructureEdit::Soil(action));
+                        }
                         return;
                     }
                     let heading = |ui: &mut Ui, text: &str| {
@@ -766,6 +773,17 @@ impl FloorPlanApp {
                         self.project.structure.settings = settings;
                         Ok(())
                     }
+                    StructureEdit::Soil(super::foundations::SoilAction::Survey(survey)) => {
+                        self.project.set_soil_survey(survey);
+                        Ok(())
+                    }
+                    StructureEdit::Soil(super::foundations::SoilAction::ApplyToSoil) => self
+                        .project
+                        .apply_survey_to_soil()
+                        .map(|kpa| {
+                            self.message = format!("Tensão do solo: {kpa:.0} kPa, da sondagem.");
+                        })
+                        .ok_or_else(|| "A sondagem não chega à cota das sapatas.".to_owned()),
                 };
                 if let Err(e) = result {
                     error = Some(e);

@@ -234,6 +234,17 @@ fn structure_fingerprint(project: &Project) -> u64 {
         hash_f64(&mut h, opening.width());
         hash_f64(&mut h, opening.height().unwrap_or(-1.0));
     }
+    if let Some(survey) = &project.structure.soil_survey {
+        survey.readings.len().hash(&mut h);
+        for r in &survey.readings {
+            hash_f64(&mut h, r.depth_m);
+            r.n.hash(&mut h);
+            (r.soil as u8).hash(&mut h);
+        }
+        hash_f64(&mut h, survey.water_table_m.unwrap_or(-1.0));
+        hash_f64(&mut h, survey.footing_depth_m);
+        survey.name.hash(&mut h);
+    }
     project.structure.balance_beams.len().hash(&mut h);
     for beam in &project.structure.balance_beams {
         beam.id.hash(&mut h);

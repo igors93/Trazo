@@ -327,6 +327,9 @@ pub struct ProjectStructure {
     /// Ground beams and strip footings under the walls (#143).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub wall_foundations: Vec<super::wall_foundations::WallFoundation>,
+    /// The site's soil survey (SPT), shared by every floor (#112).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub soil_survey: Option<super::soil::SoilSurvey>,
 }
 
 impl ProjectStructure {
@@ -336,6 +339,7 @@ impl ProjectStructure {
             && self.settings.is_default()
             && self.balance_beams.is_empty()
             && self.wall_foundations.is_empty()
+            && self.soil_survey.is_none()
     }
 }
 
@@ -3028,6 +3032,29 @@ impl Project {
             }
         }
         report.balance_beams = balance.results;
+        // The survey (#112) may allow less than the pressure adopted.
+        if let Some(survey) = &self.structure.soil_survey {
+            let widest = report
+                .footings
+                .iter()
+                .map(|f| f.width_m.max(f.depth_m))
+                .fold(1.0, f64::max);
+            match survey.footing_kpa(widest) {
+                Some(kpa) if kpa + 1e-6 < settings.soil_kpa => report.warnings.push(format!(
+                    "A sondagem {} indica {:.0} kPa na cota das sapatas ({} m), menos que os {:.0} kPa adotados: use a sondagem na tensão do solo.",
+                    survey.name,
+                    kpa,
+                    decimal(survey.footing_depth_m, 2),
+                    settings.soil_kpa
+                )),
+                None => report.warnings.push(format!(
+                    "A sondagem {} não chega à cota das sapatas ({} m).",
+                    survey.name,
+                    decimal(survey.footing_depth_m, 2)
+                )),
+                _ => {}
+            }
+        }
         for result in &ground.results {
             if result.kind == super::wall_foundations::WallFoundationKind::GroundBeam
                 && result.height_m.is_none()

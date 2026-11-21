@@ -204,6 +204,8 @@ A wall can have its own height. In Properties, **Altura** takes the height of th
 
 **Baldrames** gives every ground-floor wall its foundation: a ground beam (*viga baldrame*) on the footings where the wall runs from column to column, and a strip footing (*sapata corrida*) elsewhere, such as the inner walls of a bathroom. The wall's weight then reaches the footings; run **Ajustar sapatas** again to size them with it.
 
+The *Estrutura* window's **Solo e fundações** tab holds the site's soil survey (SPT): one reading per metre with the blow count N and the soil, the water table and the depth of the footings. **Usar na tensão do solo** takes the allowable pressure for footings from the survey (20 · N̄ kPa under the footing). Below it, the foundation study compares footings, a raft (*radier*) and hand-dug bored piles (*brocas*) under ground beams for the real loads of the structure, says why an option does not suit the soil, and recommends the one that takes the least concrete.
+
 On a wall along the lot line, columns and footings stand flush inside the lot, so the footing is off centre from its column. **Vigas alavanca** ties each such footing to the nearest interior column with a balance beam: the footing is then centred under the lever's reaction, the interior column is relieved, and the beam is sized with its top steel. If the interior column is too light, the traffic light shows that the beam would lift it.
 
 Warnings name each element that needs attention, including a support that a short span next to a long one would lift. Sheets that show the structure add a *Quadro de pilares e sapatas* table. This is pre-sizing for a first layout: the structural design belongs to a licensed engineer.

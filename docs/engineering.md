@@ -203,6 +203,29 @@ A boundary footing stands off its column by e. A balance beam to an interior col
 | Section | the lowest height from 40 to 120 cm with μ = Md / (0.85 fcd b d²) ≤ 0.295 (x/d ≤ 0.45) and τwd ≤ τRd2, Md = 1.4 M, Vd = 1.4 V; As = Md / (z fyd), at least 0.15 % b h |
 
 *Vigas alavanca* lays one from every boundary footing more than 5 cm off its column to the nearest column inward (within 30° of the offset, 1.5 to 10 m away). Checked by `the_lever_follows_the_textbook_statics` (P₁ = 100 kN, l = 4 m, e = 0.30 m: R₁ = 108.1 kN, ΔP = 8.1 kN, M = 30 kN·m) and `boundary_footings_are_centred_by_balance_beams_to_interior_columns`. Stirrups and the beam's own weight are not included yet.
+
+### Soil from a survey and the foundation study
+
+A standard penetration test (SPT, NBR 6484) gives the blow count N every metre and the soil there. `src/domain/soil.rs` reads it:
+
+| Quantity | Rule | Source |
+| --- | --- | --- |
+| Allowable pressure for footings | σadm = 20 · N̄ kPa (N̄ / 50 MPa), with N̄ the mean blow count from the footing base D to D + 2B (B at least 0.60 m); at most 400 kPa; footings not advised below N̄ = 5 | Usual Brazilian rule (Teixeira and Godoy), valid for 5 ≤ N̄ ≤ 20 |
+| Soil pressure of the structure | *Usar na tensão do solo* (or `definir_sondagem`) takes σadm for 1 m footings, rounded down to 10 kPa; a warning shows when the survey allows less than the pressure adopted | — |
+| Bored pile, tip | Rp = α · C · Np · Ap, Np the mean N from L − 1 to L + 1; C = 120 (clay), 200 (clayey silt), 250 (sandy silt), 400 kPa (sand) | Décourt-Quaresma (1978) |
+| Bored pile, shaft | Rl = β · 10 · (Nl / 3 + 1) · U · L kPa, Nl the mean N along the shaft (3 ≤ N ≤ 50), the tip readings left out | Décourt-Quaresma |
+| Bored-pile factors | α = 0.85 / 0.60 / 0.50 and β = 0.80 / 0.65 / 0.50 for clay / silts / sand | Décourt (1996), bored piles |
+| Allowable load | min((Rp + Rl) / 2, Rp / 4 + Rl / 1.3), the tip taking at most 20 % (≤ 1.25 · Rl / 2), and at most 5 MPa on the concrete | NBR 6122 (bored piles), Décourt-Quaresma |
+| Hand-dug piles (*brocas*) | 20, 25 or 30 cm, 3 to 6 m long, above the water table and within the survey | Usual practice |
+
+The foundation study (`foundation_study`) takes the column loads with the ground beams, and the walls on strip footings, and compares:
+
+- **footings**: isolated footings (A = 1.05 · N / σadm, at least 60 cm, height max(25 cm, (B − 20 cm) / 3)) and strip footings, not advised on soft soil (N̄ < 5) or when they would cover more than half the footprint (the bounding rectangle of walls and columns); a water table above the base + 30 cm is flagged;
+- **raft** (*radier*): a 15 cm slab with edge beams; mean pressure 1.05 · ΣN / A + 3.75 kPa against 20 · N̄ (N̄ from 0.5 to 3 m), not advised below N̄ = 3;
+- **bored piles with ground beams**: the pile that takes the least concrete with at most three per column (with its cap), and piles at most 2.5 m apart under the strip walls.
+
+It recommends the viable option that takes the least concrete. Checked by `the_footing_pressure_follows_the_mean_blow_count_in_the_bulb`, `decourt_quaresma_matches_a_hand_calculation`, `brocas_stay_above_the_water_table_and_within_six_metres`, `good_soil_recommends_footings_and_soft_soil_rules_them_out` and `the_survey_sets_the_soil_pressure_of_the_structure`. One borehole stands for the whole site; settlement is not computed, and deep piles (continuous flight auger, precast) are only named, not sized.
+
 ## Electrical installation
 
 | Calculation | Rule | Source |
