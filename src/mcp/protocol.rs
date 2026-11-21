@@ -37,11 +37,23 @@ norma em cada cômodo; distribuir_circuitos numera os circuitos; insira o quadro
 e use gerar_eletrodutos para lançar os eletrodutos com a fiação de cada trecho; \
 quadro_de_cargas mostra previsão, circuitos, fases, queda de tensão, fio, disjuntor, \
 demanda, padrão de entrada, eletrodutos e alertas.
-Estrutura (pré-dimensionamento, NBR 6118): projeto_estrutural com acao gerar_estrutura lança \
-pilares, vigas sobre as paredes, lajes nos cômodos e sapatas; pre_dimensionamento mostra lajes, \
-vigas contínuas com momentos, cortante e flecha, pilares e sapatas com cargas e alertas. Ajuste pontos com inserir_ponto_eletrico e \
-editar_ponto_eletrico. Nomeie os cômodos pelo uso (Cozinha, Banheiro, Quarto...), porque a \
-norma muda conforme o tipo de cômodo.
+Estrutura (pré-dimensionamento, NBR 6118 / NBR 6122 / NBR 7190): projeto_estrutural com \
+acao gerar_estrutura lança pilares, vigas sobre as paredes, lajes nos cômodos e sapatas; \
+também oferece vigas alavanca em divisa, baldrame/sapata corrida sob paredes, sondagem SPT \
+e simulação de fundações (sapatas/radier/brocas), cargas concentradas (caixa-d'água) e \
+telhado meia-água em madeira (definir_telhado / ajustar_paredes_telhado). pre_dimensionamento \
+mostra lajes, vigas contínuas, pilares (com esbeltez), sapatas, telhados, sondagem, estudo \
+de fundações, armaduras preliminares, tabela de aço, semáforo e alertas. Ajuste pontos \
+elétricos com inserir_ponto_eletrico e editar_ponto_eletrico. Nomeie os cômodos pelo uso \
+(Cozinha, Banheiro, Quarto...), porque as normas mudam conforme o tipo de cômodo.
+Documentação, quantitativos e verificações: use quantitativos para levantamento consolidado \
+de alvenaria (blocos, meios-blocos, canaletas, vergas/contravergas, argamassa, reboco), \
+acabamentos, madeira/telhas e aço; ergonomia para colisões, abertura de portas e passagens \
+(NBR 9050); camadas, anotacoes, cotas, circulacao (escadas Blondel, rampas NBR 9050, \
+patamares, guarda-corpos, desníveis), vistas_tecnicas (cortes, fachadas, detalhes e \
+exportação) e prancha (formato ABNT, escala e carimbo). exportar_planta gera PDF, PNG, DXF, \
+SVG, prancha em escala, memorial técnico completo (memorial_pdf), diagrama unifilar, \
+diagramas de esforços e planilhas CSV.
 O usuário pode editar a planta ao mesmo tempo que você, inclusive em outras abas vinculadas \
 ao mesmo projeto (arquitetura, elétrica, hidráulica, estrutura, fundações). Use abas para \
 listar projetos e abas vinculadas, abrir novas visões sincronizadas (acao nova_visao) sem \
@@ -307,14 +319,17 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "definir_terreno",
             title: "Definir terreno",
-            description: "Cria o terreno ou altera suas medidas. Sem x e y: um terreno existente mantém o canto inferior esquerdo; um novo fica na origem (ou centrado no que já foi desenhado).",
+            description: "Cria o terreno, altera suas medidas e/ou configura os recuos obrigatórios (frente, fundos e lateral). Sem x e y: um terreno existente mantém o canto inferior esquerdo; um novo fica na origem (ou centrado no que já foi desenhado). Para alterar apenas os recuos de um terreno existente, largura e comprimento são opcionais.",
             properties: json!({
                 "largura": number("Largura em metros (eixo X), de 0,25 a 10000."),
                 "comprimento": number("Comprimento em metros (eixo Y), de 0,25 a 10000."),
                 "x": number("Opcional: X do canto inferior esquerdo."),
                 "y": number("Opcional: Y do canto inferior esquerdo."),
+                "recuo_frente": number("Opcional: recuo frontal obrigatório em metros (0 a 1000)."),
+                "recuo_fundos": number("Opcional: recuo de fundos em metros (0 a 1000)."),
+                "recuo_lateral": number("Opcional: recuo lateral em metros (0 a 1000)."),
             }),
-            required: &["largura", "comprimento"],
+            required: &[],
             read_only: false,
             destructive: false,
         },
@@ -436,12 +451,13 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "editar_objeto",
             title: "Editar objeto",
-            description: "Muda posição (centro), rotação, largura ou profundidade de um objeto.",
+            description: "Muda posição (centro), rotação (90° ou ângulo livre em graus), largura ou profundidade de um objeto.",
             properties: json!({
                 "id": id_of("do objeto"),
                 "x": number("Opcional: novo X do centro."),
                 "y": number("Opcional: novo Y do centro."),
                 "rotacao": integer("Opcional: 0, 90, 180 ou 270 graus."),
+                "angulo_graus": number("Opcional: orientação livre em graus (ex.: 30 ou 45, útil para pilares e móveis em paredes inclinadas)."),
                 "largura": number("Opcional: nova largura em metros."),
                 "profundidade": number("Opcional: nova profundidade em metros."),
             }),
@@ -479,12 +495,20 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "editar_comodo",
             title: "Editar cômodo",
-            description: "Renomeia um cômodo e/ou muda sua largura e comprimento, movendo as paredes e mantendo portas e janelas.",
+            description: "Renomeia um cômodo, muda sua largura/comprimento (movendo paredes e mantendo portas/janelas) e/ou configura seus acabamentos (preset ou especificações de piso, parede, teto, rodapé e impermeabilização).",
             properties: json!({
                 "id": id_of("do cômodo"),
                 "nome": string("Opcional: novo nome."),
                 "largura": number("Opcional: nova largura em metros."),
                 "comprimento": number("Opcional: novo comprimento em metros."),
+                "preset_acabamento": { "type": "string", "enum": ["social_porcelanato", "dormitorio_madeira", "banheiro", "cozinha", "varanda"], "description": "Opcional: aplica um conjunto pronto de acabamentos e hachura de piso." },
+                "piso": string("Opcional: especificação do piso."),
+                "parede": string("Opcional: revestimento das paredes."),
+                "teto": string("Opcional: acabamento do teto/forro."),
+                "rodape": string("Opcional: material do rodapé."),
+                "rodape_cm": number("Opcional: altura do rodapé em cm (0 para sem rodapé)."),
+                "impermeabilizacao": boolean("Opcional: indica se o cômodo exige impermeabilização."),
+                "notas_acabamento": string("Opcional: observações técnicas de acabamento."),
             }),
             required: &["id"],
             read_only: false,
@@ -508,7 +532,7 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "editar_abertura",
             title: "Editar porta ou janela",
-            description: "Muda a largura e/ou a posição de uma porta ou janela ao longo da sua parede, ou inverte o lado para onde a porta abre e o lado da dobradiça.",
+            description: "Muda largura, posição ao longo da parede, altura, peitoril, tipologia de porta/janela ou inverte lado de abertura e dobradiça.",
             properties: json!({
                 "id": id_of("da porta ou janela"),
                 "largura": number("Opcional: nova largura em metros."),
@@ -517,6 +541,8 @@ fn catalogue() -> Vec<Tool> {
                 "inverter_dobradica": boolean("Opcional: a dobradiça vai para o outro batente."),
                 "altura": number("Opcional: altura em metros (porta padrão 2,10; janela 1,00)."),
                 "peitoril": number("Opcional: altura do peitoril da janela em metros (padrão 1,10)."),
+                "tipo_porta": { "type": "string", "enum": ["giro", "dupla", "correr", "correr_embutida", "pivotante", "sanfonada", "giratoria"], "description": "Opcional (para portas): tipologia arquitetônica." },
+                "tipo_janela": { "type": "string", "enum": ["correr", "basculante", "maxim_ar", "abrir", "oscilo_batente", "fixa", "bay_window"], "description": "Opcional (para janelas): tipologia arquitetônica." },
             }),
             required: &["id"],
             read_only: false,
@@ -812,12 +838,12 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "projeto_estrutural",
             title: "Projeto estrutural (pré-dimensionamento)",
-            description: "Comandos da estrutura (planta de forma e fundações). gerar_estrutura: pilares, vigas, lajes e sapatas. inserir_pilar / inserir_sapata. inserir_carga / editar_carga / remover_carga: caixa-d'água ou equipamento pesado, com carga concentrada transmitida à laje ou viga. ligar_pilares e apoiar_em_viga. editar_viga / remover_viga. definir_laje / remover_laje. configurar materiais e cargas. ajustar_sapatas. gerar_vigas_alavanca: viga alavanca de cada pilar de divisa (sapata fora do centro) ao pilar interno mais próximo; ligar_viga_alavanca: do pilar 'de' (divisa) ao pilar 'para' (interno); remover_viga_alavanca: pela 'id'. gerar_fundacao_paredes: viga baldrame nas paredes entre pilares e sapata corrida nas demais (as abertas ficam de fora); definir_fundacao_parede: parede 'id', 'tipo' baldrame ou sapata_corrida, largura_cm opcional; remover_fundacao_paredes. definir_sondagem: sondagem SPT do terreno em 'leituras' (uma por metro, com o N e o solo), 'nivel_agua_m' e 'cota_sapata_m' opcionais; por padrão leva a tensão do solo para a das sapatas (aplicar_ao_solo) e devolve o estudo de fundações. remover_sondagem. definir_telhado: meia-água de madeira sobre o retângulo x, y, largura_m, comprimento_m, com lado_alto, altura_alta_m e altura_baixa_m (telha, madeira, espaçamentos e aparente opcionais; com 'id' edita um telhado); dimensiona ripas, caibros, terças e vigas (NBR 7190), descarrega cada ponta de viga no pilar ou viga embaixo e, por padrão, ajusta as paredes à altura do telhado (ajustar_paredes). remover_telhado: pela 'id'. inserir_mourao: mourão de madeira em x, y (diametro_cm, padrão 15; 'madeira' define a classe de todos os mourões), que recebe as pontas das vigas do telhado diretamente ou por uma viga de madeira de mourão a mourão, verificado à compressão com flambagem (NBR 7190) e com bloco de concreto na base. configurar_vento: v0_ms (isopletas da NBR 6123), categoria_terreno (1 a 5), s1 e s3; o vento verifica os pilares das paredes mais altas que o pé-direito (travados pelo telhado ou em balanço) e a sucção nos telhados, com a ancoragem que cada viga precisa. simular_fundacoes: compara sapatas, radier e brocas com baldrame para as cargas reais (σadm = 20·N̄ kPa; brocas por Décourt-Quaresma) e recomenda a viável com menos concreto. vista: seleciona a disciplina da aba ativa.",
+            description: "Comandos da estrutura (planta de forma e fundações). gerar_estrutura: pilares, vigas, lajes e sapatas. inserir_pilar / inserir_sapata. inserir_carga / editar_carga / remover_carga: caixa-d'água ou equipamento pesado, com carga concentrada transmitida à laje ou viga. ligar_pilares e apoiar_em_viga. editar_viga / remover_viga. definir_laje / remover_laje. configurar materiais e cargas (fck, solo, classe_solo, ocupacao, pavimentos, sobrecarga, revestimento, peso_alvenaria_kn_m3, sobrecarga_por_comodo). ajustar_sapatas. gerar_vigas_alavanca: viga alavanca de cada pilar de divisa (sapata fora do centro) ao pilar interno mais próximo; ligar_viga_alavanca: do pilar 'de' (divisa) ao pilar 'para' (interno); remover_viga_alavanca: pela 'id'. gerar_fundacao_paredes: viga baldrame nas paredes entre pilares e sapata corrida nas demais (as abertas ficam de fora); definir_fundacao_parede: parede 'id', 'tipo' baldrame ou sapata_corrida, largura_cm opcional; remover_fundacao_paredes. definir_sondagem: sondagem SPT do terreno em 'leituras' (uma por metro, com o N e o solo), 'nivel_agua_m' e 'cota_sapata_m' opcionais; por padrão leva a tensão do solo para a das sapatas (aplicar_ao_solo) e devolve o estudo de fundações. remover_sondagem. definir_telhado: meia-água de madeira sobre o retângulo x, y, largura_m, comprimento_m, com lado_alto, altura_alta_m e altura_baixa_m (telha, madeira, espaçamentos e aparente opcionais; com 'id' edita um telhado); dimensiona ripas, caibros, terças e vigas (NBR 7190), descarrega cada ponta de viga no pilar ou viga embaixo e, por padrão, ajusta as paredes à altura do telhado (ajustar_paredes). ajustar_paredes_telhado: reajusta as paredes sob o telhado 'id' ao plano dele. remover_telhado: pela 'id'. inserir_mourao: mourão de madeira em x, y (diametro_cm, padrão 15; 'madeira' define a classe de todos os mourões), que recebe as pontas das vigas do telhado diretamente ou por uma viga de madeira de mourão a mourão, verificado à compressão com flambagem (NBR 7190) e com bloco de concreto na base. configurar_vento: v0_ms (isopletas da NBR 6123), categoria_terreno (1 a 5), s1 e s3; o vento verifica os pilares das paredes mais altas que o pé-direito (travados pelo telhado ou em balanço) e a sucção nos telhados, com a ancoragem que cada viga precisa. simular_fundacoes: compara sapatas, radier e brocas com baldrame para as cargas reais (σadm = 20·N̄ kPa; brocas por Décourt-Quaresma) e recomenda a viável com menos concreto. vista: seleciona a disciplina da aba ativa.",
             properties: merge(
                 json!({
-                    "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "gerar_fundacao_paredes", "definir_fundacao_parede", "remover_fundacao_paredes", "definir_sondagem", "remover_sondagem", "simular_fundacoes", "definir_telhado", "remover_telhado", "inserir_mourao", "configurar_vento", "vista"], "description": "O que fazer." },
-                    "x": number("Para inserir pilar, sapata ou carga, ou o canto do telhado: posição x, em metros."),
-                    "y": number("Para inserir pilar, sapata ou carga, ou o canto do telhado: posição y, em metros."),
+                    "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "gerar_fundacao_paredes", "definir_fundacao_parede", "remover_fundacao_paredes", "definir_sondagem", "remover_sondagem", "simular_fundacoes", "definir_telhado", "remover_telhado", "ajustar_paredes_telhado", "inserir_mourao", "configurar_vento", "vista"], "description": "O que fazer." },
+                    "x": number("Para inserir pilar, sapata, mourão ou carga, ou o canto do telhado: posição x, em metros."),
+                    "y": number("Para inserir pilar, sapata, mourão ou carga, ou o canto do telhado: posição y, em metros."),
                     "largura_cm": number("Largura do pilar, da sapata ou da viga, em cm."),
                     "profundidade_cm": number("Profundidade do pilar ou da sapata, em cm."),
                     "altura_cm": number("Altura da viga, em cm."),
@@ -827,9 +853,9 @@ fn catalogue() -> Vec<Tool> {
                     "t_de": number("Para apoiar_em_viga: posição fracionária (0,01 a 0,99) em viga_de."),
                     "viga_para": integer("Para apoiar_em_viga: id da viga que apoia o fim."),
                     "t_para": number("Para apoiar_em_viga: posição fracionária (0,01 a 0,99) em viga_para."),
-                    "id": integer("Para editar/remover viga ou carga: id do elemento."),
+                    "id": integer("Para editar/remover viga, carga, viga alavanca, fundação de parede ou telhado: id do elemento."),
                     "comodo": { "type": ["string", "integer"], "description": "Para definir_laje e remover_laje: nome ou id do cômodo." },
-                    "tipo": { "type": "string", "enum": ["trelicada", "macica", "caixa_agua", "equipamento_pesado", "baldrame", "sapata_corrida"], "description": "Tipo da laje ou da carga concentrada." },
+                    "tipo": { "type": "string", "enum": ["trelicada", "macica", "caixa_agua", "equipamento_pesado", "baldrame", "sapata_corrida"], "description": "Tipo da laje, da carga concentrada ou da fundação de parede." },
                     "carga_kn": number("Para inserir_carga ou editar_carga: carga característica em kN (0,1 a 2.000)."),
                     "espessura_cm": number("Para definir_laje: espessura, em cm."),
                     "fck_mpa": number("Para configurar: resistência do concreto, MPa (20 a 50)."),
@@ -839,6 +865,8 @@ fn catalogue() -> Vec<Tool> {
                     "pavimentos": integer("Para configurar: pavimentos que os pilares carregam (1 a 10)."),
                     "sobrecarga_kn_m2": number("Para configurar: carga variável nas lajes, kN/m²."),
                     "revestimento_kn_m2": number("Para configurar: revestimento e contrapiso, kN/m²."),
+                    "peso_alvenaria_kn_m3": number("Para configurar: peso específico da alvenaria em kN/m³ (8 a 25; padrão 13)."),
+                    "sobrecarga_por_comodo": boolean("Para configurar: aplica sobrecarga mínima NBR 6120 por uso de cada cômodo."),
                     "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Para vista." },
                 }),
                 json!({
@@ -865,13 +893,13 @@ fn catalogue() -> Vec<Tool> {
                     "altura_alta_m": number("Para definir_telhado: altura do telhado no lado alto, em metros."),
                     "altura_baixa_m": number("Para definir_telhado: altura do telhado no lado baixo, em metros."),
                     "telha": { "type": "string", "enum": ["ceramica", "concreto", "fibrocimento", "metalica"], "description": "Para definir_telhado: telha (padrão cerâmica)." },
-                    "madeira": { "type": "string", "enum": ["c20", "c30", "c40", "c60"], "description": "Para definir_telhado: classe da madeira folhosa, NBR 7190 (padrão C30)." },
+                    "madeira": { "type": "string", "enum": ["c20", "c30", "c40", "c60"], "description": "Para definir_telhado ou inserir_mourao: classe da madeira folhosa, NBR 7190 (padrão C30)." },
                     "espacamento_vigas_m": number("Para definir_telhado: distância máxima entre as vigas do telhado (padrão 3 m; elas se alinham aos pilares)."),
                     "espacamento_tercas_m": number("Para definir_telhado: espaçamento das terças na projeção (padrão 1,2 m)."),
                     "espacamento_caibros_m": number("Para definir_telhado: espaçamento dos caibros (padrão 0,5 m)."),
                     "aparente": { "type": "boolean", "description": "Para definir_telhado: telhado aparente, sem forro (padrão true)." },
                     "ajustar_paredes": { "type": "boolean", "description": "Para definir_telhado: as paredes sob o telhado ganham a altura dele (padrão true)." },
-                "diametro_cm": number("Para inserir_mourao: diâmetro do mourão, em cm (10 a 40, padrão 15)."),
+                    "diametro_cm": number("Para inserir_mourao: diâmetro do mourão, em cm (10 a 40, padrão 15)."),
                 "v0_ms": number("Para configurar_vento: velocidade básica do vento, m/s (25 a 55, padrão 35)."),
                 "categoria_terreno": integer("Para configurar_vento: categoria do terreno, 1 (mar aberto) a 5 (centro denso), padrão 3."),
                 "s1": number("Para configurar_vento: fator topográfico S1 (padrão 1)."),
@@ -885,7 +913,7 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "pre_dimensionamento",
             title: "Pré-dimensionamento da estrutura",
-            description: "Lajes (painéis, charneiras 45° e cargas concentradas), vigas contínuas (momentos, cortante, flecha com Branson NBR 6118), pilares, sapatas, armaduras preliminares e tabela de aço, caminho de cargas de caixa-d'água/equipamento, semáforo, limites e alertas.",
+            description: "Lajes (painéis, charneiras 45° e cargas concentradas), vigas contínuas (momentos, cortante, flecha com Branson NBR 6118), pilares (com altura e esbeltez), sapatas, vigas alavanca, fundação de paredes, telhados e mourões (NBR 7190), sondagem SPT, estudo comparativo de fundações, armaduras preliminares e tabela de aço, caminho de cargas de caixa-d'água/equipamento, semáforo, limites e alertas.",
             properties: json!({}),
             required: &[],
             read_only: true,
@@ -936,6 +964,178 @@ fn catalogue() -> Vec<Tool> {
             destructive: false,
         },
         Tool {
+            name: "quantitativos",
+            title: "Quantitativos de obra",
+            description: "Levantamento consolidado de materiais do pavimento ativo: alvenaria por parede e por material (blocos, meios-blocos, canaletas, com perda, argamassa e reboco), vergas e contravergas, acabamentos por cômodo (piso +10%, rodapé, paredes e teto), madeira e telhas dos telhados e massa preliminar de aço (kg).",
+            properties: json!({}),
+            required: &[],
+            read_only: true,
+            destructive: false,
+        },
+        Tool {
+            name: "ergonomia",
+            title: "Verificação de ergonomia e circulação",
+            description: "Verifica colisões entre móveis/paredes, obstrução no raio de abertura de portas, zonas de uso frontal bloqueadas e passagens estreitas (ABNT NBR 9050 e ergonomia residencial).",
+            properties: json!({
+                "passagem_minima_m": number("Opcional: largura mínima de passagem desejada em metros (0,40 a 2,50; padrão 0,80)."),
+            }),
+            required: &[],
+            read_only: true,
+            destructive: false,
+        },
+        Tool {
+            name: "camadas",
+            title: "Camadas CAD",
+            description: "Gerencia camadas CAD com cor, espessura de pena (mm), tipo de linha, visibilidade, bloqueio e camada ativa; atribui paredes ou desenhos 2D a camadas específicas.",
+            properties: json!({
+                "acao": { "type": "string", "enum": ["listar", "criar", "editar", "excluir", "atribuir"], "description": "O que fazer; padrão listar." },
+                "id": integer("Id da camada (para editar, excluir ou atribuir; omitido em atribuir volta para a camada padrão)."),
+                "nome": string("Nome da camada (para criar ou editar)."),
+                "cor": string("Cor hexadecimal #RRGGBB (ex.: #c62828)."),
+                "espessura_mm": number("Espessura técnica da linha em mm (0,05 a 2,00)."),
+                "tipo_linha": { "type": "string", "enum": ["continua", "tracejada", "traco_ponto", "pontilhada"], "description": "Tipo de traço da camada." },
+                "visivel": boolean("Para editar: mostra ou oculta a camada."),
+                "bloqueada": boolean("Para editar: trava ou destrava a camada."),
+                "ativar": boolean("Para criar ou editar: define como camada ativa para novos elementos."),
+                "parede_id": integer("Para atribuir: id da parede."),
+                "desenho_id": integer("Para atribuir: id do desenho 2D."),
+            }),
+            required: &[],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "anotacoes",
+            title: "Anotações e símbolos técnicos",
+            description: "Lista, adiciona, edita ou remove textos, notas técnicas, chamadas com linha guia e símbolos arquitetônicos (norte, cota de nível, seta de caimento de piso e seta de acesso).",
+            properties: json!({
+                "acao": { "type": "string", "enum": ["listar", "adicionar", "editar", "remover"], "description": "O que fazer; padrão listar." },
+                "id": integer("Id da anotação (para editar ou remover)."),
+                "tipo": { "type": "string", "enum": ["texto", "nota", "chamada", "norte", "cota_nivel", "caimento", "acesso"], "description": "Para adicionar: tipo da anotação (padrão texto)." },
+                "x": number("Para adicionar: posição X em metros."),
+                "y": number("Para adicionar: posição Y em metros."),
+                "texto": string("Conteúdo do texto (opcional para símbolos, que têm texto automático)."),
+                "alvo_x": number("Para chamada: X do ponto apontado pela seta."),
+                "alvo_y": number("Para chamada: Y do ponto apontado pela seta."),
+                "nivel_m": number("Para cota_nivel: cota em metros (ex.: 0,15 ou -0,05)."),
+                "percentual": number("Para caimento: declividade em % (ex.: 1,5)."),
+                "tamanho_fonte": number("Tamanho da fonte em pt (6 a 72)."),
+                "rotacao_graus": number("Rotação do texto em graus."),
+                "dx": number("Para editar: deslocamento em X (metros)."),
+                "dy": number("Para editar: deslocamento em Y (metros, positivo para cima)."),
+            }),
+            required: &[],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "cotas",
+            title: "Cotas associativas",
+            description: "Lista, gera cotas internas automáticas em todos os cômodos, cria cotas associativas ligadas a paredes ou entre dois pontos, edita texto/deslocamento ou remove cotas.",
+            properties: json!({
+                "acao": { "type": "string", "enum": ["listar", "gerar_internas", "adicionar_parede", "adicionar_alinhada", "editar", "remover"], "description": "O que fazer; padrão listar." },
+                "id": integer("Id da cota (para editar ou remover)."),
+                "parede_id": integer("Para adicionar_parede: id da parede."),
+                "x1": number("Para adicionar_alinhada: X do 1º ponto."),
+                "y1": number("Para adicionar_alinhada: Y do 1º ponto."),
+                "x2": number("Para adicionar_alinhada: X do 2º ponto."),
+                "y2": number("Para adicionar_alinhada: Y do 2º ponto."),
+                "deslocamento": number("Distância da linha de cota em metros (padrão 0,45)."),
+                "externa": boolean("Para adicionar_alinhada: true cria cota externa em vez de alinhada."),
+                "texto": string("Para editar: texto personalizado da cota (vazio volta ao valor automático)."),
+            }),
+            required: &[],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "circulacao",
+            title: "Circulação vertical e desníveis",
+            description: "Lista, adiciona ou remove escadas (reta, em L ou em U, com verificação ergonômica de Blondel), rampas acessíveis (verificação NBR 9050 <= 8,33%), patamares, guarda-corpos e linhas de desnível.",
+            properties: json!({
+                "acao": { "type": "string", "enum": ["listar", "adicionar_escada", "adicionar_rampa", "adicionar_patamar", "adicionar_guarda_corpo", "adicionar_desnivel", "remover"], "description": "O que fazer; padrão listar." },
+                "id": integer("Id do elemento de circulação (para remover)."),
+                "nome": string("Opcional: nome personalizado."),
+                "x": number("X de origem (escada, rampa ou patamar)."),
+                "y": number("Y de origem (escada, rampa ou patamar)."),
+                "x1": number("X inicial (guarda-corpo ou desnível)."),
+                "y1": number("Y inicial (guarda-corpo ou desnível)."),
+                "x2": number("X final (guarda-corpo ou desnível)."),
+                "y2": number("Y final (guarda-corpo ou desnível)."),
+                "formato": { "type": "string", "enum": ["reta", "em_l", "em_u"], "description": "Para adicionar_escada: formato da escada (padrão reta)." },
+                "largura_m": number("Largura em metros (escada 0,6–4,0; rampa 0,8–5,0; patamar 0,5–10,0)."),
+                "comprimento_m": number("Para adicionar_rampa: comprimento horizontal em metros."),
+                "profundidade_m": number("Para adicionar_patamar: profundidade em metros."),
+                "desnivel_m": number("Altura total a vencer em metros (padrão pé-direito na escada)."),
+                "piso_m": number("Para adicionar_escada: profundidade do piso/degrau em metros (0,22–0,45; padrão 0,28)."),
+                "nivel_m": number("Para adicionar_patamar: cota de nível em metros."),
+                "nivel_de_m": number("Para adicionar_desnivel: nível de origem em metros (padrão 0,00)."),
+                "nivel_para_m": number("Para adicionar_desnivel: nível de destino em metros."),
+                "altura_m": number("Para adicionar_guarda_corpo: altura em metros (0,80–1,80; padrão 1,10)."),
+                "rotacao_graus": number("Rotação em graus."),
+                "guarda_corpo": { "type": "string", "enum": ["nenhum", "esquerda", "direita", "ambos"], "description": "Lado(s) com guarda-corpo na escada ou rampa." },
+            }),
+            required: &[],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "vistas_tecnicas",
+            title: "Cortes, fachadas e detalhes",
+            description: "Lista, cria, remove e exporta (SVG ou PDF) cortes arquitetônicos (AA, BB...), elevações de fachadas (norte, sul, leste, oeste) e chamadas de detalhe ampliado (DET-01).",
+            properties: json!({
+                "acao": { "type": "string", "enum": ["listar", "adicionar_corte", "adicionar_corte_padrao", "adicionar_fachada", "adicionar_detalhe", "remover", "exportar"], "description": "O que fazer; padrão listar." },
+                "id": integer("Id do corte, fachada ou detalhe (para remover ou exportar)."),
+                "rotulo": string("Opcional: identificador técnico (ex.: AA, BB, DET-01)."),
+                "x1": number("Para adicionar_corte: X do início da linha de corte."),
+                "y1": number("Para adicionar_corte: Y do início da linha de corte."),
+                "x2": number("Para adicionar_corte: X do fim da linha de corte."),
+                "y2": number("Para adicionar_corte: Y do fim da linha de corte."),
+                "olhar_esquerda": boolean("Para adicionar_corte: direção de visualização (padrão true)."),
+                "horizontal": boolean("Para adicionar_corte_padrao: true corte longitudinal (padrão), false transversal."),
+                "lado": { "type": "string", "enum": ["norte", "sul", "leste", "oeste"], "description": "Para adicionar_fachada: orientação da fachada." },
+                "x": number("Para adicionar_detalhe: X do centro da chamada."),
+                "y": number("Para adicionar_detalhe: Y do centro da chamada."),
+                "raio_m": number("Para adicionar_detalhe: raio da chamada em metros (0,25 a 10,0; padrão 1,0)."),
+                "escala": string("Para adicionar_detalhe: escala (ex.: 1:25, 1:20)."),
+                "prancha_ref": string("Opcional: código da prancha de destino (ex.: PR-02)."),
+                "formato": { "type": "string", "enum": ["svg", "pdf"], "description": "Para exportar: svg (padrão) ou pdf." },
+                "caminho": string("Para exportar: caminho opcional do arquivo."),
+            }),
+            required: &[],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "prancha",
+            title: "Prancha técnica e carimbo (ABNT)",
+            description: "Consulta ou configura o formato de papel (A4–A0 ou personalizado), orientação, escala (1:25–1:200 ou 'melhor') e os dados do carimbo ABNT NBR 16752 usados ao exportar pranchas em escala.",
+            properties: json!({
+                "acao": { "type": "string", "enum": ["obter", "configurar"], "description": "O que fazer; padrão obter." },
+                "formato": { "type": "string", "enum": ["A4", "A3", "A2", "A1", "A0", "personalizado"], "description": "Formato da folha." },
+                "largura_mm": number("Para formato personalizado: largura em mm."),
+                "altura_mm": number("Para formato personalizado: altura em mm."),
+                "orientacao": { "type": "string", "enum": ["paisagem", "retrato"], "description": "Orientação da folha." },
+                "escala": string("Escala do desenho: 1:25, 1:50, 1:75, 1:100, 1:200, 1:N ou 'melhor' (ajuste automático)."),
+                "titulo": string("Título do desenho no carimbo."),
+                "cliente": string("Nome do cliente."),
+                "endereco": string("Endereço da obra."),
+                "autor": string("Responsável técnico / autor."),
+                "registro": string("Registro profissional (CAU / CREA)."),
+                "data": string("Data no carimbo."),
+                "folha": string("Numeração da folha (ex.: 01/03)."),
+                "revisao": string("Código da revisão (ex.: R01)."),
+                "notas": string("Observações gerais no carimbo."),
+                "exibir_carimbo": boolean("Exibe o carimbo ABNT."),
+                "exibir_legenda": boolean("Exibe a legenda técnica."),
+                "exibir_norte": boolean("Exibe o símbolo de norte."),
+                "exibir_escala": boolean("Exibe a barra de escala gráfica."),
+            }),
+            required: &[],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
             name: "centralizar_planta",
             title: "Centralizar planta",
             description: "Centraliza paredes e cômodos dentro do terreno.",
@@ -981,10 +1181,10 @@ fn catalogue() -> Vec<Tool> {
         },
         Tool {
             name: "exportar_planta",
-            title: "Exportar planta",
-            description: "Exporta a planta em PDF vetorial, imagem PNG ou DXF (AutoCAD/QCAD/LibreCAD), respeitando a disciplina da aba ativa ou a disciplina informada. Sem caminho: em Documentos\\Trazo com o nome do projeto. Devolve o caminho usado.",
+            title: "Exportar planta e documentação",
+            description: "Exporta a planta ou a documentação técnica do projeto: pdf, png, dxf, svg, prancha_pdf/prancha_svg (prancha ABNT em escala com carimbo), memorial_pdf (memorial técnico completo de pré-dimensionamento e desenhos), unifilar_svg/unifilar_pdf (diagrama unifilar elétrico), esforcos_svg/esforcos_pdf (diagramas de momento e cortante das vigas), quantitativos_csv, tabela_aco_csv ou csv (quadro de áreas e esquadrias). Sem caminho: salva em Documentos\\Trazo.",
             properties: json!({
-                "formato": { "type": "string", "enum": ["pdf", "png", "dxf"], "description": "pdf, png ou dxf." },
+                "formato": { "type": "string", "enum": ["pdf", "png", "dxf", "svg", "prancha_pdf", "prancha_svg", "memorial_pdf", "unifilar_svg", "unifilar_pdf", "esforcos_svg", "esforcos_pdf", "quantitativos_csv", "tabela_aco_csv", "csv"], "description": "Formato de exportação." },
                 "caminho": string("Opcional: caminho do arquivo (relativo a Documentos\\Trazo)."),
                 "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Opcional: disciplina a exportar (padrão: disciplina da aba ativa)." },
             }),
@@ -1053,7 +1253,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 45);
+        assert_eq!(tools.len(), 53);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -1134,7 +1334,7 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 45);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 53);
     }
 }
 

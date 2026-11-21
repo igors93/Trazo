@@ -895,6 +895,32 @@ impl Project {
         Ok(())
     }
 
+    /// Sets a fixture's orientation to `quarter_turns * 90° + angle_rad`,
+    /// rejecting states that leave the terrain.
+    pub fn set_fixture_angle(
+        &mut self,
+        id: u64,
+        quarter_turns: u8,
+        angle_rad: f64,
+    ) -> Result<(), String> {
+        if !angle_rad.is_finite() {
+            return Err("Ângulo inválido.".to_owned());
+        }
+        let index = self
+            .fixtures
+            .iter()
+            .position(|fixture| fixture.id == id)
+            .ok_or("Objeto não encontrado.")?;
+        let mut updated = self.fixtures[index];
+        updated.quarter_turns = quarter_turns % 4;
+        updated.angle_rad = angle_rad;
+        if !self.fixture_fits(&updated) {
+            return Err("Girado, o objeto sairia do terreno.".to_owned());
+        }
+        self.fixtures[index] = updated;
+        Ok(())
+    }
+
     /// Moves a fixture, stopping at the terrain's edge like walls do.
     pub fn move_fixture(&mut self, id: u64, delta: Point) {
         let Some(index) = self.fixtures.iter().position(|fixture| fixture.id == id) else {

@@ -585,6 +585,15 @@ impl FloorPlanApp {
                     }
                     settings.finish_kn_m2 = v;
                 }
+                if let Some(v) = number(args, "peso_alvenaria_kn_m3")? {
+                    if !(8.0..=25.0).contains(&v) {
+                        return Err("'peso_alvenaria_kn_m3' deve ficar entre 8 e 25.".to_owned());
+                    }
+                    settings.masonry_kn_m3 = v;
+                }
+                if let Some(v) = args.get("sobrecarga_por_comodo").and_then(Value::as_bool) {
+                    settings.per_room_live_loads = v;
+                }
                 self.apply_change(Some("Nada mudou nos materiais e cargas."), |project| {
                     project.structure.settings = settings;
                     Ok(Change::new("Materiais e cargas atualizados.".to_owned()))
@@ -882,6 +891,19 @@ impl FloorPlanApp {
                     Ok(Change::new(format!("Telhado {id} removido.")))
                 })
             }
+            "ajustar_paredes_telhado" => {
+                let id = element_id(args, "id")?;
+                self.apply_change(
+                    Some("As paredes sob esse telhado já estavam na altura certa."),
+                    |project| {
+                        let walls = project.fit_walls_to_roof(id)?;
+                        Ok(Change::new(format!(
+                            "{walls} parede(s) ajustada(s) ao plano do telhado {id}."
+                        ))
+                        .data(json!({ "id": id, "paredes_ajustadas": walls })))
+                    },
+                )
+            }
             "remover_viga_alavanca" => {
                 let id = element_id(args, "id")?;
                 self.apply_change(None, |project| {
@@ -892,7 +914,7 @@ impl FloorPlanApp {
                 })
             }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao, configurar_vento ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao, configurar_vento, ajustar_paredes_telhado ou vista.".to_owned(),
             ),
         }
     }
@@ -1101,6 +1123,21 @@ impl FloorPlanApp {
                 })
             })
             .collect();
+        let soil_survey = self.project.structure.soil_survey.as_ref().map(|survey| {
+            json!({
+                "nome": survey.name,
+                "nivel_agua_m": survey.water_table_m,
+                "cota_sapata_m": survey.footing_depth_m,
+                "tensao_admissivel_kpa": survey.footing_kpa(1.0).map(|v| v.round()),
+                "leituras": survey.readings.iter().map(|r| json!({
+                    "profundidade_m": r.depth_m,
+                    "n": r.n,
+                    "solo": r.soil.key(),
+                })).collect::<Vec<_>>(),
+            })
+        });
+        let foundation_study = (!report.columns.is_empty())
+            .then(|| foundation_study_json(&self.project.foundation_study()));
         Ok(ToolOutput::ok(format!(
             "{} laje(s), {} viga(s), {} pilar(es), {} sapata(s), {} kg de aço preliminar, {} alerta(s).",
             slabs.len(),
@@ -1118,6 +1155,7 @@ impl FloorPlanApp {
                 "pavimentos": settings.floors,
                 "sobrecarga_kn_m2": settings.live_kn_m2,
                 "revestimento_kn_m2": settings.finish_kn_m2,
+                "peso_alvenaria_kn_m3": settings.masonry_kn_m3,
                 "sobrecarga_por_comodo": settings.per_room_live_loads,
             },
             "lajes": slabs,
@@ -1149,6 +1187,8 @@ impl FloorPlanApp {
                 "atende": b.ok,
                 "cargas_kn": b.loads.iter().map(|(_, p)| round1(*p)).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
+            "sondagem": soil_survey,
+            "estudo_fundacoes": foundation_study,
             "fundacao_paredes": report.wall_foundations.iter().map(|f| json!({
                 "rotulo": f.label,
                 "parede": f.wall_id,

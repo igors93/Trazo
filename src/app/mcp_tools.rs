@@ -17,6 +17,7 @@ mod batch;
 mod drawings;
 mod editing;
 mod electrical;
+mod project_docs;
 mod shapes;
 mod structure;
 mod tabs;
@@ -417,6 +418,14 @@ impl FloorPlanApp {
             "abas" => self.tool_tabs(args),
             "pavimentos" => self.tool_floors(args),
             "dependencias" => self.tool_dependencies(args),
+            "quantitativos" => self.tool_quantities(),
+            "ergonomia" => self.tool_ergonomics(args),
+            "camadas" => self.tool_layers(args),
+            "anotacoes" => self.tool_notes(args),
+            "cotas" => self.tool_dimensions(args),
+            "circulacao" => self.tool_circulation(args),
+            "vistas_tecnicas" => self.tool_views(args),
+            "prancha" => self.tool_sheet(args),
             "desenhar" => self.tool_draw(args),
             "definir_alvenaria" => self.tool_masonry(args),
             "editar_objeto" => self.tool_edit_fixture(args),
@@ -599,38 +608,7 @@ impl FloorPlanApp {
                     Err(self.message.clone())
                 }
             }
-            "exportar_planta" => {
-                let format = text(args, "formato")
-                    .map(|format| format.to_lowercase())
-                    .filter(|format| format == "pdf" || format == "png" || format == "dxf")
-                    .ok_or("Informe 'formato': pdf, png ou dxf.")?;
-                let discipline = match text(args, "disciplina") {
-                    Some(raw) => crate::domain::discipline::Discipline::from_key(&raw).ok_or(
-                        "'disciplina' deve ser tudo, arquitetura, eletrica, hidraulica, estrutura ou fundacoes.",
-                    )?,
-                    None => self.discipline,
-                };
-                let path = match text(args, "caminho") {
-                    Some(input) => resolve_path(&input, &format),
-                    None => unique_path(
-                        documents_dir().join(format!("{}.{format}", file_stem(&self.project.name))),
-                    ),
-                };
-                ensure_parent(&path)?;
-                let shown = self.project.for_discipline(discipline);
-                match format.as_str() {
-                    "pdf" => export::pdf(&shown, &path)?,
-                    "png" => export::png(&shown, &path)?,
-                    _ => crate::io::dxf::export(&shown, &path)?,
-                }
-                Ok(
-                    ToolOutput::ok(format!("Planta exportada em {}", path.display()))
-                        .with_structured(json!({
-                            "caminho": path.display().to_string(),
-                            "disciplina": discipline.key(),
-                        })),
-                )
-            }
+            "exportar_planta" => self.tool_export(args),
             "importar_dxf" => {
                 let input = text(args, "caminho").ok_or("Informe 'caminho' do arquivo DXF.")?;
                 let path = resolve_path(&input, "dxf");
@@ -763,13 +741,171 @@ impl FloorPlanApp {
         }
     }
 
+    fn tool_export(&self, args: &Value) -> Result<ToolOutput, String> {
+        let format = text(args, "formato")
+            .map(|format| format.to_lowercase())
+            .ok_or("Informe 'formato': pdf, png, dxf, svg, prancha_pdf, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, quantitativos_csv, tabela_aco_csv ou csv.")?;
+        let (ext, suffix) = match format.as_str() {
+            "pdf" => ("pdf", ""),
+            "png" => ("png", ""),
+            "dxf" => ("dxf", ""),
+            "svg" => ("svg", ""),
+            "prancha_pdf" => ("pdf", "-prancha"),
+            "prancha_svg" => ("svg", "-prancha"),
+            "memorial_pdf" => ("pdf", "-memorial"),
+            "unifilar_svg" => ("svg", "-unifilar"),
+            "unifilar_pdf" => ("pdf", "-unifilar"),
+            "esforcos_svg" => ("svg", "-esforcos"),
+            "esforcos_pdf" => ("pdf", "-esforcos"),
+            "quantitativos_csv" => ("csv", "-quantitativos"),
+            "tabela_aco_csv" => ("csv", "-tabela-aco"),
+            "csv" => ("csv", "-quadros"),
+            _ => {
+                return Err("Formato inválido. Use: pdf, png, dxf, svg, prancha_pdf, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, quantitativos_csv, tabela_aco_csv ou csv.".to_owned());
+            }
+        };
+        let discipline = match text(args, "disciplina") {
+            Some(raw) => crate::domain::discipline::Discipline::from_key(&raw).ok_or(
+                "'disciplina' deve ser tudo, arquitetura, eletrica, hidraulica, estrutura ou fundacoes.",
+            )?,
+            None => self.discipline,
+        };
+        let path = match text(args, "caminho") {
+            Some(input) => resolve_path(&input, ext),
+            None => unique_path(
+                documents_dir().join(format!("{}{suffix}.{ext}", file_stem(&self.project.name))),
+            ),
+        };
+        ensure_parent(&path)?;
+        let shown = self.project.for_discipline(discipline);
+        let mut extra_pages: Option<usize> = None;
+        match format.as_str() {
+            "pdf" => export::pdf(&shown, &path)?,
+            "png" => export::png(&shown, &path)?,
+            "dxf" => crate::io::dxf::export(&shown, &path)?,
+            "svg" => export::svg(&shown, &path)?,
+            "prancha_pdf" => export::export_scaled_pdf(&shown, &path)?,
+            "prancha_svg" => export::export_scaled_svg(&shown, &path)?,
+            "memorial_pdf" => {
+                let date = crate::io::report::today();
+                let pages =
+                    crate::io::report::export_presizing_report(&self.project, &date, &path)?;
+                extra_pages = Some(pages);
+            }
+            "unifilar_svg" => {
+                let markup = crate::domain::distribution::single_line_svg(&self.project);
+                crate::domain::views::export_view_svg(&markup, &path)?;
+            }
+            "unifilar_pdf" => {
+                let markup = crate::domain::distribution::single_line_svg(&self.project);
+                crate::domain::views::export_view_pdf(&markup, &path)?;
+            }
+            "esforcos_svg" => {
+                let markup = crate::domain::structure::beam_diagrams_svg(&self.project);
+                crate::domain::views::export_view_svg(&markup, &path)?;
+            }
+            "esforcos_pdf" => {
+                let markup = crate::domain::structure::beam_diagrams_svg(&self.project);
+                crate::domain::views::export_view_pdf(&markup, &path)?;
+            }
+            "quantitativos_csv" => {
+                let csv = crate::domain::quantities::takeoff_csv(&self.project);
+                std::fs::write(&path, csv).map_err(|e| format!("Não foi possível gravar: {e}"))?;
+            }
+            "tabela_aco_csv" => {
+                let reinforcement = self.project.cached_reinforcement_report();
+                let csv = crate::domain::reinforcement::steel_schedule_csv(&reinforcement);
+                std::fs::write(&path, csv).map_err(|e| format!("Não foi possível gravar: {e}"))?;
+            }
+            "csv" => export::csv(&shown, &path)?,
+            _ => unreachable!(),
+        }
+        let msg = match extra_pages {
+            Some(pages) => format!(
+                "Memorial técnico ({pages} páginas) exportado em {}",
+                path.display()
+            ),
+            None => format!("Exportado ({format}) em {}", path.display()),
+        };
+        Ok(ToolOutput::ok(msg).with_structured(json!({
+            "caminho": path.display().to_string(),
+            "formato": format,
+            "disciplina": discipline.key(),
+            "paginas": extra_pages,
+        })))
+    }
+
     fn tool_terrain(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let recuo_frente = number(args, "recuo_frente")?;
+        let recuo_fundos = number(args, "recuo_fundos")?;
+        let recuo_lateral = number(args, "recuo_lateral")?;
+        let has_setbacks =
+            recuo_frente.is_some() || recuo_fundos.is_some() || recuo_lateral.is_some();
+        let width_opt = number(args, "largura")?;
+        let length_opt = number(args, "comprimento")?;
+
+        if width_opt.is_none() && length_opt.is_none() && has_setbacks {
+            if self.project.terrain.is_none() {
+                return Err(
+                    "Defina 'largura' e 'comprimento' do terreno antes de configurar recuos."
+                        .to_owned(),
+                );
+            }
+            let mut setbacks = self.project.setbacks;
+            if let Some(v) = recuo_frente {
+                setbacks.front = v;
+            }
+            if let Some(v) = recuo_fundos {
+                setbacks.rear = v;
+            }
+            if let Some(v) = recuo_lateral {
+                setbacks.side = v;
+            }
+            setbacks.validate()?;
+            let mut output =
+                self.apply_change(Some("Os recuos já tinham esses valores."), |project| {
+                    project.set_setbacks(setbacks)?;
+                    Ok(Change::new(format!(
+                        "Recuos definidos: frente {}, fundos {}, lateral {}.",
+                        format_meters(setbacks.front),
+                        format_meters(setbacks.rear),
+                        format_meters(setbacks.side)
+                    ))
+                    .data(json!({
+                        "recuos": {
+                            "frente": round(setbacks.front),
+                            "fundos": round(setbacks.rear),
+                            "lateral": round(setbacks.side),
+                        }
+                    })))
+                })?;
+            if !self.project.content_inside_buildable_limit() {
+                output
+                    .text
+                    .push_str(" Atenção: há paredes invadindo a faixa de recuo configurada.");
+            }
+            return Ok(output);
+        }
+
         let width = required_number(args, "largura")?;
         let length = required_number(args, "comprimento")?;
         if width < 0.25 || length < 0.25 {
             return Err(
                 "O terreno precisa ter pelo menos 0,25 m de largura e de comprimento.".to_owned(),
             );
+        }
+        let mut setbacks = self.project.setbacks;
+        if let Some(v) = recuo_frente {
+            setbacks.front = v;
+        }
+        if let Some(v) = recuo_fundos {
+            setbacks.rear = v;
+        }
+        if let Some(v) = recuo_lateral {
+            setbacks.side = v;
+        }
+        if has_setbacks {
+            setbacks.validate()?;
         }
         let (min, max) = match (number(args, "x")?, number(args, "y")?) {
             (Some(x), Some(y)) => (to_model(x, y + length), to_model(x + width, y)),
@@ -794,6 +930,9 @@ impl FloorPlanApp {
             let id = project
                 .set_terrain(min, max)
                 .ok_or("Medidas de terreno inválidas.")?;
+            if has_setbacks {
+                project.set_setbacks(setbacks)?;
+            }
             Ok(Change::new(format!(
                 "Terreno de {} × {} ({}) definido.",
                 format_meters(width),
@@ -801,12 +940,25 @@ impl FloorPlanApp {
                 square_metres(width * length)
             ))
             .select(Selection::Terrain(id))
-            .data(json!({ "id": id })))
+            .data(json!({
+                "id": id,
+                "recuos": project.setbacks.is_active().then(|| json!({
+                    "frente": round(project.setbacks.front),
+                    "fundos": round(project.setbacks.rear),
+                    "lateral": round(project.setbacks.side),
+                })),
+            })))
         })?;
         if !self.project.content_inside_terrain() {
             output.text.push_str(
                 " Atenção: há paredes ou cômodos fora do terreno; use centralizar_planta ou mova-os.",
             );
+        } else if self.project.setbacks.is_active()
+            && !self.project.content_inside_buildable_limit()
+        {
+            output
+                .text
+                .push_str(" Atenção: há paredes invadindo a faixa de recuo configurada.");
         }
         self.sync_terrain_fields();
         self.fit_view_requested();
@@ -1051,8 +1203,15 @@ impl FloorPlanApp {
         let width = number(args, "largura")?;
         let depth = number(args, "profundidade")?;
         let turns = quarter_turns(args)?;
-        if x.is_none() && y.is_none() && width.is_none() && depth.is_none() && turns.is_none() {
-            return Err("Informe x, y, rotacao, largura ou profundidade.".to_owned());
+        let free_angle = number(args, "angulo_graus")?;
+        if x.is_none()
+            && y.is_none()
+            && width.is_none()
+            && depth.is_none()
+            && turns.is_none()
+            && free_angle.is_none()
+        {
+            return Err("Informe x, y, rotacao, angulo_graus, largura ou profundidade.".to_owned());
         }
         let (cx, cy) = from_model(current.center);
         let center =
@@ -1063,13 +1222,32 @@ impl FloorPlanApp {
                 depth.unwrap_or(current.depth),
             )
         });
+        let angle_update = if let Some(deg) = free_angle {
+            let norm = deg.rem_euclid(360.0);
+            let q = ((norm / 90.0).floor() as u8) % 4;
+            let rem_deg = norm - f64::from(q) * 90.0;
+            let rem_rad = if rem_deg.abs() < 1e-6 {
+                0.0
+            } else {
+                rem_deg.to_radians()
+            };
+            Some((q, rem_rad))
+        } else {
+            turns.map(|q| (q, 0.0))
+        };
         self.apply_change(None, |project| {
-            project.update_fixture(id, center, size, turns)?;
+            if center.is_some() || size.is_some() {
+                project.update_fixture(id, center, size, None)?;
+            }
+            if let Some((q, rad)) = angle_update {
+                project.set_fixture_angle(id, q, rad)?;
+            }
             Ok(Change::new(format!("Objeto {id} atualizado.")).select(Selection::Fixture(id)))
         })
     }
 
     fn tool_edit_room(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        use crate::domain::finishes::{RoomFinishPreset, RoomFinishes};
         let id = element_id(args, "id")?;
         self.require(
             id,
@@ -1079,27 +1257,118 @@ impl FloorPlanApp {
         let name = text(args, "nome");
         let width = number(args, "largura")?;
         let length = number(args, "comprimento")?;
-        if name.is_none() && width.is_none() && length.is_none() {
-            return Err("Informe nome, largura ou comprimento.".to_owned());
+        let finish_preset = match text(args, "preset_acabamento") {
+            Some(raw) => {
+                let key = raw.to_lowercase().replace(['-', ' '], "_");
+                let preset = match key.as_str() {
+                    "social_porcelanato" | "social" => RoomFinishPreset::SocialPorcelanato,
+                    "dormitorio_madeira" | "dormitorio" | "quarto" => {
+                        RoomFinishPreset::DormitorioMadeira
+                    }
+                    "area_molhada_banheiro" | "banheiro" => RoomFinishPreset::AreaMolhadaBanheiro,
+                    "cozinha_area_servico" | "cozinha" => RoomFinishPreset::CozinhaAreaServico,
+                    "area_externa_varanda" | "varanda" | "externa" => {
+                        RoomFinishPreset::AreaExternaVaranda
+                    }
+                    _ => {
+                        return Err(
+                            "'preset_acabamento' deve ser social_porcelanato, dormitorio_madeira, banheiro, cozinha ou varanda."
+                                .to_owned(),
+                        );
+                    }
+                };
+                Some(preset)
+            }
+            None => None,
+        };
+        let floor_fin = text(args, "piso");
+        let wall_fin = text(args, "parede");
+        let ceiling_fin = text(args, "teto");
+        let baseboard_fin = text(args, "rodape");
+        let baseboard_cm = number(args, "rodape_cm")?;
+        let waterproofing = args.get("impermeabilizacao").and_then(Value::as_bool);
+        let finish_notes = text(args, "notas_acabamento");
+        let has_finish_fields = floor_fin.is_some()
+            || wall_fin.is_some()
+            || ceiling_fin.is_some()
+            || baseboard_fin.is_some()
+            || baseboard_cm.is_some()
+            || waterproofing.is_some()
+            || finish_notes.is_some();
+
+        if name.is_none()
+            && width.is_none()
+            && length.is_none()
+            && finish_preset.is_none()
+            && !has_finish_fields
+        {
+            return Err(
+                "Informe nome, largura, comprimento, preset_acabamento ou campos de acabamento (piso, parede, teto, rodape, rodape_cm, impermeabilizacao)."
+                    .to_owned(),
+            );
         }
-        let (current_width, current_length) = self
+        if let Some(cm) = baseboard_cm
+            && !(0.0..=50.0).contains(&cm)
+        {
+            return Err("'rodape_cm' deve ficar entre 0 e 50 cm.".to_owned());
+        }
+        let current_bounds = self
             .project
             .rooms
             .iter()
             .find(|room| room.id == id)
             .and_then(|room| self.project.room_bounds(room))
-            .map(|(min, max)| (max.x - min.x, max.y - min.y))
-            .ok_or("Cômodo sem paredes válidas para medir.")?;
+            .map(|(min, max)| (max.x - min.x, max.y - min.y));
+        if (width.is_some() || length.is_some()) && current_bounds.is_none() {
+            return Err("Cômodo sem paredes válidas para medir.".to_owned());
+        }
         self.apply_change(None, |project| {
             if let Some(name) = &name {
                 project.rename_room(id, name)?;
             }
             if width.is_some() || length.is_some() {
+                let (current_width, current_length) = current_bounds.unwrap();
                 project.resize_room_dimensions(
                     id,
                     width.unwrap_or(current_width),
                     length.unwrap_or(current_length),
                 )?;
+            }
+            if let Some(preset) = finish_preset {
+                project.apply_room_finish_preset(id, preset)?;
+            }
+            if has_finish_fields {
+                let mut finishes = project
+                    .rooms
+                    .iter()
+                    .find(|r| r.id == id)
+                    .and_then(|r| r.finishes.clone())
+                    .unwrap_or_else(|| RoomFinishes {
+                        baseboard_height_cm: 10.0,
+                        ..RoomFinishes::default()
+                    });
+                if let Some(v) = &floor_fin {
+                    finishes.floor = v.clone();
+                }
+                if let Some(v) = &wall_fin {
+                    finishes.wall = v.clone();
+                }
+                if let Some(v) = &ceiling_fin {
+                    finishes.ceiling = v.clone();
+                }
+                if let Some(v) = &baseboard_fin {
+                    finishes.baseboard = v.clone();
+                }
+                if let Some(cm) = baseboard_cm {
+                    finishes.baseboard_height_cm = cm;
+                }
+                if let Some(w) = waterproofing {
+                    finishes.waterproofing = w;
+                }
+                if let Some(v) = &finish_notes {
+                    finishes.notes = v.clone();
+                }
+                project.set_room_finishes(id, Some(finishes))?;
             }
             let room = project.rooms.iter().find(|room| room.id == id);
             let summary = room
@@ -1119,6 +1388,7 @@ impl FloorPlanApp {
     }
 
     fn tool_edit_opening(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        use crate::domain::openings::{DoorType, WindowType};
         let id = element_id(args, "id")?;
         self.require(
             id,
@@ -1131,15 +1401,61 @@ impl FloorPlanApp {
         let flip_hinge = flag(args, "inverter_dobradica");
         let height = number(args, "altura")?;
         let sill = number(args, "peitoril")?;
+        let door_type = match text(args, "tipo_porta") {
+            Some(raw) => {
+                let key = raw.to_lowercase().replace(['-', ' '], "_");
+                let dt = match key.as_str() {
+                    "giro" | "swing" => DoorType::Swing,
+                    "dupla" | "double_swing" => DoorType::DoubleSwing,
+                    "correr" | "sliding" => DoorType::Sliding,
+                    "correr_embutida" | "pocket_sliding" => DoorType::PocketSliding,
+                    "pivotante" | "pivot" => DoorType::Pivot,
+                    "sanfonada" | "camarao" | "bifold" => DoorType::Bifold,
+                    "giratoria" | "revolving" => DoorType::Revolving,
+                    _ => {
+                        return Err(
+                            "'tipo_porta' deve ser giro, dupla, correr, correr_embutida, pivotante, sanfonada ou giratoria."
+                                .to_owned(),
+                        );
+                    }
+                };
+                Some(dt)
+            }
+            None => None,
+        };
+        let window_type = match text(args, "tipo_janela") {
+            Some(raw) => {
+                let key = raw.to_lowercase().replace(['-', ' '], "_");
+                let wt = match key.as_str() {
+                    "correr" | "sliding" => WindowType::Sliding,
+                    "basculante" => WindowType::Basculante,
+                    "maxim_ar" | "maximar" => WindowType::MaximAr,
+                    "abrir" | "casement" => WindowType::Casement,
+                    "oscilo_batente" | "tilt_turn" => WindowType::TiltTurn,
+                    "fixa" | "fixed" => WindowType::Fixed,
+                    "bay_window" => WindowType::BayWindow,
+                    _ => {
+                        return Err(
+                            "'tipo_janela' deve ser correr, basculante, maxim_ar, abrir, oscilo_batente, fixa ou bay_window."
+                                .to_owned(),
+                        );
+                    }
+                };
+                Some(wt)
+            }
+            None => None,
+        };
         if width.is_none()
             && position.is_none()
             && !flip_side
             && !flip_hinge
             && height.is_none()
             && sill.is_none()
+            && door_type.is_none()
+            && window_type.is_none()
         {
             return Err(
-                "Informe largura, posicao, altura, peitoril, inverter_lado ou inverter_dobradica."
+                "Informe largura, posicao, altura, peitoril, tipo_porta, tipo_janela, inverter_lado ou inverter_dobradica."
                     .to_owned(),
             );
         }
@@ -1173,6 +1489,12 @@ impl FloorPlanApp {
             }
             if height.is_some() || sill.is_some() {
                 project.set_opening_heights(id, height, sill)?;
+            }
+            if let Some(dt) = door_type {
+                project.set_opening_door_type(id, dt)?;
+            }
+            if let Some(wt) = window_type {
+                project.set_opening_window_type(id, wt)?;
             }
             Ok(Change::new(format!("Abertura {id} atualizada.")).select(Selection::Opening(id)))
         })
@@ -1226,6 +1548,11 @@ impl FloorPlanApp {
                 "largura": round(terrain.width()),
                 "comprimento": round(terrain.height()),
                 "area_m2": round(terrain.area()),
+                "recuos": project.setbacks.is_active().then(|| json!({
+                    "frente": round(project.setbacks.front),
+                    "fundos": round(project.setbacks.rear),
+                    "lateral": round(project.setbacks.side),
+                })),
             })
         });
         let rooms: Vec<Value> = project
@@ -1234,6 +1561,17 @@ impl FloorPlanApp {
             .map(|room| {
                 let bounds = project.room_bounds(room);
                 let rectangle = project.room_is_rectangle(room);
+                let finishes = room.finishes.as_ref().map(|f| {
+                    json!({
+                        "piso": f.floor,
+                        "parede": f.wall,
+                        "teto": f.ceiling,
+                        "rodape": f.baseboard,
+                        "rodape_cm": round(f.baseboard_height_cm),
+                        "impermeabilizacao": f.waterproofing,
+                        "notas": f.notes,
+                    })
+                });
                 json!({
                     "id": room.id,
                     "nome": room.display_name(),
@@ -1253,6 +1591,7 @@ impl FloorPlanApp {
                     "comprimento": bounds.map(|(min, max)| round(max.y - min.y)),
                     "area_m2": project.room_area(room).map(round),
                     "paredes": room.wall_ids,
+                    "acabamentos": finishes,
                 })
             })
             .collect();
@@ -1305,6 +1644,10 @@ impl FloorPlanApp {
                     "parede_id": opening.wall_id,
                     "codigo": crate::domain::annotations::frame_of(&frame_types, opening)
                         .map(|frame| frame.code.clone()),
+                    "tipologia": opening
+                        .door_type
+                        .map(|dt| dt.short_label())
+                        .or_else(|| opening.window_type.map(|wt| wt.short_label())),
                     "altura": opening.height().map(round),
                     "peitoril": round(opening.sill()),
                     "lado_invertido": opening.flip_side,
@@ -1328,6 +1671,8 @@ impl FloorPlanApp {
                     "largura": round(fixture.width),
                     "profundidade": round(fixture.depth),
                     "rotacao": fixture.quarter_turns as u32 * 90,
+                    "angulo_graus": (fixture.angle_rad.abs() >= 1e-6)
+                        .then(|| round(fixture.rotation_rad().to_degrees().rem_euclid(360.0))),
                     "ocupa_x": round(width),
                     "ocupa_y": round(depth),
                 })
@@ -1390,6 +1735,31 @@ impl FloorPlanApp {
             },
             "objetos": fixtures,
             "desenhos": drawings::drawings_summary(project),
+            "estrutura_resumo": {
+                "pilares": project.fixtures.iter().filter(|f| f.kind == FixtureKind::Column).count(),
+                "sapatas": project.fixtures.iter().filter(|f| f.kind == FixtureKind::Footing).count(),
+                "mouroes": project.fixtures.iter().filter(|f| f.kind == FixtureKind::TimberPost).count(),
+                "vigas": project.structure.beams.len(),
+                "lajes": project.structure.slabs.len(),
+                "telhados": project.structure.roofs.len(),
+                "vigas_alavanca": project.structure.balance_beams.len(),
+                "fundacao_paredes": project.structure.wall_foundations.len(),
+                "sondagem": project.structure.soil_survey.is_some(),
+            },
+            "documentacao": {
+                "camadas": project.layers.len(),
+                "anotacoes": project.notes.len(),
+                "cotas": project.dimensions.len(),
+                "circulacoes": project.circulations.len(),
+                "cortes": project.views.sections.len(),
+                "fachadas": project.views.elevations.len(),
+                "detalhes": project.views.details.len(),
+                "prancha": {
+                    "formato": project.sheet.size.short_name(),
+                    "orientacao": project.sheet.orientation.label(),
+                    "escala": project.sheet.scale.label(),
+                },
+            },
             // What the person has selected on screen, so "this one" makes sense.
             "selecao": self.selected().iter().map(|item| item.id()).collect::<Vec<_>>(),
             "grupos": project
