@@ -244,6 +244,17 @@ impl FixtureKind {
         }
     }
 
+    /// Smallest allowed side (metres) for this fixture kind.
+    ///
+    /// Columns can be as narrow as 14 cm (NBR 6118), so they allow down to
+    /// 10 cm; every other fixture keeps the 20 cm minimum.
+    pub fn min_size(self) -> f64 {
+        match self {
+            Self::Column => MIN_COLUMN_SIZE,
+            _ => MIN_SIZE,
+        }
+    }
+
     /// Kinds whose symbol does not say what they are by itself, so their
     /// name is written on them when there is room.
     pub fn needs_label(self) -> bool {
@@ -260,8 +271,10 @@ impl FixtureKind {
     }
 }
 
-/// Columns go down to 14 cm (NBR 6118), so the smallest side is 10 cm.
-pub const MIN_SIZE: f64 = 0.1;
+/// Default minimum side for fixtures (20 cm).
+pub const MIN_SIZE: f64 = 0.2;
+/// Columns go down to 14 cm (NBR 6118), so their smallest side is 10 cm.
+pub const MIN_COLUMN_SIZE: f64 = 0.1;
 pub const MAX_SIZE: f64 = 8.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -282,11 +295,12 @@ pub struct Fixture {
     pub electrical: Option<super::electrical::ElectricalData>,
 }
 
-pub fn valid_size(width: f64, depth: f64) -> bool {
+pub fn valid_size(kind: FixtureKind, width: f64, depth: f64) -> bool {
+    let min = kind.min_size();
     width.is_finite()
         && depth.is_finite()
-        && (MIN_SIZE..=MAX_SIZE).contains(&width)
-        && (MIN_SIZE..=MAX_SIZE).contains(&depth)
+        && (min..=MAX_SIZE).contains(&width)
+        && (min..=MAX_SIZE).contains(&depth)
 }
 
 /// Rotates `local` by `turns` clockwise quarter turns on screen (model Y
@@ -777,9 +791,13 @@ mod tests {
 
     #[test]
     fn every_kind_has_a_symbol_and_a_unique_key() {
-        for kind in FixtureKind::ALL {
+        for kind in FixtureKind::ALL
+            .into_iter()
+            .chain(FixtureKind::ELECTRICAL)
+            .chain(FixtureKind::STRUCTURAL)
+        {
             let (width, depth) = kind.default_size();
-            assert!(valid_size(width, depth));
+            assert!(valid_size(kind, width, depth), "{kind:?}");
             assert!(!symbol(kind, width, depth).is_empty(), "{kind:?}");
             assert_eq!(FixtureKind::from_key(kind.key()), Some(kind));
         }
@@ -807,5 +825,19 @@ mod tests {
         );
         assert_eq!(FixtureKind::SunLounger.default_size(), (0.75, 1.95));
         assert!(symbol(FixtureKind::SunLounger, 0.75, 1.95).len() >= 4);
+    }
+
+    #[test]
+    fn minimum_size_is_per_kind() {
+        // Columns allow 14 cm (down to 10 cm), while furniture and other
+        // fixtures enforce the 20 cm minimum.
+        assert!(valid_size(FixtureKind::Column, 0.30, 0.14));
+        assert!(valid_size(FixtureKind::Column, 0.10, 0.10));
+        assert!(!valid_size(FixtureKind::Column, 0.09, 0.30));
+
+        assert!(!valid_size(FixtureKind::Table, 0.14, 0.50));
+        assert!(valid_size(FixtureKind::Table, 0.20, 0.20));
+        assert!(!valid_size(FixtureKind::Footing, 0.14, 0.80));
+        assert!(valid_size(FixtureKind::Footing, 0.20, 0.20));
     }
 }

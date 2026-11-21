@@ -360,8 +360,15 @@ impl Project {
         if clean.is_empty() {
             return Err("Informe um nome para o item da biblioteca.".to_owned());
         }
-        if base_kind.is_some() && !valid_size(width_m, depth_m) {
-            return Err("Dimensões fora dos limites permitidos (0,20 a 8,00 m).".to_owned());
+        if let Some(kind) = base_kind
+            && !valid_size(kind, width_m, depth_m)
+        {
+            return Err(format!(
+                "Dimensões fora dos limites permitidos ({:.2} a {:.2} m).",
+                kind.min_size(),
+                super::fixtures::MAX_SIZE
+            )
+            .replace('.', ","));
         }
         let id = self.library.iter().map(|i| i.id).max().unwrap_or(0) + 1;
         self.library.push(LibraryItem {

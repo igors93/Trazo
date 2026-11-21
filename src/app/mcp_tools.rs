@@ -896,7 +896,7 @@ impl FloorPlanApp {
                 .add_fixture(kind, placed.center, width, depth, placed.quarter_turns)
                 .ok_or(format!(
                     "Não foi possível inserir: o objeto precisa ficar dentro do terreno e medir entre {:.2} e {:.2} m.",
-                    crate::domain::fixtures::MIN_SIZE,
+                    kind.min_size(),
                     crate::domain::fixtures::MAX_SIZE
                 ).replace('.', ","))?;
             Ok(Change::new(format!(

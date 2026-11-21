@@ -113,7 +113,7 @@ Reviewed on 2026-11-21. Sources:
 | B16 | Low | Sheets | A sheet exported at a scale that does not fit crops the plan. The sheet panel warns, but the exported file does not. | Open |
 | B17 | Low | Performance | System fonts are loaded on every SVG rasterisation (print preview, single-line diagram, beam diagrams), causing a hitch after each change. | Open → #108 |
 | B18 | Low | Repository | No `.gitattributes`; with `core.autocrlf` the working tree mixes LF and CRLF, which makes diffs noisy. | ✅ Fixed: added `.gitattributes` enforcing LF for source/docs and CRLF for Windows scripts (#98). |
-| B19 | Low | Fixtures | The minimum fixture size dropped from 20 to 10 cm for every kind so that 14 cm columns fit; it should be a per-kind minimum. | Open |
+| B19 | Low | Fixtures | The minimum fixture size dropped from 20 to 10 cm for every kind so that 14 cm columns fit; it should be a per-kind minimum. | ✅ Fixed: `FixtureKind::min_size` enforces 10 cm for columns and 20 cm for all other fixtures; regression test `minimum_size_is_per_kind`. |
 
 ## Next up
 

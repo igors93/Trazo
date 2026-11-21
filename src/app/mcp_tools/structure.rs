@@ -77,7 +77,13 @@ impl FloorPlanApp {
                     let (center, turns) = project.structural_placement(point);
                     let id = project
                         .add_fixture(kind, center, width, depth, turns)
-                        .ok_or("Não foi possível inserir: confira o tamanho (10 cm a 8 m) e se o ponto está no terreno.")?;
+                        .ok_or_else(|| {
+                            format!(
+                                "Não foi possível inserir: confira o tamanho ({:.0} cm a {:.0} m) e se o ponto está no terreno.",
+                                kind.min_size() * 100.0,
+                                crate::domain::fixtures::MAX_SIZE
+                            )
+                        })?;
                     project.ensure_default_layers();
                     let label = project.structure_labels().get(&id).cloned();
                     Ok(Change::new(format!(

@@ -822,7 +822,10 @@ impl Project {
         depth: f64,
         quarter_turns: u8,
     ) -> Option<u64> {
-        if !fixtures::valid_size(width, depth) || !center.x.is_finite() || !center.y.is_finite() {
+        if !fixtures::valid_size(kind, width, depth)
+            || !center.x.is_finite()
+            || !center.y.is_finite()
+        {
             return None;
         }
         let fixture = Fixture {
@@ -861,10 +864,10 @@ impl Project {
             updated.center = center;
         }
         if let Some((width, depth)) = size {
-            if !fixtures::valid_size(width, depth) {
+            if !fixtures::valid_size(updated.kind, width, depth) {
                 return Err(format!(
                     "Largura e profundidade devem estar entre {:.2} e {:.2} m.",
-                    fixtures::MIN_SIZE,
+                    updated.kind.min_size(),
                     fixtures::MAX_SIZE
                 )
                 .replace('.', ","));
@@ -1328,7 +1331,7 @@ impl Project {
         self.fixtures.retain(|fixture| {
             fixture.center.x.is_finite()
                 && fixture.center.y.is_finite()
-                && fixtures::valid_size(fixture.width, fixture.depth)
+                && fixtures::valid_size(fixture.kind, fixture.width, fixture.depth)
         });
         if self.fixtures.len() < orig_fixtures {
             warnings.push(format!(
