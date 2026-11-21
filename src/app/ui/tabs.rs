@@ -515,6 +515,9 @@ impl FloorPlanApp {
 
         // Paint plan and static overlays.
         {
+            let Some((shown, discipline)) = self.side_plan_discipline_project(index) else {
+                return false;
+            };
             let Some(document) = self.tab_document(index) else {
                 return false;
             };
@@ -527,7 +530,7 @@ impl FloorPlanApp {
             canvas::paint(
                 &painter,
                 view,
-                &document.project,
+                &shown,
                 PaintOptions {
                     selection: None,
                     extra_selection: &[],
@@ -541,12 +544,32 @@ impl FloorPlanApp {
                     underlay_textures: &[],
                 },
             );
+            drop(shown);
+            if let Some(focus) = discipline.focus() {
+                painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(190));
+                let none_selected = |_: u64| false;
+                if focus == crate::domain::layers::LayerCategory::Structure {
+                    canvas::paint_structure_overlay(
+                        &painter,
+                        view,
+                        &document.project,
+                        &none_selected,
+                    );
+                } else {
+                    canvas::paint_electrical_overlay(
+                        &painter,
+                        view,
+                        &document.project,
+                        &none_selected,
+                    );
+                }
+            }
             let floor = document
                 .project
                 .active_floor()
                 .map(|f| f.name.clone())
                 .unwrap_or_else(|| "Térreo".to_owned());
-            self.paint_side_view_label(&painter, rect, &floor);
+            self.paint_side_view_label(&painter, rect, &floor, discipline);
             overlay::paint_scale_bar(&painter, view);
             overlay::paint_north_arrow(&painter, rect);
         }

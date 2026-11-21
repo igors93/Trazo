@@ -99,12 +99,17 @@ impl FloorPlanApp {
         painter: &egui::Painter,
         rect: Rect,
         floor_name: &str,
+        discipline: crate::domain::discipline::Discipline,
     ) {
         const PAD: f32 = 12.0;
         const ICON_GAP: f32 = 7.0;
         const DIVIDER_GAP: f32 = 12.0;
         const VIEW_ICON: f32 = 15.0;
-        let title_text = format!("Planta baixa · {floor_name}");
+        let title_text = if discipline.is_all() {
+            format!("Planta baixa · {floor_name}")
+        } else {
+            format!("{} · {floor_name}", discipline.label())
+        };
         let title = painter.layout_no_wrap(title_text, strong(12.5), TEXT);
         let hint = painter.layout_no_wrap("Clique para editar".to_owned(), regular(11.5), MUTED);
         let (title_width, hint_width) = (title.size().x, hint.size().x);

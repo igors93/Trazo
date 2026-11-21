@@ -51,7 +51,7 @@ pub(crate) struct Document {
     fit_pending: bool,
     measurements: Vec<(Point, Point)>,
     constraint_texts: HashMap<u64, String>,
-    discipline: crate::domain::discipline::Discipline,
+    pub(crate) discipline: crate::domain::discipline::Discipline,
     pub(crate) pane: TabPane,
 }
 
@@ -188,6 +188,23 @@ impl FloorPlanApp {
                 },
             })
             .collect()
+    }
+
+    /// The inactive tab's project filtered for its own discipline, paired with
+    /// that discipline so the side-by-side pane renders the right layers and
+    /// focus overlay.
+    pub(crate) fn side_plan_discipline_project(
+        &self,
+        index: usize,
+    ) -> Option<(
+        std::borrow::Cow<'_, Project>,
+        crate::domain::discipline::Discipline,
+    )> {
+        let document = self.tab_document(index)?;
+        Some((
+            document.project.for_discipline(document.discipline),
+            document.discipline,
+        ))
     }
 
     pub(crate) fn active_pane(&self) -> TabPane {
@@ -759,5 +776,25 @@ mod tests {
         assert!((app.split_ratio() - 0.80).abs() < 1e-6);
         app.set_split_ratio(0.62);
         assert!((app.split_ratio() - 0.62).abs() < 1e-6);
+    }
+
+    #[test]
+    fn inactive_split_pane_respects_its_tab_discipline() {
+        use crate::domain::discipline::Discipline;
+        use crate::domain::layers::LayerCategory;
+
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        app.discipline = Discipline::Structure;
+        app.duplicate_tab();
+        // Switch active tab to Electrical while tab 0 remains Structure.
+        app.discipline = Discipline::Electrical;
+        app.toggle_side_by_side(Some(0));
+
+        let (shown, discipline) = app.side_plan_discipline_project(0).unwrap();
+        assert_eq!(discipline, Discipline::Structure);
+        assert!(shown.category_visible(LayerCategory::Structure));
+        assert!(!shown.category_visible(LayerCategory::Electrical));
+        assert!(!shown.category_visible(LayerCategory::Fixtures));
     }
 }
