@@ -242,13 +242,49 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
 - **Limitations:**
   - `Discipline::Plumbing` highlights sanitary fixtures and flags wall/opening conflicts; hydraulic pipe routing and sizing remain scheduled for #72.
   - Side-by-side split view locks both panes to the active camera zoom/pan for visual alignment.
-- **Commit:** recorded in the next log update.
+- **Commit:** `56d87c5`.
 - **Limitations:**
   - There is no PDF viewer on the development machine. The PDF itself was checked by structure (page count) and the pages through their SVG, not opened in a reader.
   - The report has no MCP tool, since it does not change the model.
   - The cover date uses UTC.
 
-### #56 Construction quantities — 🔵 In progress
+### #56 Construction quantities — ✅ Done
+
+- **Changes:**
+  - `src/domain/quantities.rs` consolidates the takeoff of the active floor:
+    - per wall: net area, whole blocks, half blocks for the running bond, U-blocks of the bond-beam course, laying mortar and plaster on both faces;
+    - lintels over doors and windows and sills under windows, with 30 cm bearing each side;
+    - finishes per room: floor with waste, skirting, walls and ceiling.
+    Totals are kept per kind of masonry, with the block waste from *Quadros*.
+  - The *Quantitativos da obra* window (*Quantitativos* next to *Quadros*) shows the tables and exports them to CSV.
+  - The method is in `docs/engineering.md`.
+- **Tests:** `the_takeoff_matches_a_manual_takeoff_within_2_percent` (a 4 × 3 m room with a door and a window, worked out by hand: net area, blocks, half blocks, U-blocks, lintels, mortar and plaster, all within 2 %) and `each_kind_of_masonry_is_totalled_on_its_own_and_exports`. At HEAD `9ce409b`, format, Clippy and the 394 tests pass.
+- **Commit:** `75041e5`. Another process working in the same checkout committed these files under its own message before the verified commit could be made; the content is the one tested here. The docs are in this log update.
+- **Limitations:**
+  - Only the active floor is measured.
+  - Axis lengths count the corners twice (covered by the waste).
+  - The takeoff is not placed on sheets yet, and the old *Quadro de Materiais* still has bug B20.
+  - No MCP tool, since the takeoff does not change the model.
+
+### #53 Opening dimension chains — ⬜ Pendente
+
+- **Status:** not started in this round; work stopped at the user's request after #56.
+- **Analysis done:**
+  - `DimensionAnchor` already has `OpeningLeft`/`OpeningRight` and `WallStart`/`WallEnd`.
+  - A chain per wall (start → each jamb in order → end) can be built from `Aligned` dimensions, the way `generate_room_internal_dimensions` builds internal ones.
+
+### #113 Point loads — ✅ Done by another process
+
+- Implemented and committed as `9ce409b` (see its entry above). Not reworked here.
+
+### #94 2D frame analysis — ⬜ Pendente
+
+- **Status:** not started in this round; work stopped at the user's request.
+- **Validation plan:**
+  - a cantilever column (M = P·h, Δ = Ph³/3EI);
+  - reduction to the continuous-beam results when the column stiffness goes to zero;
+  - a symmetric fixed-base portal against the slope-deflection closed form;
+  - global equilibrium.
 
 ### #110 Reinforcement pre-sizing and steel schedule — 🟡 Partial
 
@@ -419,7 +455,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 53 | Automatic dimension chains locating each door and window along its wall, plus internal room dimensions | P0 | M | M2 | 🟡 Associative dimensions can anchor to openings and internal room dimensions can be generated; no automatic opening chains |
 | 54 | First-course plan and wall elevations with block paging: whole, half and cut blocks, lintels and sills | P1 | L | M2 | 🟡 Properties show each wall's first course; there is no drawing |
 | 55 | Setting-out plan (*locação*): cumulative dimensions from an origin on the lot, for marking out the building | P1 | M | M2 | ⬜ |
-| 56 | Construction quantities: blocks with waste, half blocks and U-blocks, lintels per opening, laying mortar, plaster, flooring and wall finishes per room | P0 | M | M2 | 🔵 In progress |
+| 56 | Construction quantities: blocks with waste, half blocks and U-blocks, lintels per opening, laying mortar, plaster, flooring and wall finishes per room | P0 | M | M2 | ✅ |
 | 57 | One-click construction set: A3 at 1:50 with dimensions, openings, schedules, first course, setting-out and legend | P0 | M | M2 | 🟡 Sheets, scales, templates and title blocks exist |
 | 71 | Roof plan (*planta de cobertura*): roof planes, slopes, ridges, gutters and downpipes | P1 | L | M2 | ⬜ |
 

@@ -262,6 +262,7 @@ Each tab of the window keeps its own view. Every sheet in a sheet set has a disc
 
 - **Prancha** (sheet): ISO A4 to A0 or a custom size, portrait or landscape, ABNT margins, and exact print scales of 1:25, 1:50, 1:75, 1:100 and 1:200 (**Melhor escala** picks the largest that fits). The title block holds the drawing, client, author, registration (CAU/CREA), address, date, sheet number and revision.
 - **Quadros** (schedules): areas, doors and windows, rooms and materials, configurable and placed on sheets.
+- **Quantitativos** (construction quantities): blocks with waste, half blocks, U-blocks, lintels and sills, laying mortar, plaster, and the finishes of each room, exported to CSV for the shopping list.
 - **Vistas** (views): sections, elevations and detail callouts with cross-references between drawings.
 - **Pranchas** (sheet sets): multi-sheet sets with automatic numbering (`01/03`), revisions (`R00`, `R01`…), issue status and a master document list.
 - **Modelos** (templates and sample projects): ready-made floor plan, site plan and wet-area detail setups, plus three full sample projects (`examples/casa-terrea.json`, `examples/sobrado.json`, `examples/apartamento.json`).

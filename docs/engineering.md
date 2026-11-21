@@ -16,6 +16,7 @@ This guide documents every engineering calculation in Trazo: the formula, the st
 - [Load path across floors](#load-path-across-floors)
 - [Footings](#footings)
 - [Electrical installation](#electrical-installation)
+- [Construction quantities](#construction-quantities)
 - [Applicability limits](#applicability-limits)
 - [Validation suite](#validation-suite)
 - [Known limitations](#known-limitations)
@@ -181,6 +182,24 @@ Allowable soil pressures by class (`SoilClass`): soft clay 80 kPa, medium clay 1
 | Phase balancing | largest circuit first, each on the least loaded phase (two-pole circuits on the least loaded pair) | — |
 
 The regional utility profiles (`UtilityProfile`: generic, Enel SP, CPFL, CEMIG, COPEL) change the supply thresholds, the minimum main breaker and feeder, and scale the demand. Their values have **not yet been checked against the published utility standards** (bug [B21](../ROADMAP.md#b21-regional-utility-profiles-are-not-traced-to-their-standards)); until they are, treat them as placeholders and check the local standard.
+
+## Construction quantities
+
+`construction_takeoff` (`src/domain/quantities.rs`) measures the active floor:
+
+| Quantity | Rule |
+| --- | --- |
+| Net wall area | axis length × storey height, less each opening's width × height |
+| Blocks per m² | 1 / ((block length + joint) × (block height + joint)), each wall with its own masonry |
+| Half blocks | one every other course at each wall end and at each jamb (courses = height / (block height + joint), rounded) |
+| U-blocks | the top course of every wall (bond beam), replacing its blocks, plus the lintels and sills |
+| Whole blocks | net area × blocks per m² − half blocks / 2 − top-course U-blocks; waste from *Quadros* (10 % by default) |
+| Lintels and sills | a lintel over each door and window and a sill under each window, width + 2 × 30 cm |
+| Laying mortar | net area × (1 − blocks per m² × block length × block height) × block width, + 10 % |
+| Plaster | both faces of the net area, at the masonry's plaster thickness, + 10 % on the volume |
+| Finishes | per room: floor + 10 %, skirting less door widths, net walls and ceiling (`room_finish_quantities`) |
+
+Checked by `the_takeoff_matches_a_manual_takeoff_within_2_percent`. Axis lengths count each corner twice, which the waste allowance covers.
 
 ## Applicability limits
 
