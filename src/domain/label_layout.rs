@@ -90,6 +90,52 @@ pub fn label_spot(
         .find(|spot| !blocked(Area::centered(*spot, size)))
 }
 
+/// Nudges `PlanMark::Text` anchors so no two labels overlap each other or any
+/// pre-existing `obstacles` (e.g. electrical device tags), picking the closest
+/// free spot around each label's preferred anchor.
+pub fn resolve_plan_mark_labels(marks: &mut [super::conduits::PlanMark], obstacles: &[Area]) {
+    const GAP: f64 = 0.03;
+    const RADII: [f64; 6] = [0.16, 0.30, 0.46, 0.66, 0.90, 1.20];
+    const ANGLES: usize = 12;
+
+    let mut placed: Vec<Area> = obstacles.to_vec();
+    for mark in marks.iter_mut() {
+        let super::conduits::PlanMark::Text { anchor, text } = mark else {
+            continue;
+        };
+        let size = super::electrical::tag_size(text);
+        let preferred = Area::centered((anchor.x, anchor.y), size);
+        let collides = |candidate: &Area, boxes: &[Area]| {
+            boxes.iter().any(|other| candidate.intersects(other, GAP))
+        };
+        if !collides(&preferred, &placed) {
+            placed.push(preferred);
+            continue;
+        }
+        let mut chosen: Option<(Point, Area)> = None;
+        'rings: for &radius in &RADII {
+            for step in 0..ANGLES {
+                let theta = std::f64::consts::TAU * (step as f64) / (ANGLES as f64);
+                let pt = Point::new(
+                    anchor.x + radius * theta.cos(),
+                    anchor.y + radius * theta.sin(),
+                );
+                let box_at = Area::centered((pt.x, pt.y), size);
+                if !collides(&box_at, &placed) {
+                    chosen = Some((pt, box_at));
+                    break 'rings;
+                }
+            }
+        }
+        if let Some((pt, box_at)) = chosen {
+            *anchor = pt;
+            placed.push(box_at);
+        } else {
+            placed.push(preferred);
+        }
+    }
+}
+
 impl Project {
     /// What a room label should keep clear of, as model-space corner pairs:
     /// each furniture symbol (chairs included) and the area each door leaf
@@ -128,6 +174,22 @@ impl Project {
                 let (width, height) = super::electrical::tag_size(&text);
                 let half = Point::new(width / 2.0, height / 2.0);
                 boxes.push((anchor.minus(half), anchor.translated(half)));
+            }
+            for mark in self.conduit_marks() {
+                if let super::conduits::PlanMark::Text { anchor, text } = mark {
+                    let (width, height) = super::electrical::tag_size(&text);
+                    let half = Point::new(width / 2.0, height / 2.0);
+                    boxes.push((anchor.minus(half), anchor.translated(half)));
+                }
+            }
+        }
+        if self.category_visible(LayerCategory::Structure) {
+            for mark in self.structure_marks() {
+                if let super::conduits::PlanMark::Text { anchor, text } = mark {
+                    let (width, height) = super::electrical::tag_size(&text);
+                    let half = Point::new(width / 2.0, height / 2.0);
+                    boxes.push((anchor.minus(half), anchor.translated(half)));
+                }
             }
         }
         if self.category_visible(LayerCategory::Openings) {
@@ -222,5 +284,59 @@ mod tests {
         // The sweep reaches about one door width off the wall.
         let depth = (high.x - low.x).min(high.y - low.y);
         assert!(depth > 0.5, "{depth}");
+    }
+
+    #[test]
+    fn conduit_and_structure_labels_avoid_overlapping_at_crowded_junctions() {
+        let mut project = super::super::samples::SampleProject::ALL[0].load_embedded();
+        project.generate_structure();
+        project.generate_electrical_points();
+        if project.main_panel().is_none() {
+            let (pw, pd) = super::super::fixtures::FixtureKind::Panel.default_size();
+            let room_anchor = project.room_label_anchor(&project.rooms[0]).unwrap().0;
+            project
+                .add_fixture(
+                    super::super::fixtures::FixtureKind::Panel,
+                    room_anchor,
+                    pw,
+                    pd,
+                    0,
+                )
+                .unwrap();
+        }
+        project.assign_circuits();
+        project.generate_conduits().unwrap();
+
+        let assert_no_overlaps = |marks: &[super::super::conduits::PlanMark], kind: &str| {
+            let boxes: Vec<(Area, &str)> = marks
+                .iter()
+                .filter_map(|m| match m {
+                    super::super::conduits::PlanMark::Text { anchor, text } => Some((
+                        Area::centered(
+                            (anchor.x, anchor.y),
+                            super::super::electrical::tag_size(text),
+                        ),
+                        text.as_str(),
+                    )),
+                    _ => None,
+                })
+                .collect();
+            assert!(!boxes.is_empty(), "{kind} should produce labels");
+            for i in 0..boxes.len() {
+                for j in i + 1..boxes.len() {
+                    assert!(
+                        !boxes[i].0.intersects(&boxes[j].0, 0.0),
+                        "{kind} labels overlap: '{}' ({:?}) vs '{}' ({:?})",
+                        boxes[i].1,
+                        boxes[i].0,
+                        boxes[j].1,
+                        boxes[j].0
+                    );
+                }
+            }
+        };
+
+        assert_no_overlaps(&project.structure_marks(), "structure");
+        assert_no_overlaps(&project.conduit_marks(), "conduit");
     }
 }

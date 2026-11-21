@@ -2573,6 +2573,7 @@ impl Project {
                 });
             }
         }
+        super::label_layout::resolve_plan_mark_labels(&mut marks, &[]);
         marks
     }
 }

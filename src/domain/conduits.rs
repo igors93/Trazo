@@ -1064,6 +1064,17 @@ impl Project {
                 marks.push(beside(diameter, -1.0));
             }
         }
+        let tag_obstacles: Vec<super::label_layout::Area> = self
+            .electrical_tags()
+            .into_iter()
+            .map(|(anchor, text)| {
+                super::label_layout::Area::centered(
+                    (anchor.x, anchor.y),
+                    super::electrical::tag_size(&text),
+                )
+            })
+            .collect();
+        super::label_layout::resolve_plan_mark_labels(&mut marks, &tag_obstacles);
         marks
     }
 }
