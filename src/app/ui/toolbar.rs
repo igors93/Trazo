@@ -707,6 +707,14 @@ impl FloorPlanApp {
                 self.export_dxf();
             }
             if tip(
+                ribbon_button(ui, Icon::Export, "Desenho DWG", false, false),
+                "Exportar a planta em formato AutoCAD DWG (via ODA File Converter ou LibreDWG)",
+            )
+            .clicked()
+            {
+                self.export_dwg();
+            }
+            if tip(
                 ribbon_button(ui, Icon::Table, "Planilha CSV", false, false),
                 "Exportar áreas, esquadrias e quantitativos para planilha",
             )

@@ -1,4 +1,5 @@
 pub mod crash_log;
+pub mod dwg;
 pub mod dxf;
 pub mod export;
 pub mod instance;

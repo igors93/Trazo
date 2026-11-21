@@ -1097,6 +1097,52 @@ impl FloorPlanApp {
         }
     }
 
+    fn export_dwg(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Desenho AutoCAD DWG", &["dwg"])
+            .set_file_name("planta-baixa.dwg")
+            .save_file()
+        else {
+            return;
+        };
+        self.message = match crate::io::dwg::export_dwg_file(
+            &self.project,
+            &path,
+            crate::io::dwg::DwgTargetVersion::Acad2018,
+        ) {
+            Ok(converter) => format!("Desenho DWG (AutoCAD 2018) exportado via {converter}."),
+            Err(error) => format!("Não foi possível exportar DWG: {error}"),
+        };
+    }
+
+    fn import_dwg(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Desenho AutoCAD DWG", &["dwg"])
+            .pick_file()
+        else {
+            return;
+        };
+        let previous = self.project.clone();
+        match crate::io::dwg::import_dwg_file(&mut self.project, &path) {
+            Ok(result) => {
+                if result.report.total_imported() > 0 || result.report.layers > 0 {
+                    self.record_change(previous);
+                    self.fit_view_requested();
+                }
+                self.message = format!(
+                    "DWG ({}) importado via {}: {}",
+                    result.header.release_name,
+                    result.converter_name,
+                    result.report.summary_pt()
+                );
+            }
+            Err(error) => {
+                self.project = previous;
+                self.message = format!("Não foi possível importar DWG: {error}");
+            }
+        }
+    }
+
     /// Drops from the selection whatever the project no longer has (after
     /// an undo, say); the last element left becomes the primary one.
     pub fn revalidate_selection(&mut self) {

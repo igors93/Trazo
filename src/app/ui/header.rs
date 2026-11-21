@@ -213,6 +213,10 @@ impl FloorPlanApp {
             self.import_dxf();
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Import), "Importar DWG (AutoCAD)...", "").clicked() {
+            self.import_dwg();
+            ui.close();
+        }
         if menu_item(
             ui,
             Some(Icon::ExportImage),
@@ -239,6 +243,10 @@ impl FloorPlanApp {
         }
         if menu_item(ui, Some(Icon::Export), "Exportar DXF (AutoCAD)...", "").clicked() {
             self.export_dxf();
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::Export), "Exportar DWG (AutoCAD)...", "").clicked() {
+            self.export_dwg();
             ui.close();
         }
         if menu_item(ui, Some(Icon::Table), "Exportar quantitativos CSV...", "").clicked() {
@@ -565,6 +573,10 @@ impl FloorPlanApp {
         }
         if menu_item(ui, Some(Icon::Export), "Desenho DXF (AutoCAD)...", "").clicked() {
             self.export_dxf();
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::Export), "Desenho DWG (AutoCAD)...", "").clicked() {
+            self.export_dwg();
             ui.close();
         }
         if menu_item(ui, Some(Icon::Table), "Quantitativos CSV...", "").clicked() {
