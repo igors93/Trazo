@@ -83,5 +83,6 @@ Everything below is on `main` and will become the first release, 0.1.0.
 - The area schedule of an empty project showed "-0,00 m²".
 - The ▾, ↻ and ↺ symbols in ribbon labels appeared as empty boxes on Windows.
 - Switching, adding or removing a floor cleared only the primary selection. A following `Delete` could remove selected elements on another floor.
+- Switching floors left conduits, beams and slabs behind, and the next edit on another floor deleted them. They now travel with their floor.
 
 [Unreleased]: https://github.com/igors93/Trazo/commits/main

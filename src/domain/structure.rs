@@ -1927,6 +1927,40 @@ mod tests {
     }
 
     #[test]
+    fn each_floor_keeps_its_beams_slabs_and_conduits() {
+        // Regression: switching floors left these behind, and the pruning
+        // on the next edit deleted them.
+        let mut project = house();
+        project.generate_structure();
+        let (w, d) = FixtureKind::Panel.default_size();
+        let panel = project
+            .add_fixture(FixtureKind::Panel, Point::new(0.5, 0.2), w, d, 0)
+            .unwrap();
+        let (w, d) = FixtureKind::CeilingLight.default_size();
+        let light = project
+            .add_fixture(FixtureKind::CeilingLight, Point::new(2.0, 2.0), w, d, 0)
+            .unwrap();
+        project
+            .add_conduit(panel, light, crate::domain::conduits::ConduitRun::Ceiling)
+            .unwrap();
+        let (beams, slabs) = (
+            project.structure.beams.clone(),
+            project.structure.slabs.clone(),
+        );
+        let conduits = project.conduits.clone();
+        let ground = project.ensure_default_floor();
+        project.add_floor("Superior", true, false);
+        assert!(project.structure.beams.is_empty() && project.conduits.is_empty());
+        // An edit upstairs prunes, and must not touch the floor below.
+        project.prune_conduits();
+        project.prune_structure();
+        project.switch_floor(ground).unwrap();
+        assert_eq!(project.structure.beams, beams);
+        assert_eq!(project.structure.slabs, slabs);
+        assert_eq!(project.conduits, conduits);
+    }
+
+    #[test]
     fn beams_go_with_their_columns() {
         let mut project = house();
         project.generate_structure();

@@ -33,6 +33,14 @@ pub struct FloorPlanData {
     pub notes: Vec<AnnotationNote>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub circulations: Vec<CirculationElement>,
+    /// Conduits, beams and slabs name devices, columns and rooms of their
+    /// own floor, so they travel with it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conduits: Vec<super::conduits::Conduit>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub beams: Vec<super::structure::Beam>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slabs: Vec<super::structure::Slab>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -141,6 +149,9 @@ impl Project {
             dimensions: std::mem::take(&mut self.dimensions),
             notes: std::mem::take(&mut self.notes),
             circulations: std::mem::take(&mut self.circulations),
+            conduits: std::mem::take(&mut self.conduits),
+            beams: std::mem::take(&mut self.structure.beams),
+            slabs: std::mem::take(&mut self.structure.slabs),
         }
     }
 
@@ -153,6 +164,9 @@ impl Project {
         self.dimensions = data.dimensions;
         self.notes = data.notes;
         self.circulations = data.circulations;
+        self.conduits = data.conduits;
+        self.structure.beams = data.beams;
+        self.structure.slabs = data.slabs;
     }
 
     pub fn active_floor(&self) -> Option<&FloorLevel> {
