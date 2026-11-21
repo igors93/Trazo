@@ -551,8 +551,10 @@ impl FloorPlanApp {
                 )
             })
             .unwrap_or_default();
-        // The discipline in view leaves its hidden layers out.
-        let shown = self.project.for_discipline(self.discipline);
+        // The discipline and per-tab layer overrides in view leave hidden layers out.
+        let shown = self
+            .project
+            .for_view(self.discipline, &self.active_hidden_layers);
         canvas::paint(
             &painter,
             view,

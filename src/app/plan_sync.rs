@@ -19,6 +19,12 @@ const LOG_SIZE: usize = 500;
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct PlanChange {
     pub revision: u64,
+    /// Tab index (1-based) where the edit was made.
+    pub tab: usize,
+    /// Active discipline when the edit was made.
+    pub discipline: crate::domain::discipline::Discipline,
+    /// Active floor name when the edit was made.
+    pub floor: String,
     /// The assistant's tool, or `None` for the person.
     pub tool: Option<String>,
     /// The whole plan was replaced (new project, file opened).
@@ -26,6 +32,10 @@ pub(super) struct PlanChange {
     pub added: Vec<Selection>,
     pub removed: Vec<Selection>,
     pub changed: Vec<Selection>,
+    /// Number of dependent elements automatically repositioned by this edit.
+    pub auto_updated: usize,
+    /// Number of blocked/flagged elements requiring manual review after this edit.
+    pub manual_review: usize,
 }
 
 /// An element as the assistant reads it: its id and kind.
@@ -38,12 +48,17 @@ impl PlanChange {
         let list = |items: &[Selection]| items.iter().map(element_json).collect::<Vec<_>>();
         json!({
             "revisao": self.revision,
+            "aba": self.tab,
+            "disciplina": self.discipline.key(),
+            "pavimento": self.floor,
             "origem": if self.tool.is_some() { "ia" } else { "usuario" },
             "ferramenta": self.tool,
             "planta_substituida": self.replaced,
             "adicionados": list(&self.added),
             "removidos": list(&self.removed),
             "alterados": list(&self.changed),
+            "atualizados_automaticamente": self.auto_updated,
+            "revisao_manual": self.manual_review,
         })
     }
 }
@@ -64,15 +79,38 @@ impl FloorPlanApp {
             return;
         }
         let changes = self.project.changes_since(before);
+        let floor = self
+            .project
+            .active_floor()
+            .map(|l| l.name.clone())
+            .unwrap_or_else(|| "Térreo".to_owned());
+        let auto_updated = if replaced {
+            0
+        } else {
+            self.sync_report.auto_updated.len()
+        };
+        let manual_review = if replaced {
+            0
+        } else {
+            self.sync_report.blocked_updates.len()
+        };
+        let tab = self.active_tab + 1;
+        let discipline = self.discipline;
+        let tool = self.mcp_running.clone();
         let log = &mut self.plan_log;
         log.revision += 1;
         log.changes.push_back(PlanChange {
             revision: log.revision,
-            tool: self.mcp_running.clone(),
+            tab,
+            discipline,
+            floor,
+            tool,
             replaced,
             added: changes.added,
             removed: changes.removed,
             changed: changes.changed,
+            auto_updated,
+            manual_review,
         });
         while log.changes.len() > LOG_SIZE {
             log.changes.pop_front();
@@ -122,6 +160,8 @@ impl FloorPlanApp {
             .filter(|change| change.revision > since && change.tool.is_none())
             .count();
         Ok(json!({
+            "projeto_id": self.active_project_id(),
+            "aba_ativa": self.active_tab() + 1,
             "revisao_atual": current,
             "desde": since,
             "completo": complete,

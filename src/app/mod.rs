@@ -313,10 +313,19 @@ pub struct FloorPlanApp {
     constraint_pick: Option<tools::ConstraintPick>,
     /// The distances of the constraints, as typed in the properties panel.
     constraint_texts: std::collections::HashMap<u64, String>,
-    /// Every open tab; the active one is `None`, its project lives in the
-    /// fields above (see `tabs.rs`).
-    tabs: Vec<Option<tabs::Document>>,
+    /// Every open view tab; the active one is `None`, its visual state lives
+    /// in the fields below and its shared project lives in `self.project` (see `tabs.rs`).
+    tabs: Vec<Option<tabs::ViewTab>>,
     active_tab: usize,
+    active_tab_id: tabs::TabId,
+    active_tab_title: Option<String>,
+    active_tab_floor_id: Option<u64>,
+    active_hidden_layers: Vec<u64>,
+    /// Shared project ID of the active tab; all other open projects wait here.
+    active_project_id: tabs::ProjectId,
+    projects: std::collections::HashMap<tabs::ProjectId, tabs::SharedProject>,
+    next_project_id: tabs::ProjectId,
+    next_tab_id: tabs::TabId,
     /// Which side holds the active tab when viewing side by side.
     active_pane: tabs::TabPane,
     /// The tab shown beside the active one, with the same view.
@@ -495,6 +504,14 @@ impl FloorPlanApp {
             constraint_texts: std::collections::HashMap::new(),
             tabs: vec![None],
             active_tab: 0,
+            active_tab_id: 1,
+            active_tab_title: None,
+            active_tab_floor_id: None,
+            active_hidden_layers: Vec::new(),
+            active_project_id: 1,
+            projects: std::collections::HashMap::new(),
+            next_project_id: 2,
+            next_tab_id: 2,
             active_pane: tabs::TabPane::Left,
             split_tab: None,
             split_ratio: 0.5,
@@ -818,20 +835,29 @@ impl FloorPlanApp {
 
     pub fn open_file(&mut self, path: &Path) -> OpenResult {
         match project_file::load(path) {
-            Ok((project, warnings)) => {
+            Ok((mut project, warnings)) => {
+                let saved_tabs = std::mem::take(&mut project.workspace_tabs);
                 recovery::clear();
                 self.measurements.clear();
                 let before = std::mem::replace(&mut self.project, project);
                 self.note_plan_change(&before, true);
                 self.history.clear();
+                self.sync_report = crate::domain::dependencies::DependencySyncReport::default();
                 self.file_path = Some(path.to_path_buf());
                 self.dirty = false;
                 self.recovery_pending = false;
                 self.pending_action = None;
                 self.tool = Tool::Move;
                 self.reset_editing_state();
-                self.sync_inspector_fields();
+                self.active_tab_title = None;
+                self.active_tab_floor_id = self.project.floors.active_floor_id;
+                self.active_hidden_layers.clear();
                 self.fit_view_requested();
+                if !saved_tabs.is_empty() {
+                    self.restore_workspace_tabs(saved_tabs);
+                }
+                self.sync_inspector_fields();
+                self.sync_masonry_fields();
                 if warnings.is_empty() {
                     self.message = "Projeto aberto com sucesso.".to_owned();
                 } else {
@@ -861,9 +887,12 @@ impl FloorPlanApp {
         self.write_project(path)
     }
 
-    /// Saves the project to `path`, which becomes the current file.
+    /// Saves the shared project (including its linked workspace view tabs) to
+    /// `path`, which becomes the current file for every linked tab.
     fn write_project(&mut self, path: PathBuf) -> bool {
-        match project_file::save(&self.project, &path) {
+        let mut to_save = self.project.clone();
+        to_save.workspace_tabs = self.collect_workspace_tabs(self.active_project_id);
+        match project_file::save(&to_save, &path) {
             Ok(()) => {
                 recovery::clear();
                 self.file_path = Some(path);
@@ -1168,10 +1197,12 @@ impl FloorPlanApp {
     fn undo(&mut self) {
         let before = self.project.clone();
         if self.history.undo(&mut self.project) {
+            self.sync_report = crate::domain::dependencies::DependencySyncReport::default();
             self.note_plan_change(&before, false);
             self.dirty = true;
             self.recovery_pending = true;
             self.revalidate_selection();
+            self.revalidate_linked_tab_selections();
             self.item_drag = None;
             self.drag_initial_project = None;
             self.creation_state = CreationState::Idle;
@@ -1184,10 +1215,12 @@ impl FloorPlanApp {
     fn redo(&mut self) {
         let before = self.project.clone();
         if self.history.redo(&mut self.project) {
+            self.sync_report = crate::domain::dependencies::DependencySyncReport::default();
             self.note_plan_change(&before, false);
             self.dirty = true;
             self.recovery_pending = true;
             self.revalidate_selection();
+            self.revalidate_linked_tab_selections();
             self.item_drag = None;
             self.drag_initial_project = None;
             self.creation_state = CreationState::Idle;

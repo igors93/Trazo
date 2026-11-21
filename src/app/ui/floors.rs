@@ -198,15 +198,14 @@ impl FloorPlanApp {
                 {
                     self.mark_edited_outside_history();
                 }
-                if let Some(id) = switch_to {
-                    let prev = self.project.clone();
-                    if self.project.switch_floor(id).is_ok() {
-                        self.clear_selection();
-                        self.record_change(prev);
-                        if let Some(level) = self.project.active_floor() {
-                            self.message =
-                                format!("Pavimento ativo: {}", level.label_with_elevation());
-                        }
+                if let Some(id) = switch_to
+                    && self.project.switch_floor(id).is_ok()
+                {
+                    self.active_tab_floor_id = self.project.floors.active_floor_id;
+                    self.clear_selection();
+                    self.sync_inspector_fields();
+                    if let Some(level) = self.project.active_floor() {
+                        self.message = format!("Pavimento ativo: {}", level.label_with_elevation());
                     }
                 }
                 if let Some(id) = remove_id {

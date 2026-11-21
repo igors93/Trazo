@@ -17,6 +17,8 @@ enum TabAction {
     Switch(usize),
     Close(usize),
     New(TabPane),
+    NewLinked(usize, crate::domain::discipline::Discipline, TabPane),
+    SetDiscipline(usize, crate::domain::discipline::Discipline),
     Duplicate(usize, TabPane),
     MoveToPane(usize, TabPane),
     SideBySide(Option<usize>),
@@ -29,7 +31,7 @@ impl FloorPlanApp {
         let full = ui.available_rect_before_wrap();
         let side = self
             .split_tab
-            .filter(|index| *index != self.active_tab() && self.tab_document(*index).is_some());
+            .filter(|index| *index != self.active_tab() && self.tab_view(*index).is_some());
 
         match side {
             None => {
@@ -337,8 +339,13 @@ impl FloorPlanApp {
                             let response = tip(
                                 response.on_hover_cursor(CursorIcon::PointingHand),
                                 &format!(
-                                    "{}{} · Ctrl+W ou botão do meio fecha",
+                                    "{}{}{} · clique direito para disciplinas · Ctrl+W fecha",
                                     info.title,
+                                    if info.linked {
+                                        " [visão sincronizada]"
+                                    } else {
+                                        ""
+                                    },
                                     if info.dirty {
                                         " (alterações não salvas)"
                                     } else {
@@ -357,10 +364,33 @@ impl FloorPlanApp {
                                 action = Some(TabAction::Close(index));
                             }
                             response.context_menu(|ui| {
-                                if ui.button("Duplicar em nova aba").clicked() {
-                                    action = Some(TabAction::Duplicate(index, target_pane));
-                                    ui.close();
-                                }
+                                use crate::domain::discipline::Discipline;
+                                ui.menu_button("Nova visão vinculada (mesmo projeto)", |ui| {
+                                    for discipline in Discipline::ALL {
+                                        if ui.button(discipline.label()).clicked() {
+                                            action = Some(TabAction::NewLinked(
+                                                index,
+                                                discipline,
+                                                target_pane,
+                                            ));
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                                ui.menu_button("Disciplina desta aba", |ui| {
+                                    for discipline in Discipline::ALL {
+                                        let checked = info.discipline == discipline;
+                                        if ui
+                                            .selectable_label(checked, discipline.label())
+                                            .clicked()
+                                        {
+                                            action =
+                                                Some(TabAction::SetDiscipline(index, discipline));
+                                            ui.close();
+                                        }
+                                    }
+                                });
+                                ui.separator();
                                 if split {
                                     let move_label = match target_pane {
                                         TabPane::Left => "Mover para a direita",
@@ -375,6 +405,10 @@ impl FloorPlanApp {
                                     }
                                 } else if !info.active && ui.button("Mostrar ao lado").clicked() {
                                     action = Some(TabAction::SideBySide(Some(index)));
+                                    ui.close();
+                                }
+                                if ui.button("Duplicar como cópia independente").clicked() {
+                                    action = Some(TabAction::Duplicate(index, target_pane));
                                     ui.close();
                                 }
                                 if ui.button("Fechar aba").clicked() {
@@ -441,14 +475,30 @@ impl FloorPlanApp {
                     if icon_button_sized(
                         ui,
                         Icon::DuplicateTab,
-                        "Duplicar aba (cópia para outra disciplina)",
+                        "Nova visão vinculada do mesmo projeto (outra disciplina sincronizada)",
                         false,
                         24.0,
                         16.0,
                     )
                     .clicked()
                     {
-                        action = Some(TabAction::Duplicate(source_for_duplicate, target_pane));
+                        use crate::domain::discipline::Discipline;
+                        let current = infos
+                            .get(source_for_duplicate)
+                            .map(|i| i.discipline)
+                            .unwrap_or(Discipline::All);
+                        let next_discipline = match current {
+                            Discipline::All | Discipline::Architecture => Discipline::Electrical,
+                            Discipline::Electrical => Discipline::Plumbing,
+                            Discipline::Plumbing => Discipline::Structure,
+                            Discipline::Structure => Discipline::Foundations,
+                            Discipline::Foundations => Discipline::Architecture,
+                        };
+                        action = Some(TabAction::NewLinked(
+                            source_for_duplicate,
+                            next_discipline,
+                            target_pane,
+                        ));
                     }
                 });
             });
@@ -480,13 +530,20 @@ impl FloorPlanApp {
             Some(TabAction::Switch(index)) => self.switch_tab(index),
             Some(TabAction::Close(index)) => self.request_close_tab(index),
             Some(TabAction::New(pane)) => self.new_tab_in_pane(pane),
+            Some(TabAction::NewLinked(index, discipline, pane)) => {
+                self.new_linked_tab_in_pane(index, discipline, None, None, pane);
+            }
+            Some(TabAction::SetDiscipline(index, discipline)) => {
+                let _ = self.configure_view_tab(index, Some(discipline), None, None);
+            }
             Some(TabAction::Duplicate(index, pane)) => self.duplicate_tab_in_pane(index, pane),
             Some(TabAction::MoveToPane(index, pane)) => self.move_tab_to_pane(index, pane),
             Some(TabAction::SideBySide(Some(index))) => self.toggle_side_by_side(Some(index)),
             Some(TabAction::SideBySide(None)) => {
                 if self.split_tab.is_none() && self.tab_count() < 2 {
                     self.message =
-                        "Abra ou duplique outro projeto numa aba para ver lado a lado.".to_owned();
+                        "Abra outra aba ou crie uma visão vinculada para ver lado a lado."
+                            .to_owned();
                 } else {
                     self.toggle_side_by_side(None);
                 }
@@ -513,12 +570,9 @@ impl FloorPlanApp {
             .or_else(|| response.interact_pointer_pos())
             .is_some_and(|pos| navigation.contains(pos));
 
-        // Paint plan and static overlays.
+        // Paint plan and static overlays directly from the live shared project.
         {
-            let Some((shown, discipline)) = self.side_plan_discipline_project(index) else {
-                return false;
-            };
-            let Some(document) = self.tab_document(index) else {
+            let Some(side) = self.side_plan_view(index) else {
                 return false;
             };
             let painter = ui.painter_at(rect);
@@ -530,7 +584,7 @@ impl FloorPlanApp {
             canvas::paint(
                 &painter,
                 view,
-                &shown,
+                &side.shown_project,
                 PaintOptions {
                     selection: None,
                     extra_selection: &[],
@@ -544,24 +598,18 @@ impl FloorPlanApp {
                     underlay_textures: &[],
                 },
             );
-            drop(shown);
-            if discipline.focus().is_some() {
+            if side.discipline.focus().is_some() {
                 painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(190));
                 let none_selected = |_: u64| false;
                 canvas::paint_discipline_overlay(
                     &painter,
                     view,
-                    &document.project,
-                    discipline,
+                    &side.base_project,
+                    side.discipline,
                     &none_selected,
                 );
             }
-            let floor = document
-                .project
-                .active_floor()
-                .map(|f| f.name.clone())
-                .unwrap_or_else(|| "Térreo".to_owned());
-            self.paint_side_view_label(&painter, rect, &floor, discipline);
+            self.paint_side_view_label(&painter, rect, &side.floor_name, side.discipline);
             overlay::paint_scale_bar(&painter, view);
             overlay::paint_north_arrow(&painter, rect);
         }

@@ -119,12 +119,12 @@ impl FloorPlanApp {
                         switch_to = Some(level.id);
                     }
                 }
-                if let Some(id) = switch_to {
-                    let prev = self.project.clone();
-                    if self.project.switch_floor(id).is_ok() {
-                        self.clear_selection();
-                        self.record_change(prev);
-                    }
+                if let Some(id) = switch_to
+                    && self.project.switch_floor(id).is_ok()
+                {
+                    self.active_tab_floor_id = self.project.floors.active_floor_id;
+                    self.clear_selection();
+                    self.sync_inspector_fields();
                 }
                 divider(ui);
             }

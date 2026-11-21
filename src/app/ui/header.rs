@@ -170,7 +170,35 @@ impl FloorPlanApp {
             self.request_new_project();
             ui.close();
         }
-        if menu_item(ui, Some(Icon::DuplicateTab), "Duplicar em nova aba", "").clicked() {
+        if menu_item(
+            ui,
+            Some(Icon::DuplicateTab),
+            "Nova visão vinculada (mesmo projeto)",
+            "",
+        )
+        .clicked()
+        {
+            let next = match self.discipline {
+                crate::domain::discipline::Discipline::Architecture
+                | crate::domain::discipline::Discipline::All => {
+                    crate::domain::discipline::Discipline::Electrical
+                }
+                crate::domain::discipline::Discipline::Electrical => {
+                    crate::domain::discipline::Discipline::Structure
+                }
+                _ => crate::domain::discipline::Discipline::Architecture,
+            };
+            self.new_linked_tab(next);
+            ui.close();
+        }
+        if menu_item(
+            ui,
+            Some(Icon::DuplicateTab),
+            "Duplicar como cópia independente",
+            "",
+        )
+        .clicked()
+        {
             self.duplicate_tab();
             ui.close();
         }

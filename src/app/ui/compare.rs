@@ -91,13 +91,13 @@ impl FloorPlanApp {
     }
 
     pub(in crate::app) fn compare_with_tab(&mut self, tab_index: usize) {
-        if let Some(Some(doc)) = self.tabs.get(tab_index) {
-            let label = if doc.project.name.trim().is_empty() {
+        if let Some(project) = self.tab_project(tab_index) {
+            let label = if project.name.trim().is_empty() {
                 format!("Aba {}", tab_index + 1)
             } else {
-                doc.project.name.clone()
+                project.name.clone()
             };
-            let baseline = doc.project.clone();
+            let baseline = project.clone();
             self.compare_state.baseline = Some(baseline);
             self.compare_state.baseline_label = label.clone();
             self.compare_state.overlay_active = true;
@@ -303,21 +303,14 @@ impl FloorPlanApp {
         let mut export_svg = false;
 
         let other_tabs: Vec<(usize, String)> = self
-            .tabs
-            .iter()
+            .tab_infos()
+            .into_iter()
             .enumerate()
-            .filter_map(|(i, slot)| {
-                if i == self.active_tab {
+            .filter_map(|(i, info)| {
+                if i == self.active_tab || info.project_id == self.active_project_id() {
                     None
                 } else {
-                    slot.as_ref().map(|doc| {
-                        let name = if doc.project.name.trim().is_empty() {
-                            format!("Aba {}", i + 1)
-                        } else {
-                            doc.project.name.clone()
-                        };
-                        (i, name)
-                    })
+                    Some((i, info.title))
                 }
             })
             .collect();
