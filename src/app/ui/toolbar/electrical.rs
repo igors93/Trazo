@@ -1,9 +1,10 @@
 //! The "Elétrica" ribbon tab: electrical devices placed on the floor plan,
-//! and the NBR 5410 design commands (minimum points, circuits, schedule).
+//! the NBR 5410 design commands (minimum points, circuits, schedule), the
+//! conduits and the board with its single-line diagram.
 
-use eframe::egui::Ui;
+use eframe::egui::{self, Ui};
 
-use crate::app::ui::icons::Icon;
+use crate::app::ui::icons::{Glyph, Icon};
 use crate::app::ui::widgets::{
     ribbon_button, ribbon_panel, ribbon_small, ribbon_stack, tip, vertical_divider,
 };
@@ -42,7 +43,7 @@ impl FloorPlanApp {
                 self.generate_electrical_points();
             }
             if tip(
-                ribbon_button(ui, Icon::Glyph(crate::app::ui::icons::Glyph::Distribute), "Circuitos", false, false),
+                ribbon_button(ui, Icon::Glyph(Glyph::Distribute), "Circuitos", false, false),
                 "Distribui os pontos em circuitos: iluminação separada das tomadas, cozinha e serviço em circuitos próprios e um circuito por TUE",
             )
             .clicked()
@@ -63,6 +64,53 @@ impl FloorPlanApp {
             {
                 self.active_doc_dialog = DocDialog::Electrical;
             }
+            if tip(
+                ribbon_button(ui, Icon::SectionView, "Unifilar", false, false),
+                "Quadro de distribuição: fases balanceadas, queda de tensão, demanda, padrão de entrada e o diagrama unifilar, para exportar em PDF ou SVG",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = DocDialog::Electrical;
+                ui.ctx()
+                    .data_mut(|data| data.insert_temp(egui::Id::unique("trazo_electrical_tab"), 1_u8));
+            }
+        });
+        vertical_divider(ui, 72.0);
+        ribbon_panel(ui, "Eletrodutos", |ui| {
+            if tip(
+                ribbon_button(ui, Icon::Glyph(Glyph::Spline), "Gerar", false, false),
+                "Liga ao quadro (QD) os pontos que ainda não chegam a ele: eletrodutos no teto entre o quadro e as luzes, e da luz do cômodo a cada tomada e interruptor, com fase, neutro, retorno e terra de cada trecho",
+            )
+            .clicked()
+            {
+                self.generate_conduits();
+            }
+            ribbon_stack(ui, |ui| {
+                if tip(
+                    ribbon_small(ui, Icon::Glyph(Glyph::Join), "Ligar pontos", false),
+                    "Liga por eletrodutos os pontos elétricos selecionados, na ordem em que foram escolhidos (Shift+clique)",
+                )
+                .clicked()
+                {
+                    self.connect_selected_devices();
+                }
+                if tip(
+                    ribbon_small(ui, Icon::Glyph(Glyph::Line), "Piso / teto", false),
+                    "Passa os eletrodutos entre os pontos selecionados para o piso (tracejado) ou de volta para o teto",
+                )
+                .clicked()
+                {
+                    self.toggle_selected_conduit_run();
+                }
+                if tip(
+                    ribbon_small(ui, Icon::Delete, "Remover", false),
+                    "Remove os eletrodutos entre os pontos selecionados (ou todos os de um ponto)",
+                )
+                .clicked()
+                {
+                    self.remove_selected_conduits();
+                }
+            });
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Exibição", |ui| {
@@ -78,14 +126,18 @@ impl FloorPlanApp {
                 {
                     self.set_electrical_voltage(if voltage < 170.0 { 220.0 } else { 127.0 });
                 }
-                let only = self.electrical_only;
+                let only = self.discipline == crate::domain::discipline::Discipline::Electrical;
                 if tip(
                     ribbon_small(ui, Icon::Layers, "Só elétrica", only),
                     "Esmaece arquitetura e mobiliário para destacar a instalação elétrica",
                 )
                 .clicked()
                 {
-                    self.electrical_only = !only;
+                    self.set_discipline(if only {
+                        crate::domain::discipline::Discipline::All
+                    } else {
+                        crate::domain::discipline::Discipline::Electrical
+                    });
                 }
                 let visible = self.project.category_visible(LayerCategory::Electrical);
                 let (vis_icon, vis_label) = if visible {

@@ -29,6 +29,7 @@ mod selection;
 mod sheet;
 mod sheet_set;
 mod status_bar;
+mod structure;
 mod tabs;
 mod templates;
 mod toolbar;
@@ -133,6 +134,7 @@ impl FloorPlanApp {
         self.library_dialog(&context);
         self.ergonomics_dialog(&context);
         self.electrical_dialog(&context);
+        self.structure_dialog(&context);
         self.underlay_dialog(&context);
         self.poll_xrefs(&context);
         self.xref_dialog(&context);

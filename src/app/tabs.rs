@@ -51,7 +51,7 @@ pub(crate) struct Document {
     fit_pending: bool,
     measurements: Vec<(Point, Point)>,
     constraint_texts: HashMap<u64, String>,
-    electrical_only: bool,
+    discipline: crate::domain::discipline::Discipline,
     pub(crate) pane: TabPane,
 }
 
@@ -76,7 +76,7 @@ impl Document {
             fit_pending: true,
             measurements: Vec::new(),
             constraint_texts: HashMap::new(),
-            electrical_only: false,
+            discipline: Default::default(),
             pane: TabPane::Left,
         }
     }
@@ -119,7 +119,7 @@ impl FloorPlanApp {
             fit_pending: self.fit_pending,
             measurements: std::mem::take(&mut self.measurements),
             constraint_texts: std::mem::take(&mut self.constraint_texts),
-            electrical_only: self.electrical_only,
+            discipline: self.discipline,
             pane: self.active_pane,
         }
     }
@@ -138,7 +138,7 @@ impl FloorPlanApp {
         self.fit_pending = document.fit_pending;
         self.measurements = document.measurements;
         self.constraint_texts = document.constraint_texts;
-        self.electrical_only = document.electrical_only;
+        self.discipline = document.discipline;
         self.active_pane = document.pane;
         self.last_canvas_center = None;
     }
@@ -304,13 +304,13 @@ impl FloorPlanApp {
 
     /// Copies the project in `source` into a new tab assigned to `pane`.
     pub(crate) fn duplicate_tab_in_pane(&mut self, source: usize, pane: TabPane) {
-        let (mut copy, name, scale, pan, electrical_only) = if source == self.active_tab {
+        let (mut copy, name, scale, pan, discipline) = if source == self.active_tab {
             (
                 self.project.clone(),
                 title_of(&self.project, self.file_path.as_deref()),
                 self.scale,
                 self.pan,
-                self.electrical_only,
+                self.discipline,
             )
         } else if let Some(doc) = self.tab_document(source) {
             (
@@ -318,7 +318,7 @@ impl FloorPlanApp {
                 title_of(&doc.project, doc.file_path.as_deref()),
                 doc.scale,
                 doc.pan,
-                doc.electrical_only,
+                doc.discipline,
             )
         } else {
             return;
@@ -328,7 +328,7 @@ impl FloorPlanApp {
         document.scale = scale;
         document.pan = pan;
         document.fit_pending = false;
-        document.electrical_only = electrical_only;
+        document.discipline = discipline;
         document.pane = if self.split_tab.is_some() {
             pane
         } else {

@@ -8,6 +8,9 @@ This guide walks through Trazo's interface and workflow. The application interfa
 - [CAD modify tools](#cad-modify-tools)
 - [Architecture tools](#architecture-tools)
 - [Interiors](#interiors)
+- [Electrical design](#electrical-design)
+- [Structure](#structure)
+- [Discipline views](#discipline-views)
 - [Documentation and output](#documentation-and-output)
 - [Files and data safety](#files-and-data-safety)
 - [Keyboard and mouse](#keyboard-and-mouse)
@@ -126,8 +129,9 @@ The *Elétrica* (electrical) tab designs the installation on the floor plan, fol
 | **Tomadas** (outlets) | **Baixa** (0.30 m), **Média** (1.20 m), **Alta** (2.20 m) and **TUE** (specific use, such as an electric shower or oven) |
 | **Iluminação e comando** | **Luz teto** (ceiling light), **Arandela** (wall light), **Interruptor** (switch) and **Paralelo** (two-way switch) |
 | **Quadro e dados** | **Quadro** (distribution board) and **Dados/TV** |
-| **Projeto (NBR 5410)** | **Gerar pontos**, **Circuitos** and **Quadro de cargas** |
-| **Exibição** | The circuit voltage (127 or 220 V), **Só elétrica** (fades everything else) and **Ocultar elétrica** |
+| **Projeto (NBR 5410)** | **Gerar pontos**, **Circuitos**, **Quadro de cargas** and **Unifilar** |
+| **Eletrodutos** (conduits) | **Gerar**, **Ligar pontos**, **Piso / teto** and **Remover** |
+| **Exibição** | The circuit voltage (127 or 220 V), **Só elétrica** (the electrical view: see [Discipline views](#discipline-views)) and **Ocultar elétrica** |
 
 Wall devices stand on the face of the nearest wall, like furniture; ceiling lights go where you click. In Properties, each device has its circuit, power in VA and mounting height. Tags such as "C2 · 600 VA" show the circuit and power once the plan is zoomed in, and always on paper.
 
@@ -139,6 +143,70 @@ Wall devices stand on the face of the nearest wall, like furniture; ceiling ligh
 - **Quadro de cargas** (load schedule) shows the forecast of each room next to what is drawn, and each circuit's power, voltage, current, wire section, breaker and the need for a 30 mA RCD (wet and outdoor areas), with warnings for anything the norm asks to change.
 
 Wire sections assume copper with PVC insulation, method B1, two loaded conductors at 30 °C (NBR 5410 table 36), with minimums of 1.5 mm² for lighting and 2.5 mm² for outlets. The design is a starting point: have it checked by a licensed professional.
+
+### Conduits and wiring
+
+Conduits (*eletrodutos*) join the devices to the distribution board. They are drawn as in Brazilian practice: a gentle arc between two points, solid when it runs in the ceiling or down a wall and dashed when it runs in the floor. Each run shows one tick per conductor and the circuit number beside them:
+
+| Tick | Conductor |
+| --- | --- |
+| Tick with a flag | Phase (*fase*) |
+| Plain tick | Neutral (*neutro*) |
+| Tick with a ring | Switch return (*retorno*), and the travellers between two-way switches |
+| Tick with a bar (T) | Protective earth (*terra*) |
+
+- Insert the **Quadro** (board) first. **Gerar** then links every device not yet reached: ceiling runs from the board to the ceiling lights, spread in several branches instead of one long chain, and a run from the light of each room to its outlets and switches. Existing conduits stay as they are.
+- **Ligar pontos** joins the selected devices (Shift+click), in the order they were picked. **Piso / teto** moves the runs between the selected devices to the floor or back to the ceiling, and **Remover** deletes them. With a single device selected, both act on all its runs. Deleting a device removes its conduits.
+- The wires of each run come from the circuits beyond it: phase, neutral and earth to outlets and lights, phase down to a switch and the return back up, two travellers between a pair of two-way switches, and two phases with no neutral for a 220 V circuit on a 127 V network.
+- Each conduit is sized for its wires with the NBR 5410 fill limits (53 % for one conductor, 31 % for two, 40 % for three or more). Runs above the usual 20 mm show their diameter, such as "Ø25". When a run has too many wires to tick, it shows the circuits, the number of wires and the size instead ("1–4, 7 · 15 fios · Ø32").
+
+Sheets with the electrical layer visible add a legend of the ticks, and the conduits go to PDF, SVG, PNG and DXF like the devices.
+
+### Distribution board and single-line diagram
+
+The *Quadro e diagrama unifilar* tab of the *Projeto elétrico* window (or **Unifilar** on the ribbon) puts together what the board needs:
+
+- **Supply** (*alimentação*): automatic or forced to single, two or three phases. Automatic picks single-phase up to 8 kVA of demand, two-phase up to 15 kVA (or whenever there are 220 V circuits between phases), and three-phase above that, warning above 75 kVA.
+- **Phase balancing**: circuits go on phases A, B and C from the largest down, each on the least loaded phase, and two-pole circuits on the least loaded pair. A warning appears when the phases differ by more than 10 %.
+- **Voltage drop**: with a board on the plan, each circuit's cable length runs along its conduits (or square to the axes, without them), plus the drops from the ceiling to the board and to each device. The drop uses ρ = 1/56 Ω·mm²/m, and a wire is raised to the next section until the drop is 4 % or less (NBR 5410 6.2.7), marked with an asterisk.
+- **Demand**: lighting and general outlets use the usual utility factor for their installed load (0.86 up to 1 kVA, down to 0.24 above 10 kVA), and specific-use circuits use the factor for how many there are (1.00 for one or two, 0.76 for four…).
+- **Service entrance** (*padrão de entrada*): the demand current on the most loaded phase gives the main breaker, the feeder section (at least 6 mm²), the earth conductor (NBR 5410 table 58) and the entrance conduit.
+
+The single-line diagram shows the meter, the main breaker, the surge protector (DPS), the busbar and one branch per circuit with its breaker, RCD, wire, phases and description, next to the panel schedule with the load on each phase, the demand and the entrance. **Exportar PDF** and **Exportar SVG** save it as an A3 sheet. On drawing sheets that show the electrical layer, a compact *Quadro de cargas (QD)* table joins the other schedules.
+
+Each utility publishes its own entrance tables: check them before you order the meter box.
+
+## Structure
+
+The *Estrutura* (structure) tab lays out a first reinforced-concrete structure over the floor plan and pre-sizes it. Columns, beams, slabs and footings are drawn as a formwork plan (*planta de forma*) on their own layer, *Estrutura*, in dark teal.
+
+| Group | Tools |
+| --- | --- |
+| **Elementos** | **Pilar** (column, 30 × 14 cm) and **Sapata** (footing, 80 × 80 cm). Both snap onto the nearest wall junction, or onto the wall's centre line, turned along the wall |
+| **Vigas** (beams) | **Ligar pilares** joins the selected columns (Shift+click) in order; **Remover vigas** removes the beams between them, or all the beams of one column |
+| **Projeto (NBR 6118)** | **Gerar estrutura**, **Pré-dimensionar**, **Esforços** and **Ajustar sapatas** |
+| **Exibição** | **Só estrutura** (the formwork view) and **Ocultar estrutura** |
+
+Columns and footings are objects like furniture: they select, move, copy, rotate and undo, and their section is their width and depth in Properties. Beams name the two columns they join, so they follow them, and deleting a column removes its beams. Labels are numbered in reading order, top to bottom and left to right: P1, P2… for columns, V1, V2… for beams (horizontal first, then vertical, a continuous beam keeping one name), L1, L2… for slabs and S1, S2… for footings, each footing taking the number of its column.
+
+- **Gerar estrutura** (generate the structure) adds what is missing: a column at every wall junction and free end, more along walls longer than 4.5 m (clear of doors and windows), a beam along every wall between consecutive columns (no beam on spans under 60 cm, where two columns act together), a lattice slab (*treliçada*) over every room and a footing under every column, sized by its load. Existing elements stay.
+- **Pré-dimensionar** (pre-size) opens the *Estrutura* window, where the materials and loads are set (concrete fck, allowable soil pressure, floors carried, live load and finishes) and each element is checked:
+  - **Slabs**: lattice or solid, with the usual minimum thickness for the smaller span (lattice slabs from 12 cm up to 3.5 m; solid slabs L/40, at least 8 cm). The load is the self weight (a lattice slab weighs about 55 % of a solid one), the finishes and the live load (1.5 kN/m² for dwellings, NBR 6120).
+  - **Beams**: each slab's load is shared by the beams along its edges in proportion to their length. With the beam's self weight and the walls of the floors above, each continuous beam is analysed over its columns. The checks are the usual minimum height (L/10 at an end span, L/12 inside a continuous beam) and the 12 cm minimum width (NBR 6118 13.2.2).
+  - **Columns**: the beam reactions, times the floors, plus the self weight. The concrete area is 1.4 · α · N / (0.85 fcd + 1.5 % · 420 MPa), with α = 1.3 for interior columns, 1.5 at an edge and 1.8 at a corner, and at least 360 cm² and 14 cm a side.
+  - **Footings**: area = 1.05 · N / allowable soil pressure, with the same overhang on every side of the column and a height for a rigid footing. **Ajustar sapatas** resizes them all.
+- **Esforços** (forces) draws every continuous beam with its supports, the bending moment diagram, the moments at the supports and in the spans, the shear, the reactions and the deflection. The analysis uses the stiffness method on pinned supports. Deflection uses the quasi-permanent load (g + 0.3q), about half the gross inertia for cracking and a creep factor of 2.32, checked against L/250. **Exportar PDF** and **Exportar SVG** save it as an A3 sheet.
+
+Warnings name each element that needs attention, including a support that a short span next to a long one would lift. Sheets that show the structure add a *Quadro de pilares e sapatas* table. This is pre-sizing for a first layout: the structural design belongs to a licensed engineer.
+
+## Discipline views
+
+Architecture, electrical and structure are views of the same model. The tabs choose what the plan shows:
+
+- **Só elétrica** (on the *Elétrica* tab) puts the architecture behind a veil and draws the electrical design on top, without the structure.
+- **Só estrutura** (on the *Estrutura* tab) does the same for the formwork plan, without furniture or electrical devices.
+
+Each tab of the window keeps its own view. Every sheet in a sheet set has a discipline too: **+ Planta de Instalações Elétricas** and **+ Planta de Forma** add sheets that show only their layers (with their schedules), and the *Disciplina* list changes it for any sheet. An architecture sheet leaves out the electrical design and the structure.
 
 ## Documentation and output
 

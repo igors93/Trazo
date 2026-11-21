@@ -36,6 +36,9 @@ pub struct ElectricalSettings {
     /// Voltage of specific-use circuits (showers, ovens): usually 220 V.
     #[serde(default = "default_specific_voltage")]
     pub specific_voltage_v: f64,
+    /// How the utility supplies the building (automatic from the demand).
+    #[serde(default)]
+    pub supply: super::distribution::Supply,
 }
 
 fn default_voltage() -> f64 {
@@ -51,6 +54,7 @@ impl Default for ElectricalSettings {
         Self {
             voltage_v: default_voltage(),
             specific_voltage_v: default_specific_voltage(),
+            supply: super::distribution::Supply::default(),
         }
     }
 }
@@ -108,9 +112,10 @@ impl FixtureKind {
         })
     }
 
-    /// Whether the device goes on a wall (everything but ceiling points).
+    /// Whether the device goes on a wall (everything but ceiling points and
+    /// structural elements, which stand on the wall's centre line).
     pub fn mounts_on_wall(self) -> bool {
-        self != Self::CeilingLight
+        self != Self::CeilingLight && !self.is_structural()
     }
 
     /// The usual power and height of a new device of this kind.
@@ -439,6 +444,16 @@ impl CircuitKind {
             Self::Mixed => "Misto",
         }
     }
+
+    /// The abbreviation used on the board and on sheets.
+    pub fn short(self) -> &'static str {
+        match self {
+            Self::Lighting => "Ilum.",
+            Self::GeneralOutlets => "TUG",
+            Self::SpecificOutlet => "TUE",
+            Self::Mixed => "Misto",
+        }
+    }
 }
 
 /// One row of the load schedule.
@@ -456,6 +471,16 @@ pub struct CircuitRow {
     pub breaker_a: Option<f64>,
     /// Whether NBR 5410 5.1.3.2.2 asks for a 30 mA RCD (wet or outdoor areas).
     pub needs_rcd: bool,
+    /// Breaker poles: 2 for 220 V between the phases of a 127 V network.
+    pub poles: u8,
+    /// The phases it is connected to (0 = A, 1 = B, 2 = C).
+    pub phases: Vec<u8>,
+    /// Cable length to the farthest point, once there is a board.
+    pub length_m: Option<f64>,
+    /// Voltage drop at the farthest point, in percent.
+    pub drop_percent: Option<f64>,
+    /// Whether the wire was raised above the breaker's to limit the drop.
+    pub wire_by_drop: bool,
 }
 
 /// The circuits, their totals and what needs attention.
@@ -465,6 +490,14 @@ pub struct LoadSchedule {
     pub total_va: f64,
     pub unassigned: usize,
     pub warnings: Vec<String>,
+    /// Installed loads with the demand factors applied.
+    pub demand: super::distribution::Demand,
+    /// The supply in use (resolved when automatic).
+    pub supply: super::distribution::Supply,
+    /// Installed load on each phase after balancing, in VA.
+    pub phase_va: [f64; 3],
+    /// Main breaker, feeder and conduit of the utility connection.
+    pub entrance: Option<super::distribution::ServiceEntrance>,
 }
 
 /// Breaker and wire for a circuit drawing `current_a`: the smallest standard
@@ -704,8 +737,14 @@ impl Project {
                 wire_mm2: wire,
                 breaker_a: breaker,
                 needs_rcd: wet && kind != CircuitKind::Lighting,
+                poles: 1,
+                phases: Vec::new(),
+                length_m: None,
+                drop_percent: None,
+                wire_by_drop: false,
             });
         }
+        self.complete_schedule(&mut schedule);
         schedule.unassigned = self
             .electrical_devices()
             .filter(|device| {

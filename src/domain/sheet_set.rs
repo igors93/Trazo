@@ -83,6 +83,9 @@ pub struct SheetItem {
     pub status: SheetStatus,
     #[serde(default)]
     pub revisions: Vec<RevisionEntry>,
+    /// The discipline the sheet shows (#96): its layers on paper.
+    #[serde(default, skip_serializing_if = "super::discipline::Discipline::is_all")]
+    pub discipline: super::discipline::Discipline,
 }
 
 impl SheetItem {
@@ -141,6 +144,7 @@ impl SheetSet {
                 author: initial_author,
                 description: "Emissão inicial".to_owned(),
             }],
+            discipline: super::discipline::Discipline::All,
         });
         self.active_sheet_id = Some(id);
         self.renumber_sheets();

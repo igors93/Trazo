@@ -47,6 +47,9 @@ pub enum FixtureKind {
     WallLight,
     Panel,
     DataPoint,
+    // Structural elements (see `structure.rs`).
+    Column,
+    Footing,
 }
 
 impl FixtureKind {
@@ -113,6 +116,8 @@ impl FixtureKind {
             Self::WallLight => "Arandela",
             Self::Panel => "Quadro de distribuição",
             Self::DataPoint => "Ponto de dados/TV",
+            Self::Column => "Pilar",
+            Self::Footing => "Sapata",
         }
     }
 
@@ -153,6 +158,8 @@ impl FixtureKind {
             Self::WallLight => "arandela",
             Self::Panel => "quadro",
             Self::DataPoint => "ponto_dados",
+            Self::Column => "pilar",
+            Self::Footing => "sapata",
         }
     }
 
@@ -160,6 +167,7 @@ impl FixtureKind {
         Self::ALL
             .into_iter()
             .chain(Self::ELECTRICAL)
+            .chain(Self::STRUCTURAL)
             .find(|kind| kind.key() == key)
     }
 
@@ -198,6 +206,8 @@ impl FixtureKind {
             Self::WallLight => (0.3, 0.2),
             Self::Panel => (0.5, 0.2),
             Self::DataPoint => (0.26, 0.2),
+            Self::Column => (0.30, 0.14),
+            Self::Footing => (0.80, 0.80),
         }
     }
 
@@ -228,7 +238,9 @@ impl FixtureKind {
             | Self::SwitchTwoWay
             | Self::CeilingLight
             | Self::WallLight
-            | Self::DataPoint => 0.0,
+            | Self::DataPoint
+            | Self::Column
+            | Self::Footing => 0.0,
         }
     }
 
@@ -248,7 +260,8 @@ impl FixtureKind {
     }
 }
 
-pub const MIN_SIZE: f64 = 0.2;
+/// Columns go down to 14 cm (NBR 6118), so the smallest side is 10 cm.
+pub const MIN_SIZE: f64 = 0.1;
 pub const MAX_SIZE: f64 = 8.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -413,6 +426,7 @@ pub fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolShape> {
         | FixtureKind::WallLight
         | FixtureKind::Panel
         | FixtureKind::DataPoint => super::electrical::symbol(kind, width, depth),
+        FixtureKind::Column | FixtureKind::Footing => super::structure::symbol(kind, width, depth),
         FixtureKind::Counter => vec![
             outline,
             line(&[(-hw, hd - 0.05), (hw, hd - 0.05)], false, Detail),

@@ -82,6 +82,23 @@ fn themed_project_for_print(project: &Project, monochrome: bool) -> Project {
     copy
 }
 
+/// Rasterizes SVG markup to straight (not premultiplied) RGBA, ready to
+/// upload as an `egui` texture.
+pub(crate) fn svg_to_rgba(markup: &str, width: u32, height: u32) -> Result<Vec<u8>, String> {
+    let pixmap = rasterize_svg(markup, width, height)?;
+    let mut rgba = pixmap.data().to_vec();
+    for px in rgba.as_chunks_mut::<4>().0 {
+        let a = px[3];
+        if a > 0 && a < 255 {
+            let af = f32::from(a) / 255.0;
+            px[0] = ((f32::from(px[0]) / af).min(255.0)) as u8;
+            px[1] = ((f32::from(px[1]) / af).min(255.0)) as u8;
+            px[2] = ((f32::from(px[2]) / af).min(255.0)) as u8;
+        }
+    }
+    Ok(rgba)
+}
+
 fn rasterize_svg(markup: &str, width: u32, height: u32) -> Result<tiny_skia::Pixmap, String> {
     let mut options = usvg::Options::default();
     options.fontdb_mut().load_system_fonts();

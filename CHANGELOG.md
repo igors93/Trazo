@@ -57,6 +57,17 @@ Everything below is on `main` and will become the first release, 0.1.0.
 - An *Elétrica* tab for the electrical design on the floor plan (ABNT NBR 5410): outlets at three heights and for specific use, switches, ceiling and wall lights, distribution board and data points, on a layer of their own.
 - Minimum points generated per room from the norm, automatic circuits, and a load schedule with current, wire section, breaker and RCD, plus warnings. Symbols and tags are the same on screen and in exports; *Só elétrica* fades the architecture.
 - Four MCP tools for the electrical design: `inserir_ponto_eletrico`, `editar_ponto_eletrico`, `projeto_eletrico` and `quadro_de_cargas`.
+- Conduits (*eletrodutos*) from the devices to the board, drawn as arcs (solid in the ceiling, dashed in the floor) with one tick per conductor (phase, neutral, return, earth) and the circuit numbers. They can be laid automatically from the board or joined by hand, are sized by the NBR 5410 fill limits, and go to every export, DXF included (#88).
+- A distribution board computed from the circuits: phase balancing for two- and three-phase supplies (#91), voltage drop along the conduits with wires raised to keep it within 4 %, demand factors and service entrance sizing (main breaker, feeder and conduit) (#90), and a single-line diagram with the panel schedule, exported to PDF and SVG, plus a compact load table on electrical sheets (#89).
+- `projeto_eletrico` lays, joins, moves and removes conduits and sets the supply; `quadro_de_cargas` returns phases, voltage drop, demand, the entrance and the wires of each conduit.
+
+**Structure and discipline views**
+
+- An *Estrutura* tab with columns and footings that snap onto wall junctions, beams between columns and slabs over rooms, drawn as a formwork plan on a layer of their own with P, V, L and S labels and sections. **Gerar estrutura** lays out a first structure over the walls (#92).
+- Pre-sizing by the usual rules: slab thickness by span, beam height by span, column area by load and position, footing size by soil pressure, with loads going from the slabs through the beams to the soil and a warning for each element to review (#93).
+- Continuous beam analysis: bending moments, shear, reactions and long-term deflection against L/250, drawn as diagrams and exported to PDF and SVG (#94).
+- Discipline views: architecture, electrical and structure shown on their own on screen (the rest faded) and on sheets of their own, with *Planta de Instalações Elétricas* and *Planta de Forma* sheets in the sheet set (#96).
+- Two MCP tools, `projeto_estrutural` and `pre_dimensionamento`.
 - Entrance gates (*Portão*): pedestrian or vehicle, from 0.80 to 8 m, sliding by default, tagged "PT" and available to assistants.
 - Several projects at once: *Nova janela* (`Ctrl+Shift+N`) opens another window, with its own recovery draft and MCP port.
 - Tabs: new and opened projects go to tabs of the same window, each with its own undo history, selection and view, a shared clipboard, crash-recovery drafts for every tab, and an `abas` MCP tool. *Duplicar aba* starts another discipline of the same building, and *Lado a lado* compares two tabs with synchronised views (#95).

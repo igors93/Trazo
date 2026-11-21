@@ -56,6 +56,7 @@ enum DocDialog {
     Library,
     Ergonomics,
     Electrical,
+    Structure,
     Underlay,
     Xref,
     Compare,
@@ -77,6 +78,7 @@ enum RibbonTab {
     Edit,
     Interiors,
     Electrical,
+    Structure,
     Drafting,
     View,
     Output,
@@ -227,8 +229,9 @@ pub struct FloorPlanApp {
     block_insert_target: Option<crate::domain::blocks::BlockDefinition>,
     show_ergonomics: bool,
     ergonomics_min_passage: f64,
-    /// Fades architecture and furniture so the electrical design stands out.
-    electrical_only: bool,
+    /// The discipline shown on the plan: everything, or one of them with
+    /// the architecture faded behind it (#96).
+    discipline: crate::domain::discipline::Discipline,
     browser_filter: String,
     browser_hover: Option<Selection>,
     cursor_world: Option<Point>,
@@ -432,15 +435,13 @@ impl FloorPlanApp {
             new_block_attr_key: "CODIGO".to_owned(),
             new_block_attr_default: String::new(),
             new_block_attrs: vec![crate::domain::blocks::BlockAttribute::new(
-                "CODIGO",
-                "Código",
-                "BL-01",
+                "CODIGO", "Código", "BL-01",
             )],
             save_block_to_personal: true,
             block_insert_overrides: Vec::new(),
             block_insert_target: None,
             show_ergonomics: false,
-            electrical_only: false,
+            discipline: Default::default(),
             ergonomics_min_passage: 0.70,
             browser_filter: String::new(),
             browser_hover: None,
@@ -1883,8 +1884,11 @@ impl FloorPlanApp {
     /// leaving the project as it was; the message then says why, and the
     /// caller must not announce a change.
     fn record_change(&mut self, previous: Project) -> bool {
-        // Deleted elements leave their groups (a group of one goes).
+        // Deleted elements leave their groups (a group of one goes), and
+        // their conduits go with them.
         self.project.prune_groups();
+        self.project.prune_conduits();
+        self.project.prune_structure();
         let edited = previous != self.project;
         if let Err(error) = self.project.settle_constraints(&previous) {
             self.project = previous;

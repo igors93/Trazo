@@ -38,12 +38,12 @@ Trazo should serve both ends of the spectrum on the same project and file:
 | Architecture (#11–#25) | ✅ Complete: junctions, shared walls, multilayer walls, door and window types, stairs, floors, library, finishes, circulation checks |
 | Documentation (#26–#37) | ✅ Complete: associative dimensions, layers, sheets, scales, title blocks, hatches, schedules, sections, sheet sets, ABNT styles |
 | Exchange (#38–#45) | 🟡 DXF import/export, SVG and CSV export done; no DWG yet |
-| AI (#46–#52) | 🟡 39 MCP tools (the electrical design included), real-time sync, tunnel token; it covers only part of the model, and there is no approval or read-only mode |
+| AI (#46–#52) | 🟡 43 MCP tools (the electrical design and the structure included), real-time sync, tunnel token; it covers only part of the model, and there is no approval or read-only mode |
 | Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
 | Release (#58–#64) | 🟡 CI, licence, property tests, file migrations, release binaries, crash reports and Windows installer done; samples, schema and signing remain |
 | Experience (#65–#67) | ⬜ Not started |
 | Electrical design | ✅ Devices, NBR 5410 forecast, generated points, circuits, load schedule, conduits with wiring, phase balancing, voltage drop, demand, service entrance and single-line diagram (#88–#91) |
-| Plumbing and structure | ⬜ Not started (#72, #92–#94) |
+| Plumbing and structure | ✅ Structure: columns, beams, slabs and footings, pre-sizing and continuous beam analysis (#92–#94) · ⬜ plumbing not started (#72) |
 | Several projects | ✅ One project per window, each with its own recovery draft and AI server · 🟡 no tabs yet (#95) |
 
 ## How to read this roadmap
@@ -159,7 +159,7 @@ Worth prototyping after M6, when the core is solid: #85, #86, #87, #94, #44, #45
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 74 | MCP covers the whole model: floors, stairs and ramps, finishes, layers, dimensions, notes, hatches, library items, sheets and views | P0 | L | M5 | 🟡 39 tools cover lot, walls, rooms, openings and gates, 21 fixture kinds, the electrical design, drawings and CAD editing |
+| 74 | MCP covers the whole model: floors, stairs and ramps, finishes, layers, dimensions, notes, hatches, library items, sheets and views | P0 | L | M5 | 🟡 43 tools cover lot, walls, rooms, openings and gates, fixtures, the electrical design, the structure, drawings and CAD editing |
 | 75 | Read-only switch in *Conectar uma IA*, for assistants that should only analyse | P1 | S | M5 | ⬜ |
 | 46 | Approval mode: the assistant proposes, the plan shows a preview, the person accepts or rejects | P1 | M | M5 | ⬜ |
 | 51 | AI history with a diff per action, comparison and selective revert | P1 | M | M5 | 🟡 Live highlight, action log and revisions exist |
@@ -207,12 +207,12 @@ A chosen level must never be a wall. A newcomer can open an advanced tool when n
 | --- | --- | --- | --- | --- | --- |
 | 88 | Conduits (*eletrodutos*) from devices to the panel, drawn on the plan along walls and ceiling, with the wires of each run | P0 | L | M4 | ✅ |
 | 89 | Single-line diagram (*diagrama unifilar*) and panel schedule generated from the circuits | P0 | M | M4 | ✅ |
-| 96 | Discipline views: architecture, electrical, plumbing and structure as views of one model, each with its own visibility, colours and sheets | P1 | M | M4 | 🟡 The electrical layer and the *Só elétrica* view exist |
+| 96 | Discipline views: architecture, electrical, plumbing and structure as views of one model, each with its own visibility, colours and sheets | P1 | M | M4 | 🟡 Architecture, electrical and structure views on screen and per sheet; plumbing joins with #72 |
 | 90 | Voltage drop, demand factors and service entrance sizing (*padrão de entrada*) | P1 | M | M4 | ✅ |
-| 92 | Structural elements on the plan: columns, beams, slabs and footings as 2D elements with sections and a layer of their own (formwork plan, *planta de forma*) | P1 | L | M4 | ⬜ |
-| 93 | Structural pre-sizing: spans, tributary areas and rules of thumb for columns, beams and slabs, with warnings | P2 | M | M4 | ⬜ |
+| 92 | Structural elements on the plan: columns, beams, slabs and footings as 2D elements with sections and a layer of their own (formwork plan, *planta de forma*) | P1 | L | M4 | ✅ |
+| 93 | Structural pre-sizing: spans, tributary areas and rules of thumb for columns, beams and slabs, with warnings | P2 | M | M4 | ✅ |
 | 91 | Phase balancing for two- and three-phase panels | P2 | S | M4 | ✅ |
-| 94 | Structural analysis and simulation: loads, internal forces and deflections of the 2D frame | P2 | XL | Exploratory | ⬜ Needs #92 and #93 first |
+| 94 | Structural analysis and simulation: loads, internal forces and deflections of the 2D frame | P2 | XL | Exploratory | 🟡 Continuous beams on their columns: loads, moments, shear, reactions and deflection; no frame action (column stiffness, wind) yet |
 | 95 | Tabbed documents: several projects in one window, with copy and paste between them | P2 | L | M6 | ✅ |
 
 Structural results must always be checked by a licensed engineer: Trazo will present them as pre-sizing, never as a final design.

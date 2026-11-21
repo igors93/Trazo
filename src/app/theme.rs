@@ -67,6 +67,7 @@ pub const HOVER: Color32 = rgb(0x5B9CE8);
 pub const AI: Color32 = rgb(0x7C3AED);
 /// Electrical devices and their tags, as on electrical drawings.
 pub const ELECTRICAL: Color32 = rgb(0xC62828);
+pub const STRUCTURE: Color32 = rgb(0x00695C);
 
 /// The semibold family, used for titles and strong labels.
 pub fn strong_family() -> FontFamily {

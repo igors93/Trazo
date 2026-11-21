@@ -18,6 +18,7 @@ mod drawings;
 mod editing;
 mod electrical;
 mod shapes;
+mod structure;
 mod tabs;
 use crate::{
     domain::{
@@ -339,6 +340,8 @@ impl FloorPlanApp {
             "editar_ponto_eletrico" => self.tool_edit_electrical(args),
             "projeto_eletrico" => self.tool_electrical_design(args),
             "quadro_de_cargas" => self.tool_load_schedule(),
+            "projeto_estrutural" => self.tool_structural_design(args),
+            "pre_dimensionamento" => self.tool_presizing(),
             "abas" => self.tool_tabs(args),
             "desenhar" => self.tool_draw(args),
             "definir_alvenaria" => self.tool_masonry(args),

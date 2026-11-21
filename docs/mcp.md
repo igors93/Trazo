@@ -57,7 +57,7 @@ Create a connector with that address and no authentication; in ChatGPT this is d
 
 ## Tools
 
-Trazo exposes 41 tools. Their names and messages are in Portuguese, like the interface.
+Trazo exposes 43 tools. Their names and messages are in Portuguese, like the interface.
 
 | Group | Tools |
 | --- | --- |
@@ -65,7 +65,8 @@ Trazo exposes 41 tools. Their names and messages are in Portuguese, like the int
 | **Lot and walls** | `definir_terreno`, `criar_parede`, `editar_parede`, `definir_alvenaria` (brick or block, joint, plaster, ceiling height) |
 | **Rooms** | `criar_comodo` (rectangle or any polygon), `editar_comodo` |
 | **Openings** | `inserir_abertura` (door, window, saloon door, open span or gate), `editar_abertura` (width, position, height, sill, side and hinge) |
-| **Electrical (NBR 5410)** | `inserir_ponto_eletrico` (outlets, switches, lights, panel, data), `editar_ponto_eletrico` (circuit, power, height), `projeto_eletrico` (generate the minimum points, distribute circuits, set the voltage), `quadro_de_cargas` (forecast, circuits with wire and breaker, warnings) |
+| **Electrical (NBR 5410)** | `inserir_ponto_eletrico` (outlets, switches, lights, panel, data), `editar_ponto_eletrico` (circuit, power, height), `projeto_eletrico` (generate the minimum points, distribute circuits, set the voltage, lay conduits with `gerar_eletrodutos`, join two points with `ligar_pontos`, move a run to the floor with `definir_trecho`, delete one with `remover_eletroduto`, choose the supply with `definir_alimentacao`), `quadro_de_cargas` (forecast, circuits with phases, voltage drop, wire and breaker, demand, service entrance, the wires of each conduit, warnings) |
+| **Structure (pre-sizing)** | `projeto_estrutural` (lay out the structure with `gerar_estrutura`, place columns and footings with `inserir_pilar` and `inserir_sapata`, join columns with `ligar_pilares`, change or remove beams with `editar_viga` and `remover_viga`, set or remove a room's slab with `definir_laje` and `remover_laje`, set materials and loads with `configurar`, resize footings with `ajustar_sapatas`, show one discipline with `vista`), `pre_dimensionamento` (slabs, continuous beams with moments, shear, reactions and deflection, columns and footings with loads and needed sizes, warnings) |
 | **Fixtures and drawing** | `inserir_objeto` and `editar_objeto` (optionally placed against the nearest wall), `desenhar` (lines, polylines, rectangles, arcs, circles, splines) |
 | **CAD editing** | `selecionar` (shows the person which elements the assistant means), `mover_elemento`, `transformar` (move, rotate, mirror or copy several elements), `alinhar`, `distribuir`, `agrupar`, `desagrupar`, `repetir` (grid or polar), `editar_geometria` (trim, extend, offset, divide), `unir`, `restringir`, `remover_restricao`, `excluir_elemento` |
 | **Batch** | `executar_lote`: up to 200 tool calls in one request, all or nothing, as a single undo step |

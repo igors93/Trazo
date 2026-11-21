@@ -9,7 +9,9 @@ use crate::domain::{
 
 /// Electrical devices and their tags.
 pub(crate) const ELECTRICAL_INK: &str = "#c62828";
+pub(crate) const STRUCTURE_INK: &str = "#00695c";
 
+mod conduits;
 mod csv;
 mod drawings;
 mod labels;
@@ -577,7 +579,7 @@ fn document(project: &Project) -> SvgDocument {
             format!("{px:.1},{py:.1}")
         };
         let (hw, hd) = (fixture.width / 2.0, fixture.depth / 2.0);
-        if !electrical {
+        if !electrical && fixture.kind != crate::domain::fixtures::FixtureKind::Footing {
             let _ = writeln!(
                 svg,
                 "<polygon points=\"{} {} {} {}\" fill=\"#ffffff\"/>",
@@ -598,6 +600,11 @@ fn document(project: &Project) -> SvgDocument {
                 (Weight::Detail, false) => ("#627489", 1.2),
                 (Weight::Outline, true) => (ELECTRICAL_INK, 1.8),
                 (Weight::Detail, true) => (ELECTRICAL_INK, 1.0),
+            };
+            let (color, width) = match (weight, fixture.kind.is_structural()) {
+                (Weight::Outline, true) => (STRUCTURE_INK, 1.8),
+                (Weight::Detail, true) => (STRUCTURE_INK, 0.8),
+                _ => (color, width),
             };
             match shape {
                 SymbolShape::Polyline {
@@ -632,6 +639,24 @@ fn document(project: &Project) -> SvgDocument {
                 }
             }
         }
+    }
+    if project.category_visible(crate::domain::layers::LayerCategory::Electrical) {
+        conduits::write_conduits(
+            &mut svg,
+            project,
+            &point,
+            pixels_per_meter,
+            (1.6, 1.0, (pixels_per_meter * 0.13).clamp(8.0, 15.0)),
+        );
+    }
+    if project.category_visible(crate::domain::layers::LayerCategory::Structure) {
+        conduits::write_structure(
+            &mut svg,
+            project,
+            &point,
+            pixels_per_meter,
+            (1.4, 1.0, (pixels_per_meter * 0.14).clamp(8.0, 16.0)),
+        );
     }
     if project.category_visible(crate::domain::layers::LayerCategory::Electrical) {
         for (anchor, text) in project.electrical_tags() {

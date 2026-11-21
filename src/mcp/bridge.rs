@@ -292,7 +292,7 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 41);
+        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 43);
     }
 
     #[test]

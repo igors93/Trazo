@@ -549,10 +549,12 @@ impl FloorPlanApp {
                 )
             })
             .unwrap_or_default();
+        // The discipline in view leaves its hidden layers out.
+        let shown = self.project.for_discipline(self.discipline);
         canvas::paint(
             &painter,
             view,
-            &self.project,
+            &shown,
             PaintOptions {
                 selection: self.selection,
                 extra_selection: &self.selection_extra,
@@ -566,13 +568,18 @@ impl FloorPlanApp {
                 underlay_textures: &underlay_textures,
             },
         );
+        drop(shown);
         self.paint_xrefs_overlay(&painter, view);
         self.paint_compare_overlay(&painter, view);
-        if self.electrical_only {
-            // The electrical plan: architecture behind a veil, devices on top.
+        if let Some(focus) = self.discipline.focus() {
+            // One discipline: the architecture behind a veil, it on top.
             painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(190));
             let selected = |id: u64| self.is_selected(Selection::Fixture(id));
-            canvas::paint_electrical_overlay(&painter, view, &self.project, &selected);
+            if focus == crate::domain::layers::LayerCategory::Structure {
+                canvas::paint_structure_overlay(&painter, view, &self.project, &selected);
+            } else {
+                canvas::paint_electrical_overlay(&painter, view, &self.project, &selected);
+            }
         }
         self.paint_view_aids(&painter, view);
         if self.show_ergonomics {
@@ -1036,6 +1043,19 @@ impl FloorPlanApp {
     /// and sinks sit where the bricks end.
     pub(super) fn fixture_placement(&self, kind: FixtureKind, point: Point) -> Fixture {
         let (width, depth) = kind.default_size();
+        // Columns and footings sit on wall junctions and centre lines.
+        if kind.is_structural() {
+            let (center, quarter_turns) = self.project.structural_placement(point);
+            return Fixture {
+                id: 0,
+                kind,
+                center,
+                width,
+                depth,
+                quarter_turns,
+                electrical: None,
+            };
+        }
         if !kind.mounts_on_wall() {
             let step = |value: f64| {
                 if self.snap_enabled {

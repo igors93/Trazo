@@ -1,18 +1,61 @@
 //! Electrical design in the interface: the device section of the properties
 //! panel, the "Projeto elétrico" window (NBR 5410 load forecast and load
-//! schedule) and the design commands.
+//! schedule, the distribution board and its single-line diagram) and the
+//! design commands, conduits included.
 
 use eframe::egui::{self, Color32, RichText, Ui};
 
-use super::super::{DocDialog, FloorPlanApp, theme::*};
+use super::super::{DocDialog, FloorPlanApp, Selection, theme::*};
 use super::icons::Icon;
 use super::widgets::{hint, primary_button, property_label, secondary_button, section};
+use crate::domain::conduits::ConduitRun;
+use crate::domain::distribution::{Supply, phase_label, section_label, single_line_svg};
 use crate::domain::electrical::{CircuitKind, DeviceRole};
 use crate::domain::fixtures::Fixture;
 use crate::domain::layers::LayerCategory;
 
 fn decimal(value: f64, places: usize) -> String {
     format!("{value:.places$}").replace('.', ",")
+}
+
+/// Width and height of an SVG drawing from its `viewBox`.
+fn view_box(markup: &str) -> Option<(f32, f32)> {
+    let start = markup.find("viewBox=\"")? + 9;
+    let end = start + markup[start..].find('"')?;
+    let numbers: Vec<f32> = markup[start..end]
+        .split_whitespace()
+        .filter_map(|n| n.parse().ok())
+        .collect();
+    (numbers.len() == 4).then(|| (numbers[2], numbers[3]))
+}
+
+/// An SVG drawing as a texture, rendered again only when it changes; `name`
+/// keeps drawings of different windows apart.
+pub(super) fn svg_preview(
+    ctx: &egui::Context,
+    name: &str,
+    markup: &str,
+) -> Option<(egui::TextureHandle, egui::Vec2)> {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    markup.hash(&mut hasher);
+    let key = hasher.finish();
+    let id = egui::Id::unique(name);
+    let (w_mm, h_mm) = view_box(markup)?;
+    let width = 1400_u32;
+    let height = ((width as f32) * h_mm / w_mm.max(1.0)).round().max(1.0) as u32;
+    let size = egui::vec2(w_mm, h_mm);
+    if let Some((cached, texture)) =
+        ctx.data(|data| data.get_temp::<(u64, egui::TextureHandle)>(id))
+        && cached == key
+    {
+        return Some((texture, size));
+    }
+    let rgba = crate::io::print::svg_to_rgba(markup, width, height).ok()?;
+    let image = egui::ColorImage::from_rgba_unmultiplied([width as usize, height as usize], &rgba);
+    let texture = ctx.load_texture(name, image, egui::TextureOptions::LINEAR);
+    ctx.data_mut(|data| data.insert_temp(id, (key, texture.clone())));
+    Some((texture, size))
 }
 
 impl FloorPlanApp {
@@ -44,6 +87,176 @@ impl FloorPlanApp {
             self.message =
                 format!("{circuits} circuito(s) distribuído(s). Veja o Quadro de cargas.");
         }
+    }
+
+    /// Lays conduits from the board to every device not yet reached.
+    pub(crate) fn generate_conduits(&mut self) {
+        let previous = self.project.clone();
+        match self.project.generate_conduits() {
+            Ok(0) => {
+                self.message = "Todos os pontos já chegam ao quadro por eletrodutos.".to_owned();
+            }
+            Ok(added) => {
+                if self.record_change(previous) {
+                    self.message = format!(
+                        "{added} eletroduto(s) lançado(s) a partir do quadro, com a fiação de cada trecho."
+                    );
+                }
+            }
+            Err(error) => {
+                self.project = previous;
+                self.message = error;
+            }
+        }
+    }
+
+    /// The selected electrical devices, in the order they were picked.
+    fn selected_devices(&self) -> Vec<u64> {
+        self.selected()
+            .iter()
+            .filter_map(|item| match item {
+                Selection::Fixture(id) => Some(*id),
+                _ => None,
+            })
+            .filter(|id| {
+                self.project
+                    .fixtures
+                    .iter()
+                    .any(|fixture| fixture.id == *id && fixture.kind.is_electrical())
+            })
+            .collect()
+    }
+
+    /// Conduits between the selected devices, or touching the one selected.
+    fn selected_conduits(&self) -> Vec<u64> {
+        let devices = self.selected_devices();
+        if devices.len() >= 2 {
+            self.project
+                .valid_conduits()
+                .filter(|c| devices.contains(&c.from) && devices.contains(&c.to))
+                .map(|c| c.id)
+                .collect()
+        } else {
+            self.project.conduits_of(&devices)
+        }
+    }
+
+    /// Joins the selected devices with conduits, one after the other.
+    pub(crate) fn connect_selected_devices(&mut self) {
+        let devices = self.selected_devices();
+        if devices.len() < 2 {
+            self.message =
+                "Selecione dois ou mais pontos elétricos (Shift+clique) para ligá-los por eletrodutos."
+                    .to_owned();
+            return;
+        }
+        let previous = self.project.clone();
+        let mut added = 0;
+        let mut refusal = None;
+        for pair in devices.windows(2) {
+            match self
+                .project
+                .add_conduit(pair[0], pair[1], ConduitRun::Ceiling)
+            {
+                Ok(_) => added += 1,
+                Err(error) => refusal = Some(error),
+            }
+        }
+        if added == 0 {
+            self.project = previous;
+            self.message = refusal.unwrap_or_default();
+            return;
+        }
+        if self.record_change(previous) {
+            self.message = format!("{added} eletroduto(s) ligando os pontos selecionados.");
+        }
+    }
+
+    /// Moves the selected conduits between the ceiling and the floor.
+    pub(crate) fn toggle_selected_conduit_run(&mut self) {
+        let ids = self.selected_conduits();
+        if ids.is_empty() {
+            self.message =
+                "Selecione os pontos nas pontas do eletroduto (ou um ponto para todos os seus)."
+                    .to_owned();
+            return;
+        }
+        let to_floor = self
+            .project
+            .conduits
+            .iter()
+            .any(|c| ids.contains(&c.id) && c.run == ConduitRun::Ceiling);
+        let run = if to_floor {
+            ConduitRun::Floor
+        } else {
+            ConduitRun::Ceiling
+        };
+        let previous = self.project.clone();
+        for id in &ids {
+            let _ = self.project.set_conduit_run(*id, run);
+        }
+        if self.record_change(previous) {
+            self.message = format!(
+                "{} eletroduto(s) agora no {}.",
+                ids.len(),
+                if to_floor { "piso" } else { "teto ou parede" }
+            );
+        }
+    }
+
+    /// Removes the selected conduits.
+    pub(crate) fn remove_selected_conduits(&mut self) {
+        let ids = self.selected_conduits();
+        if ids.is_empty() {
+            self.message =
+                "Selecione os pontos nas pontas do eletroduto (ou um ponto para todos os seus)."
+                    .to_owned();
+            return;
+        }
+        let previous = self.project.clone();
+        for id in &ids {
+            self.project.delete_conduit(*id);
+        }
+        if self.record_change(previous) {
+            self.message = format!("{} eletroduto(s) removido(s).", ids.len());
+        }
+    }
+
+    pub(crate) fn set_electrical_supply(&mut self, supply: Supply) {
+        if self.project.electrical.supply == supply {
+            return;
+        }
+        let previous = self.project.clone();
+        self.project.electrical.supply = supply;
+        if self.record_change(previous) {
+            self.message = format!("Alimentação: {}.", supply.label().to_lowercase());
+        }
+    }
+
+    /// Saves the single-line diagram as PDF or SVG.
+    fn export_single_line(&mut self, pdf: bool) {
+        let markup = single_line_svg(&self.project);
+        let (label, ext) = if pdf {
+            ("Documento PDF", "pdf")
+        } else {
+            ("Desenho SVG", "svg")
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(format!("diagrama-unifilar.{ext}"))
+            .save_file()
+        else {
+            return;
+        };
+        let result = if pdf {
+            crate::domain::views::export_view_pdf(&markup, &path)
+        } else {
+            crate::domain::views::export_view_svg(&markup, &path)
+        };
+        self.message = match result {
+            Ok(()) => format!("Diagrama unifilar exportado em {}", path.display()),
+            Err(error) => format!("Erro ao exportar o diagrama unifilar: {error}"),
+        };
     }
 
     pub(crate) fn set_electrical_voltage(&mut self, voltage: f64) {
@@ -180,9 +393,26 @@ impl FloorPlanApp {
         let mut open = true;
         let mut generate = false;
         let mut distribute = false;
+        let mut conduits = false;
         let mut voltage = None;
+        let mut supply = None;
+        let mut export = None;
+        let tab_id = egui::Id::unique("trazo_electrical_tab");
+        let mut tab: u8 = ctx.data(|data| data.get_temp(tab_id)).unwrap_or(0);
         let forecast = self.project.electrical_forecast();
         let schedule = self.project.load_schedule();
+        let preview = if tab == 1 {
+            let markup = single_line_svg(&self.project);
+            svg_preview(ctx, "trazo_single_line_preview", &markup)
+        } else {
+            None
+        };
+        let wiring = if tab == 1 {
+            self.project.conduit_wiring()
+        } else {
+            Vec::new()
+        };
+        let unreached = self.project.conduit_tree().unreached.len();
         egui::Window::new("Projeto elétrico · Quadro de cargas (NBR 5410)")
             .open(&mut open)
             .collapsible(false)
@@ -202,6 +432,7 @@ impl FloorPlanApp {
                 ui.horizontal_wrapped(|ui| {
                     generate = primary_button(ui, "Gerar pontos mínimos").clicked();
                     distribute = secondary_button(ui, "Distribuir circuitos").clicked();
+                    conduits = secondary_button(ui, "Gerar eletrodutos").clicked();
                     ui.separator();
                     ui.label("Tensão:");
                     for value in [127.0, 220.0] {
@@ -211,7 +442,133 @@ impl FloorPlanApp {
                         }
                     }
                 });
-                ui.add_space(8.0);
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    for (index, title) in ["Cargas e circuitos", "Quadro e diagrama unifilar"]
+                        .iter()
+                        .enumerate()
+                    {
+                        if ui
+                            .selectable_label(tab == index as u8, RichText::new(*title).font(strong(12.5)))
+                            .clicked()
+                        {
+                            tab = index as u8;
+                        }
+                    }
+                });
+                ui.separator();
+                if tab == 1 {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("Alimentação:");
+                            for option in Supply::ALL {
+                                let selected = self.project.electrical.supply == option;
+                                if ui.selectable_label(selected, option.label()).clicked() {
+                                    supply = Some(option);
+                                }
+                            }
+                            ui.separator();
+                            if secondary_button(ui, "Exportar PDF").clicked() {
+                                export = Some(true);
+                            }
+                            if secondary_button(ui, "Exportar SVG").clicked() {
+                                export = Some(false);
+                            }
+                        });
+                        ui.add_space(6.0);
+                        let d = schedule.demand;
+                        egui::Grid::new("electrical_board")
+                            .num_columns(2)
+                            .spacing([16.0, 6.0])
+                            .show(ui, |ui| {
+                                let row = |ui: &mut Ui, label: &str, value: String| {
+                                    ui.label(RichText::new(label).color(TEXT_2));
+                                    ui.label(value);
+                                    ui.end_row();
+                                };
+                                row(ui, "Ligação em uso", schedule.supply.label().to_owned());
+                                row(
+                                    ui,
+                                    "Demanda provável",
+                                    format!(
+                                        "{:.0} VA × {} (iluminação e TUG) + {:.0} VA × {} (TUE) = {} kVA",
+                                        d.general_va,
+                                        decimal(d.general_factor, 2),
+                                        d.specific_va,
+                                        decimal(d.specific_factor, 2),
+                                        decimal(d.demand_va / 1000.0, 2)
+                                    ),
+                                );
+                                let phases = usize::from(schedule.supply.phases().max(1));
+                                row(
+                                    ui,
+                                    "Carga por fase",
+                                    (0..phases)
+                                        .map(|i| {
+                                            format!(
+                                                "{} {:.0} VA",
+                                                crate::domain::distribution::PHASE_NAMES[i],
+                                                schedule.phase_va[i]
+                                            )
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(" · "),
+                                );
+                                if let Some(e) = schedule.entrance {
+                                    row(
+                                        ui,
+                                        "Disjuntor geral",
+                                        e.breaker_a.map_or("—".to_owned(), |b| {
+                                            format!("{}P {b:.0} A ({} A na fase mais carregada)", phases, decimal(e.current_a, 1))
+                                        }),
+                                    );
+                                    row(
+                                        ui,
+                                        "Ramal de entrada",
+                                        match (e.wire_mm2, e.earth_mm2) {
+                                            (Some(w), Some(t)) => format!(
+                                                "{phases} fase(s) e neutro de {} mm², terra de {} mm², eletroduto Ø{} mm",
+                                                section_label(w),
+                                                section_label(t),
+                                                e.conduit_mm.map_or("—".to_owned(), |c| c.to_string())
+                                            ),
+                                            _ => "consulte a distribuidora".to_owned(),
+                                        },
+                                    );
+                                }
+                                row(
+                                    ui,
+                                    "Eletrodutos",
+                                    if self.project.conduits.is_empty() {
+                                        "nenhum ainda: insira o quadro (QD) e use Gerar eletrodutos".to_owned()
+                                    } else {
+                                        format!(
+                                            "{} trecho(s), {} ponto(s) sem ligação ao quadro",
+                                            wiring.len(),
+                                            unreached
+                                        )
+                                    },
+                                );
+                            });
+                        if let Some((texture, size)) = &preview {
+                            ui.add_space(8.0);
+                            let width = ui.available_width().max(200.0);
+                            let height = width * size.y / size.x.max(1.0);
+                            ui.add(
+                                egui::Image::new(texture)
+                                    .fit_to_exact_size(egui::vec2(width, height)),
+                            );
+                        }
+                        ui.add_space(6.0);
+                        ui.label(
+                            RichText::new(
+                                "Fatores de demanda usuais das distribuidoras para residências e queda de tensão máxima de 4 % nos circuitos terminais (NBR 5410 6.2.7). Cada distribuidora tem a sua tabela de padrão de entrada: confira a norma local.",
+                            )
+                            .size(11.0)
+                            .color(MUTED),
+                        );
+                    });
+                } else {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.label(RichText::new("Previsão por cômodo").font(strong(13.0)));
                     egui::Grid::new("electrical_forecast")
@@ -255,7 +612,7 @@ impl FloorPlanApp {
                             .spacing([14.0, 6.0])
                             .show(ui, |ui| {
                                 for title in [
-                                    "Circuito", "Tipo", "Cômodos", "Pontos", "Potência", "Tensão", "Corrente", "Fio", "Disjuntor", "DR",
+                                    "Circuito", "Tipo", "Cômodos", "Pontos", "Potência", "Tensão", "Corrente", "Fases", "Fio", "Disjuntor", "DR", "Queda",
                                 ] {
                                     ui.label(RichText::new(title).font(strong(12.0)).color(TEXT_2));
                                 }
@@ -269,11 +626,15 @@ impl FloorPlanApp {
                                     ui.label(format!("{:.0} VA", row.power_va));
                                     ui.label(format!("{:.0} V", row.voltage_v));
                                     ui.label(format!("{} A", decimal(row.current_a, 1)));
+                                    ui.label(phase_label(&row.phases));
                                     ui.label(row.wire_mm2.map_or("—".to_owned(), |w| {
-                                        format!("{} mm²", decimal(w, if w < 2.0 || w == 2.5 { 1 } else { 0 }))
+                                        format!("{} mm²{}", section_label(w), if row.wire_by_drop { " *" } else { "" })
                                     }));
-                                    ui.label(row.breaker_a.map_or("—".to_owned(), |b| format!("{b:.0} A")));
+                                    ui.label(row.breaker_a.map_or("—".to_owned(), |b| {
+                                        format!("{}{b:.0} A", if row.poles >= 2 { "2P " } else { "" })
+                                    }));
                                     ui.label(if row.needs_rcd { "Sim" } else { "—" });
+                                    ui.label(row.drop_percent.map_or("—".to_owned(), |d| format!("{} %", decimal(d, 1))));
                                     ui.end_row();
                                 }
                             });
@@ -299,13 +660,24 @@ impl FloorPlanApp {
                     ui.add_space(8.0);
                     ui.label(
                         RichText::new(
-                            "Fios de cobre com isolação de PVC, método B1, 2 condutores carregados a 30 °C. Seções mínimas: 1,5 mm² para iluminação e 2,5 mm² para tomadas. DR de 30 mA em áreas molhadas e externas.",
+                            "Fios de cobre com isolação de PVC, método B1, 2 condutores carregados a 30 °C. Seções mínimas: 1,5 mm² para iluminação e 2,5 mm² para tomadas. DR de 30 mA em áreas molhadas e externas. * fio aumentado para manter a queda de tensão até 4 % (com o quadro inserido).",
                         )
                         .size(11.0)
                         .color(MUTED),
                     );
                 });
+                }
             });
+        ctx.data_mut(|data| data.insert_temp(tab_id, tab));
+        if conduits {
+            self.generate_conduits();
+        }
+        if let Some(option) = supply {
+            self.set_electrical_supply(option);
+        }
+        if let Some(pdf) = export {
+            self.export_single_line(pdf);
+        }
         if generate {
             self.generate_electrical_points();
         }

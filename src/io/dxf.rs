@@ -256,6 +256,46 @@ pub fn to_dxf_string(project: &Project) -> String {
         }
     }
 
+    // 6b. Conduits (eletrodutos) with their wire ticks and circuit numbers.
+    if project.category_visible(LayerCategory::Electrical) {
+        use crate::domain::conduits::PlanMark;
+        let layer = layer_for_cat(LayerCategory::Electrical);
+        for mark in project.conduit_marks() {
+            match mark {
+                PlanMark::Line { points, .. } => {
+                    write_polyline(&mut entities_buf, &layer, &points, false, None);
+                    bounds.include_slice(&points);
+                }
+                PlanMark::Circle { center, radius } => {
+                    write_circle(&mut entities_buf, &layer, center, radius, None);
+                }
+                PlanMark::Text { anchor, text } => {
+                    write_text(&mut entities_buf, &layer, anchor, 0.10, 0.0, &text, None);
+                }
+            }
+        }
+    }
+
+    // 6c. Beams and the labels of the formwork plan.
+    if project.category_visible(LayerCategory::Structure) {
+        use crate::domain::conduits::PlanMark;
+        let layer = layer_for_cat(LayerCategory::Structure);
+        for mark in project.structure_marks() {
+            match mark {
+                PlanMark::Line { points, .. } => {
+                    write_polyline(&mut entities_buf, &layer, &points, false, None);
+                    bounds.include_slice(&points);
+                }
+                PlanMark::Circle { center, radius } => {
+                    write_circle(&mut entities_buf, &layer, center, radius, None);
+                }
+                PlanMark::Text { anchor, text } => {
+                    write_text(&mut entities_buf, &layer, anchor, 0.12, 0.0, &text, None);
+                }
+            }
+        }
+    }
+
     // 7. 2D drafting entities (lines, polylines, circles, arcs, splines).
     for drawing in &project.drawings {
         let layer = layer_name_by_id(drawing.layer_id, LayerCategory::Drawings);
@@ -426,6 +466,7 @@ fn default_category_name(cat: LayerCategory) -> &'static str {
         LayerCategory::Dimensions => "Cotas",
         LayerCategory::Annotations => "Anotacoes",
         LayerCategory::Electrical => "Eletrica",
+        LayerCategory::Structure => "Estrutura",
     }
 }
 

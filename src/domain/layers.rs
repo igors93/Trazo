@@ -77,6 +77,8 @@ pub enum LayerCategory {
     Annotations,
     /// Electrical devices: outlets, switches, lights, panel.
     Electrical,
+    /// Columns, beams, slabs and footings (the formwork plan).
+    Structure,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -204,6 +206,16 @@ pub fn default_layers() -> Vec<Layer> {
             locked: false,
             category: Some(LayerCategory::Electrical),
         },
+        Layer {
+            id: 10,
+            name: "Estrutura".to_owned(),
+            color: [0, 105, 92],
+            line_weight_mm: 0.25,
+            line_type: LineType::Solid,
+            visible: true,
+            locked: false,
+            category: Some(LayerCategory::Structure),
+        },
     ]
 }
 
@@ -247,6 +259,8 @@ impl Project {
     pub fn fixture_category(fixture: &super::fixtures::Fixture) -> LayerCategory {
         if fixture.kind.is_electrical() {
             LayerCategory::Electrical
+        } else if fixture.kind.is_structural() {
+            LayerCategory::Structure
         } else {
             LayerCategory::Fixtures
         }
@@ -442,7 +456,7 @@ mod tests {
     #[test]
     fn default_layers_support_visibility_lock_custom_layers_and_assignment() {
         let mut project = Project::default();
-        assert_eq!(project.layers.len(), 9);
+        assert_eq!(project.layers.len(), 10);
         assert!(project.category_visible(LayerCategory::Walls));
         assert!(!project.category_locked(LayerCategory::Walls));
 

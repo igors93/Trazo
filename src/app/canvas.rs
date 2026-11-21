@@ -292,7 +292,30 @@ pub fn paint_electrical_overlay(
         };
         paint_fixture(painter, view, fixture, tone);
     }
+    labels::paint_conduits(painter, view, project);
     labels::paint_electrical_tags(painter, view, project);
+}
+
+/// Draws only the structure (columns, footings, beams and labels), for
+/// the formwork view that fades everything else.
+pub fn paint_structure_overlay(
+    painter: &Painter,
+    view: ViewTransform,
+    project: &Project,
+    selected: &dyn Fn(u64) -> bool,
+) {
+    if !project.category_visible(crate::domain::layers::LayerCategory::Structure) {
+        return;
+    }
+    for fixture in project.fixtures.iter().filter(|f| f.kind.is_structural()) {
+        let tone = if selected(fixture.id) {
+            FixtureTone::Selected
+        } else {
+            FixtureTone::Normal
+        };
+        paint_fixture(painter, view, fixture, tone);
+    }
+    labels::paint_structure(painter, view, project);
 }
 
 pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, tone: FixtureTone) {
@@ -315,6 +338,17 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
         (ink, detail, Color32::TRANSPARENT)
     } else {
         (ink, detail, fill)
+    };
+    // Structure in its own colour; footings lie below, so nothing covers.
+    let (ink, detail, fill) = match fixture.kind {
+        crate::domain::fixtures::FixtureKind::Footing if tone == FixtureTone::Normal => {
+            (theme::STRUCTURE, theme::STRUCTURE, Color32::TRANSPARENT)
+        }
+        crate::domain::fixtures::FixtureKind::Footing => (ink, detail, Color32::TRANSPARENT),
+        crate::domain::fixtures::FixtureKind::Column if tone == FixtureTone::Normal => {
+            (theme::STRUCTURE, theme::STRUCTURE, Color32::WHITE)
+        }
+        _ => (ink, detail, fill),
     };
     let screen = |local: Point| view.to_screen(fixture.to_world(local));
     let (hw, hd) = (fixture.width / 2.0, fixture.depth / 2.0);
@@ -751,7 +785,11 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
             paint_fixture(painter, view, fixture, tone);
         }
     }
+    if project.category_visible(crate::domain::layers::LayerCategory::Structure) {
+        labels::paint_structure(painter, view, project);
+    }
     if project.category_visible(crate::domain::layers::LayerCategory::Electrical) {
+        labels::paint_conduits(painter, view, project);
         labels::paint_electrical_tags(painter, view, project);
     }
     drawings::paint_drawings(painter, view, project, marks);

@@ -179,6 +179,90 @@ pub(super) fn paint_room_labels(
     }
 }
 
+/// Conduits between electrical devices: the arcs always, the wire ticks
+/// and circuit numbers once the plan is zoomed in enough to read them.
+pub(super) fn paint_conduits(painter: &Painter, view: ViewTransform, project: &Project) {
+    if project.conduits.is_empty() {
+        return;
+    }
+    paint_marks(
+        painter,
+        view,
+        project.conduit_marks(),
+        theme::ELECTRICAL,
+        50.0,
+    );
+}
+
+/// Beams and the P, V, L and S labels of the formwork plan.
+pub(super) fn paint_structure(painter: &Painter, view: ViewTransform, project: &Project) {
+    if project.structure.beams.is_empty()
+        && project.structure.slabs.is_empty()
+        && !project.fixtures.iter().any(|f| f.kind.is_structural())
+    {
+        return;
+    }
+    paint_marks(
+        painter,
+        view,
+        project.structure_marks(),
+        theme::STRUCTURE,
+        35.0,
+    );
+}
+
+/// Plan marks in one colour: heavy lines always, the rest once the plan is
+/// zoomed in past `detail_scale` pixels per metre.
+fn paint_marks(
+    painter: &Painter,
+    view: ViewTransform,
+    marks: Vec<crate::domain::conduits::PlanMark>,
+    ink: Color32,
+    detail_scale: f32,
+) {
+    use crate::domain::conduits::PlanMark;
+    let detailed = view.scale >= detail_scale;
+    let size = (view.scale * 0.12).clamp(9.0, 12.0);
+    for mark in marks {
+        match mark {
+            PlanMark::Line {
+                points,
+                dashed,
+                heavy,
+            } => {
+                if !heavy && !detailed {
+                    continue;
+                }
+                let stroke = Stroke::new(if heavy { 1.3 } else { 1.0 }, ink);
+                let points: Vec<Pos2> = points.into_iter().map(|p| view.to_screen(p)).collect();
+                if dashed {
+                    painter.extend(egui::Shape::dashed_line(&points, stroke, 6.0, 4.0));
+                } else {
+                    painter.add(egui::Shape::line(points, stroke));
+                }
+            }
+            PlanMark::Circle { center, radius } if detailed => {
+                painter.circle_stroke(
+                    view.to_screen(center),
+                    radius as f32 * view.scale,
+                    Stroke::new(1.0, ink),
+                );
+            }
+            PlanMark::Text { anchor, text } if detailed => {
+                let galley = painter.layout_no_wrap(text, FontId::proportional(size), ink);
+                let rect = Rect::from_center_size(view.to_screen(anchor), galley.size());
+                painter.rect_filled(
+                    rect.expand2(egui::vec2(2.0, 0.5)),
+                    2.0,
+                    Color32::from_white_alpha(200),
+                );
+                painter.galley(rect.min, galley, ink);
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Circuit and power tags beside each electrical device, once the plan is
 /// zoomed in enough to read them.
 pub(super) fn paint_electrical_tags(painter: &Painter, view: ViewTransform, project: &Project) {

@@ -2,6 +2,7 @@ use eframe::egui::{self, Margin, RichText, Stroke};
 
 use super::super::{DocDialog, FloorPlanApp, theme::*};
 use super::widgets::{primary_button, secondary_button, toggle_pill};
+use crate::domain::discipline::Discipline;
 use crate::{
     domain::sheet_set::{SheetContent, SheetStatus},
     io::export::sheet::{export_sheet_item_pdf, export_sheet_item_svg},
@@ -37,10 +38,36 @@ impl FloorPlanApp {
                     if primary_button(ui, "+ Planta Baixa").clicked() {
                         let prev = self.project.clone();
                         let base = self.project.sheet.clone();
-                        self.project
+                        let id = self
+                            .project
                             .sheet_set
                             .add_sheet("Planta Baixa", SheetContent::FloorPlan, &base);
+                        if let Some(sheet) =
+                            self.project.sheet_set.sheets.iter_mut().find(|s| s.id == id)
+                        {
+                            sheet.discipline = Discipline::Architecture;
+                        }
                         self.record_change(prev);
+                    }
+                    // A floor plan sheet for each other discipline.
+                    for discipline in [Discipline::Electrical, Discipline::Structure] {
+                        if secondary_button(ui, &format!("+ {}", discipline.sheet_title()))
+                            .clicked()
+                        {
+                            let prev = self.project.clone();
+                            let base = self.project.sheet.clone();
+                            let id = self.project.sheet_set.add_sheet(
+                                discipline.sheet_title(),
+                                SheetContent::FloorPlan,
+                                &base,
+                            );
+                            if let Some(sheet) =
+                                self.project.sheet_set.sheets.iter_mut().find(|s| s.id == id)
+                            {
+                                sheet.discipline = discipline;
+                            }
+                            self.record_change(prev);
+                        }
                     }
                     let sections: Vec<_> = self
                         .project
@@ -227,6 +254,20 @@ impl FloorPlanApp {
                             sheet.layout.title_block.drawing_title = sheet.title.clone();
                             changed = true;
                         }
+                        ui.label(RichText::new("Disciplina:").size(12.0).color(TEXT_2));
+                        egui::ComboBox::from_id_salt(("sheet_discipline", sheet.id))
+                            .selected_text(sheet.discipline.label())
+                            .show_ui(ui, |ui| {
+                                for option in Discipline::ALL {
+                                    if ui
+                                        .selectable_label(sheet.discipline == option, option.label())
+                                        .clicked()
+                                    {
+                                        sheet.discipline = option;
+                                        changed = true;
+                                    }
+                                }
+                            });
                         ui.label(RichText::new("Situação:").size(12.0).color(TEXT_2));
                         for st in SheetStatus::ALL {
                             if toggle_pill(ui, st.label(), sheet.status == st, st.label()).clicked()

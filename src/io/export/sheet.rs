@@ -563,6 +563,18 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
                     } => ("#3b4e63", 0.22),
                     _ => ("#627489", 0.14),
                 };
+                let (color, stroke_w) = match &shape {
+                    SymbolShape::Polyline {
+                        weight: Weight::Outline,
+                        ..
+                    }
+                    | SymbolShape::Circle {
+                        weight: Weight::Outline,
+                        ..
+                    } if fixture.kind.is_structural() => (crate::io::export::STRUCTURE_INK, 0.25),
+                    _ if fixture.kind.is_structural() => (crate::io::export::STRUCTURE_INK, 0.1),
+                    _ => (color, stroke_w),
+                };
                 match shape {
                     SymbolShape::Polyline {
                         points,
@@ -600,6 +612,28 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
                 }
             }
         }
+    }
+
+    // Beams and labels of the formwork plan.
+    if project.category_visible(LayerCategory::Structure) {
+        super::conduits::write_structure(
+            &mut svg,
+            project,
+            &pt,
+            mm_per_m,
+            (0.25, 0.15, (mm_per_m * 0.12).clamp(1.4, 2.4)),
+        );
+    }
+
+    // Conduits and their wiring.
+    if project.category_visible(LayerCategory::Electrical) {
+        super::conduits::write_conduits(
+            &mut svg,
+            project,
+            &pt,
+            mm_per_m,
+            (0.25, 0.15, (mm_per_m * 0.11).clamp(1.3, 2.2)),
+        );
     }
 
     // CAD Drawings.
@@ -920,6 +954,14 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
     }
     if tb.show_legend {
         write_legend(&mut svg, frame_x + 4.0, frame_y + frame_h - 32.0);
+        if project.category_visible(LayerCategory::Electrical) {
+            super::conduits::write_wire_legend(
+                &mut svg,
+                project,
+                frame_x + 4.0,
+                frame_y + frame_h - 62.0,
+            );
+        }
     }
     if tb.show_north {
         write_north_symbol(&mut svg, frame_x + frame_w - 14.0, frame_y + 15.0);
@@ -1310,7 +1352,8 @@ pub fn scaled_sheet_item_svg(
     project: &Project,
     item: &crate::domain::sheet_set::SheetItem,
 ) -> String {
-    let mut themed = project.clone();
+    // Each sheet shows its own discipline (#96).
+    let mut themed = project.for_discipline(item.discipline).into_owned();
     themed.sheet = item.layout.clone();
     themed.sheet.title_block.sheet_number = item.number.clone();
     themed.sheet.title_block.revision = item.latest_revision_code().to_owned();

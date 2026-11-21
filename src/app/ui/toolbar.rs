@@ -11,12 +11,14 @@ use eframe::egui::{self, Margin, PointerButton, Pos2, Sense, Stroke, Ui, vec2};
 mod drafting;
 mod edit;
 mod electrical;
+mod structure;
 
-const TABS: [(RibbonTab, &str); 7] = [
+const TABS: [(RibbonTab, &str); 8] = [
     (RibbonTab::Architecture, "Arquitetura"),
     (RibbonTab::Edit, "Editar"),
     (RibbonTab::Interiors, "Interiores"),
     (RibbonTab::Electrical, "Elétrica"),
+    (RibbonTab::Structure, "Estrutura"),
     (RibbonTab::Drafting, "Desenho"),
     (RibbonTab::View, "Vista"),
     (RibbonTab::Output, "Saída"),
@@ -67,6 +69,7 @@ impl FloorPlanApp {
                                 RibbonTab::Architecture => self.architecture_tab(ui),
                                 RibbonTab::Interiors => self.interiors_tab(ui),
                                 RibbonTab::Electrical => self.electrical_tab(ui),
+                                RibbonTab::Structure => self.structure_tab(ui),
                                 RibbonTab::Edit => self.edit_tab(ui),
                                 RibbonTab::Drafting => self.drafting_tab(ui),
                                 RibbonTab::View => self.view_tab(ui),

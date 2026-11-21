@@ -274,6 +274,20 @@ pub fn active_schedules(project: &Project, config: &ScheduleConfig) -> Vec<Sched
     if project.rooms.iter().any(|r| r.finishes.is_some()) {
         tables.push(super::finishes::build_finishes_schedule(project));
     }
+    // The electrical board, on sheets that show the electrical layer.
+    if project.category_visible(super::layers::LayerCategory::Electrical)
+        && project
+            .electrical_devices()
+            .any(|device| device.electrical.and_then(|data| data.circuit).is_some())
+    {
+        tables.push(super::distribution::build_panel_schedule(project));
+    }
+    // The columns and footings, on sheets that show the structure.
+    if project.category_visible(super::layers::LayerCategory::Structure)
+        && project.structural_columns().next().is_some()
+    {
+        tables.push(super::structure::build_columns_schedule(project));
+    }
     tables
 }
 

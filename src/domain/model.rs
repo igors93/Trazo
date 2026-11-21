@@ -134,6 +134,17 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub block_instances: Vec<super::blocks::BlockInstance>,
 
+    /// Conduits (eletrodutos) between electrical devices (#88).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conduits: Vec<super::conduits::Conduit>,
+
+    /// Beams, slabs and the pre-sizing settings of the structure (#92).
+    #[serde(
+        default,
+        skip_serializing_if = "super::structure::ProjectStructure::is_empty"
+    )]
+    pub structure: super::structure::ProjectStructure,
+
     /// Voltages of the electrical design (NBR 5410).
     #[serde(
         default,
@@ -213,6 +224,10 @@ impl Default for Project {
             blocks: Vec::new(),
 
             block_instances: Vec::new(),
+
+            conduits: Vec::new(),
+
+            structure: super::structure::ProjectStructure::default(),
 
             electrical: super::electrical::ElectricalSettings::default(),
 
@@ -895,6 +910,11 @@ impl Project {
     pub fn delete_fixture(&mut self, id: u64) -> bool {
         let before = self.fixtures.len();
         self.fixtures.retain(|fixture| fixture.id != id);
+        self.conduits
+            .retain(|conduit| conduit.from != id && conduit.to != id);
+        self.structure
+            .beams
+            .retain(|beam| beam.from != id && beam.to != id);
         self.fixtures.len() < before
     }
 
@@ -1331,6 +1351,15 @@ impl Project {
         for group in &self.groups {
             max_id = max_id.max(group.id);
         }
+        for conduit in &self.conduits {
+            max_id = max_id.max(conduit.id);
+        }
+        for beam in &self.structure.beams {
+            max_id = max_id.max(beam.id);
+        }
+        for slab in &self.structure.slabs {
+            max_id = max_id.max(slab.id);
+        }
         if self.next_id <= max_id {
             self.next_id = max_id + 1;
         }
@@ -1345,7 +1374,13 @@ impl Project {
             ));
         }
 
-        // 5. Groups and constraints only name elements that exist.
+        // 5. Groups, constraints and conduits only name elements that exist.
+        let loose = self.prune_conduits() + self.prune_structure();
+        if loose > 0 {
+            warnings.push(format!(
+                "{loose} eletrodutos ou vigas sem as duas pontas foram removidos."
+            ));
+        }
         let dissolved = self.prune_groups();
         if dissolved > 0 {
             warnings.push(format!(

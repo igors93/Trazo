@@ -1,6 +1,7 @@
 //! Assistant tools for the electrical design: placing devices, editing their
-//! circuit and power, generating the NBR 5410 minimum, distributing circuits
-//! and reading the load schedule.
+//! circuit and power, generating the NBR 5410 minimum, distributing circuits,
+//! laying conduits, choosing the supply and reading the load schedule with
+//! the board (phases, voltage drop, demand and service entrance).
 
 use serde_json::{Value, json};
 
@@ -8,7 +9,17 @@ use super::{
     Change, ToolOutput, element_id, number, quarter_turns, required_number, text, to_model, xy,
 };
 use crate::app::{FloorPlanApp, Selection};
+use crate::domain::conduits::ConduitRun;
+use crate::domain::distribution::{Supply, phase_label};
 use crate::domain::fixtures::{Fixture, FixtureKind};
+
+fn run_arg(args: &Value) -> Result<ConduitRun, String> {
+    match text(args, "trecho") {
+        None => Ok(ConduitRun::Ceiling),
+        Some(key) => ConduitRun::from_key(&key.to_lowercase())
+            .ok_or_else(|| "'trecho' deve ser teto ou piso.".to_owned()),
+    }
+}
 
 /// `circuito` as a change: absent keeps it, 0 removes it, n sets it.
 fn circuit_arg(args: &Value) -> Result<Option<Option<u32>>, String> {
@@ -160,8 +171,61 @@ impl FloorPlanApp {
                     )))
                 })
             }
+            "gerar_eletrodutos" => self.apply_change(
+                Some("Todos os pontos já chegam ao quadro por eletrodutos."),
+                |project| {
+                    let added = project.generate_conduits()?;
+                    Ok(Change::new(format!("{added} eletroduto(s) lançado(s)."))
+                        .data(json!({ "eletrodutos": added })))
+                },
+            ),
+            "ligar_pontos" => {
+                let from = element_id(args, "de")?;
+                let to = element_id(args, "para")?;
+                let run = run_arg(args)?;
+                self.apply_change(None, |project| {
+                    let id = project.add_conduit(from, to, run)?;
+                    Ok(Change::new(format!(
+                        "Eletroduto {id} ligando {from} a {to} ({}).",
+                        run.label().to_lowercase()
+                    ))
+                    .data(json!({ "id": id, "de": from, "para": to, "trecho": run.key() })))
+                })
+            }
+            "definir_trecho" => {
+                let id = element_id(args, "id")?;
+                let run = run_arg(args)?;
+                self.apply_change(Some("O eletroduto já estava assim."), |project| {
+                    project.set_conduit_run(id, run)?;
+                    Ok(Change::new(format!(
+                        "Eletroduto {id}: {}.",
+                        run.label().to_lowercase()
+                    )))
+                })
+            }
+            "remover_eletroduto" => {
+                let id = element_id(args, "id")?;
+                self.apply_change(None, |project| {
+                    if !project.delete_conduit(id) {
+                        return Err("Eletroduto não encontrado.".to_owned());
+                    }
+                    Ok(Change::new(format!("Eletroduto {id} removido.")))
+                })
+            }
+            "definir_alimentacao" => {
+                let supply = text(args, "alimentacao")
+                    .and_then(|key| Supply::from_key(&key.to_lowercase()))
+                    .ok_or("'alimentacao' deve ser auto, monofasica, bifasica ou trifasica.")?;
+                self.apply_change(Some("A alimentação já era essa."), |project| {
+                    project.electrical.supply = supply;
+                    Ok(Change::new(format!(
+                        "Alimentação: {}.",
+                        supply.label().to_lowercase()
+                    )))
+                })
+            }
             _ => Err(
-                "Informe 'acao': gerar_pontos, distribuir_circuitos ou definir_tensao.".to_owned(),
+                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto ou definir_alimentacao.".to_owned(),
             ),
         }
     }
@@ -200,11 +264,48 @@ impl FloorPlanApp {
                     "tensao_v": row.voltage_v,
                     "corrente_a": (row.current_a * 10.0).round() / 10.0,
                     "fio_mm2": row.wire_mm2,
+                    "fio_aumentado_por_queda": row.wire_by_drop,
                     "disjuntor_a": row.breaker_a,
+                    "polos": row.poles,
+                    "fases": phase_label(&row.phases),
+                    "comprimento_m": row.length_m.map(|l| (l * 10.0).round() / 10.0),
+                    "queda_tensao_pct": row.drop_percent.map(|d| (d * 100.0).round() / 100.0),
                     "dr": row.needs_rcd,
                 })
             })
             .collect();
+        let conduits: Vec<Value> = self
+            .project
+            .conduit_wiring()
+            .iter()
+            .map(|run| {
+                json!({
+                    "id": run.conduit,
+                    "de": run.upstream,
+                    "para": run.downstream,
+                    "trecho": run.run.key(),
+                    "comprimento_m": (run.length_m * 100.0).round() / 100.0,
+                    "diametro_mm": run.diameter_mm,
+                    "fios": run.circuits.iter().map(|w| json!({
+                        "circuito": w.circuit,
+                        "condutores": w.short(),
+                        "secao_mm2": w.section_mm2,
+                    })).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        let tree = self.project.conduit_tree();
+        let demand = schedule.demand;
+        let entrance = schedule.entrance.map(|e| {
+            json!({
+                "ligacao": e.supply.key(),
+                "corrente_a": (e.current_a * 10.0).round() / 10.0,
+                "disjuntor_geral_a": e.breaker_a,
+                "ramal_mm2": e.wire_mm2,
+                "terra_mm2": e.earth_mm2,
+                "eletroduto_mm": e.conduit_mm,
+            })
+        });
         let text = format!(
             "{} circuito(s), carga instalada {:.0} VA, {} alerta(s).",
             schedule.circuits.len(),
@@ -216,6 +317,23 @@ impl FloorPlanApp {
             "previsao": forecast,
             "circuitos": circuits,
             "carga_instalada_va": schedule.total_va,
+            "demanda": {
+                "iluminacao_tug_va": demand.general_va,
+                "fator_iluminacao_tug": demand.general_factor,
+                "tue_va": demand.specific_va,
+                "circuitos_tue": demand.specific_count,
+                "fator_tue": demand.specific_factor,
+                "demanda_va": demand.demand_va.round(),
+            },
+            "alimentacao": self.project.electrical.supply.key(),
+            "carga_por_fase_va": {
+                "A": schedule.phase_va[0],
+                "B": schedule.phase_va[1],
+                "C": schedule.phase_va[2],
+            },
+            "entrada": entrance,
+            "eletrodutos": conduits,
+            "pontos_sem_eletroduto": tree.unreached,
             "sem_circuito": schedule.unassigned,
             "alertas": schedule.warnings,
         })))
@@ -290,5 +408,75 @@ mod tests {
         assert_eq!(app.project.electrical.voltage_v, 220.0);
         app.undo();
         assert_eq!(app.project, before);
+    }
+
+    #[test]
+    fn an_assistant_lays_conduits_and_reads_the_board() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        let built = app.run_mcp_tool(
+            "executar_lote",
+            &json!({ "acoes": [
+                { "ferramenta": "definir_terreno", "argumentos": { "largura": 12, "comprimento": 20 } },
+                { "ferramenta": "criar_comodo", "argumentos": { "nome": "Sala", "x": 1, "y": 1, "largura": 5, "comprimento": 4 } },
+                { "ferramenta": "criar_comodo", "argumentos": { "nome": "Banheiro", "x": 6, "y": 1, "largura": 2, "comprimento": 2 } },
+                { "ferramenta": "projeto_eletrico", "argumentos": { "acao": "gerar_pontos" } },
+                { "ferramenta": "projeto_eletrico", "argumentos": { "acao": "distribuir_circuitos" } },
+            ] }),
+        );
+        assert!(!built.is_error, "{}", built.text);
+        // No board yet: nothing to lay conduits from.
+        let refused = app.run_mcp_tool("projeto_eletrico", &json!({ "acao": "gerar_eletrodutos" }));
+        assert!(refused.is_error);
+        let panel = app.run_mcp_tool(
+            "inserir_ponto_eletrico",
+            &json!({ "tipo": "quadro", "x": 1.3, "y": 1.2 }),
+        );
+        assert!(!panel.is_error, "{}", panel.text);
+        let laid = app.run_mcp_tool("projeto_eletrico", &json!({ "acao": "gerar_eletrodutos" }));
+        assert!(!laid.is_error, "{}", laid.text);
+        assert!(laid.structured.unwrap()["eletrodutos"].as_u64().unwrap() >= 3);
+
+        let board = app
+            .run_mcp_tool("quadro_de_cargas", &json!({}))
+            .structured
+            .unwrap();
+        assert!(
+            board["pontos_sem_eletroduto"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        let conduits = board["eletrodutos"].as_array().unwrap();
+        assert!(
+            conduits
+                .iter()
+                .all(|c| !c["fios"].as_array().unwrap().is_empty()),
+            "{conduits:?}"
+        );
+        for circuit in board["circuitos"].as_array().unwrap() {
+            assert!(circuit["queda_tensao_pct"].as_f64().unwrap() <= 4.0);
+            assert!(!circuit["fases"].as_str().unwrap().is_empty());
+        }
+        assert!(board["entrada"]["disjuntor_geral_a"].as_f64().is_some());
+
+        // A run moved to the floor, the supply forced, a run removed.
+        let id = conduits[0]["id"].as_u64().unwrap();
+        let floor = app.run_mcp_tool(
+            "projeto_eletrico",
+            &json!({ "acao": "definir_trecho", "id": id, "trecho": "piso" }),
+        );
+        assert!(!floor.is_error, "{}", floor.text);
+        let three = app.run_mcp_tool(
+            "projeto_eletrico",
+            &json!({ "acao": "definir_alimentacao", "alimentacao": "trifasica" }),
+        );
+        assert!(!three.is_error, "{}", three.text);
+        assert_eq!(app.project.load_schedule().supply.phases(), 3);
+        let removed = app.run_mcp_tool(
+            "projeto_eletrico",
+            &json!({ "acao": "remover_eletroduto", "id": id }),
+        );
+        assert!(!removed.is_error, "{}", removed.text);
+        assert!(app.project.conduits.iter().all(|c| c.id != id));
     }
 }

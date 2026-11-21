@@ -33,8 +33,13 @@ está falando; 'selecao' em obter_planta diz o que ele selecionou. Para muitas m
 vez, use executar_lote: tudo vira um só passo de desfazer e nada é aplicado se uma ação \
 falhar.
 Projeto elétrico (NBR 5410): projeto_eletrico com acao gerar_pontos coloca o mínimo da \
-norma em cada cômodo; distribuir_circuitos numera os circuitos; quadro_de_cargas mostra \
-previsão, circuitos, fio, disjuntor e alertas. Ajuste pontos com inserir_ponto_eletrico e \
+norma em cada cômodo; distribuir_circuitos numera os circuitos; insira o quadro (tipo quadro) \
+e use gerar_eletrodutos para lançar os eletrodutos com a fiação de cada trecho; \
+quadro_de_cargas mostra previsão, circuitos, fases, queda de tensão, fio, disjuntor, \
+demanda, padrão de entrada, eletrodutos e alertas.
+Estrutura (pré-dimensionamento, NBR 6118): projeto_estrutural com acao gerar_estrutura lança \
+pilares, vigas sobre as paredes, lajes nos cômodos e sapatas; pre_dimensionamento mostra lajes, \
+vigas contínuas com momentos, cortante e flecha, pilares e sapatas com cargas e alertas. Ajuste pontos com inserir_ponto_eletrico e \
 editar_ponto_eletrico. Nomeie os cômodos pelo uso (Cozinha, Banheiro, Quarto...), porque a \
 norma muda conforme o tipo de cômodo.
 O usuário pode editar a planta ao mesmo tempo que você. Guarde a 'revisao' de obter_planta \
@@ -762,10 +767,15 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "projeto_eletrico",
             title: "Projeto elétrico (NBR 5410)",
-            description: "Comandos do projeto elétrico. gerar_pontos: adiciona o que a NBR 5410 exige e falta em cada cômodo (ponto de luz com a potência mínima, tomadas distribuídas nas paredes longe de portas e janelas, interruptor junto à porta, TUE de 5500 VA em cada chuveiro). distribuir_circuitos: renumera os circuitos (iluminação separada das tomadas, cozinha e serviço em circuitos próprios, um circuito por TUE). definir_tensao: 127 ou 220 V. Cômodos são classificados pelo nome (banheiro, cozinha, área de serviço, varanda, sala, quarto...).",
+            description: "Comandos do projeto elétrico. gerar_pontos: adiciona o que a NBR 5410 exige e falta em cada cômodo (ponto de luz com a potência mínima, tomadas distribuídas nas paredes longe de portas e janelas, interruptor junto à porta, TUE de 5500 VA em cada chuveiro). distribuir_circuitos: renumera os circuitos (iluminação separada das tomadas, cozinha e serviço em circuitos próprios, um circuito por TUE). definir_tensao: 127 ou 220 V. gerar_eletrodutos: liga ao quadro (QD) os pontos que ainda não chegam a ele, com eletrodutos no teto entre o quadro e as luzes e da luz do cômodo a cada tomada e interruptor; os fios de cada trecho (fase, neutro, retorno, terra) saem dos circuitos. ligar_pontos: um eletroduto entre os pontos 'de' e 'para' ('trecho' teto ou piso). definir_trecho: muda o 'trecho' do eletroduto 'id'. remover_eletroduto: apaga o eletroduto 'id'. definir_alimentacao: auto, monofasica, bifasica ou trifasica (as fases são balanceadas e a entrada é dimensionada pela demanda). Cômodos são classificados pelo nome (banheiro, cozinha, área de serviço, varanda, sala, quarto...).",
             properties: json!({
-                "acao": { "type": "string", "enum": ["gerar_pontos", "distribuir_circuitos", "definir_tensao"], "description": "O que fazer." },
+                "acao": { "type": "string", "enum": ["gerar_pontos", "distribuir_circuitos", "definir_tensao", "gerar_eletrodutos", "ligar_pontos", "definir_trecho", "remover_eletroduto", "definir_alimentacao"], "description": "O que fazer." },
                 "tensao": number("Para definir_tensao: 127 ou 220."),
+                "de": integer("Para ligar_pontos: id do ponto do lado do quadro."),
+                "para": integer("Para ligar_pontos: id do outro ponto."),
+                "id": integer("Para definir_trecho e remover_eletroduto: id do eletroduto."),
+                "trecho": { "type": "string", "enum": ["teto", "piso"], "description": "Onde o eletroduto passa: teto (ou parede, linha cheia) ou piso (tracejado). Padrão teto." },
+                "alimentacao": { "type": "string", "enum": ["auto", "monofasica", "bifasica", "trifasica"], "description": "Para definir_alimentacao." },
             }),
             required: &["acao"],
             read_only: false,
@@ -774,7 +784,44 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "quadro_de_cargas",
             title: "Quadro de cargas",
-            description: "Previsão de cargas por cômodo (mínimos da NBR 5410 e o que já está desenhado) e o quadro de circuitos com potência, corrente, seção do fio, disjuntor e necessidade de DR, mais os alertas do projeto.",
+            description: "Previsão de cargas por cômodo (mínimos da NBR 5410 e o que já está desenhado) e o quadro de circuitos com potência, corrente, fases, comprimento e queda de tensão (fio aumentado quando passa de 4 %), seção do fio, disjuntor e necessidade de DR; a demanda com os fatores usuais, a carga por fase, o padrão de entrada (ligação, disjuntor geral, ramal e eletroduto), os eletrodutos com os fios de cada trecho e os alertas do projeto.",
+            properties: json!({}),
+            required: &[],
+            read_only: true,
+            destructive: false,
+        },
+        Tool {
+            name: "projeto_estrutural",
+            title: "Projeto estrutural (pré-dimensionamento)",
+            description: "Comandos da estrutura (planta de forma). gerar_estrutura: pilares nos encontros e pontas das paredes (e a cada 4,5 m nas longas, longe de portas e janelas), vigas sobre as paredes entre pilares, laje treliçada em cada cômodo e sapata sob cada pilar, dimensionada pelas cargas. inserir_pilar / inserir_sapata: em x, y (encaixa no encontro ou no eixo da parede mais próximo), com largura_cm e profundidade_cm. ligar_pilares: viga entre os pilares 'de' e 'para' (largura_cm e altura_cm opcionais; altura padrão de um décimo do vão). editar_viga / remover_viga: pela viga 'id'. definir_laje / remover_laje: no 'comodo' (nome ou id), 'tipo' trelicada ou macica e espessura_cm (padrão: a mínima para o vão). configurar: fck_mpa, solo_kpa, pavimentos, sobrecarga_kn_m2, revestimento_kn_m2. ajustar_sapatas: redimensiona as sapatas pelas cargas. vista: mostra uma 'disciplina' (tudo, arquitetura, eletrica, estrutura) na tela.",
+            properties: json!({
+                "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "ligar_pilares", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "ajustar_sapatas", "vista"], "description": "O que fazer." },
+                "x": number("Para inserir_pilar e inserir_sapata: posição x, em metros."),
+                "y": number("Para inserir_pilar e inserir_sapata: posição y, em metros."),
+                "largura_cm": number("Largura do pilar, da sapata ou da viga, em cm."),
+                "profundidade_cm": number("Profundidade do pilar ou da sapata, em cm."),
+                "altura_cm": number("Altura da viga, em cm."),
+                "de": integer("Para ligar_pilares: id do primeiro pilar."),
+                "para": integer("Para ligar_pilares: id do segundo pilar."),
+                "id": integer("Para editar_viga e remover_viga: id da viga."),
+                "comodo": { "type": ["string", "integer"], "description": "Para definir_laje e remover_laje: nome ou id do cômodo." },
+                "tipo": { "type": "string", "enum": ["trelicada", "macica"], "description": "Para definir_laje: tipo da laje." },
+                "espessura_cm": number("Para definir_laje: espessura, em cm."),
+                "fck_mpa": number("Para configurar: resistência do concreto, MPa (20 a 50)."),
+                "solo_kpa": number("Para configurar: tensão admissível do solo, kPa (50 a 600)."),
+                "pavimentos": integer("Para configurar: pavimentos que os pilares carregam (1 a 10)."),
+                "sobrecarga_kn_m2": number("Para configurar: carga variável nas lajes, kN/m²."),
+                "revestimento_kn_m2": number("Para configurar: revestimento e contrapiso, kN/m²."),
+                "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "estrutura"], "description": "Para vista." },
+            }),
+            required: &["acao"],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "pre_dimensionamento",
+            title: "Pré-dimensionamento da estrutura",
+            description: "Lajes (vãos, espessura e mínima, carga), vigas contínuas por vão (seção e altura mínima, cargas, momentos nos apoios e no vão, cortante, flecha e limite L/250, reações nos pilares), pilares (posição, carga, área necessária e desenhada) e sapatas (carga, dimensões necessárias, altura), com os materiais e os alertas.",
             properties: json!({}),
             required: &[],
             read_only: true,
@@ -909,7 +956,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 41);
+        assert_eq!(tools.len(), 43);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -990,7 +1037,7 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 41);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 43);
     }
 }
 
