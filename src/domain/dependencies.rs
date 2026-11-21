@@ -55,7 +55,6 @@ pub enum ReviewSeverity {
 }
 
 impl ReviewSeverity {
-    #[allow(dead_code)]
     pub fn key(self) -> &'static str {
         match self {
             Self::Info => "info",
@@ -81,7 +80,6 @@ pub enum ReviewKind {
 }
 
 impl ReviewKind {
-    #[allow(dead_code)]
     pub fn key(self) -> &'static str {
         match self {
             Self::FixtureDetachedFromWall => "elemento_solto_da_parede",
@@ -139,7 +137,6 @@ pub struct DependencySyncReport {
 }
 
 impl DependencySyncReport {
-    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.auto_updated.is_empty()
             && self.blocked_updates.is_empty()

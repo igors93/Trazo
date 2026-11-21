@@ -138,14 +138,11 @@ impl ViewTab {
 /// What the tab strip and MCP report for one open tab.
 #[derive(Clone, Debug)]
 pub(crate) struct TabInfo {
-    #[allow(dead_code)]
     pub(crate) tab_id: TabId,
     pub(crate) project_id: ProjectId,
     pub(crate) title: String,
     pub(crate) discipline: Discipline,
-    #[allow(dead_code)]
     pub(crate) floor_id: Option<u64>,
-    #[allow(dead_code)]
     pub(crate) floor_name: String,
     pub(crate) dirty: bool,
     pub(crate) active: bool,
@@ -421,7 +418,6 @@ impl FloorPlanApp {
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn project_revision(&self, project_id: ProjectId) -> u64 {
         if project_id == self.active_project_id {
             self.plan_log.revision
@@ -440,7 +436,6 @@ impl FloorPlanApp {
     }
 
     /// Distinct open project IDs in tab appearance order.
-    #[allow(dead_code)]
     pub(crate) fn open_project_ids(&self) -> Vec<ProjectId> {
         let mut ids = Vec::new();
         for i in 0..self.tabs.len() {

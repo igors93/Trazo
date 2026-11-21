@@ -293,6 +293,19 @@ impl FloorPlanApp {
     }
 
     fn dispatch_tool(&mut self, name: &str, args: &Value) -> Result<ToolOutput, String> {
+        // Optional safety guard: when an assistant passes `projeto_id` on a
+        // project-scoped tool, refuse if it does not match the active project
+        // so edits never land in another project by mistake.
+        if !matches!(name, "abas" | "novo_projeto" | "abrir_projeto")
+            && let Some(target_pid) = optional_count(args, "projeto_id")?
+            && target_pid != self.active_project_id()
+        {
+            return Err(format!(
+                "O projeto ativo é {} (aba {}), mas a ferramenta pediu projeto_id={target_pid}. Troque primeiro com abas(acao='trocar', projeto_id={target_pid}).",
+                self.active_project_id(),
+                self.active_tab() + 1
+            ));
+        }
         match name {
             "obter_planta" => {
                 let summary = self.plan_summary();
@@ -303,10 +316,18 @@ impl FloorPlanApp {
                 let side = number(args, "tamanho_max")?
                     .unwrap_or(1024.0)
                     .clamp(256.0, 2048.0);
-                let png = export::png_preview(&self.project, side as u32)?;
+                let discipline = match text(args, "disciplina") {
+                    Some(raw) => crate::domain::discipline::Discipline::from_key(&raw).ok_or(
+                        "'disciplina' deve ser tudo, arquitetura, eletrica, hidraulica, estrutura ou fundacoes.",
+                    )?,
+                    None => self.discipline,
+                };
+                let shown = self.project.for_discipline(discipline);
+                let png = export::png_preview(&shown, side as u32)?;
                 Ok(ToolOutput::ok(format!(
-                    "Imagem da planta \"{}\" com {} cômodos, {} paredes e {} aberturas.",
+                    "Imagem da planta \"{}\" (vista {}) com {} cômodos, {} paredes e {} aberturas.",
                     self.project.name,
+                    discipline.label().to_lowercase(),
                     self.project.rooms.len(),
                     self.project.walls.len(),
                     self.project.openings.len()
@@ -343,6 +364,8 @@ impl FloorPlanApp {
             "projeto_estrutural" => self.tool_structural_design(args),
             "pre_dimensionamento" => self.tool_presizing(),
             "abas" => self.tool_tabs(args),
+            "pavimentos" => self.tool_floors(args),
+            "dependencias" => self.tool_dependencies(args),
             "desenhar" => self.tool_draw(args),
             "definir_alvenaria" => self.tool_masonry(args),
             "editar_objeto" => self.tool_edit_fixture(args),
@@ -465,13 +488,39 @@ impl FloorPlanApp {
                 if !path.is_file() {
                     return Err(format!("Arquivo não encontrado: {}", path.display()));
                 }
-                self.check_discard(args)?;
-                match self.open_file(&path) {
-                    OpenResult::Success => Ok(ToolOutput::ok(format!(
-                        "Projeto \"{}\" aberto de {}.",
-                        self.project.name,
-                        path.display()
-                    ))),
+                let already_open = self.find_open_project_by_path(&path).is_some();
+                if !already_open && self.active_is_blank() {
+                    self.check_discard(args)?;
+                }
+                match self.open_in_tab(&path) {
+                    OpenResult::Success => {
+                        let pid = self.active_project_id();
+                        let linked_tabs: Vec<usize> = (0..self.tab_count())
+                            .filter(|&i| self.tab_project_id(i) == Some(pid))
+                            .map(|i| i + 1)
+                            .collect();
+                        let msg = if already_open {
+                            format!(
+                                "Projeto \"{}\" já estava aberto (projeto {pid}, aba {}).",
+                                self.project.name,
+                                self.active_tab() + 1
+                            )
+                        } else {
+                            format!(
+                                "Projeto \"{}\" aberto de {} (projeto {pid}, {} aba(s) vinculada(s)).",
+                                self.project.name,
+                                path.display(),
+                                linked_tabs.len()
+                            )
+                        };
+                        Ok(ToolOutput::ok(msg).with_structured(json!({
+                            "projeto_id": pid,
+                            "aba_ativa": self.active_tab() + 1,
+                            "abas_vinculadas": linked_tabs,
+                            "ja_estava_aberto": already_open,
+                            "caminho": path.display().to_string(),
+                        })))
+                    }
                     _ => Err(self.message.clone()),
                 }
             }
@@ -490,7 +539,10 @@ impl FloorPlanApp {
                 if self.write_project(path.clone()) {
                     Ok(
                         ToolOutput::ok(format!("Projeto salvo em {}", path.display()))
-                            .with_structured(json!({ "caminho": path.display().to_string() })),
+                            .with_structured(json!({
+                                "projeto_id": self.active_project_id(),
+                                "caminho": path.display().to_string(),
+                            })),
                     )
                 } else {
                     Err(self.message.clone())
@@ -501,6 +553,12 @@ impl FloorPlanApp {
                     .map(|format| format.to_lowercase())
                     .filter(|format| format == "pdf" || format == "png" || format == "dxf")
                     .ok_or("Informe 'formato': pdf, png ou dxf.")?;
+                let discipline = match text(args, "disciplina") {
+                    Some(raw) => crate::domain::discipline::Discipline::from_key(&raw).ok_or(
+                        "'disciplina' deve ser tudo, arquitetura, eletrica, hidraulica, estrutura ou fundacoes.",
+                    )?,
+                    None => self.discipline,
+                };
                 let path = match text(args, "caminho") {
                     Some(input) => resolve_path(&input, &format),
                     None => unique_path(
@@ -508,14 +566,18 @@ impl FloorPlanApp {
                     ),
                 };
                 ensure_parent(&path)?;
+                let shown = self.project.for_discipline(discipline);
                 match format.as_str() {
-                    "pdf" => export::pdf(&self.project, &path)?,
-                    "png" => export::png(&self.project, &path)?,
-                    _ => crate::io::dxf::export(&self.project, &path)?,
+                    "pdf" => export::pdf(&shown, &path)?,
+                    "png" => export::png(&shown, &path)?,
+                    _ => crate::io::dxf::export(&shown, &path)?,
                 }
                 Ok(
                     ToolOutput::ok(format!("Planta exportada em {}", path.display()))
-                        .with_structured(json!({ "caminho": path.display().to_string() })),
+                        .with_structured(json!({
+                            "caminho": path.display().to_string(),
+                            "disciplina": discipline.key(),
+                        })),
                 )
             }
             "importar_dxf" => {
@@ -1216,6 +1278,38 @@ impl FloorPlanApp {
             })
             .collect();
         let areas = project.area_summary();
+        let pid = self.active_project_id();
+        let linked_tabs: Vec<usize> = (0..self.tab_count())
+            .filter(|&i| self.tab_project_id(i) == Some(pid))
+            .map(|i| i + 1)
+            .collect();
+        let active_floor = project.active_floor().map(|f| {
+            json!({
+                "id": f.id,
+                "nome": f.name,
+                "nivel_m": round(f.elevation_m),
+                "pe_direito_m": round(project.wall_height),
+            })
+        });
+        let floors: Vec<Value> = project
+            .floors
+            .levels
+            .iter()
+            .map(|f| {
+                json!({
+                    "id": f.id,
+                    "nome": f.name,
+                    "nivel_m": round(f.elevation_m),
+                    "ativo": Some(f.id) == project.floors.active_floor_id,
+                })
+            })
+            .collect();
+        let audit = project.cached_dependency_audit();
+        let pending_reviews = audit
+            .review_items
+            .iter()
+            .filter(|r| r.severity != crate::domain::dependencies::ReviewSeverity::Info)
+            .count();
         json!({
             "espessura_parede_m": round(self.project.masonry.thickness()),
             "alvenaria": {
@@ -1228,6 +1322,16 @@ impl FloorPlanApp {
                 "pe_direito_m": round(self.project.wall_height),
             },
             "revisao": self.plan_log.revision,
+            "aba_ativa": self.active_tab() + 1,
+            "disciplina": self.discipline.key(),
+            "abas_vinculadas": linked_tabs,
+            "pavimento_ativo": active_floor,
+            "pavimentos": floors,
+            "revisoes_pendentes": pending_reviews,
+            "ultima_sincronizacao": {
+                "atualizados_automaticamente": self.sync_report.auto_updated.len(),
+                "bloqueados": self.sync_report.blocked_updates.len(),
+            },
             "objetos": fixtures,
             "desenhos": drawings::drawings_summary(project),
             // What the person has selected on screen, so "this one" makes sense.
@@ -1256,6 +1360,7 @@ impl FloorPlanApp {
                 })
                 .collect::<Vec<_>>(),
             "projeto": {
+                "id": pid,
                 "nome": project.name,
                 "arquivo": self.file_path.as_ref().map(|path| path.display().to_string()),
                 "alteracoes_nao_salvas": self.dirty,

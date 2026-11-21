@@ -42,10 +42,15 @@ pilares, vigas sobre as paredes, lajes nos cômodos e sapatas; pre_dimensionamen
 vigas contínuas com momentos, cortante e flecha, pilares e sapatas com cargas e alertas. Ajuste pontos com inserir_ponto_eletrico e \
 editar_ponto_eletrico. Nomeie os cômodos pelo uso (Cozinha, Banheiro, Quarto...), porque a \
 norma muda conforme o tipo de cômodo.
-O usuário pode editar a planta ao mesmo tempo que você. Guarde a 'revisao' de obter_planta \
-e, antes de cada nova rodada de edições, chame mudancas_desde com ela para ver o que ele \
-mudou (origem 'usuario'). Clientes que assinam o recurso trazo://planta recebem um aviso a \
-cada mudança.";
+O usuário pode editar a planta ao mesmo tempo que você, inclusive em outras abas vinculadas \
+ao mesmo projeto (arquitetura, elétrica, hidráulica, estrutura, fundações). Use abas para \
+listar projetos e abas vinculadas, abrir novas visões sincronizadas (acao nova_visao) sem \
+duplicar dados, ou configurar disciplina e pavimento; use pavimentos para criar ou trocar de \
+andar; use dependencias para consultar vínculos entre disciplinas, atualizações automáticas e \
+elementos que exigem revisão manual. Guarde a 'revisao' e o 'projeto_id' de obter_planta e, \
+antes de cada nova rodada de edições, chame mudancas_desde com ela para ver o que mudou \
+(origem 'usuario' ou outra aba). Clientes que assinam o recurso trazo://planta recebem um \
+aviso a cada mudança.";
 
 /// Runs a tool by name with its arguments and returns the `CallToolResult`.
 pub type ToolRunner<'a> = dyn FnMut(&str, &Value) -> Value + 'a;
@@ -281,9 +286,10 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "imagem_da_planta",
             title: "Imagem da planta",
-            description: "Imagem PNG da planta como na exportação, para conferir visualmente o resultado.",
+            description: "Imagem PNG da planta como na exportação, respeitando a disciplina da aba ativa ou a disciplina informada, para conferir visualmente o resultado.",
             properties: json!({
                 "tamanho_max": integer("Lado maior da imagem em pixels, de 256 a 2048. Padrão 1024."),
+                "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Opcional: disciplina a renderizar (padrão: disciplina da aba ativa)." },
             }),
             required: &[],
             read_only: true,
@@ -767,15 +773,16 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "projeto_eletrico",
             title: "Projeto elétrico (NBR 5410)",
-            description: "Comandos do projeto elétrico. gerar_pontos: adiciona o que a NBR 5410 exige e falta em cada cômodo (ponto de luz com a potência mínima, tomadas distribuídas nas paredes longe de portas e janelas, interruptor junto à porta, TUE de 5500 VA em cada chuveiro). distribuir_circuitos: renumera os circuitos (iluminação separada das tomadas, cozinha e serviço em circuitos próprios, um circuito por TUE). definir_tensao: 127 ou 220 V. gerar_eletrodutos: liga ao quadro (QD) os pontos que ainda não chegam a ele, com eletrodutos no teto entre o quadro e as luzes e da luz do cômodo a cada tomada e interruptor; os fios de cada trecho (fase, neutro, retorno, terra) saem dos circuitos. ligar_pontos: um eletroduto entre os pontos 'de' e 'para' ('trecho' teto ou piso). definir_trecho: muda o 'trecho' do eletroduto 'id'. remover_eletroduto: apaga o eletroduto 'id'. definir_alimentacao: auto, monofasica, bifasica ou trifasica (as fases são balanceadas e a entrada é dimensionada pela demanda). Cômodos são classificados pelo nome (banheiro, cozinha, área de serviço, varanda, sala, quarto...).",
+            description: "Comandos do projeto elétrico. gerar_pontos: adiciona o que a NBR 5410 exige e falta em cada cômodo. distribuir_circuitos: renumera os circuitos. definir_tensao: 127 ou 220 V. gerar_eletrodutos: liga ao quadro (QD/QDG/QDC) os pontos ainda desconectados. ligar_pontos / definir_trecho / remover_eletroduto: gerencia eletrodutos. definir_alimentacao: auto, monofasica, bifasica ou trifasica. definir_concessionaria: generico, enel_sp, cpfl, cemig ou copel.",
             properties: json!({
-                "acao": { "type": "string", "enum": ["gerar_pontos", "distribuir_circuitos", "definir_tensao", "gerar_eletrodutos", "ligar_pontos", "definir_trecho", "remover_eletroduto", "definir_alimentacao"], "description": "O que fazer." },
+                "acao": { "type": "string", "enum": ["gerar_pontos", "distribuir_circuitos", "definir_tensao", "gerar_eletrodutos", "ligar_pontos", "definir_trecho", "remover_eletroduto", "definir_alimentacao", "definir_concessionaria"], "description": "O que fazer." },
                 "tensao": number("Para definir_tensao: 127 ou 220."),
                 "de": integer("Para ligar_pontos: id do ponto do lado do quadro."),
                 "para": integer("Para ligar_pontos: id do outro ponto."),
                 "id": integer("Para definir_trecho e remover_eletroduto: id do eletroduto."),
                 "trecho": { "type": "string", "enum": ["teto", "piso"], "description": "Onde o eletroduto passa: teto (ou parede, linha cheia) ou piso (tracejado). Padrão teto." },
                 "alimentacao": { "type": "string", "enum": ["auto", "monofasica", "bifasica", "trifasica"], "description": "Para definir_alimentacao." },
+                "concessionaria": { "type": "string", "enum": ["generico", "enel_sp", "cpfl", "cemig", "copel"], "description": "Para definir_concessionaria: perfil regional de demanda e entrada." },
             }),
             required: &["acao"],
             read_only: false,
@@ -784,7 +791,7 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "quadro_de_cargas",
             title: "Quadro de cargas",
-            description: "Previsão de cargas por cômodo (mínimos da NBR 5410 e o que já está desenhado) e o quadro de circuitos com potência, corrente, fases, comprimento e queda de tensão (fio aumentado quando passa de 4 %), seção do fio, disjuntor e necessidade de DR; a demanda com os fatores usuais, a carga por fase, o padrão de entrada (ligação, disjuntor geral, ramal e eletroduto), os eletrodutos com os fios de cada trecho e os alertas do projeto.",
+            description: "Previsão de cargas por cômodo (mínimos da NBR 5410 e o que já está desenhado), quadro de circuitos (incluindo quadro principal QDG e subquadros QDC), potência, corrente, fases, comprimento, queda de tensão, seção do fio, disjuntor, DR, demanda, padrão de entrada, perfil de concessionária, eletrodutos com fiação, semáforo e alertas.",
             properties: json!({}),
             required: &[],
             read_only: true,
@@ -793,26 +800,32 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "projeto_estrutural",
             title: "Projeto estrutural (pré-dimensionamento)",
-            description: "Comandos da estrutura (planta de forma). gerar_estrutura: pilares nos encontros e pontas das paredes (e a cada 4,5 m nas longas, longe de portas e janelas), vigas sobre as paredes entre pilares, laje treliçada em cada cômodo e sapata sob cada pilar, dimensionada pelas cargas. inserir_pilar / inserir_sapata: em x, y (encaixa no encontro ou no eixo da parede mais próximo), com largura_cm e profundidade_cm. ligar_pilares: viga entre os pilares 'de' e 'para' (largura_cm e altura_cm opcionais; altura padrão de um décimo do vão). editar_viga / remover_viga: pela viga 'id'. definir_laje / remover_laje: no 'comodo' (nome ou id), 'tipo' trelicada ou macica e espessura_cm (padrão: a mínima para o vão). configurar: fck_mpa, solo_kpa, pavimentos, sobrecarga_kn_m2, revestimento_kn_m2. ajustar_sapatas: redimensiona as sapatas pelas cargas. vista: mostra uma 'disciplina' (tudo, arquitetura, eletrica, estrutura) na tela.",
+            description: "Comandos da estrutura (planta de forma e fundações). gerar_estrutura: pilares, vigas, lajes e sapatas. inserir_pilar / inserir_sapata: em x, y (alinhando no eixo da parede, inclusive paredes em ângulo). ligar_pilares: viga entre pilares. apoiar_em_viga: viga secundária apoiada em viga(s) e/ou pilar(es). editar_viga / remover_viga. definir_laje / remover_laje. configurar: fck_mpa, solo_kpa, classe_solo, ocupacao, pavimentos, sobrecarga_kn_m2, revestimento_kn_m2. ajustar_sapatas: redimensiona sapatas pelas cargas. vista: seleciona a disciplina da aba ativa.",
             properties: json!({
-                "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "ligar_pilares", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "ajustar_sapatas", "vista"], "description": "O que fazer." },
+                "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "ajustar_sapatas", "vista"], "description": "O que fazer." },
                 "x": number("Para inserir_pilar e inserir_sapata: posição x, em metros."),
                 "y": number("Para inserir_pilar e inserir_sapata: posição y, em metros."),
                 "largura_cm": number("Largura do pilar, da sapata ou da viga, em cm."),
                 "profundidade_cm": number("Profundidade do pilar ou da sapata, em cm."),
                 "altura_cm": number("Altura da viga, em cm."),
-                "de": integer("Para ligar_pilares: id do primeiro pilar."),
-                "para": integer("Para ligar_pilares: id do segundo pilar."),
+                "de": integer("Para ligar_pilares ou apoiar_em_viga: id do pilar inicial."),
+                "para": integer("Para ligar_pilares ou apoiar_em_viga: id do pilar final."),
+                "viga_de": integer("Para apoiar_em_viga: id da viga que apoia o início."),
+                "t_de": number("Para apoiar_em_viga: posição fracionária (0,01 a 0,99) em viga_de."),
+                "viga_para": integer("Para apoiar_em_viga: id da viga que apoia o fim."),
+                "t_para": number("Para apoiar_em_viga: posição fracionária (0,01 a 0,99) em viga_para."),
                 "id": integer("Para editar_viga e remover_viga: id da viga."),
                 "comodo": { "type": ["string", "integer"], "description": "Para definir_laje e remover_laje: nome ou id do cômodo." },
                 "tipo": { "type": "string", "enum": ["trelicada", "macica"], "description": "Para definir_laje: tipo da laje." },
                 "espessura_cm": number("Para definir_laje: espessura, em cm."),
                 "fck_mpa": number("Para configurar: resistência do concreto, MPa (20 a 50)."),
                 "solo_kpa": number("Para configurar: tensão admissível do solo, kPa (50 a 600)."),
+                "classe_solo": { "type": "string", "enum": ["argila_mole", "argila_media", "areia_media", "areia_compacta", "rocha"], "description": "Para configurar: classe indicativa do solo (NBR 6122)." },
+                "ocupacao": { "type": "string", "enum": ["residencial", "escritorio", "garagem", "comercial"], "description": "Para configurar: ocupação (NBR 6120)." },
                 "pavimentos": integer("Para configurar: pavimentos que os pilares carregam (1 a 10)."),
                 "sobrecarga_kn_m2": number("Para configurar: carga variável nas lajes, kN/m²."),
                 "revestimento_kn_m2": number("Para configurar: revestimento e contrapiso, kN/m²."),
-                "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "estrutura"], "description": "Para vista." },
+                "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Para vista." },
             }),
             required: &["acao"],
             read_only: false,
@@ -821,7 +834,7 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "pre_dimensionamento",
             title: "Pré-dimensionamento da estrutura",
-            description: "Lajes (vãos, espessura e mínima, carga), vigas contínuas por vão (seção e altura mínima, cargas, momentos nos apoios e no vão, cortante, flecha e limite L/250, reações nos pilares), pilares (posição, carga, área necessária e desenhada) e sapatas (carga, dimensões necessárias, altura), com os materiais e os alertas.",
+            description: "Lajes (painéis e charneiras 45°), vigas contínuas (momentos, cortante, flecha com Branson NBR 6118), pilares (incluindo carga acumulada de pavimentos superiores e pilares desalinhados), sapatas (tensão excêntrica, tombamento NBR 6122 e punção NBR 6118), semáforo, limites de aplicabilidade e alertas.",
             properties: json!({}),
             required: &[],
             read_only: true,
@@ -829,14 +842,46 @@ fn catalogue() -> Vec<Tool> {
         },
         Tool {
             name: "abas",
-            title: "Abas (vários projetos)",
-            description: "Lista, troca, cria ou duplica abas. Cada aba é um projeto aberto na mesma janela do Trazo, e todas as outras ferramentas agem na aba ativa. duplicar copia o projeto ativo para uma nova aba, base para outra disciplina do mesmo imóvel (elétrica, estrutural). As abas são numeradas a partir de 1.",
+            title: "Abas e visões sincronizadas",
+            description: "Lista projetos abertos e suas abas vinculadas; troca de aba/projeto; cria uma nova visão vinculada ao mesmo projeto (acao nova_visao) sem duplicar dados; configura disciplina, pavimento ou título de uma aba (configurar_visao); abre/fecha vista lado a lado (lado_a_lado); fecha uma aba com segurança (fechar); ou cria um novo projeto em branco (nova) ou cópia independente (duplicar).",
             properties: json!({
-                "acao": { "type": "string", "enum": ["listar", "trocar", "nova", "duplicar"], "description": "O que fazer; padrão listar." },
-                "aba": integer("Para trocar: o número da aba."),
+                "acao": { "type": "string", "enum": ["listar", "trocar", "nova", "nova_visao", "vincular", "configurar_visao", "lado_a_lado", "fechar", "duplicar"], "description": "O que fazer; padrão listar." },
+                "aba": integer("Número da aba (1, 2...). Para lado_a_lado, 0 ou omitido fecha a divisão."),
+                "projeto_id": integer("Id do projeto aberto (para trocar ou criar nova_visao vinculada a esse projeto)."),
+                "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Para nova_visao ou configurar_visao." },
+                "pavimento_id": integer("Para nova_visao ou configurar_visao: id do pavimento exibido nessa aba."),
+                "titulo": string("Para nova_visao ou configurar_visao: título personalizado opcional da aba."),
+                "lado_a_lado": boolean("Para nova_visao: quando true, exibe a nova visão ao lado da aba de origem."),
+                "descartar_alteracoes": boolean("Para fechar a última aba de um projeto com alterações não salvas."),
             }),
             required: &[],
             read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "pavimentos",
+            title: "Pavimentos do projeto",
+            description: "Lista, adiciona ou troca o pavimento exibido na aba ativa do projeto compartilhado (Térreo, 1º Pavimento, Subsolo...).",
+            properties: json!({
+                "acao": { "type": "string", "enum": ["listar", "adicionar", "trocar"], "description": "O que fazer; padrão listar." },
+                "pavimento_id": integer("Para trocar: id do pavimento."),
+                "nome": string("Para adicionar (nome do novo pavimento) ou trocar (nome do pavimento existente)."),
+                "acima": boolean("Para adicionar: true cria acima do topo (padrão), false cria abaixo (subsolo)."),
+                "copiar_paredes": boolean("Para adicionar: copia as paredes do pavimento atual como base (padrão true)."),
+            }),
+            required: &[],
+            read_only: false,
+            destructive: false,
+        },
+        Tool {
+            name: "dependencias",
+            title: "Dependências e revisão manual",
+            description: "Consulta os vínculos entre disciplinas (paredes, aberturas, pontos elétricos/hidrossanitários, pilares, vigas, lajes, sapatas), o resumo da última sincronização automática e todos os elementos sinalizados para revisão manual ou verificação técnica.",
+            properties: json!({
+                "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Opcional: filtra vínculos e itens de revisão por disciplina." },
+            }),
+            required: &[],
+            read_only: true,
             destructive: false,
         },
         Tool {
@@ -886,10 +931,11 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "exportar_planta",
             title: "Exportar planta",
-            description: "Exporta a planta em PDF vetorial, imagem PNG ou DXF (AutoCAD/QCAD/LibreCAD). Sem caminho: em Documentos\\Trazo com o nome do projeto. Devolve o caminho usado.",
+            description: "Exporta a planta em PDF vetorial, imagem PNG ou DXF (AutoCAD/QCAD/LibreCAD), respeitando a disciplina da aba ativa ou a disciplina informada. Sem caminho: em Documentos\\Trazo com o nome do projeto. Devolve o caminho usado.",
             properties: json!({
                 "formato": { "type": "string", "enum": ["pdf", "png", "dxf"], "description": "pdf, png ou dxf." },
                 "caminho": string("Opcional: caminho do arquivo (relativo a Documentos\\Trazo)."),
+                "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Opcional: disciplina a exportar (padrão: disciplina da aba ativa)." },
             }),
             required: &["formato"],
             read_only: false,
@@ -956,7 +1002,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 43);
+        assert_eq!(tools.len(), 45);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -1037,7 +1083,7 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 43);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 45);
     }
 }
 

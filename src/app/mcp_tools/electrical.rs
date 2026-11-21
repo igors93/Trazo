@@ -10,8 +10,29 @@ use super::{
 };
 use crate::app::{FloorPlanApp, Selection};
 use crate::domain::conduits::ConduitRun;
-use crate::domain::distribution::{Supply, phase_label};
+use crate::domain::distribution::{Supply, UtilityProfile, phase_label};
 use crate::domain::fixtures::{Fixture, FixtureKind};
+
+fn parse_utility_profile(raw: &str) -> Option<UtilityProfile> {
+    match raw.trim().to_lowercase().as_str() {
+        "generico" | "genérico" | "generic" | "nbr5410" => Some(UtilityProfile::Generic),
+        "enel_sp" | "enel" => Some(UtilityProfile::EnelSp),
+        "cpfl" => Some(UtilityProfile::Cpfl),
+        "cemig" => Some(UtilityProfile::Cemig),
+        "copel" | "celesc" => Some(UtilityProfile::Copel),
+        _ => None,
+    }
+}
+
+fn utility_profile_key(profile: UtilityProfile) -> &'static str {
+    match profile {
+        UtilityProfile::Generic => "generico",
+        UtilityProfile::EnelSp => "enel_sp",
+        UtilityProfile::Cpfl => "cpfl",
+        UtilityProfile::Cemig => "cemig",
+        UtilityProfile::Copel => "copel",
+    }
+}
 
 fn run_arg(args: &Value) -> Result<ConduitRun, String> {
     match text(args, "trecho") {
@@ -225,8 +246,20 @@ impl FloorPlanApp {
                     )))
                 })
             }
+            "definir_concessionaria" => {
+                let profile = text(args, "concessionaria")
+                    .and_then(|key| parse_utility_profile(&key))
+                    .ok_or("'concessionaria' deve ser generico, enel_sp, cpfl, cemig ou copel.")?;
+                self.apply_change(Some("O perfil de concessionária já era esse."), |project| {
+                    project.electrical.utility = profile;
+                    Ok(Change::new(format!(
+                        "Perfil de concessionária: {}.",
+                        profile.label()
+                    )))
+                })
+            }
             _ => Err(
-                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto ou definir_alimentacao.".to_owned(),
+                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao ou definir_concessionaria.".to_owned(),
             ),
         }
     }
@@ -251,13 +284,14 @@ impl FloorPlanApp {
                 })
             })
             .collect();
-        let schedule = self.project.load_schedule();
+        let schedule = self.project.cached_load_schedule();
         let circuits: Vec<Value> = schedule
             .circuits
             .iter()
             .map(|row| {
                 json!({
                     "circuito": row.number,
+                    "quadro": row.board,
                     "tipo": row.kind.label(),
                     "comodos": row.rooms,
                     "pontos": row.points,
@@ -272,6 +306,27 @@ impl FloorPlanApp {
                     "comprimento_m": row.length_m.map(|l| (l * 10.0).round() / 10.0),
                     "queda_tensao_pct": row.drop_percent.map(|d| (d * 100.0).round() / 100.0),
                     "dr": row.needs_rcd,
+                })
+            })
+            .collect();
+        let sub_boards: Vec<Value> = schedule
+            .sub_boards
+            .iter()
+            .map(|sb| {
+                json!({
+                    "id": sb.panel_id,
+                    "rotulo": sb.label,
+                    "comodo": sb.room,
+                    "circuitos": sb.circuits,
+                    "carga_instalada_va": sb.installed_va,
+                    "demanda_va": sb.demand_va.round(),
+                    "corrente_a": (sb.current_a * 10.0).round() / 10.0,
+                    "alimentador_m": sb.feeder_length_m.map(|l| (l * 10.0).round() / 10.0),
+                    "queda_alimentador_pct": sb.feeder_drop_percent.map(|d| (d * 100.0).round() / 100.0),
+                    "disjuntor_a": sb.breaker_a,
+                    "fio_mm2": sb.wire_mm2,
+                    "terra_mm2": sb.earth_mm2,
+                    "eletroduto_mm": sb.conduit_mm,
                 })
             })
             .collect();
@@ -314,9 +369,12 @@ impl FloorPlanApp {
             schedule.warnings.len()
         );
         Ok(ToolOutput::ok(text).with_structured(json!({
+            "projeto_id": self.active_project_id(),
             "tensao_v": self.project.electrical.voltage_v,
+            "concessionaria": utility_profile_key(self.project.electrical.utility),
             "previsao": forecast,
             "circuitos": circuits,
+            "quadros_secundarios": sub_boards,
             "carga_instalada_va": schedule.total_va,
             "demanda": {
                 "iluminacao_tug_va": demand.general_va,

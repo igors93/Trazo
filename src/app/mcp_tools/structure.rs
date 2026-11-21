@@ -9,7 +9,28 @@ use crate::app::{FloorPlanApp, Selection};
 use crate::domain::discipline::Discipline;
 use crate::domain::fixtures::FixtureKind;
 use crate::domain::model::Project;
-use crate::domain::structure::{SlabKind, section_cm};
+use crate::domain::structure::{BeamSupport, OccupancyClass, SlabKind, SoilClass, section_cm};
+
+fn parse_soil_class(raw: &str) -> Option<SoilClass> {
+    match raw.trim().to_lowercase().as_str() {
+        "argila_mole" | "soft_clay" => Some(SoilClass::SoftClay),
+        "argila_media" | "argila_média" | "medium_clay" => Some(SoilClass::MediumClay),
+        "areia_media" | "areia_média" | "medium_sand" => Some(SoilClass::MediumSand),
+        "areia_compacta" | "dense_sand" => Some(SoilClass::DenseSand),
+        "rocha" | "rock" => Some(SoilClass::Rock),
+        _ => None,
+    }
+}
+
+fn parse_occupancy_class(raw: &str) -> Option<OccupancyClass> {
+    match raw.trim().to_lowercase().as_str() {
+        "residencial" | "residential" => Some(OccupancyClass::Residential),
+        "escritorio" | "escritório" | "office" => Some(OccupancyClass::Office),
+        "garagem" | "garage" => Some(OccupancyClass::Garage),
+        "comercial" | "comercio" | "comércio" | "retail" => Some(OccupancyClass::Retail),
+        _ => None,
+    }
+}
 
 /// A size argument in centimetres, as metres.
 fn centimetres(args: &Value, key: &str) -> Result<Option<f64>, String> {
@@ -206,6 +227,18 @@ impl FloorPlanApp {
             }),
             "configurar" => {
                 let mut settings = self.project.structure.settings;
+                if let Some(raw) = text(args, "classe_solo") {
+                    let soil = parse_soil_class(&raw).ok_or(
+                        "'classe_solo' deve ser argila_mole, argila_media, areia_media, areia_compacta ou rocha.",
+                    )?;
+                    settings.soil_kpa = soil.allowable_kpa();
+                }
+                if let Some(raw) = text(args, "ocupacao") {
+                    let occ = parse_occupancy_class(&raw).ok_or(
+                        "'ocupacao' deve ser residencial, escritorio, garagem ou comercial.",
+                    )?;
+                    settings.live_kn_m2 = occ.live_kn_m2();
+                }
                 if let Some(v) = number(args, "fck_mpa")? {
                     if !(20.0..=50.0).contains(&v) {
                         return Err("'fck_mpa' deve ficar entre 20 e 50.".to_owned());
@@ -251,10 +284,38 @@ impl FloorPlanApp {
                     Ok(Change::new(format!("{changed} sapata(s) redimensionada(s).")))
                 },
             ),
+            "apoiar_em_viga" => {
+                let width = centimetres(args, "largura_cm")?.unwrap_or(0.14);
+                let height = centimetres(args, "altura_cm")?.unwrap_or(0.35);
+                let from_support = if let Some(bid) = args.get("viga_de").and_then(Value::as_u64) {
+                    let t = number(args, "t_de")?.unwrap_or(0.5);
+                    BeamSupport::Beam { beam_id: bid, t }
+                } else {
+                    BeamSupport::Column {
+                        id: element_id(args, "de")?,
+                    }
+                };
+                let to_support = if let Some(bid) = args.get("viga_para").and_then(Value::as_u64) {
+                    let t = number(args, "t_para")?.unwrap_or(0.5);
+                    BeamSupport::Beam { beam_id: bid, t }
+                } else {
+                    BeamSupport::Column {
+                        id: element_id(args, "para")?,
+                    }
+                };
+                self.apply_change(None, |project| {
+                    let id = project.add_beam_on_supports(from_support, to_support, width, height)?;
+                    Ok(Change::new(format!(
+                        "Viga secundária {id} ({}) criada com apoio em viga.",
+                        section_cm(width, height)
+                    ))
+                    .data(json!({ "id": id, "secao_cm": section_cm(width, height) })))
+                })
+            }
             "vista" => {
                 let discipline = text(args, "disciplina")
-                    .and_then(|key| Discipline::from_key(&key.to_lowercase()))
-                    .ok_or("'disciplina' deve ser tudo, arquitetura, eletrica ou estrutura.")?;
+                    .and_then(|key| Discipline::from_key(&key))
+                    .ok_or("'disciplina' deve ser tudo, arquitetura, eletrica, hidraulica, estrutura ou fundacoes.")?;
                 self.set_discipline(discipline);
                 Ok(ToolOutput::ok(format!(
                     "Vista: {}.",
@@ -262,13 +323,13 @@ impl FloorPlanApp {
                 )))
             }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, ligar_pilares, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas ou vista.".to_owned(),
             ),
         }
     }
 
     pub(super) fn tool_presizing(&mut self) -> Result<ToolOutput, String> {
-        let report = self.project.structure_report();
+        let report = self.project.cached_structure_report();
         let settings = self.project.structure.settings;
         let slabs: Vec<Value> = report
             .slabs
@@ -323,6 +384,7 @@ impl FloorPlanApp {
                     "secao_cm": section_cm(c.width_m, c.depth_m),
                     "posicao": c.position.label(),
                     "carga_kn": round1(c.load_kn),
+                    "carga_pavimentos_superiores_kn": round1(c.upper_load_kn),
                     "area_necessaria_cm2": c.area_needed_cm2.max(360.0).round(),
                     "area_cm2": c.area_cm2.round(),
                     "atende": c.ok(),
@@ -341,7 +403,24 @@ impl FloorPlanApp {
                     "carga_kn": round1(f.load_kn),
                     "necessaria_cm": section_cm(f.needed_width_m, f.needed_depth_m),
                     "altura_cm": round1(f.height_m * 100.0),
+                    "excentricidade_m": (f.eccentricity_m * 1000.0).round() / 1000.0,
+                    "tensao_max_kpa": round1(f.max_pressure_kpa),
+                    "puncao_razao": (f.punching_ratio * 100.0).round() / 100.0,
+                    "fator_tombamento": f.overturning_fs.is_finite().then(|| round1(f.overturning_fs)),
                     "atende": f.ok(),
+                })
+            })
+            .collect();
+        let misaligned: Vec<Value> = report
+            .misaligned_columns
+            .iter()
+            .map(|m| {
+                json!({
+                    "pavimento": m.floor_name,
+                    "pilar": m.column_label,
+                    "centro": xy(m.center),
+                    "carga_kn": round1(m.load_kn),
+                    "viga_transicao": m.transfer_beam,
                 })
             })
             .collect();
@@ -354,17 +433,20 @@ impl FloorPlanApp {
             report.warnings.len()
         ))
         .with_structured(json!({
+            "projeto_id": self.active_project_id(),
             "materiais": {
                 "fck_mpa": settings.fck_mpa,
                 "solo_kpa": settings.soil_kpa,
                 "pavimentos": settings.floors,
                 "sobrecarga_kn_m2": settings.live_kn_m2,
                 "revestimento_kn_m2": settings.finish_kn_m2,
+                "sobrecarga_por_comodo": settings.per_room_live_loads,
             },
             "lajes": slabs,
             "vigas": beams,
             "pilares": columns,
             "sapatas": footings,
+            "pilares_desalinhados": misaligned,
             "semaforo": verdicts_json(&crate::domain::verdict::structure_verdicts(
                 &self.project,
                 &report,
