@@ -9,6 +9,7 @@ This is the plan for what comes next. Work through it **milestone by milestone, 
 - [Where Trazo stands](#where-trazo-stands)
 - [How to read this roadmap](#how-to-read-this-roadmap)
 - [Bug assessment](#bug-assessment)
+- [Implementation log](#implementation-log)
 - [Next up](#next-up)
 - [Milestones](#milestones)
 - [Backlog](#backlog)
@@ -114,6 +115,42 @@ Reviewed on 2026-11-21. Sources:
 | B17 | Low | Performance | System fonts are loaded on every SVG rasterisation (print preview, single-line diagram, beam diagrams), causing a hitch after each change. | ✅ Fixed: shared `OnceLock` font databases reused across `resvg` rasterisation and `svg2pdf` export; regression test `shared_font_databases_are_reused_across_calls`. |
 | B18 | Low | Repository | No `.gitattributes`; with `core.autocrlf` the working tree mixes LF and CRLF, which makes diffs noisy. | ✅ Fixed: added `.gitattributes` enforcing LF for source/docs and CRLF for Windows scripts (#98). |
 | B19 | Low | Fixtures | The minimum fixture size dropped from 20 to 10 cm for every kind so that 14 cm columns fit; it should be a per-kind minimum. | ✅ Fixed: `FixtureKind::min_size` enforces 10 cm for columns and 20 cm for all other fixtures; regression test `minimum_size_is_per_kind`. |
+| B20 | Medium | Quantities | The materials schedule counts blocks with a fixed 19 cm block height instead of the masonry's own height, so walls of shorter bricks get too few blocks. | Pendente — encontrado durante implementação (see [B20](#b20-materials-schedule-ignores-the-block-height)) |
+
+### New bugs found during implementation
+
+Recorded while working through the [implementation log](#implementation-log), and deliberately not fixed in those commits.
+
+#### B20: Materials schedule ignores the block height
+
+- **Status:** Pendente — encontrado durante implementação (found while analysing #56).
+- **Severity:** Medium. Quantities feed purchases; an undercount leaves the site short of blocks.
+- **Description:** `build_materials_schedule` in `src/domain/schedules.rs` divides the net wall area by `(block_length + joint) × (0.19 + joint)`, a hard-coded 19 cm block height, instead of `masonry.block_height`. It also uses the project's default masonry name in the first row even when walls have their own masonry.
+- **Expected:** blocks per m² = 1 / ((block length + joint) × (block height + joint)), with each wall's own masonry, as `Masonry::blocks_per_square_metre` already computes.
+- **Observed:** for the default *Tijolo cerâmico 6 furos (em pé)* (19 × 14 cm), the schedule counts 1 / (0.20 × 0.20) = 25 blocks/m² instead of 1 / (0.20 × 0.15) ≈ 33.3 blocks/m², about 25 % too few.
+- **Steps to reproduce:** new project, draw any wall with the default masonry, open *Quadros*, compare *Blocos estimados* with net wall area × 33.3.
+- **Affected:** `src/domain/schedules.rs` (`build_materials_schedule`), the *Quadro de Materiais e Alvenaria* on sheets and in CSV.
+- **Impact:** wrong purchase quantities on every project not built with 19 cm-high blocks.
+
+## Implementation log
+
+The items worked through in the order set on 2026-11-21: #97 → #99 → #100 → #101 → #102 → #103 → #56 → #53 → #113 → #94. Each entry records what was done, how it was checked, the commit and what remains.
+
+### #97 CI on Windows and macOS — ✅ Done
+
+- **Changes:** `.github/workflows/ci.yml` runs format, Clippy (`-D warnings`) and the tests on `ubuntu-latest`, `windows-latest` and `macos-latest`, with `fail-fast: false`.
+- **Tests:** CI run 44919078527 (commit `fb23c1e`) passed on all three systems; locally on Windows, `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings` and `cargo test --all-targets --all-features` pass (344 tests).
+- **Commit:** `3f299a7`.
+- **Limitations:** none known. Linux and macOS are checked only in CI, not on the development machine.
+
+### #99 Load path across floors — ✅ Done
+
+- **Changes:** `structure_report` walks the real upper floors from the top down and adds each upper column's load to the aligned column below (within 15 cm). A misaligned column becomes a point load on the beam under it (a transfer girder), or a warning when nothing supports it. The *floors* multiplier is only used when there are no real upper floors.
+- **Tests:** `upper_floor_loads_flow_down_to_aligned_columns_and_flag_misaligned_transfers` (aligned, transfer and unsupported cases). The load-conservation check across floors joins the validation suite in #100.
+- **Commit:** `79b7072`.
+- **Limitations:** columns are matched by plan position only; a transfer girder gets the point load in its own analysis, but there is no detailing check of the transfer itself.
+
+### #100 Engineering methods guide and validation suite — 🔵 In progress
 
 ## Next up
 
@@ -280,7 +317,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
 | 99 | Load path across floors: columns stacked through the storeys, loads summed from the real floors above, misaligned columns flagged as transfers (B03) | P0 | M | M3 | ✅ |
-| 100 | Engineering methods guide (`docs/engineering.md`): every calculation with its formula, standard, assumptions and limits, validated in CI against published worked examples (B12) | P0 | M | M3 | 🟡 Methods are described in the user guide; textbook checks exist for beams, demand and voltage drop |
+| 100 | Engineering methods guide (`docs/engineering.md`): every calculation with its formula, standard, assumptions and limits, validated in CI against published worked examples (B12) | P0 | M | M3 | 🔵 In progress |
 | 101 | Results as a traffic light: margin to the limit, the assumptions used, and a plain-language explanation of what to change | P0 | M | M3 | 🟡 Warnings exist; no margins or traffic light |
 | 102 | Applicability limits per module (storeys, spans, loads, soils); outside them Trazo refuses to size and asks for a professional | P0 | S | M3 | ⬜ |
 | 103 | Pre-sizing report (*memorial*) as PDF: inputs, assumptions, results, warnings and drawings, for a licensed professional to review and sign (ART or RRT) | P0 | M | M3 | ⬜ |
