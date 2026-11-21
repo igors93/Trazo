@@ -325,7 +325,7 @@ impl Fixture {
         Point::new(self.center.x + rotated.x, self.center.y + rotated.y)
     }
 
-    fn to_local(self, world: Point) -> Point {
+    pub fn to_local(self, world: Point) -> Point {
         let offset = Point::new(world.x - self.center.x, world.y - self.center.y);
         rotate(offset, 4 - self.quarter_turns % 4)
     }

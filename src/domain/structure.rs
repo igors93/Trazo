@@ -485,11 +485,101 @@ pub struct FootingResult {
     pub needed_depth_m: f64,
     /// Height for a rigid footing, metres.
     pub height_m: f64,
+    /// Column-to-footing centre eccentricity, metres.
+    pub eccentricity_m: f64,
+    /// Peak soil bearing pressure accounting for eccentricity (NBR 6122), kPa.
+    pub max_pressure_kpa: f64,
+    /// Allowable soil bearing pressure used in the check, kPa.
+    pub soil_kpa: f64,
+    /// Punching shear utilisation ratio (NBR 6118 19.5): <= 1.0 passes.
+    pub punching_ratio: f64,
+    /// Overturning safety factor (NBR 6122): >= 1.5 required (`INFINITY` when concentric).
+    pub overturning_fs: f64,
 }
 
 impl FootingResult {
     pub fn ok(&self) -> bool {
         self.width_m * self.depth_m + 1e-6 >= self.needed_width_m * self.needed_depth_m
+            && self.max_pressure_kpa <= self.soil_kpa + 1e-3
+            && self.punching_ratio <= 1.0 + 1e-6
+            && self.overturning_fs >= 1.5 - 1e-6
+    }
+}
+
+/// Mechanical checks for a spread footing per NBR 6122 (eccentric bearing
+/// pressure & overturning) and NBR 6118 19.5 (punching shear).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FootingCheck {
+    pub max_pressure_kpa: f64,
+    pub outside_middle_third: bool,
+    pub overturning_fs: f64,
+    pub punching_ratio: f64,
+}
+
+/// Evaluates eccentric soil pressure, overturning safety factor and punching
+/// shear utilisation for a rectangular footing (`bx` × `by`, height `h`)
+/// carrying a column (`cw` × `cd`) with characteristic axial load `load_kn`
+/// offset by `(ex, ey)` from the footing centre.
+#[allow(clippy::too_many_arguments)]
+pub fn check_footing(
+    load_kn: f64,
+    bx: f64,
+    by: f64,
+    h: f64,
+    cw: f64,
+    cd: f64,
+    ex: f64,
+    ey: f64,
+    fck_mpa: f64,
+) -> FootingCheck {
+    let bx = bx.max(0.1);
+    let by = by.max(0.1);
+    let ex = ex.abs();
+    let ey = ey.abs();
+    let n_soil = 1.05 * load_kn.max(0.0);
+
+    // Eccentricity & overturning (NBR 6122).
+    let kern_ratio = 6.0 * ex / bx + 6.0 * ey / by;
+    let outside_middle_third = kern_ratio > 1.0 + 1e-6;
+    let overturning_fs = if ex <= 1e-6 && ey <= 1e-6 {
+        f64::INFINITY
+    } else {
+        1.0 / (2.0 * (ex / bx + ey / by)).max(1e-9)
+    };
+    let max_pressure_kpa = if !outside_middle_third {
+        (n_soil / (bx * by)) * (1.0 + kern_ratio)
+    } else {
+        let bx_eff = (bx - 2.0 * ex).max(0.01);
+        let by_eff = (by - 2.0 * ey).max(0.01);
+        n_soil / (bx_eff * by_eff)
+    };
+
+    // Punching shear (NBR 6118 19.5 & 22.6): column face τ_Rd2 and d/2 contour τ_Rd1.
+    let fck = fck_mpa.max(10.0);
+    let d = (h - 0.05).max(0.10);
+    let f_sd = 1.4 * load_kn.max(0.0);
+    let fcd_kn_m2 = (fck / 1.4) * 1000.0;
+    let alpha_v2 = (1.0 - fck / 250.0).max(0.1);
+    let tau_rd2 = 0.27 * alpha_v2 * fcd_kn_m2;
+    let u0 = (2.0 * (cw.max(0.10) + cd.max(0.10))).max(0.40);
+    let tau_sd0 = f_sd / (u0 * d);
+
+    let px = (cw.max(0.10) + d).min(bx);
+    let py = (cd.max(0.10) + d).min(by);
+    let area_inside = px * py;
+    let v_sd = (f_sd * (1.0 - area_inside / (bx * by))).max(0.0);
+    let u1 = 2.0 * (px + py);
+    let tau_sd1 = v_sd / (u1 * d);
+    let k_size = (1.0 + (0.20 / d).sqrt()).min(2.0);
+    let rho_flex = 0.002;
+    let tau_rd1 = 0.13 * k_size * (100.0 * rho_flex * fck).cbrt() * 1000.0;
+    let punching_ratio = (tau_sd0 / tau_rd2).max(tau_sd1 / tau_rd1);
+
+    FootingCheck {
+        max_pressure_kpa,
+        outside_middle_third,
+        overturning_fs,
+        punching_ratio,
     }
 }
 
@@ -1454,27 +1544,41 @@ impl Project {
             .collect();
         footings.sort_by(|a, b| reading(a.center, b.center));
         for footing in footings {
-            let column = report.columns.iter().find(|c| {
-                self.column(c.id)
-                    .is_some_and(|col| footing.contains(col.center))
-            });
+            let col_fixture = report
+                .columns
+                .iter()
+                .filter_map(|c| Some((c, self.column(c.id)?)))
+                .find(|(_, col)| footing.contains(col.center));
+            let column = col_fixture.map(|(c, _)| c);
             let load = column.map_or(0.0, |c| c.load_kn);
             let area = 1.05 * load / settings.soil_kpa.max(10.0);
             // Same overhang on all sides of the column.
-            let (cw, cd) = column
-                .and_then(|c| self.column(c.id))
-                .map_or((0.0, 0.0), |col| {
-                    if col.quarter_turns % 2 == footing.quarter_turns % 2 {
-                        (col.width, col.depth)
-                    } else {
-                        (col.depth, col.width)
-                    }
-                });
+            let ((cw, cd), (ex, ey)) = col_fixture.map_or(((0.0, 0.0), (0.0, 0.0)), |(_, col)| {
+                let dims = if col.quarter_turns % 2 == footing.quarter_turns % 2 {
+                    (col.width, col.depth)
+                } else {
+                    (col.depth, col.width)
+                };
+                let local = footing.to_local(col.center);
+                (dims, (local.x.abs(), local.y.abs()))
+            });
             let diff = cw - cd;
             let depth = ((-diff + (diff * diff + 4.0 * area).sqrt()) / 2.0).max(0.0);
             let needed_depth = round_up(depth, 0.05).max(0.60);
             let needed_width = round_up(depth + diff, 0.05).max(0.60);
             let overhang = ((footing.width - cw).max(footing.depth - cd) / 2.0).max(0.0);
+            let height_m = round_up((overhang * 2.0 / 3.0).max(0.25), 0.05);
+            let check = check_footing(
+                load,
+                footing.width,
+                footing.depth,
+                height_m,
+                cw,
+                cd,
+                ex,
+                ey,
+                settings.fck_mpa,
+            );
             let result = FootingResult {
                 id: footing.id,
                 label: label(footing.id),
@@ -1484,21 +1588,60 @@ impl Project {
                 load_kn: load,
                 needed_width_m: needed_width,
                 needed_depth_m: needed_depth,
-                height_m: round_up((overhang * 2.0 / 3.0).max(0.25), 0.05),
+                height_m,
+                eccentricity_m: ex.hypot(ey),
+                max_pressure_kpa: check.max_pressure_kpa,
+                soil_kpa: settings.soil_kpa,
+                punching_ratio: check.punching_ratio,
+                overturning_fs: check.overturning_fs,
             };
             if result.column.is_none() {
                 report
                     .warnings
                     .push(format!("{}: sapata sem pilar em cima.", result.label));
-            } else if !result.ok() {
-                report.warnings.push(format!(
-                    "{}: {} m² é pouco para {:.0} kN no solo de {:.0} kPa; use {}.",
-                    result.label,
-                    decimal(result.width_m * result.depth_m, 2),
-                    load,
-                    settings.soil_kpa,
-                    section_cm(needed_width, needed_depth)
-                ));
+            } else {
+                if result.width_m * result.depth_m + 1e-6
+                    < result.needed_width_m * result.needed_depth_m
+                {
+                    report.warnings.push(format!(
+                        "{}: {} m² é pouco para {:.0} kN no solo de {:.0} kPa; use {}.",
+                        result.label,
+                        decimal(result.width_m * result.depth_m, 2),
+                        load,
+                        settings.soil_kpa,
+                        section_cm(needed_width, needed_depth)
+                    ));
+                } else if result.max_pressure_kpa > settings.soil_kpa + 1e-3 {
+                    report.warnings.push(format!(
+                        "{}: excentricidade de {:.0} cm eleva a tensão no solo para {:.0} kPa (limite {:.0} kPa); centralize ou aumente a sapata.",
+                        result.label,
+                        result.eccentricity_m * 100.0,
+                        result.max_pressure_kpa,
+                        settings.soil_kpa
+                    ));
+                }
+                if result.overturning_fs < 1.5 {
+                    report.warnings.push(format!(
+                        "{}: risco de tombamento (FS = {} < 1,5, excentricidade {:.0} cm); centralize a sapata ou use viga de equilíbrio.",
+                        result.label,
+                        decimal(result.overturning_fs, 2),
+                        result.eccentricity_m * 100.0
+                    ));
+                } else if check.outside_middle_third {
+                    report.warnings.push(format!(
+                        "{}: carga fora do núcleo central (excentricidade {:.0} cm, descolamento parcial da base).",
+                        result.label,
+                        result.eccentricity_m * 100.0
+                    ));
+                }
+                if result.punching_ratio > 1.0 + 1e-6 {
+                    report.warnings.push(format!(
+                        "{}: verificação à punção excedida ({:.0} % do limite NBR 6118); aumente a altura da sapata (h atual {:.0} cm).",
+                        result.label,
+                        result.punching_ratio * 100.0,
+                        result.height_m * 100.0
+                    ));
+                }
             }
             report.footings.push(result);
         }
@@ -2211,5 +2354,47 @@ mod tests {
         assert!(cracked.i_eq_m4 < ic);
         assert!(cracked.i_eq_m4 >= cracked.i_cracked_m4 - 1e-12);
         assert!(cracked.as_cm2 > uncracked.as_cm2);
+    }
+
+    #[test]
+    fn footings_check_eccentric_pressure_overturning_and_punching_shear() {
+        // Concentric well-proportioned footing passes all checks.
+        let concentric = check_footing(100.0, 1.0, 1.0, 0.35, 0.30, 0.14, 0.0, 0.0, 25.0);
+        assert!(!concentric.outside_middle_third);
+        assert!(concentric.overturning_fs.is_infinite());
+        assert!(concentric.max_pressure_kpa <= 110.0);
+        assert!(concentric.punching_ratio < 1.0);
+
+        // Large eccentricity pushes load outside the middle third, raises peak
+        // soil pressure and drops overturning FS below 1.5.
+        let eccentric = check_footing(100.0, 1.0, 1.0, 0.35, 0.30, 0.14, 0.36, 0.0, 25.0);
+        assert!(eccentric.outside_middle_third);
+        assert!(eccentric.overturning_fs < 1.5);
+        assert!(eccentric.max_pressure_kpa > 300.0);
+
+        // Heavy load on a shallow footing triggers punching shear failure.
+        let punched = check_footing(600.0, 1.8, 1.8, 0.25, 0.30, 0.14, 0.0, 0.0, 25.0);
+        assert!(punched.punching_ratio > 1.0);
+
+        // Integration check on a project with an off-centre footing.
+        let mut project = house();
+        project.generate_structure();
+        let footing_id = project
+            .fixtures
+            .iter()
+            .find(|f| f.kind == FixtureKind::Footing)
+            .unwrap()
+            .id;
+        // Shift footing so the column sits near its edge (eccentric).
+        if let Some(f) = project.fixtures.iter_mut().find(|f| f.id == footing_id) {
+            f.width = 1.0;
+            f.depth = 1.0;
+            f.center = f.center.translated(Point::new(0.40, 0.0));
+        }
+        let report = project.structure_report();
+        let res = report.footings.iter().find(|f| f.id == footing_id).unwrap();
+        assert!(!res.ok());
+        assert!(res.overturning_fs < 1.5);
+        assert!(report.warnings.iter().any(|w| w.contains("tombamento")));
     }
 }
