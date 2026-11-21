@@ -25,7 +25,12 @@ impl FloorPlanApp {
             .active_floor()
             .map(|level| level.name.as_str())
             .unwrap_or("Térreo");
-        let title = painter.layout_no_wrap(format!("Planta baixa · {floor}"), strong(12.5), TEXT);
+        let title_text = if self.discipline.is_all() {
+            format!("Planta baixa · {floor}")
+        } else {
+            format!("{} · {floor}", self.discipline.label())
+        };
+        let title = painter.layout_no_wrap(title_text, strong(12.5), TEXT);
         let tool = painter.layout_no_wrap(tool_name(self.tool).to_owned(), regular(11.5), TEXT_2);
         let unit = painter.layout_no_wrap("metros".to_owned(), regular(11.5), MUTED);
         let (title_width, tool_width, unit_width) = (title.size().x, tool.size().x, unit.size().x);

@@ -545,24 +545,16 @@ impl FloorPlanApp {
                 },
             );
             drop(shown);
-            if let Some(focus) = discipline.focus() {
+            if discipline.focus().is_some() {
                 painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(190));
                 let none_selected = |_: u64| false;
-                if focus == crate::domain::layers::LayerCategory::Structure {
-                    canvas::paint_structure_overlay(
-                        &painter,
-                        view,
-                        &document.project,
-                        &none_selected,
-                    );
-                } else {
-                    canvas::paint_electrical_overlay(
-                        &painter,
-                        view,
-                        &document.project,
-                        &none_selected,
-                    );
-                }
+                canvas::paint_discipline_overlay(
+                    &painter,
+                    view,
+                    &document.project,
+                    discipline,
+                    &none_selected,
+                );
             }
             let floor = document
                 .project

@@ -259,6 +259,19 @@ impl FixtureKind {
         }
     }
 
+    /// Sanitary and wet-area fixtures that depend on hydraulic/drainage points.
+    pub fn is_plumbing(self) -> bool {
+        matches!(
+            self,
+            Self::KitchenSink
+                | Self::Washbasin
+                | Self::Toilet
+                | Self::Shower
+                | Self::Bathtub
+                | Self::Washer
+        )
+    }
+
     /// Kinds whose symbol does not say what they are by itself, so their
     /// name is written on them when there is room.
     pub fn needs_label(self) -> bool {

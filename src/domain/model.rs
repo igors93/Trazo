@@ -160,6 +160,11 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub xrefs: Vec<super::xref::ExternalReference>,
 
+    /// Saved synchronized workspace view tabs (discipline, floor, camera)
+    /// restored when reopening the project file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub workspace_tabs: Vec<super::discipline::WorkspaceTab>,
+
     next_id: u64,
 }
 
@@ -234,6 +239,8 @@ impl Default for Project {
             underlays: Vec::new(),
 
             xrefs: Vec::new(),
+
+            workspace_tabs: Vec::new(),
 
             next_id: 1,
         }

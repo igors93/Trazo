@@ -318,6 +318,73 @@ pub fn paint_structure_overlay(
     labels::paint_structure(painter, view, project);
 }
 
+/// Draws only foundations (footings, columns and structural labels), for
+/// the foundations view that fades the architecture behind it.
+pub fn paint_foundations_overlay(
+    painter: &Painter,
+    view: ViewTransform,
+    project: &Project,
+    selected: &dyn Fn(u64) -> bool,
+) {
+    if !project.category_visible(crate::domain::layers::LayerCategory::Structure) {
+        return;
+    }
+    for fixture in project.fixtures.iter().filter(|f| {
+        matches!(
+            f.kind,
+            crate::domain::fixtures::FixtureKind::Footing
+                | crate::domain::fixtures::FixtureKind::Column
+        )
+    }) {
+        let tone = if selected(fixture.id) {
+            FixtureTone::Selected
+        } else {
+            FixtureTone::Normal
+        };
+        paint_fixture(painter, view, fixture, tone);
+    }
+    labels::paint_structure(painter, view, project);
+}
+
+/// Draws only sanitary/plumbing fixtures on top of the faded architecture
+/// (prepared view for hydraulic installations #72).
+pub fn paint_plumbing_overlay(
+    painter: &Painter,
+    view: ViewTransform,
+    project: &Project,
+    selected: &dyn Fn(u64) -> bool,
+) {
+    if !project.category_visible(crate::domain::layers::LayerCategory::Fixtures) {
+        return;
+    }
+    for fixture in project.fixtures.iter().filter(|f| f.kind.is_plumbing()) {
+        let tone = if selected(fixture.id) {
+            FixtureTone::Selected
+        } else {
+            FixtureTone::Normal
+        };
+        paint_fixture(painter, view, fixture, tone);
+    }
+}
+
+/// Draws the focused discipline's overlay on top of a faded architectural veil.
+pub fn paint_discipline_overlay(
+    painter: &Painter,
+    view: ViewTransform,
+    project: &Project,
+    discipline: crate::domain::discipline::Discipline,
+    selected: &dyn Fn(u64) -> bool,
+) {
+    use crate::domain::discipline::Discipline;
+    match discipline {
+        Discipline::Electrical => paint_electrical_overlay(painter, view, project, selected),
+        Discipline::Structure => paint_structure_overlay(painter, view, project, selected),
+        Discipline::Foundations => paint_foundations_overlay(painter, view, project, selected),
+        Discipline::Plumbing => paint_plumbing_overlay(painter, view, project, selected),
+        Discipline::All | Discipline::Architecture => {}
+    }
+}
+
 pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, tone: FixtureTone) {
     let (ink, detail, fill) = match tone {
         FixtureTone::Normal => (theme::TEXT_2, theme::MUTED, Color32::WHITE),

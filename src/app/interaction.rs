@@ -571,15 +571,17 @@ impl FloorPlanApp {
         drop(shown);
         self.paint_xrefs_overlay(&painter, view);
         self.paint_compare_overlay(&painter, view);
-        if let Some(focus) = self.discipline.focus() {
+        if self.discipline.focus().is_some() {
             // One discipline: the architecture behind a veil, it on top.
             painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(190));
             let selected = |id: u64| self.is_selected(Selection::Fixture(id));
-            if focus == crate::domain::layers::LayerCategory::Structure {
-                canvas::paint_structure_overlay(&painter, view, &self.project, &selected);
-            } else {
-                canvas::paint_electrical_overlay(&painter, view, &self.project, &selected);
-            }
+            canvas::paint_discipline_overlay(
+                &painter,
+                view,
+                &self.project,
+                self.discipline,
+                &selected,
+            );
         }
         self.paint_view_aids(&painter, view);
         if self.show_ergonomics {
