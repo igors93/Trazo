@@ -204,6 +204,10 @@ impl FloorPlanApp {
             self.save();
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Print), "Imprimir em escala...", "Ctrl+P").clicked() {
+            self.open_print_dialog();
+            ui.close();
+        }
         menu_separator(ui);
         if menu_item(ui, Some(Icon::Import), "Importar DXF (AutoCAD)...", "").clicked() {
             self.import_dxf();
@@ -531,6 +535,11 @@ impl FloorPlanApp {
 
     fn export_menu(&mut self, ui: &mut Ui) {
         ui.set_width(MENU_WIDTH);
+        if menu_item(ui, Some(Icon::Print), "Imprimir em escala...", "Ctrl+P").clicked() {
+            self.open_print_dialog();
+            ui.close();
+        }
+        menu_separator(ui);
         if menu_item(ui, Some(Icon::ExportImage), "Imagem PNG...", "").clicked() {
             self.export_png();
             ui.close();

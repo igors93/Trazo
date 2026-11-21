@@ -439,10 +439,13 @@ impl FloorPlanApp {
 
                 ui.add_space(12.0);
                 ui.horizontal(|ui| {
-                    if primary_button(ui, "Exportar prancha PDF (escala exata)").clicked() {
+                    if primary_button(ui, "Imprimir em escala...").clicked() {
+                        self.open_print_dialog();
+                    }
+                    if secondary_button(ui, "Exportar PDF (escala exata)").clicked() {
                         self.export_sheet_pdf();
                     }
-                    if secondary_button(ui, "Exportar prancha SVG").clicked() {
+                    if secondary_button(ui, "Exportar SVG").clicked() {
                         self.export_sheet_svg();
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

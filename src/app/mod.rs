@@ -46,6 +46,7 @@ enum DocDialog {
     Dimensions,
     Notes,
     Sheet,
+    Print,
     Schedules,
     Templates,
     Views,
@@ -197,6 +198,7 @@ pub struct FloorPlanApp {
     update_status: crate::io::updates::UpdateStatus,
     update_receiver: Option<mpsc::Receiver<crate::io::updates::UpdateStatus>>,
     active_doc_dialog: DocDialog,
+    print_state: ui::PrintDialogState,
     new_layer_name: String,
     new_note_text: String,
     new_revision_text: String,
@@ -392,6 +394,7 @@ impl FloorPlanApp {
             update_status: crate::io::updates::UpdateStatus::Idle,
             update_receiver: None,
             active_doc_dialog: DocDialog::None,
+            print_state: ui::PrintDialogState::default(),
             new_layer_name: String::new(),
             new_note_text: String::new(),
             new_revision_text: String::new(),
@@ -2300,6 +2303,7 @@ impl FloorPlanApp {
                 mirror_left_right: plain(Key::H),
                 mirror_up_down: shifted(Key::H),
                 save: shortcut(Key::S, false) && free,
+                print: shortcut(Key::P, false) && free,
                 open: shortcut(Key::O, false) && free,
                 new: (shortcut(Key::N, false) || shortcut(Key::T, false)) && free,
                 new_window: shortcut(Key::N, true) && free,
@@ -2346,6 +2350,9 @@ impl FloorPlanApp {
         });
         if actions.save {
             self.save();
+        }
+        if actions.print {
+            self.open_print_dialog();
         }
         if actions.open {
             self.request_open();
@@ -2499,6 +2506,7 @@ impl FloorPlanApp {
 
 struct ShortcutActions {
     save: bool,
+    print: bool,
     open: bool,
     new: bool,
     new_window: bool,
@@ -3361,5 +3369,14 @@ mod tests {
         assert!(!app.dirty);
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn ctrl_p_opens_exact_scale_print_dialog() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        assert_eq!(app.active_doc_dialog, DocDialog::None);
+        press(&mut app, &context, Key::P, egui::Modifiers::CTRL);
+        assert_eq!(app.active_doc_dialog, DocDialog::Print);
     }
 }

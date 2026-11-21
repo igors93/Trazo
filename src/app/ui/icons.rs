@@ -28,6 +28,7 @@ pub enum Icon {
     Export,
     ExportImage,
     ExportPdf,
+    Print,
     Table,
     Layers,
     Floors,
@@ -423,6 +424,20 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
             pen.accent_line(&[(9.0, 11.5), (15.0, 11.5)]);
             pen.accent_line(&[(9.0, 14.5), (15.0, 14.5)]);
             pen.accent_line(&[(9.0, 17.5), (13.0, 17.5)]);
+        }
+        Icon::Print => {
+            // Top paper tray
+            pen.line(&[(7.0, 8.5), (7.0, 3.5), (17.0, 3.5), (17.0, 8.5)]);
+            // Printer body
+            pen.rect(3.5, 8.5, 20.5, 16.5, ink_s);
+            pen.dot(17.5, 11.5, 1.1, accent);
+            // Output sheet
+            pen.fill(
+                &[(7.0, 14.5), (17.0, 14.5), (17.0, 20.5), (7.0, 20.5)],
+                soft,
+            );
+            pen.rect(7.0, 14.5, 17.0, 20.5, acc_s);
+            pen.accent_line(&[(9.5, 17.5), (14.5, 17.5)]);
         }
         Icon::ZoomIn | Icon::ZoomOut => {
             pen.circle(10.5, 10.5, 6.8, ink_s);

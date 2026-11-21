@@ -706,6 +706,20 @@ impl FloorPlanApp {
             if tip(
                 ribbon_button(
                     ui,
+                    Icon::Print,
+                    "Imprimir",
+                    self.active_doc_dialog == super::super::DocDialog::Print,
+                    false,
+                ),
+                "Imprimir prancha em escala exata com pré-visualização e diálogo do sistema (Ctrl+P)",
+            )
+            .clicked()
+            {
+                self.open_print_dialog();
+            }
+            if tip(
+                ribbon_button(
+                    ui,
                     Icon::ExportPdf,
                     "Prancha",
                     self.active_doc_dialog == super::super::DocDialog::Sheet,

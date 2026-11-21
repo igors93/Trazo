@@ -18,6 +18,8 @@ mod library;
 mod modify_menu;
 mod notes;
 mod options_bar;
+mod print;
+pub(in crate::app) use print::PrintDialogState;
 mod repeat;
 mod report_problem;
 mod schedules;
@@ -116,6 +118,7 @@ impl FloorPlanApp {
         self.dimensions_dialog(&context);
         self.notes_dialog(&context);
         self.sheet_dialog(&context);
+        self.print_dialog(&context);
         self.schedules_dialog(&context);
         self.templates_dialog(&context);
         self.views_dialog(&context);
