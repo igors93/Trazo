@@ -323,6 +323,8 @@ pub struct FloorPlanApp {
     split_tab: Option<usize>,
     /// Horizontal fraction (`0.20..=0.80`) given to the left side when split.
     split_ratio: f32,
+    /// Last cross-discipline dependency sync report for the active project.
+    sync_report: crate::domain::dependencies::DependencySyncReport,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -496,6 +498,7 @@ impl FloorPlanApp {
             active_pane: tabs::TabPane::Left,
             split_tab: None,
             split_ratio: 0.5,
+            sync_report: crate::domain::dependencies::DependencySyncReport::default(),
         };
         if restored {
             app.restore_tab_drafts();
@@ -1905,6 +1908,13 @@ impl FloorPlanApp {
             }
             return true;
         }
+        // Propagate safe cross-discipline dependencies (wall-mounted devices,
+        // footings under moved columns) within the same undo transaction.
+        let sync = self.project.propagate_dependencies(&previous);
+        if let Some(summary) = sync.summary_line() {
+            self.edit_notice = Some(summary);
+        }
+        self.sync_report = sync;
         self.note_plan_change(&previous, false);
         // An AI batch records itself as one step when it ends.
         if self.batch_depth == 0 {

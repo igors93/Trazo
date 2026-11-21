@@ -6,6 +6,7 @@ pub mod circulation;
 pub mod compare;
 pub mod conduits;
 pub mod curves;
+pub mod dependencies;
 pub mod dimensions;
 pub mod discipline;
 pub mod distribution;

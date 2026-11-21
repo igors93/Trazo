@@ -302,6 +302,7 @@ impl FloorPlanApp {
             );
             self.paint_underlay_calibration_overlay(&painter, view, world);
             self.paint_view_aids(&painter, view);
+            self.paint_dependency_review_badges(&painter, view);
             self.canvas_navigation(ui, navigation);
             return;
         }
@@ -322,6 +323,7 @@ impl FloorPlanApp {
             );
             canvas::paint_polygon_draft(&painter, view, corners, None, true);
             self.paint_view_aids(&painter, view);
+            self.paint_dependency_review_badges(&painter, view);
             if self.show_ergonomics {
                 canvas::paint_ergonomics_overlay(
                     &painter,
@@ -584,6 +586,7 @@ impl FloorPlanApp {
             );
         }
         self.paint_view_aids(&painter, view);
+        self.paint_dependency_review_badges(&painter, view);
         if self.show_ergonomics {
             canvas::paint_ergonomics_overlay(
                 &painter,
@@ -1447,6 +1450,47 @@ impl FloorPlanApp {
         self.paint_view_label(painter, view.rect);
         overlay::paint_scale_bar(painter, view);
         overlay::paint_north_arrow(painter, view.rect);
+    }
+
+    /// Highlights elements flagged for manual review after cross-discipline
+    /// geometry changes (uses the cached dependency audit).
+    fn paint_dependency_review_badges(&self, painter: &egui::Painter, view: ViewTransform) {
+        use crate::domain::dependencies::ReviewSeverity;
+        let audit = self.project.cached_dependency_audit();
+        for item in &audit.review_items {
+            if item.severity == ReviewSeverity::Info {
+                continue;
+            }
+            if !self.discipline.is_all() && item.discipline != self.discipline {
+                continue;
+            }
+            let Some(pos) = item.position else {
+                continue;
+            };
+            let screen = view.to_screen(pos);
+            if !view.rect.contains(screen) {
+                continue;
+            }
+            let badge_center = screen + egui::vec2(10.0, -10.0);
+            let fill = match item.severity {
+                ReviewSeverity::Critical => egui::Color32::from_rgb(200, 45, 45),
+                ReviewSeverity::Warning => egui::Color32::from_rgb(217, 130, 18),
+                ReviewSeverity::Info => continue,
+            };
+            painter.circle_filled(badge_center, 7.0, fill);
+            painter.circle_stroke(
+                badge_center,
+                7.0,
+                egui::Stroke::new(1.2, egui::Color32::WHITE),
+            );
+            painter.text(
+                badge_center,
+                egui::Align2::CENTER_CENTER,
+                "!",
+                egui::FontId::proportional(10.0),
+                egui::Color32::WHITE,
+            );
+        }
     }
 }
 

@@ -300,6 +300,32 @@ impl Project {
         let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
         guard.get_or_insert(key, || self.structure_report())
     }
+
+    /// Cached [`Project::audit_dependencies`], reused across frames until
+    /// geometry, openings, electrical or structural inputs change.
+    pub fn cached_dependency_audit(&self) -> Arc<super::dependencies::DependencyAudit> {
+        static CACHE: CacheSlot<super::dependencies::DependencyAudit> = OnceLock::new();
+        let mut h = DefaultHasher::new();
+        electrical_fingerprint(self).hash(&mut h);
+        structure_fingerprint(self).hash(&mut h);
+        self.openings.len().hash(&mut h);
+        for op in &self.openings {
+            op.id.hash(&mut h);
+            op.wall_id.hash(&mut h);
+            hash_f64(&mut h, op.t);
+            hash_f64(&mut h, op.width());
+        }
+        self.fixtures.len().hash(&mut h);
+        for f in &self.fixtures {
+            if f.kind.is_plumbing() {
+                hash_fixture(&mut h, f);
+            }
+        }
+        let key = h.finish();
+        let cache = CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        guard.get_or_insert(key, || self.audit_dependencies())
+    }
 }
 
 #[cfg(test)]
