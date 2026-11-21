@@ -790,6 +790,235 @@ pub fn span_deflection(length: f64, load: f64, left: f64, right: f64, ei: f64) -
         .fold(0.0, f64::max)
 }
 
+/// Splits a slab polygon into rectangular sub-panels (trying horizontal and
+/// vertical strip decompositions and picking the one with the smaller
+/// governing short span `lx`), so L- and U-shaped rooms get their real panel
+/// spans instead of the outer bounding box.
+pub fn decompose_slab_panels(outline: &[Point]) -> Vec<(f64, f64)> {
+    if outline.len() < 3 {
+        return Vec::new();
+    }
+    let bbox = || {
+        let (mut min, mut max) = (outline[0], outline[0]);
+        for p in outline {
+            min = Point::new(min.x.min(p.x), min.y.min(p.y));
+            max = Point::new(max.x.max(p.x), max.y.max(p.y));
+        }
+        let (w, h) = (max.x - min.x, max.y - min.y);
+        vec![(w.min(h), w.max(h))]
+    };
+    let slice_spans = |level: f64, horizontal: bool| -> Vec<(f64, f64)> {
+        let mut crossings = Vec::new();
+        for i in 0..outline.len() {
+            let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
+            let (al, bl, ap, bp) = if horizontal {
+                (a.y, b.y, a.x, b.x)
+            } else {
+                (a.x, b.x, a.y, b.y)
+            };
+            if (al > level) != (bl > level) {
+                crossings.push(ap + (level - al) / (bl - al) * (bp - ap));
+            }
+        }
+        crossings.sort_by(f64::total_cmp);
+        crossings
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .filter(|pair| pair[1] - pair[0] > 1e-4)
+            .map(|pair| (pair[0], pair[1]))
+            .collect()
+    };
+    let decompose = |horizontal: bool| -> Vec<(f64, f64)> {
+        let mut cuts: Vec<f64> = outline
+            .iter()
+            .map(|p| if horizontal { p.y } else { p.x })
+            .collect();
+        cuts.sort_by(f64::total_cmp);
+        cuts.dedup_by(|a, b| (*a - *b).abs() < 1e-4);
+        type Strip = (f64, f64, Vec<(f64, f64)>);
+        let mut strips: Vec<Strip> = Vec::new();
+        for pair in cuts.windows(2) {
+            let (c0, c1) = (pair[0], pair[1]);
+            if c1 - c0 <= 1e-4 {
+                continue;
+            }
+            let intervals = slice_spans(0.5 * (c0 + c1), horizontal);
+            if intervals.is_empty() {
+                continue;
+            }
+            let same_as_prev = strips.last().is_some_and(|(_, _, prev)| {
+                prev.len() == intervals.len()
+                    && prev.iter().zip(&intervals).all(|((a0, a1), (b0, b1))| {
+                        (a0 - b0).abs() < 1e-3 && (a1 - b1).abs() < 1e-3
+                    })
+            });
+            if same_as_prev {
+                if let Some(last) = strips.last_mut() {
+                    last.1 = c1;
+                }
+            } else {
+                strips.push((c0, c1, intervals));
+            }
+        }
+        let mut panels = Vec::new();
+        for (c0, c1, intervals) in strips {
+            let h = c1 - c0;
+            for (p0, p1) in intervals {
+                let w = p1 - p0;
+                panels.push((w.min(h), w.max(h)));
+            }
+        }
+        panels
+    };
+    let h_panels = decompose(true);
+    let v_panels = decompose(false);
+    let gov = |panels: &[(f64, f64)]| panels.iter().map(|(lx, _)| *lx).fold(0.0_f64, f64::max);
+    match (h_panels.is_empty(), v_panels.is_empty()) {
+        (true, true) => bbox(),
+        (false, true) => h_panels,
+        (true, false) => v_panels,
+        (false, false) => {
+            let (gh, gv) = (gov(&h_panels), gov(&v_panels));
+            if (gh - gv).abs() < 1e-4 {
+                if h_panels.len() <= v_panels.len() {
+                    h_panels
+                } else {
+                    v_panels
+                }
+            } else if gh < gv {
+                h_panels
+            } else {
+                v_panels
+            }
+        }
+    }
+}
+
+/// Distributes a slab's total load among its supporting beam segments by the
+/// 45° yield-line method (NBR 6118 14.7.6.1): each interior point sheds its
+/// load to the nearest supported edge, producing exact triangular/trapezoidal
+/// tributary regions for rectangles and natural 45° regions for L-shaped or
+/// irregular slabs. Returned fractions sum to 1.0.
+pub fn yield_line_shares(
+    outline: &[Point],
+    supported: &[(u64, Point, Point)],
+) -> HashMap<u64, f64> {
+    let mut shares: HashMap<u64, f64> = HashMap::new();
+    if outline.len() < 3 || supported.is_empty() {
+        return shares;
+    }
+    if outline.len() == 4 {
+        let mut xs: Vec<f64> = outline.iter().map(|p| p.x).collect();
+        let mut ys: Vec<f64> = outline.iter().map(|p| p.y).collect();
+        xs.sort_by(f64::total_cmp);
+        ys.sort_by(f64::total_cmp);
+        let (x0, x1) = (xs[0], xs[3]);
+        let (y0, y1) = (ys[0], ys[3]);
+        let is_rect = outline.iter().all(|p| {
+            ((p.x - x0).abs() < 1e-4 || (p.x - x1).abs() < 1e-4)
+                && ((p.y - y0).abs() < 1e-4 || (p.y - y1).abs() < 1e-4)
+        });
+        if is_rect && x1 - x0 > 1e-4 && y1 - y0 > 1e-4 {
+            let w = x1 - x0;
+            let h = y1 - y0;
+            let lx = w.min(h);
+            let ly = w.max(h);
+            let short_area = lx * lx / 4.0;
+            let long_area = 0.5 * lx * (ly - 0.5 * lx);
+            let rect_edges = [
+                (Point::new(x0, y0), Point::new(x1, y0), w),
+                (Point::new(x1, y0), Point::new(x1, y1), h),
+                (Point::new(x1, y1), Point::new(x0, y1), w),
+                (Point::new(x0, y1), Point::new(x0, y0), h),
+            ];
+            let mut per_edge: Vec<Vec<(u64, f64)>> = vec![Vec::new(); 4];
+            for (edge_idx, &(ea, eb, len)) in rect_edges.iter().enumerate() {
+                let Some(dir) = eb.minus(ea).normalized() else {
+                    continue;
+                };
+                for &(beam_id, sa, sb) in supported {
+                    if sa.minus(ea).cross(dir).abs() <= 0.12
+                        && sb.minus(ea).cross(dir).abs() <= 0.12
+                    {
+                        let s0 = sa.minus(ea).dot(dir);
+                        let s1 = sb.minus(ea).dot(dir);
+                        let overlap = s0.max(s1).min(len) - s0.min(s1).max(0.0);
+                        if overlap > 0.05 {
+                            per_edge[edge_idx].push((beam_id, overlap));
+                        }
+                    }
+                }
+            }
+            if per_edge.iter().all(|e| !e.is_empty()) {
+                let total_area = w * h;
+                for (edge_idx, &(_, _, len)) in rect_edges.iter().enumerate() {
+                    let edge_area = if (len - lx).abs() <= (len - ly).abs() {
+                        short_area
+                    } else {
+                        long_area
+                    };
+                    let sum_overlap: f64 = per_edge[edge_idx].iter().map(|(_, o)| *o).sum();
+                    for &(beam_id, overlap) in &per_edge[edge_idx] {
+                        *shares.entry(beam_id).or_default() +=
+                            (edge_area / total_area) * (overlap / sum_overlap);
+                    }
+                }
+                return shares;
+            }
+        }
+    }
+
+    let (mut min, mut max) = (outline[0], outline[0]);
+    for p in outline {
+        min = Point::new(min.x.min(p.x), min.y.min(p.y));
+        max = Point::new(max.x.max(p.x), max.y.max(p.y));
+    }
+    let nx = 32usize;
+    let ny = 32usize;
+    let dx = (max.x - min.x) / nx as f64;
+    let dy = (max.y - min.y) / ny as f64;
+    if dx <= 1e-6 || dy <= 1e-6 {
+        return shares;
+    }
+    let mut hits = 0.0;
+    for ix in 0..nx {
+        let x = min.x + (ix as f64 + 0.5) * dx;
+        for iy in 0..ny {
+            let y = min.y + (iy as f64 + 0.5) * dy;
+            let pt = Point::new(x, y);
+            if !super::geometry::polygon_contains_point(outline, pt) {
+                continue;
+            }
+            let mut min_d = f64::INFINITY;
+            let mut closest: Vec<u64> = Vec::new();
+            for &(beam_id, sa, sb) in supported {
+                let d = super::geometry::distance_to_segment(pt, sa, sb);
+                if d + 1e-6 < min_d {
+                    min_d = d;
+                    closest.clear();
+                    closest.push(beam_id);
+                } else if (d - min_d).abs() <= 1e-6 {
+                    closest.push(beam_id);
+                }
+            }
+            if !closest.is_empty() {
+                let w = 1.0 / closest.len() as f64;
+                for beam_id in closest {
+                    *shares.entry(beam_id).or_default() += w;
+                }
+                hits += 1.0;
+            }
+        }
+    }
+    if hits > 0.0 {
+        for v in shares.values_mut() {
+            *v /= hits;
+        }
+    }
+    shares
+}
+
 impl Project {
     pub fn structural_columns(&self) -> impl Iterator<Item = &Fixture> {
         self.fixtures
@@ -960,13 +1189,13 @@ impl Project {
         let Some(outline) = self.room_outline(room) else {
             return (0.0, 0.0);
         };
-        let (mut min, mut max) = (outline[0], outline[0]);
-        for p in &outline {
-            min = Point::new(min.x.min(p.x), min.y.min(p.y));
-            max = Point::new(max.x.max(p.x), max.y.max(p.y));
+        let panels = decompose_slab_panels(&outline);
+        if panels.is_empty() {
+            return (0.0, 0.0);
         }
-        let (w, h) = (max.x - min.x, max.y - min.y);
-        (w.min(h), w.max(h))
+        let lx = panels.iter().map(|(x, _)| *x).fold(0.0_f64, f64::max);
+        let ly = panels.iter().map(|(_, y)| *y).fold(0.0_f64, f64::max);
+        (lx, ly)
     }
 
     /// Column, beam, slab and footing labels: P1, V1, L1, S1… in reading
@@ -1305,31 +1534,39 @@ impl Project {
             } else {
                 settings.live_kn_m2
             };
-            let mut shares: Vec<(u64, f64)> = Vec::new();
-            if let Some(outline) = self.room_outline(room) {
+            let mut supported_segments: Vec<(u64, Point, Point)> = Vec::new();
+            let shares = if let Some(outline) = self.room_outline(room) {
                 for i in 0..outline.len() {
                     let (a, b) = (outline[i], outline[(i + 1) % outline.len()]);
                     let Some(dir) = b.minus(a).normalized() else {
                         continue;
                     };
+                    let edge_len = a.distance(b);
                     for (beam, p, q) in &beams {
                         let off = |x: Point| x.minus(a).cross(dir).abs();
                         if off(*p) > 0.12 || off(*q) > 0.12 {
                             continue;
                         }
                         let (s0, s1) = (p.minus(a).dot(dir), q.minus(a).dot(dir));
-                        let (lo, hi) = (s0.min(s1), s0.max(s1));
-                        let overlap = hi.min(a.distance(b)) - lo.max(0.0);
-                        if overlap > 0.05 {
-                            shares.push((beam.id, overlap));
+                        let lo = s0.min(s1).max(0.0);
+                        let hi = s0.max(s1).min(edge_len);
+                        if hi - lo > 0.05 {
+                            supported_segments.push((
+                                beam.id,
+                                a.translated(dir.scaled(lo)),
+                                a.translated(dir.scaled(hi)),
+                            ));
                         }
                     }
                 }
-            }
-            let total: f64 = shares.iter().map(|(_, s)| s).sum();
+                yield_line_shares(&outline, &supported_segments)
+            } else {
+                HashMap::new()
+            };
+            let total: f64 = shares.values().sum();
             for (id, share) in &shares {
-                *beam_dead.entry(*id).or_default() += dead * area * share / total;
-                *beam_live.entry(*id).or_default() += live * area * share / total;
+                *beam_dead.entry(*id).or_default() += dead * area * share / total.max(1e-9);
+                *beam_live.entry(*id).or_default() += live * area * share / total.max(1e-9);
             }
             report.slabs.push(SlabResult {
                 id: slab.id,
@@ -2118,7 +2355,7 @@ pub fn beam_diagrams_svg(project: &Project) -> String {
     }
     let notes_y = height - 22.0;
     for (i, note) in [
-        "Vigas contínuas sobre apoios simples (pilares), carga uniforme por vão: peso próprio, lajes repartidas pelas bordas e paredes dos pavimentos de cima.",
+        "Vigas contínuas sobre apoios simples (pilares), carga uniforme por vão: peso próprio, lajes repartidas por charneiras plásticas (45°) e paredes dos pavimentos de cima.",
         "Flecha com carga quase permanente (g + 0,3q), inércia equivalente de Branson (Mr e armadura CA-50) e fluência (1 + 1,32), comparada a L/250 (NBR 6118).",
         "Pré-dimensionamento para estudo: o projeto estrutural final é de um engenheiro habilitado (ART).",
     ]
@@ -2396,5 +2633,46 @@ mod tests {
         assert!(!res.ok());
         assert!(res.overturning_fs < 1.5);
         assert!(report.warnings.iter().any(|w| w.contains("tombamento")));
+    }
+
+    #[test]
+    fn l_shaped_slab_uses_panel_spans_and_yield_line_load_distribution() {
+        // An L-shaped room with 3 m wings inside a 6 × 6 m bounding box must
+        // report lx = 3.0 m (wing width), not 6.0 m (bounding box).
+        let l_outline = vec![
+            Point::new(0.0, 0.0),
+            Point::new(6.0, 0.0),
+            Point::new(6.0, 3.0),
+            Point::new(3.0, 3.0),
+            Point::new(3.0, 6.0),
+            Point::new(0.0, 6.0),
+        ];
+        let panels = decompose_slab_panels(&l_outline);
+        assert_eq!(panels.len(), 2);
+        let lx = panels.iter().map(|(x, _)| *x).fold(0.0_f64, f64::max);
+        assert!((lx - 3.0).abs() < 1e-6, "got lx = {lx}");
+
+        // 3 × 6 m rectangular slab with 45° yield lines:
+        // short edges take lx²/4 = 2.25 / 18 = 12.5% each,
+        // long edges take (lx/2)*(ly - lx/2) = 6.75 / 18 = 37.5% each.
+        let rect = vec![
+            Point::new(0.0, 0.0),
+            Point::new(6.0, 0.0),
+            Point::new(6.0, 3.0),
+            Point::new(0.0, 3.0),
+        ];
+        let supported = vec![
+            (1, Point::new(0.0, 0.0), Point::new(6.0, 0.0)), // long
+            (2, Point::new(6.0, 0.0), Point::new(6.0, 3.0)), // short
+            (3, Point::new(6.0, 3.0), Point::new(0.0, 3.0)), // long
+            (4, Point::new(0.0, 3.0), Point::new(0.0, 0.0)), // short
+        ];
+        let shares = yield_line_shares(&rect, &supported);
+        assert!((shares[&1] - 0.375).abs() < 1e-6, "long: {}", shares[&1]);
+        assert!((shares[&3] - 0.375).abs() < 1e-6, "long: {}", shares[&3]);
+        assert!((shares[&2] - 0.125).abs() < 1e-6, "short: {}", shares[&2]);
+        assert!((shares[&4] - 0.125).abs() < 1e-6, "short: {}", shares[&4]);
+        let sum: f64 = shares.values().sum();
+        assert!((sum - 1.0).abs() < 1e-9);
     }
 }
