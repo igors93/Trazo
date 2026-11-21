@@ -116,6 +116,7 @@ Reviewed on 2026-11-21. Sources:
 | B18 | Low | Repository | No `.gitattributes`; with `core.autocrlf` the working tree mixes LF and CRLF, which makes diffs noisy. | ✅ Fixed: added `.gitattributes` enforcing LF for source/docs and CRLF for Windows scripts (#98). |
 | B19 | Low | Fixtures | The minimum fixture size dropped from 20 to 10 cm for every kind so that 14 cm columns fit; it should be a per-kind minimum. | ✅ Fixed: `FixtureKind::min_size` enforces 10 cm for columns and 20 cm for all other fixtures; regression test `minimum_size_is_per_kind`. |
 | B20 | Medium | Quantities | The materials schedule counts blocks with a fixed 19 cm block height instead of the masonry's own height, so walls of shorter bricks get too few blocks. | Pendente — encontrado durante implementação (see [B20](#b20-materials-schedule-ignores-the-block-height)) |
+| B21 | Medium | Data | The regional utility profiles carry utility names and standards but thresholds and demand multipliers that are not traced to those standards. | Pendente — encontrado durante implementação (see [B21](#b21-regional-utility-profiles-are-not-traced-to-their-standards)) |
 
 ### New bugs found during implementation
 
@@ -131,6 +132,17 @@ Recorded while working through the [implementation log](#implementation-log), an
 - **Steps to reproduce:** new project, draw any wall with the default masonry, open *Quadros*, compare *Blocos estimados* with net wall area × 33.3.
 - **Affected:** `src/domain/schedules.rs` (`build_materials_schedule`), the *Quadro de Materiais e Alvenaria* on sheets and in CSV.
 - **Impact:** wrong purchase quantities on every project not built with 19 cm-high blocks.
+
+#### B21: Regional utility profiles are not traced to their standards
+
+- **Status:** Pendente — encontrado durante implementação (found while documenting #100).
+- **Severity:** Medium. The values decide the supply type, main breaker and feeder shown under a utility's name.
+- **Description:** `UtilityProfile` in `src/domain/distribution.rs` names Enel SP (LIG-BT), CPFL (GED-13), CEMIG (ND 5.1) and COPEL (NTC 901100), with single- and two-phase limits, minimum breakers and feeders, and `general_demand_scale` / `specific_demand_scale` multipliers (0.90 to 1.0). No clause of those standards is cited, and the standards define their own demand tables rather than multipliers on a generic one.
+- **Expected:** every regional value cites the standard, edition and table it comes from, and demand follows each utility's own table; unverified profiles are labelled as such in the interface.
+- **Observed:** the values are presented as the utility's rules with no source; the scale factors have no counterpart in the standards.
+- **Steps to reproduce:** open *Projeto elétrico › Quadro e diagrama unifilar*, pick a utility profile, and compare the supply limits with the utility's published standard.
+- **Affected:** `src/domain/distribution.rs` (`UtilityProfile`, `UtilityRules`), the board summary, the single-line diagram and `quadro_de_cargas`.
+- **Impact:** a wrong supply category or main breaker under a utility's name, which a newcomer would trust. Documented as unverified in `docs/engineering.md` until fixed (#140).
 
 ## Implementation log
 
@@ -150,7 +162,19 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
 - **Commit:** `79b7072`.
 - **Limitations:** columns are matched by plan position only; a transfer girder gets the point load in its own analysis, but there is no detailing check of the transfer itself.
 
-### #100 Engineering methods guide and validation suite — 🔵 In progress
+### #100 Engineering methods guide and validation suite — ✅ Done
+
+- **Changes:**
+  - `docs/engineering.md` documents every calculation (loads, slabs, beams, columns, the load path across floors, footings and the electrical installation) with its formula, standard clause, assumptions, limits and the test that checks it.
+  - `src/domain/validation.rs` adds the validation suite: the AISC table 3-23 beam cases (simple span, two spans, three spans, central point loads), the 45° yield-line areas, the NBR 6118 Branson inertia and punching formulas, the middle-third footing pressure, and load conservation within a floor and across floors.
+- **Tests:** 11 new tests, all passing; full suite, Clippy and format pass on Windows (CI covers Linux and macOS).
+- **Commit:** recorded in the next log update.
+- **Limitations:**
+  - The references are closed-form textbook results and standard formulas, not a comparison with a commercial program; the frame comparison comes with #94.
+  - Three uncertain references were stated conservatively in the guide.
+  - The utility profiles are documented as unverified (B21).
+
+### #101 Traffic-light results with margins and explanations — 🔵 In progress
 
 ## Next up
 
@@ -317,8 +341,8 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
 | 99 | Load path across floors: columns stacked through the storeys, loads summed from the real floors above, misaligned columns flagged as transfers (B03) | P0 | M | M3 | ✅ |
-| 100 | Engineering methods guide (`docs/engineering.md`): every calculation with its formula, standard, assumptions and limits, validated in CI against published worked examples (B12) | P0 | M | M3 | 🔵 In progress |
-| 101 | Results as a traffic light: margin to the limit, the assumptions used, and a plain-language explanation of what to change | P0 | M | M3 | 🟡 Warnings exist; no margins or traffic light |
+| 100 | Engineering methods guide (`docs/engineering.md`): every calculation with its formula, standard, assumptions and limits, validated in CI against published worked examples (B12) | P0 | M | M3 | ✅ |
+| 101 | Results as a traffic light: margin to the limit, the assumptions used, and a plain-language explanation of what to change | P0 | M | M3 | 🔵 In progress |
 | 102 | Applicability limits per module (storeys, spans, loads, soils); outside them Trazo refuses to size and asks for a professional | P0 | S | M3 | ⬜ |
 | 103 | Pre-sizing report (*memorial*) as PDF: inputs, assumptions, results, warnings and drawings, for a licensed professional to review and sign (ART or RRT) | P0 | M | M3 | ⬜ |
 | 104 | Release gate: a sheet set cannot be marked *Liberado para obra* with open red results unless a reviewer (name and CREA/CAU number) signs them off | P1 | S | M3 | ⬜ |

@@ -38,6 +38,8 @@ pub mod structure;
 pub mod templates;
 pub mod transform;
 pub mod underlay;
+#[cfg(test)]
+mod validation;
 pub mod views;
 pub mod wall_layers;
 pub mod wall_reference;
