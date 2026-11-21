@@ -245,10 +245,31 @@ impl FloorPlanApp {
                     ui.add(egui::DragValue::new(&mut settings.fck_mpa).range(20.0..=50.0).speed(0.0).suffix(" MPa"));
                     ui.label("Solo");
                     ui.add(egui::DragValue::new(&mut settings.soil_kpa).range(50.0..=600.0).speed(0.0).suffix(" kPa"));
+                    egui::ComboBox::from_id_salt("structure_soil_class")
+                        .selected_text("Tipo")
+                        .width(68.0)
+                        .show_ui(ui, |ui| {
+                            for soil in crate::domain::structure::SoilClass::ALL {
+                                if ui.selectable_label(false, soil.label()).clicked() {
+                                    settings.apply_soil_class(soil);
+                                }
+                            }
+                        });
                     ui.label("Pavimentos");
                     ui.add(egui::DragValue::new(&mut settings.floors).range(1..=10).speed(0.0));
                     ui.label("Sobrecarga");
                     ui.add(egui::DragValue::new(&mut settings.live_kn_m2).range(0.5..=10.0).speed(0.0).max_decimals(1).suffix(" kN/m²"));
+                    egui::ComboBox::from_id_salt("structure_occupancy_class")
+                        .selected_text("Uso")
+                        .width(62.0)
+                        .show_ui(ui, |ui| {
+                            for occ in crate::domain::structure::OccupancyClass::ALL {
+                                if ui.selectable_label(false, occ.label()).clicked() {
+                                    settings.apply_occupancy(occ);
+                                }
+                            }
+                        });
+                    ui.checkbox(&mut settings.per_room_live_loads, "NBR 6120/cômodo");
                     ui.label("Revestimento");
                     ui.add(egui::DragValue::new(&mut settings.finish_kn_m2).range(0.0..=5.0).speed(0.0).max_decimals(1).suffix(" kN/m²"));
                 });

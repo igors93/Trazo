@@ -9,7 +9,9 @@ use super::super::{DocDialog, FloorPlanApp, Selection, theme::*};
 use super::icons::Icon;
 use super::widgets::{hint, primary_button, property_label, secondary_button, section};
 use crate::domain::conduits::ConduitRun;
-use crate::domain::distribution::{Supply, phase_label, section_label, single_line_svg};
+use crate::domain::distribution::{
+    Supply, UtilityProfile, phase_label, section_label, single_line_svg,
+};
 use crate::domain::electrical::{CircuitKind, DeviceRole};
 use crate::domain::fixtures::Fixture;
 use crate::domain::layers::LayerCategory;
@@ -396,6 +398,7 @@ impl FloorPlanApp {
         let mut conduits = false;
         let mut voltage = None;
         let mut supply = None;
+        let mut utility = None;
         let mut export = None;
         let tab_id = egui::Id::unique("trazo_electrical_tab");
         let mut tab: u8 = ctx.data(|data| data.get_temp(tab_id)).unwrap_or(0);
@@ -467,6 +470,23 @@ impl FloorPlanApp {
                                     supply = Some(option);
                                 }
                             }
+                            ui.separator();
+                            ui.label("Distribuidora:");
+                            egui::ComboBox::from_id_salt("electrical_utility_profile")
+                                .selected_text(self.project.electrical.utility.label())
+                                .show_ui(ui, |ui| {
+                                    for profile in UtilityProfile::ALL {
+                                        if ui
+                                            .selectable_label(
+                                                self.project.electrical.utility == profile,
+                                                profile.label(),
+                                            )
+                                            .clicked()
+                                        {
+                                            utility = Some(profile);
+                                        }
+                                    }
+                                });
                             ui.separator();
                             if secondary_button(ui, "Exportar PDF").clicked() {
                                 export = Some(true);
@@ -674,6 +694,14 @@ impl FloorPlanApp {
         }
         if let Some(option) = supply {
             self.set_electrical_supply(option);
+        }
+        if let Some(profile) = utility
+            && self.project.electrical.utility != profile
+        {
+            let previous = self.project.clone();
+            self.project.electrical.utility = profile;
+            self.record_change(previous);
+            self.message = format!("Distribuidora: {}.", profile.label());
         }
         if let Some(pdf) = export {
             self.export_single_line(pdf);

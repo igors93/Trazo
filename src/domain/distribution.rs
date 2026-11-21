@@ -15,6 +15,158 @@ use super::electrical::{BREAKERS, CircuitKind, DeviceRole, LoadSchedule, WIRE_CA
 use super::model::Project;
 use super::schedules::ScheduleTable;
 
+/// Regional Brazilian utility profile controlling demand factors and service
+/// entrance thresholds (monophasic/biphasic/triphasic cutoffs, minimum main
+/// breaker and entrance wire gauge).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UtilityProfile {
+    /// Generic Brazilian dwelling tables (NBR 5410 baseline).
+    #[default]
+    Generic,
+    /// Enel SP (LIG-BT): 127/220 V, mono up to 12 kVA, bi up to 25 kVA.
+    EnelSp,
+    /// CPFL (GED-13): 127/220 V, mono up to 12 kVA, bi up to 25 kVA.
+    Cpfl,
+    /// CEMIG (ND 5.1): 127/220 V, mono up to 10 kVA, bi up to 15 kVA.
+    Cemig,
+    /// COPEL / Celesc (NTC 901100, 220/380 V): mono up to 15 kVA, then three-phase.
+    Copel,
+}
+
+impl UtilityProfile {
+    pub const ALL: [UtilityProfile; 5] = [
+        UtilityProfile::Generic,
+        UtilityProfile::EnelSp,
+        UtilityProfile::Cpfl,
+        UtilityProfile::Cemig,
+        UtilityProfile::Copel,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Generic => "Padrão genérico (NBR 5410)",
+            Self::EnelSp => "Enel SP (LIG-BT)",
+            Self::Cpfl => "CPFL (GED-13)",
+            Self::Cemig => "CEMIG (ND 5.1)",
+            Self::Copel => "COPEL / Celesc (NTC 901100)",
+        }
+    }
+
+    pub fn rules(self) -> UtilityRules {
+        match self {
+            Self::Generic => UtilityRules {
+                single_phase_max_kva: 8.0,
+                two_phase_max_kva: 15.0,
+                max_bt_kva: 75.0,
+                min_breaker_a: 32.0,
+                min_wire_mm2: 6.0,
+                general_demand_scale: 1.0,
+                specific_demand_scale: 1.0,
+            },
+            Self::EnelSp => UtilityRules {
+                single_phase_max_kva: 12.0,
+                two_phase_max_kva: 25.0,
+                max_bt_kva: 75.0,
+                min_breaker_a: 40.0,
+                min_wire_mm2: 10.0,
+                general_demand_scale: 1.0,
+                specific_demand_scale: 0.95,
+            },
+            Self::Cpfl => UtilityRules {
+                single_phase_max_kva: 12.0,
+                two_phase_max_kva: 25.0,
+                max_bt_kva: 75.0,
+                min_breaker_a: 40.0,
+                min_wire_mm2: 10.0,
+                general_demand_scale: 0.95,
+                specific_demand_scale: 1.0,
+            },
+            Self::Cemig => UtilityRules {
+                single_phase_max_kva: 10.0,
+                two_phase_max_kva: 15.0,
+                max_bt_kva: 75.0,
+                min_breaker_a: 40.0,
+                min_wire_mm2: 10.0,
+                general_demand_scale: 1.0,
+                specific_demand_scale: 1.0,
+            },
+            Self::Copel => UtilityRules {
+                single_phase_max_kva: 15.0,
+                two_phase_max_kva: 15.0, // 220/380 V jumps directly to three-phase above 15 kVA
+                max_bt_kva: 75.0,
+                min_breaker_a: 40.0,
+                min_wire_mm2: 10.0,
+                general_demand_scale: 0.90,
+                specific_demand_scale: 0.95,
+            },
+        }
+    }
+}
+
+/// Service-entrance limits and demand multipliers for a utility profile.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UtilityRules {
+    pub single_phase_max_kva: f64,
+    pub two_phase_max_kva: f64,
+    pub max_bt_kva: f64,
+    pub min_breaker_a: f64,
+    pub min_wire_mm2: f64,
+    pub general_demand_scale: f64,
+    pub specific_demand_scale: f64,
+}
+
+/// Optional per-project overrides for regional utility tables not covered by a
+/// built-in [`UtilityProfile`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UtilityOverrides {
+    pub single_phase_max_kva: Option<f64>,
+    pub two_phase_max_kva: Option<f64>,
+    pub max_bt_kva: Option<f64>,
+    pub min_breaker_a: Option<f64>,
+    pub min_wire_mm2: Option<f64>,
+    pub general_demand_scale: Option<f64>,
+    pub specific_demand_scale: Option<f64>,
+}
+
+impl UtilityRules {
+    pub fn with_overrides(mut self, overrides: Option<UtilityOverrides>) -> Self {
+        if let Some(o) = overrides {
+            if let Some(v) = o.single_phase_max_kva {
+                self.single_phase_max_kva = v.max(1.0);
+            }
+            if let Some(v) = o.two_phase_max_kva {
+                self.two_phase_max_kva = v.max(self.single_phase_max_kva);
+            }
+            if let Some(v) = o.max_bt_kva {
+                self.max_bt_kva = v.max(10.0);
+            }
+            if let Some(v) = o.min_breaker_a {
+                self.min_breaker_a = v.max(10.0);
+            }
+            if let Some(v) = o.min_wire_mm2 {
+                self.min_wire_mm2 = v.max(2.5);
+            }
+            if let Some(v) = o.general_demand_scale {
+                self.general_demand_scale = v.clamp(0.1, 2.0);
+            }
+            if let Some(v) = o.specific_demand_scale {
+                self.specific_demand_scale = v.clamp(0.1, 2.0);
+            }
+        }
+        self
+    }
+
+    pub fn general_demand_factor(&self, kva: f64) -> f64 {
+        (general_demand_factor(kva) * self.general_demand_scale).clamp(0.10, 1.0)
+    }
+
+    pub fn specific_demand_factor(&self, count: usize) -> f64 {
+        (specific_demand_factor(count) * self.specific_demand_scale).clamp(0.10, 1.0)
+    }
+}
+
 /// How the building is supplied by the utility.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -299,7 +451,11 @@ impl Project {
             }
         }
 
-        // Demand.
+        // Demand, using the selected regional utility profile (and any overrides).
+        let rules = settings
+            .utility
+            .rules()
+            .with_overrides(settings.custom_rules);
         let mut demand = Demand::default();
         for row in &schedule.circuits {
             if row.kind == CircuitKind::SpecificOutlet {
@@ -309,8 +465,8 @@ impl Project {
                 demand.general_va += row.power_va;
             }
         }
-        demand.general_factor = general_demand_factor(demand.general_va / 1000.0);
-        demand.specific_factor = specific_demand_factor(demand.specific_count);
+        demand.general_factor = rules.general_demand_factor(demand.general_va / 1000.0);
+        demand.specific_factor = rules.specific_demand_factor(demand.specific_count);
         demand.demand_va =
             demand.general_va * demand.general_factor + demand.specific_va * demand.specific_factor;
         schedule.demand = demand;
@@ -326,8 +482,13 @@ impl Project {
         };
         let kva = demand.demand_va / 1000.0;
         let supply = match settings.supply {
-            Supply::Auto if kva <= 8.0 && needed == 1 => Supply::Single,
-            Supply::Auto if kva <= 15.0 => Supply::Two,
+            Supply::Auto if kva <= rules.single_phase_max_kva && needed == 1 => Supply::Single,
+            Supply::Auto
+                if kva <= rules.two_phase_max_kva
+                    && rules.two_phase_max_kva > rules.single_phase_max_kva =>
+            {
+                Supply::Two
+            }
             Supply::Auto => Supply::Three,
             chosen => chosen,
         };
@@ -338,11 +499,12 @@ impl Project {
                     .to_owned(),
             );
         }
-        if kva > 75.0 {
-            schedule.warnings.push(
-                "Demanda acima de 75 kVA: consulte a distribuidora (pode exigir transformador próprio)."
-                    .to_owned(),
-            );
+        if kva > rules.max_bt_kva {
+            schedule.warnings.push(format!(
+                "Demanda acima de {:.0} kVA ({}): consulte a distribuidora (pode exigir transformador próprio).",
+                rules.max_bt_kva,
+                settings.utility.label()
+            ));
         }
         schedule.supply = supply;
 
@@ -411,11 +573,13 @@ impl Project {
         let breaker_a = BREAKERS
             .iter()
             .copied()
-            .find(|rating| *rating + 1e-9 >= current_a.max(32.0));
+            .find(|rating| *rating + 1e-9 >= current_a.max(rules.min_breaker_a));
         let wire_mm2 = breaker_a.and_then(|rating| {
             WIRE_CAPACITY
                 .iter()
-                .find(|(section, capacity)| *section >= 6.0 && *capacity + 1e-9 >= rating)
+                .find(|(section, capacity)| {
+                    *section >= rules.min_wire_mm2 && *capacity + 1e-9 >= rating
+                })
                 .map(|(section, _)| *section)
         });
         let earth_mm2 = wire_mm2.map(earth_section);
@@ -654,7 +818,7 @@ pub fn single_line_svg(project: &Project) -> String {
         false,
         "start",
         &format!(
-            "{} · ligação {} · {:.0}/{:.0} V",
+            "{} · ligação {} · {:.0}/{:.0} V · {}",
             project.name,
             schedule.supply.label().to_lowercase(),
             settings.voltage_v,
@@ -662,7 +826,8 @@ pub fn single_line_svg(project: &Project) -> String {
                 220.0
             } else {
                 380.0
-            }
+            },
+            settings.utility.label()
         ),
     );
     if rows.is_empty() {
@@ -1278,5 +1443,45 @@ mod tests {
         let svg = single_line_svg(&project);
         assert!(svg.contains("QDC1"));
         assert!(svg2pdf::usvg::Tree::from_str(&svg, &svg2pdf::usvg::Options::default()).is_ok());
+    }
+
+    #[test]
+    fn utility_profiles_and_regional_overrides_change_demand_and_entrance() {
+        let mut project = house();
+        let generic = project.load_schedule();
+
+        // COPEL (220/380 V) has a 15 kVA single-phase limit, 40 A / 10 mm² floor
+        // and lower general demand scaling.
+        project.electrical.utility = UtilityProfile::Copel;
+        project.electrical.voltage_v = 220.0;
+        let copel = project.load_schedule();
+        assert!(copel.demand.general_factor < generic.demand.general_factor);
+        let copel_ent = copel.entrance.unwrap();
+        assert!(copel_ent.breaker_a.unwrap() >= 40.0);
+        assert!(copel_ent.wire_mm2.unwrap() >= 10.0);
+        assert!(single_line_svg(&project).contains("COPEL"));
+
+        // Custom regional overrides can tailor thresholds for any utility.
+        project.electrical.utility = UtilityProfile::Generic;
+        project.electrical.voltage_v = 127.0;
+        project.electrical.custom_rules = Some(UtilityOverrides {
+            min_breaker_a: Some(50.0),
+            min_wire_mm2: Some(16.0),
+            ..Default::default()
+        });
+        let custom = project.load_schedule();
+        let custom_ent = custom.entrance.unwrap();
+        assert!(custom_ent.breaker_a.unwrap() >= 50.0);
+        assert!(custom_ent.wire_mm2.unwrap() >= 16.0);
+
+        // Soil and occupancy presets update structural settings cleanly.
+        use super::super::structure::{OccupancyClass, SoilClass, room_live_load_kn_m2};
+        let mut struct_settings = project.structure.settings;
+        struct_settings.apply_soil_class(SoilClass::SoftClay);
+        assert!((struct_settings.soil_kpa - 80.0).abs() < 1e-9);
+        struct_settings.apply_occupancy(OccupancyClass::Office);
+        assert!((struct_settings.live_kn_m2 - 2.0).abs() < 1e-9);
+        assert!((room_live_load_kn_m2("Garagem", 1.5) - 3.0).abs() < 1e-9);
+        assert!((room_live_load_kn_m2("Varanda", 1.5) - 2.5).abs() < 1e-9);
     }
 }

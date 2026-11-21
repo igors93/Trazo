@@ -113,6 +113,117 @@ pub struct Slab {
     pub thickness_m: f64,
 }
 
+/// Typical Brazilian soil classes (NBR 6122 / SPT correlation) with
+/// indicative allowable bearing pressures. Always confirm with a local SPT.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SoilClass {
+    /// Soft clay / loose sand (N_SPT ~ 3–5): 80 kPa.
+    SoftClay,
+    /// Medium clay / silty sand (N_SPT ~ 6–10): 150 kPa.
+    MediumClay,
+    /// Medium-dense sand / stiff clay (N_SPT ~ 10–15): 200 kPa.
+    MediumSand,
+    /// Dense sand / very stiff clay (N_SPT ~ 15–25): 300 kPa.
+    DenseSand,
+    /// Weathered rock / saprolite: 500 kPa.
+    Rock,
+}
+
+impl SoilClass {
+    pub const ALL: [SoilClass; 5] = [
+        SoilClass::SoftClay,
+        SoilClass::MediumClay,
+        SoilClass::MediumSand,
+        SoilClass::DenseSand,
+        SoilClass::Rock,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::SoftClay => "Argila mole (80 kPa)",
+            Self::MediumClay => "Argila média (150 kPa)",
+            Self::MediumSand => "Areia média (200 kPa)",
+            Self::DenseSand => "Areia compacta (300 kPa)",
+            Self::Rock => "Rocha / saprolito (500 kPa)",
+        }
+    }
+
+    pub fn allowable_kpa(self) -> f64 {
+        match self {
+            Self::SoftClay => 80.0,
+            Self::MediumClay => 150.0,
+            Self::MediumSand => 200.0,
+            Self::DenseSand => 300.0,
+            Self::Rock => 500.0,
+        }
+    }
+}
+
+/// Typical building occupancies with their NBR 6120:2019 base live load.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OccupancyClass {
+    Residential,
+    Office,
+    Garage,
+    Retail,
+}
+
+impl OccupancyClass {
+    pub const ALL: [OccupancyClass; 4] = [
+        OccupancyClass::Residential,
+        OccupancyClass::Office,
+        OccupancyClass::Garage,
+        OccupancyClass::Retail,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Residential => "Residencial (1,5 kN/m²)",
+            Self::Office => "Escritório (2,0 kN/m²)",
+            Self::Garage => "Garagem leve (3,0 kN/m²)",
+            Self::Retail => "Comércio / loja (4,0 kN/m²)",
+        }
+    }
+
+    pub fn live_kn_m2(self) -> f64 {
+        match self {
+            Self::Residential => 1.5,
+            Self::Office => 2.0,
+            Self::Garage => 3.0,
+            Self::Retail => 4.0,
+        }
+    }
+}
+
+/// NBR 6120:2019 minimum live load for a specific room, never below `base_live`.
+pub fn room_live_load_kn_m2(room_name: &str, base_live: f64) -> f64 {
+    let lower = room_name.to_lowercase();
+    let room_min = if lower.contains("garagem") || lower.contains("estacionamento") {
+        3.0
+    } else if lower.contains("escada")
+        || lower.contains("varanda")
+        || lower.contains("sacada")
+        || lower.contains("terraço")
+        || lower.contains("terraco")
+    {
+        2.5
+    } else if lower.contains("corredor")
+        || lower.contains("circulação")
+        || lower.contains("circulacao")
+        || lower.contains("hall")
+        || lower.contains("serviço")
+        || lower.contains("servico")
+        || lower.contains("lavanderia")
+    {
+        2.0
+    } else {
+        1.5
+    };
+    base_live.max(room_min)
+}
+
 /// Materials and loads for pre-sizing.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -129,6 +240,8 @@ pub struct StructureSettings {
     pub finish_kn_m2: f64,
     /// Masonry unit weight, kN/m³ (about 13 for hollow ceramic blocks).
     pub masonry_kn_m3: f64,
+    /// Apply NBR 6120 per-room minimum live loads (e.g. balconies 2.5, garages 3.0 kN/m²).
+    pub per_room_live_loads: bool,
 }
 
 impl Default for StructureSettings {
@@ -140,11 +253,19 @@ impl Default for StructureSettings {
             live_kn_m2: 1.5,
             finish_kn_m2: 1.0,
             masonry_kn_m3: 13.0,
+            per_room_live_loads: false,
         }
     }
 }
 
 impl StructureSettings {
+    pub fn apply_soil_class(&mut self, soil: SoilClass) {
+        self.soil_kpa = soil.allowable_kpa();
+    }
+
+    pub fn apply_occupancy(&mut self, occupancy: OccupancyClass) {
+        self.live_kn_m2 = occupancy.live_kn_m2();
+    }
     fn is_default(&self) -> bool {
         *self == Self::default()
     }
@@ -1009,7 +1130,11 @@ impl Project {
             let (lx, ly) = self.slab_spans(room);
             let area = self.room_area(room).unwrap_or(lx * ly);
             let dead = slab.kind.self_weight(slab.thickness_m) + settings.finish_kn_m2;
-            let live = settings.live_kn_m2;
+            let live = if settings.per_room_live_loads {
+                room_live_load_kn_m2(room.display_name(), settings.live_kn_m2)
+            } else {
+                settings.live_kn_m2
+            };
             let mut shares: Vec<(u64, f64)> = Vec::new();
             if let Some(outline) = self.room_outline(room) {
                 for i in 0..outline.len() {

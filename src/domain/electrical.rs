@@ -39,6 +39,12 @@ pub struct ElectricalSettings {
     /// How the utility supplies the building (automatic from the demand).
     #[serde(default)]
     pub supply: super::distribution::Supply,
+    /// Regional utility profile (demand factors & entrance limits).
+    #[serde(default)]
+    pub utility: super::distribution::UtilityProfile,
+    /// Optional custom overrides for utility tables.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_rules: Option<super::distribution::UtilityOverrides>,
 }
 
 fn default_voltage() -> f64 {
@@ -55,6 +61,8 @@ impl Default for ElectricalSettings {
             voltage_v: default_voltage(),
             specific_voltage_v: default_specific_voltage(),
             supply: super::distribution::Supply::default(),
+            utility: super::distribution::UtilityProfile::default(),
+            custom_rules: None,
         }
     }
 }
