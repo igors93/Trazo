@@ -231,7 +231,6 @@ impl Project {
             return effects;
         }
         let s = self.structure.settings;
-        let height = self.wall_height.max(0.5);
         let (mut beam_no, mut strip_no) = (0, 0);
         let mut ordered: Vec<&WallFoundation> = self.structure.wall_foundations.iter().collect();
         ordered.sort_by(|a, b| {
@@ -251,13 +250,8 @@ impl Project {
                 continue;
             };
             let length = wall.length().max(0.1);
-            let openings: f64 = self
-                .openings
-                .iter()
-                .filter(|o| o.wall_id == wall.id)
-                .map(|o| o.width() * o.height().unwrap_or(height).min(height))
-                .sum();
-            let net = (length * height - openings).max(0.0);
+            // Each wall's own (possibly sloped) top, #145.
+            let net = self.wall_net_area(wall);
             let wall_q = s.masonry_kn_m3 * wall.thickness() * net / length;
             let mut result = WallFoundationResult {
                 id: foundation.id,

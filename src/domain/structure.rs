@@ -569,12 +569,22 @@ pub struct ColumnResult {
     /// Concrete area needed and drawn, cm².
     pub area_needed_cm2: f64,
     pub area_cm2: f64,
+    /// Free height: the tallest wall it stands in, or the storey (#145), m.
+    pub height_m: f64,
+    /// Slenderness, 3,46 · height / smallest side.
+    pub slenderness: f64,
 }
 
 impl ColumnResult {
     pub fn ok(&self) -> bool {
         self.area_cm2 + 1e-6 >= self.area_needed_cm2.max(360.0)
             && self.width_m.min(self.depth_m) >= 0.14 - 1e-9
+            && self.slender_ok()
+    }
+
+    /// Within the simplified methods (slenderness up to 90).
+    pub fn slender_ok(&self) -> bool {
+        self.slenderness <= super::wall_heights::MAX_SIMPLE_SLENDERNESS + 1e-9
     }
 }
 
@@ -2597,7 +2607,12 @@ impl Project {
                                 wall.end,
                             ) < 0.06
                         })
-                        .map(|wall| wall.thickness() * self.wall_height * settings.masonry_kn_m3)
+                        .map(|wall| {
+                            // The wall's own top over this span (#145).
+                            wall.thickness()
+                                * wall.height_at(self.wall_height, a.midpoint(b))
+                                * settings.masonry_kn_m3
+                        })
                         .fold(0.0, f64::max)
                         * wall_factor
                 } else {
@@ -2802,7 +2817,9 @@ impl Project {
                 3 => ColumnPosition::Edge,
                 _ => ColumnPosition::Interior,
             };
-            let own = CONCRETE_KN_M3 * column.width * column.depth * self.wall_height;
+            // As tall as the tallest wall it stands in (#145).
+            let height = self.column_height(column);
+            let own = CONCRETE_KN_M3 * column.width * column.depth * height;
             let upper_load_kn = incoming_column_load.get(&column.id).copied().unwrap_or(0.0);
             let load = if use_multiplier {
                 (column_load.get(&column.id).copied().unwrap_or(0.0) + own) * floors
@@ -2820,11 +2837,25 @@ impl Project {
                 upper_load_kn,
                 area_needed_cm2: needed,
                 area_cm2: column.width * column.depth * 10_000.0,
+                height_m: height,
+                slenderness: super::wall_heights::slenderness(
+                    height,
+                    column.width.min(column.depth),
+                ),
             };
             if position == ColumnPosition::Isolated {
                 report
                     .warnings
                     .push(format!("{}: nenhuma viga chega ao pilar.", result.label));
+            } else if !result.slender_ok() {
+                report.warnings.push(format!(
+                    "{}: esbeltez λ = {:.0} com {} m de altura e {:.0} cm de lado; acima de 90 o pré-dimensionamento não vale: aumente o menor lado para {:.0} cm.",
+                    result.label,
+                    result.slenderness,
+                    decimal(height, 2),
+                    column.width.min(column.depth) * 100.0,
+                    super::wall_heights::side_for_slenderness(height) * 100.0
+                ));
             } else if !result.ok() {
                 report.warnings.push(format!(
                     "{}: seção de {} cm² abaixo do necessário ({:.0} cm², mínimo 360 cm² e 14 cm de lado).",

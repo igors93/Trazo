@@ -125,7 +125,7 @@ Stirrups compare `Vsd = 1.4·Vk` with `Vc = 0.60·fctd·bw·d`; the remaining sh
 **Load:**
 
 - the sum of the beam reactions on the column (upward reactions ignored, with a warning);
-- plus the column's own weight, 25 · b · h · H;
+- plus the column's own weight, 25 · b · h · H, with H the column's height: the top of the tallest wall it stands in (within half its section + 6 cm of the wall's axis), or the storey height when it stands free;
 - plus the load of the column standing on it (see [floors](#load-path-across-floors)).
 
 Without real upper floors, the floor's load is multiplied by the *floors* setting instead.
@@ -140,7 +140,17 @@ The position comes from the beams reaching the column: four directions make it i
 
 **Minimums:** 360 cm² and 14 cm a side (NBR 6118:2023, 13.2.3).
 
-**Assumptions:** axial load with the α factor standing in for bending; no slenderness, buckling or frame moments (#94).
+**Slenderness:** λ = le / i = 3.46 · le / h, with le = H (the column braced at the top by the beams) and h its smallest side (`src/domain/wall_heights.rs`):
+
+- λ ≤ 35: short column, the local second-order effects can be ignored (λ₁, NBR 6118 15.8.2, at its usual value) — green;
+- 35 < λ ≤ 90: the second-order effects must be added in the final design by the simplified standard-column methods (NBR 6118 15.8.3) — yellow;
+- λ > 90: outside the simplified methods, so outside this pre-sizing — red, with the smallest side (in 5 cm steps) that brings λ to 90.
+
+A 14 cm column is fine up to 3.64 m (λ = 90); a 14 cm column in a 4.30 m boundary wall gives λ = 106 and asks for 20 cm.
+
+**Assumptions:** axial load with the α factor standing in for bending; the slenderness is checked but no second-order moments are computed, and a column free at the top (le = 2 H, a cantilever) is not modelled; no frame moments (#94).
+
+Checked by `a_column_in_a_tall_wall_is_as_tall_as_the_wall_and_may_be_slender`.
 
 ## Load path across floors
 
@@ -173,12 +183,12 @@ Every ground-floor wall reaches the soil through a ground beam or a strip footin
 
 | Quantity | Rule |
 | --- | --- |
-| Wall load | q = γ · t · (net wall area) / L, kN/m, openings discounted, plus the foundation's own weight (ground beam with a 40 cm first guess, strip 25 cm thick) |
+| Wall load | q = γ · t · (net wall area) / L, kN/m, with each wall's own (mean) height and the openings discounted, plus the foundation's own weight (ground beam with a 40 cm first guess, strip 25 cm thick) |
 | Choice | a ground beam (*viga baldrame*) when a column stands within 30 cm of each end of the wall; a strip footing (*sapata corrida*) otherwise; walls whose openings take 90 % or more of their length are left out |
 | Ground beam | a continuous beam over the columns on the wall's line, the wall beyond the end columns hanging on them; sized from 30 to 80 cm for Md = 1.4 M and Vd = 1.4 V, with its steel; its reactions are added to the footings under those columns (and to P₁ of a balance beam) |
 | Strip footing | B = 1.05 · q / σadm, at least 40 cm, in 5 cm steps; pressure 1.05 · q / B checked against σadm |
 
-Checked by `walls_between_columns_get_ground_beams_and_the_others_strip_footings` and `ground_beam_reactions_reach_the_footings`. The wall height is the storey height until walls have their own (#145).
+Checked by `walls_between_columns_get_ground_beams_and_the_others_strip_footings`, `ground_beam_reactions_reach_the_footings` and `a_taller_wall_weighs_more_on_its_foundation`.
 
 ### Balance beams (*vigas alavanca*)
 
@@ -217,10 +227,10 @@ The regional utility profiles (`UtilityProfile`: generic, Enel SP, CPFL, CEMIG, 
 
 | Quantity | Rule |
 | --- | --- |
-| Net wall area | axis length × storey height, less each opening's width × height |
+| Net wall area | axis length × the wall's mean height (the storey height unless the wall has its own top, #145; a sloped top averages its two ends), less each opening's width × height, up to the top over it |
 | Blocks per m² | 1 / ((block length + joint) × (block height + joint)), each wall with its own masonry |
-| Half blocks | one every other course at each wall end and at each jamb (courses = height / (block height + joint), rounded) |
-| U-blocks | the top course of every wall (bond beam), replacing its blocks, plus the lintels and sills |
+| Half blocks | one every other course at each wall end (each end at its own height) and at each jamb (courses = height / (block height + joint), rounded) |
+| U-blocks | the top course of every wall (bond beam), along the slope of a sloped top, replacing its blocks, plus the lintels and sills |
 | Whole blocks | net area × blocks per m² − half blocks / 2 − top-course U-blocks; waste from *Quadros* (10 % by default) |
 | Lintels and sills | a lintel over each door and window and a sill under each window, width + 2 × 30 cm |
 | Laying mortar | net area × (1 − blocks per m² × block length × block height) × block width, + 10 % |

@@ -99,6 +99,11 @@ pub fn structure_violations(project: &Project) -> Vec<Violation> {
     }
     let mut heights: Vec<f64> = vec![project.wall_height];
     heights.extend(project.floors.levels.iter().map(|l| l.ceiling_height_m));
+    // Walls with their own, taller top (#145) count too.
+    heights.extend(project.walls.iter().map(|w| {
+        let (start, end) = w.heights(project.wall_height);
+        start.max(end)
+    }));
     let tallest = heights.into_iter().fold(0.0, f64::max);
     if tallest > MAX_STOREY_HEIGHT_M + 1e-9 {
         out.push(Violation {
@@ -107,7 +112,7 @@ pub fn structure_violations(project: &Project) -> Vec<Violation> {
             value: tallest,
             limit: MAX_STOREY_HEIGHT_M,
             message: format!(
-                "Pé-direito de {} m: pilares acima de {} m precisam de verificação de flambagem. {PROFESSIONAL}",
+                "Pé-direito ou parede de {} m: pilares acima de {} m precisam de verificação de flambagem. {PROFESSIONAL}",
                 decimal(tallest, 2),
                 decimal(MAX_STOREY_HEIGHT_M, 1)
             ),

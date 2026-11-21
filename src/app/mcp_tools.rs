@@ -341,17 +341,68 @@ impl FloorPlanApp {
             "editar_comodo" => self.tool_edit_room(args),
             "editar_parede" => {
                 let id = element_id(args, "id")?;
-                let length = required_number(args, "comprimento")?;
+                let length = number(args, "comprimento")?;
+                let height = number(args, "altura_m")?;
+                let height_end = number(args, "altura_fim_m")?;
+                let storey_height = args
+                    .get("altura_padrao")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                if length.is_none() && height.is_none() && height_end.is_none() && !storey_height {
+                    return Err(
+                        "Informe 'comprimento', 'altura_m' e/ou 'altura_fim_m', ou 'altura_padrao': true."
+                            .to_owned(),
+                    );
+                }
                 self.require(
                     id,
                     |selection| matches!(selection, Selection::Wall(_)),
                     "parede",
                 )?;
                 self.apply_change(None, |project| {
-                    project.resize_wall_length(id, length)?;
+                    let mut said = Vec::new();
+                    if let Some(length) = length {
+                        project.resize_wall_length(id, length)?;
+                        said.push(format!("tem {}", format_meters(length)));
+                    }
+                    if storey_height {
+                        project.set_wall_height(id, None, None)?;
+                        said.push("segue o pé-direito".to_owned());
+                    } else if height.is_some() || height_end.is_some() {
+                        // Only the end given: the start keeps its height.
+                        let start = height.or_else(|| {
+                            project
+                                .walls
+                                .iter()
+                                .find(|w| w.id == id)
+                                .map(|w| w.heights(project.wall_height).0)
+                        });
+                        project.set_wall_height(id, start, height_end)?;
+                    }
+                    let storey = project.wall_height;
+                    let (start, end) = project
+                        .walls
+                        .iter()
+                        .find(|w| w.id == id)
+                        .map_or((storey, storey), |w| w.heights(storey));
+                    if height.is_some() || height_end.is_some() {
+                        said.push(if (start - end).abs() < 0.005 {
+                            format!("tem {} de altura", format_meters(start))
+                        } else {
+                            format!(
+                                "tem topo inclinado de {} a {}",
+                                format_meters(start),
+                                format_meters(end)
+                            )
+                        });
+                    }
                     Ok(
-                        Change::new(format!("Parede {id} agora tem {}.", format_meters(length)))
-                            .select(Selection::Wall(id)),
+                        Change::new(format!("Parede {id} agora {}.", said.join(" e ")))
+                            .select(Selection::Wall(id))
+                            .data(json!({
+                                "altura_inicio_m": start,
+                                "altura_fim_m": end,
+                            })),
                     )
                 })
             }
@@ -1228,6 +1279,10 @@ impl FloorPlanApp {
                     "inicio": xy(wall.start),
                     "fim": xy(wall.end),
                     "comprimento": round(wall.length()),
+                    "altura": wall.has_own_height().then(|| {
+                        let (start, end) = wall.heights(project.wall_height);
+                        json!({ "inicio_m": round(start), "fim_m": round(end) })
+                    }),
                     "comodos": rooms,
                     "aberturas": openings,
                 })

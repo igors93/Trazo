@@ -177,6 +177,44 @@ fn decimal(value: f64, places: usize) -> String {
     format!("{value:.places$}").replace('.', ",")
 }
 
+/// Column slenderness (#145): green up to the second-order limit, yellow
+/// while the simplified methods apply, red beyond them.
+fn slenderness_check(column: &super::structure::ColumnResult) -> Check {
+    use super::wall_heights::{
+        MAX_SIMPLE_SLENDERNESS, SECOND_ORDER_SLENDERNESS, side_for_slenderness,
+    };
+    let lambda = column.slenderness;
+    let light = if lambda <= SECOND_ORDER_SLENDERNESS + 1e-9 {
+        Light::Green
+    } else if lambda <= MAX_SIMPLE_SLENDERNESS + 1e-9 {
+        Light::Yellow
+    } else {
+        Light::Red
+    };
+    let simple = match light {
+        Light::Green => "Pilar curto: os efeitos de 2ª ordem podem ser desprezados.".to_owned(),
+        Light::Yellow => format!(
+            "Pilar medianamente esbelto (λ = {lambda:.0}): o projeto final precisa considerar os efeitos de 2ª ordem."
+        ),
+        Light::Red => format!(
+            "Pilar esbelto demais (λ = {lambda:.0}): aumente o menor lado para {} ou trave-o no meio da altura.",
+            cm(side_for_slenderness(column.height_m))
+        ),
+    };
+    Check {
+        name: "Esbeltez".to_owned(),
+        utilisation: lambda / MAX_SIMPLE_SLENDERNESS,
+        light,
+        simple,
+        detail: format!(
+            "λ = 3,46 · le / h = 3,46 × {} m / {} = {} (le = altura livre, pilar travado no topo pelas vigas; até 35 sem 2ª ordem, até 90 métodos simplificados, NBR 6118 15.8).",
+            decimal(column.height_m, 2),
+            cm(column.width_m.min(column.depth_m)),
+            decimal(lambda, 0)
+        ),
+    }
+}
+
 fn cm(metres: f64) -> String {
     format!("{:.0} cm", metres * 100.0)
 }
@@ -362,6 +400,7 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
                     cm(side)
                 ),
             ),
+            slenderness_check(column),
         ];
         if column.position == super::structure::ColumnPosition::Isolated {
             checks.push(Check::fail(

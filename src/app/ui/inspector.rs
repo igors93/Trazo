@@ -310,6 +310,7 @@ impl FloorPlanApp {
                 ui.end_row();
             });
         });
+        self.wall_height_section(ui, &wall);
         section(ui, "wall_location", "Localização", |ui| {
             grid(ui, "wall_location_grid", |ui| {
                 property_label(ui, "Início");
@@ -455,6 +456,91 @@ impl FloorPlanApp {
         }
         if delete {
             self.delete_selection();
+        }
+    }
+
+    /// The wall's own top (#145): a height at each end, equal for a straight
+    /// top, different for a sloped one.
+    fn wall_height_section(&mut self, ui: &mut Ui, wall: &crate::domain::model::Wall) {
+        let storey = self.project.wall_height;
+        let (start, end) = wall.heights(storey);
+        let shown = |v: f64| format!("{v:.2}").replace('.', ",");
+        // The texts live while the wall keeps these heights.
+        let key =
+            ui.make_persistent_id(("wall_height_text", wall.id, start.to_bits(), end.to_bits()));
+        let mut texts: (String, String) = ui
+            .data_mut(|d| d.get_temp(key))
+            .unwrap_or_else(|| (shown(start), shown(end)));
+        let mut change: Option<(Option<f64>, Option<f64>)> = None;
+        section(ui, "wall_height", "Altura", |ui| {
+            let mut submit = false;
+            grid(ui, "wall_height_grid", |ui| {
+                property_label(ui, "No início");
+                let edit = metres_field(ui, &mut texts.0);
+                submit |= edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                ui.end_row();
+                property_label(ui, "No fim");
+                let edit = metres_field(ui, &mut texts.1);
+                submit |= edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                ui.end_row();
+                property_label(ui, "Média");
+                property_value(ui, &format_meters(wall.mean_height(storey)));
+                ui.end_row();
+            });
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                submit |= secondary_button(ui, "Aplicar altura").clicked();
+                if wall.has_own_height()
+                    && secondary_button(ui, "Seguir o pé-direito")
+                        .on_hover_text(format_meters(storey))
+                        .clicked()
+                {
+                    change = Some((None, None));
+                }
+            });
+            if submit {
+                let parse = |value: &str| value.trim().replace(',', ".").parse::<f64>().ok();
+                change = match (parse(&texts.0), parse(&texts.1)) {
+                    (Some(a), Some(b)) => Some((Some(a), Some(b))),
+                    _ => {
+                        self.message = "Informe as alturas em metros (ex: 4,30).".to_owned();
+                        None
+                    }
+                };
+            }
+            ui.add_space(4.0);
+            hint(
+                ui,
+                Icon::Info,
+                "Alturas diferentes no início e no fim inclinam o topo (oitão de meia-água, muro de divisa mais alto para ventilar). A altura entra na alvenaria, no peso sobre vigas e baldrames e na altura dos pilares da parede.",
+                ACCENT,
+            );
+        });
+        ui.data_mut(|d| d.insert_temp(key, texts));
+        if let Some((a, b)) = change {
+            let previous = self.project.clone();
+            match self.project.set_wall_height(wall.id, a, b) {
+                Ok(()) => {
+                    if self.record_change(previous) {
+                        let (a, b) = self
+                            .project
+                            .walls
+                            .iter()
+                            .find(|w| w.id == wall.id)
+                            .map_or((storey, storey), |w| w.heights(storey));
+                        self.message = if (a - b).abs() < 0.005 {
+                            format!("Parede com {} de altura.", format_meters(a))
+                        } else {
+                            format!(
+                                "Topo inclinado: {} no início e {} no fim.",
+                                format_meters(a),
+                                format_meters(b)
+                            )
+                        };
+                    }
+                }
+                Err(err) => self.message = err,
+            }
         }
     }
 

@@ -394,6 +394,8 @@ mod tests {
             upper_load_kn: 0.0,
             area_needed_cm2: 0.0,
             area_cm2: 400.0,
+            height_m: 2.8,
+            slenderness: 48.5,
         };
         let none = HashMap::new();
         let effects = project.balance_effects(&[col(a, "P1", 100.0), col(b, "P2", 150.0)], &none);

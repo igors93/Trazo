@@ -62,7 +62,7 @@ Trazo exposes 43 tools. Their names and messages are in Portuguese, like the int
 | Group | Tools |
 | --- | --- |
 | **Reading** | `obter_planta` (the plan: ids, coordinates, sizes, areas, wall thickness and material, opening codes, the door and window schedule, groups, constraints, the person's selection and the current revision), `imagem_da_planta` (a PNG preview), `mudancas_desde` (what changed since a revision) |
-| **Lot and walls** | `definir_terreno`, `criar_parede`, `editar_parede`, `definir_alvenaria` (brick or block, joint, plaster, ceiling height) |
+| **Lot and walls** | `definir_terreno`, `criar_parede`, `editar_parede` (length, and the wall's own height: `altura_m`, `altura_fim_m` for a sloped top, `altura_padrao`), `definir_alvenaria` (brick or block, joint, plaster, ceiling height) |
 | **Rooms** | `criar_comodo` (rectangle or any polygon), `editar_comodo` |
 | **Openings** | `inserir_abertura` (door, window, saloon door, open span or gate), `editar_abertura` (width, position, height, sill, side and hinge) |
 | **Electrical (NBR 5410)** | `inserir_ponto_eletrico` (outlets, switches, lights, panel, data), `editar_ponto_eletrico` (circuit, power, height), `projeto_eletrico` (generate the minimum points, distribute circuits, set the voltage, lay conduits with `gerar_eletrodutos`, join two points with `ligar_pontos`, move a run to the floor with `definir_trecho`, delete one with `remover_eletroduto`, choose the supply with `definir_alimentacao`), `quadro_de_cargas` (forecast, circuits with phases, voltage drop, wire and breaker, demand, service entrance, the wires of each conduit, warnings) |

@@ -484,12 +484,15 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "editar_parede",
             title: "Editar parede",
-            description: "Muda o comprimento de uma parede, na direção dela.",
+            description: "Muda o comprimento de uma parede, na direção dela, e/ou a altura dela: altura_m sozinha deixa o topo reto nessa altura; com altura_fim_m o topo fica inclinado (altura_m no início, altura_fim_m no fim), como o oitão de uma meia-água ou um muro de divisa mais alto; altura_padrao volta a seguir o pé-direito. A altura entra na alvenaria, no peso sobre vigas e baldrames e na altura e esbeltez dos pilares da parede.",
             properties: json!({
                 "id": id_of("da parede"),
                 "comprimento": number("Novo comprimento em metros."),
+                "altura_m": number("Altura do topo no início da parede, em metros (0,50 a 12,00)."),
+                "altura_fim_m": number("Altura do topo no fim da parede, em metros, para topo inclinado."),
+                "altura_padrao": {"type": "boolean", "description": "true volta a parede para o pé-direito do pavimento."},
             }),
-            required: &["id", "comprimento"],
+            required: &["id"],
             read_only: false,
             destructive: false,
         },

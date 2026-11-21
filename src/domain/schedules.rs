@@ -205,14 +205,7 @@ pub fn build_materials_schedule(project: &Project, config: &ScheduleConfig) -> S
     for wall in &project.walls {
         let len = wall.length();
         total_wall_len += len;
-        let gross = len * wall_height;
-        let openings_area: f64 = project
-            .openings
-            .iter()
-            .filter(|o| o.wall_id == wall.id)
-            .map(|o| o.width() * o.height().unwrap_or(wall_height))
-            .sum();
-        let net = (gross - openings_area).max(0.0);
+        let net = project.wall_net_area(wall);
         total_net_wall_area += net;
         let masonry = wall.masonry.as_ref().unwrap_or(&project.masonry);
         let block_face_area =

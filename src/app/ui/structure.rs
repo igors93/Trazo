@@ -673,7 +673,7 @@ impl FloorPlanApp {
                     if !report.columns.is_empty() {
                         heading(ui, "Pilares");
                         egui::Grid::new("structure_columns").striped(true).spacing([14.0, 6.0]).show(ui, |ui| {
-                            titles(ui, &["Pilar", "Seção", "Posição", "Carga", "Área necessária", "Área", "Situação"]);
+                            titles(ui, &["Pilar", "Seção", "Posição", "Carga", "Área necessária", "Área", "Altura", "Esbeltez", "Situação"]);
                             for column in &report.columns {
                                 ui.label(RichText::new(&column.label).font(strong(12.5)));
                                 ui.label(format!("{} cm", section_cm(column.width_m, column.depth_m)));
@@ -681,6 +681,8 @@ impl FloorPlanApp {
                                 ui.label(format!("{} kN", decimal(column.load_kn, 1)));
                                 ui.label(format!("{:.0} cm²", column.area_needed_cm2.max(360.0)));
                                 ui.label(format!("{:.0} cm²", column.area_cm2));
+                                ui.label(format!("{} m", decimal(column.height_m, 2)));
+                                ui.label(format!("λ {:.0}", column.slenderness));
                                 status(ui, column.ok());
                                 ui.end_row();
                             }

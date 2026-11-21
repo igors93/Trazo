@@ -263,6 +263,10 @@ impl Project {
         }
         let cut_from = wall.start.lerp(wall.end, from / length).rounded();
         let cut_to = wall.start.lerp(wall.end, to / length).rounded();
+        // A sloped top stays continuous on what is left (#145).
+        let storey = self.wall_height;
+        let head = wall.piece_heights(storey, 0.0, from / length);
+        let tail = wall.piece_heights(storey, to / length, 1.0);
         let mut tx = self.clone();
         let mut touched = vec![id];
         let moved: Vec<(u64, f64)> = tx
@@ -274,6 +278,7 @@ impl Project {
         if keep_start {
             if let Some(kept) = tx.walls.iter_mut().find(|w| w.id == id) {
                 kept.end = cut_from;
+                (kept.height_m, kept.height_end_m) = head;
             }
             let second = keep_end.then(|| tx.id());
             if let Some(new_id) = second {
@@ -284,6 +289,8 @@ impl Project {
                     masonry: wall.masonry.clone(),
                     assembly: wall.assembly.clone(),
                     layer_id: wall.layer_id,
+                    height_m: tail.0,
+                    height_end_m: tail.1,
                 });
                 touched.push(new_id);
             }
@@ -301,6 +308,7 @@ impl Project {
         } else {
             if let Some(kept) = tx.walls.iter_mut().find(|w| w.id == id) {
                 kept.start = cut_to;
+                (kept.height_m, kept.height_end_m) = tail;
             }
             for (opening_id, center) in moved {
                 if let Some(opening) = tx.openings.iter_mut().find(|o| o.id == opening_id) {

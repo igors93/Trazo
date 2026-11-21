@@ -4,8 +4,9 @@
 //!
 //! Method (also in `docs/engineering.md`):
 //!
-//! - **Blocks** per wall: net area (axis length × storey height, less the
-//!   openings) × blocks per m², with 1/m² = (block length + joint) ×
+//! - **Blocks** per wall: net area (axis length × the wall's mean height —
+//!   the storey height unless the wall has its own, possibly sloped, top —
+//!   less the openings) × blocks per m², with 1/m² = (block length + joint) ×
 //!   (block height + joint), using each wall's own masonry.
 //! - **Half blocks** for the running bond: one every other course at each
 //!   wall end and at each jamb of an opening. Each half block stands in for
@@ -144,7 +145,7 @@ impl Project {
     pub fn construction_takeoff(&self) -> ConstructionTakeoff {
         let waste_percent = self.schedules.waste_percent.clamp(0.0, 50.0);
         let waste = 1.0 + waste_percent / 100.0;
-        let height = self.wall_height.max(0.5);
+        let storey = self.wall_height.max(0.5);
         let mut out = ConstructionTakeoff {
             waste_percent,
             ..ConstructionTakeoff::default()
@@ -157,17 +158,25 @@ impl Project {
                 .iter()
                 .filter(|o| o.wall_id == wall.id)
                 .collect();
-            let opening_height =
-                |o: &&super::model::Opening| o.height().unwrap_or(height).min(height);
+            // Each wall's own top (#145): sloped tops average over the length.
+            let (start_h, end_h) = wall.heights(storey);
+            let height = wall.mean_height(storey);
+            let opening_height = |o: &&super::model::Opening| {
+                let top = wall.height_over(storey, o);
+                o.height().unwrap_or(top).min(top)
+            };
             let openings_m2: f64 = openings.iter().map(|o| o.width() * opening_height(o)).sum();
             let gross = length * height;
             let net = (gross - openings_m2).max(0.0);
             let equivalent = net * masonry.blocks_per_square_metre();
-            let mut half = 2.0 * half_blocks_on_edge(&masonry, height);
+            let mut half =
+                half_blocks_on_edge(&masonry, start_h) + half_blocks_on_edge(&masonry, end_h);
             for opening in &openings {
                 half += 2.0 * half_blocks_on_edge(&masonry, opening_height(opening));
             }
-            let u_blocks = (length / masonry.module() - 1e-9).ceil().max(0.0);
+            // The bond beam follows the slope of the top.
+            let top_length = length.hypot(end_h - start_h);
+            let u_blocks = (top_length / masonry.module() - 1e-9).ceil().max(0.0);
             let blocks = (equivalent - half / 2.0 - u_blocks).max(0.0);
             let plaster_m2 = 2.0 * net;
             out.walls.push(WallTakeoff {

@@ -266,6 +266,16 @@ pub struct Wall {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layer_id: Option<u64>,
+
+    /// Height of the top at the start, metres; `None` follows the storey
+    /// height (#145).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height_m: Option<f64>,
+
+    /// Height of the top at the end for a sloped top, metres; `None` keeps
+    /// the top straight.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub height_end_m: Option<f64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -779,26 +789,14 @@ impl Project {
         }
     }
 
-    /// Wall face area (lengths × wall height, less door and window areas)
-    /// and the blocks it takes, each wall with its own material.
+    /// Wall face area (lengths × each wall's height, less door and window
+    /// areas) and the blocks it takes, each wall with its own material.
     pub fn masonry_estimate(&self) -> (f64, f64) {
         let mut area = 0.0;
         let mut blocks = 0.0;
         for wall in &self.walls {
             let material = wall.masonry.as_ref().unwrap_or(&self.masonry);
-            let openings: f64 = self
-                .openings
-                .iter()
-                .filter(|opening| opening.wall_id == wall.id)
-                .map(|opening| {
-                    opening.width()
-                        * opening
-                            .height()
-                            .unwrap_or(self.wall_height)
-                            .min(self.wall_height)
-                })
-                .sum();
-            let face = (wall.length() * self.wall_height - openings).max(0.0);
+            let face = self.wall_net_area(wall);
             area += face;
             blocks += face * material.blocks_per_square_metre();
         }
@@ -986,6 +984,8 @@ impl Project {
             masonry: Some(self.masonry.clone()),
             assembly: None,
             layer_id: self.active_layer_id,
+            height_m: None,
+            height_end_m: None,
         });
 
         Some(id)
@@ -1017,7 +1017,16 @@ impl Project {
             }
         }
 
+        // A sloped top stays continuous across the cut (#145).
+        let t = (split_dist / total_len).clamp(0.0, 1.0);
+        let storey = self.wall_height;
+        let first = self.walls[wall_idx].piece_heights(storey, 0.0, t);
+        let second = self.walls[wall_idx].piece_heights(storey, t, 1.0);
         self.walls[wall_idx].end = split_point;
+        (
+            self.walls[wall_idx].height_m,
+            self.walls[wall_idx].height_end_m,
+        ) = first;
 
         let new_id = self.id();
         let built_with = self.walls[wall_idx].masonry.clone();
@@ -1031,6 +1040,8 @@ impl Project {
             masonry: built_with,
             assembly,
             layer_id,
+            height_m: second.0,
+            height_end_m: second.1,
         });
 
         for room in &mut self.rooms {
@@ -2425,6 +2436,8 @@ mod tests {
             masonry: None,
             assembly: None,
             layer_id: None,
+            height_m: None,
+            height_end_m: None,
         });
         let w2 = project.id();
         project.walls.push(Wall {
@@ -2434,6 +2447,8 @@ mod tests {
             masonry: None,
             assembly: None,
             layer_id: None,
+            height_m: None,
+            height_end_m: None,
         });
 
         // Opening on w2 at t = 0.20 (physically at x = 8.0m)

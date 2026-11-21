@@ -567,6 +567,8 @@ impl FloorPlanApp {
                     "carga_pavimentos_superiores_kn": round1(c.upper_load_kn),
                     "area_necessaria_cm2": c.area_needed_cm2.max(360.0).round(),
                     "area_cm2": c.area_cm2.round(),
+                    "altura_m": (c.height_m * 100.0).round() / 100.0,
+                    "esbeltez": c.slenderness.round(),
                     "atende": c.ok(),
                 })
             })

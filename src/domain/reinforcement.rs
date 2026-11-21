@@ -643,13 +643,14 @@ pub fn build_reinforcement_report(
         let required = steel_by_load.max(0.004 * ac_cm2);
         let choice = choose_column_bars(required);
         let lap = (40.0 * choice.diameter_mm / 1000.0).max(0.40);
-        let longitudinal = bar_set(choice, required, project.wall_height + lap);
+        // Bars as long as the column (#145: the tallest wall it stands in).
+        let longitudinal = bar_set(choice, required, column.height_m + lap);
         let tie_spacing_m = 0.20_f64
             .min(12.0 * choice.diameter_mm / 1000.0)
             .min(column.width_m.min(column.depth_m))
             .max(0.05);
         let spacing_cm = (tie_spacing_m * 100.0 / 5.0).floor().max(1.0) * 5.0;
-        let tie_count = (project.wall_height / (spacing_cm / 100.0)).ceil() as u32 + 1;
+        let tie_count = (column.height_m / (spacing_cm / 100.0)).ceil() as u32 + 1;
         let tie_diameter = STIRRUP_DIAMETERS_MM[0];
         let core_b = (column.width_m - 0.06).max(0.04);
         let core_h = (column.depth_m - 0.06).max(0.04);

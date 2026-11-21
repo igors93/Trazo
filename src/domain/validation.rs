@@ -246,7 +246,7 @@ fn loads_are_conserved_from_the_slabs_to_the_columns() {
         .sum();
     let own: f64 = project
         .structural_columns()
-        .map(|c| 25.0 * c.width * c.depth * project.wall_height)
+        .map(|c| 25.0 * c.width * c.depth * project.column_height(c))
         .sum();
     let columns: f64 = report.columns.iter().map(|c| c.load_kn).sum();
     assert!(
