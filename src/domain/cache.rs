@@ -11,6 +11,7 @@ use super::electrical::LoadSchedule;
 use super::fixtures::Fixture;
 use super::geometry::Point;
 use super::model::{Project, Room, Wall};
+use super::reinforcement::{ReinforcementReport, build_reinforcement_report};
 use super::structure::{Beam, Slab, StructureReport};
 
 const CACHE_SLOTS: usize = 8;
@@ -301,6 +302,19 @@ impl Project {
         guard.get_or_insert(key, || self.structure_report())
     }
 
+    /// Cached reinforcement proposal and steel schedule, derived from the
+    /// same structural fingerprint as the analysis report.
+    pub fn cached_reinforcement_report(&self) -> Arc<ReinforcementReport> {
+        static CACHE: CacheSlot<ReinforcementReport> = OnceLock::new();
+        let key = structure_fingerprint(self);
+        let cache = CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        guard.get_or_insert(key, || {
+            let structure = self.structure_report();
+            build_reinforcement_report(self, &structure)
+        })
+    }
+
     /// Cached [`Project::audit_dependencies`], reused across frames until
     /// geometry, openings, electrical or structural inputs change.
     pub fn cached_dependency_audit(&self) -> Arc<super::dependencies::DependencyAudit> {
@@ -370,6 +384,10 @@ mod tests {
         let r2 = project.cached_structure_report();
         assert!(Arc::ptr_eq(&r1, &r2));
 
+        let a1 = project.cached_reinforcement_report();
+        let a2 = project.cached_reinforcement_report();
+        assert!(Arc::ptr_eq(&a1, &a2));
+
         // Mutating an electrical setting invalidates electrical caches while
         // leaving structural caches warm.
         project.electrical.voltage_v = 220.0;
@@ -382,5 +400,7 @@ mod tests {
         project.structure.settings.live_kn_m2 = 3.0;
         let r3 = project.cached_structure_report();
         assert!(!Arc::ptr_eq(&r1, &r3));
+        let a3 = project.cached_reinforcement_report();
+        assert!(!Arc::ptr_eq(&a1, &a3));
     }
 }

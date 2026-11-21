@@ -32,6 +32,7 @@ pub mod notes;
 pub mod offset;
 pub mod openings;
 pub mod quantities;
+pub mod reinforcement;
 pub mod samples;
 pub mod schedules;
 pub mod setbacks;

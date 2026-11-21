@@ -330,6 +330,7 @@ impl FloorPlanApp {
 
     pub(super) fn tool_presizing(&mut self) -> Result<ToolOutput, String> {
         let report = self.project.cached_structure_report();
+        let reinforcement = self.project.cached_reinforcement_report();
         let settings = self.project.structure.settings;
         let slabs: Vec<Value> = report
             .slabs
@@ -424,12 +425,98 @@ impl FloorPlanApp {
                 })
             })
             .collect();
+        let reinforcement_beams: Vec<Value> = reinforcement
+            .beams
+            .iter()
+            .map(|beam| {
+                json!({
+                    "id": beam.beam_id,
+                    "rotulo": beam.label,
+                    "vao": beam.span_index,
+                    "comprimento_m": round1(beam.length_m * 10.0) / 10.0,
+                    "inferior": beam.bottom.notation(),
+                    "superior_esquerda": beam.top_left.notation(),
+                    "superior_direita": beam.top_right.notation(),
+                    "estribos": beam.stirrups.notation(),
+                    "as_inferior_necessaria_cm2": round1(beam.bottom.required_cm2),
+                    "as_inferior_fornecida_cm2": round1(beam.bottom.provided_cm2),
+                    "barras_cabem_na_secao": beam.bottom.fits_section
+                        && beam.top_left.fits_section
+                        && beam.top_right.fits_section,
+                    "cortante_atende": beam.stirrups.shear_capacity_ok,
+                    "massa_kg": round1(beam.mass_kg),
+                })
+            })
+            .collect();
+        let reinforcement_columns: Vec<Value> = reinforcement
+            .columns
+            .iter()
+            .map(|column| {
+                json!({
+                    "id": column.column_id,
+                    "rotulo": column.label,
+                    "longitudinal": column.longitudinal.notation(),
+                    "estribos": column.ties.notation(),
+                    "as_necessaria_cm2": round1(column.longitudinal.required_cm2),
+                    "as_fornecida_cm2": round1(column.longitudinal.provided_cm2),
+                    "taxa_aco_percentual": round1(column.steel_ratio * 100.0),
+                    "massa_kg": round1(column.mass_kg),
+                })
+            })
+            .collect();
+        let reinforcement_slabs: Vec<Value> = reinforcement
+            .slabs
+            .iter()
+            .map(|slab| {
+                json!({
+                    "id": slab.slab_id,
+                    "rotulo": slab.label,
+                    "comodo": slab.room,
+                    "tipo": slab.kind.key(),
+                    "principal": slab.main.notation(),
+                    "distribuicao": slab.distribution.notation(),
+                    "as_principal_necessaria_cm2_m": round1(slab.main.required_cm2_m),
+                    "as_principal_fornecida_cm2_m": round1(slab.main.provided_cm2_m),
+                    "massa_kg": round1(slab.mass_kg),
+                })
+            })
+            .collect();
+        let reinforcement_footings: Vec<Value> = reinforcement
+            .footings
+            .iter()
+            .map(|footing| {
+                json!({
+                    "id": footing.footing_id,
+                    "rotulo": footing.label,
+                    "direcao_x": footing.bars_x.notation(),
+                    "direcao_y": footing.bars_y.notation(),
+                    "massa_kg": round1(footing.mass_kg),
+                })
+            })
+            .collect();
+        let steel_schedule: Vec<Value> = reinforcement
+            .schedule
+            .iter()
+            .map(|row| {
+                json!({
+                    "marca": row.mark,
+                    "elemento": row.element,
+                    "posicao": row.position,
+                    "diametro_mm": row.diameter_mm,
+                    "quantidade": row.quantity,
+                    "comprimento_unitario_m": round1(row.unit_length_m * 10.0) / 10.0,
+                    "comprimento_total_m": round1(row.total_length_m * 10.0) / 10.0,
+                    "massa_kg": round1(row.mass_kg),
+                })
+            })
+            .collect();
         Ok(ToolOutput::ok(format!(
-            "{} laje(s), {} viga(s), {} pilar(es), {} sapata(s), {} alerta(s).",
+            "{} laje(s), {} viga(s), {} pilar(es), {} sapata(s), {} kg de aço preliminar, {} alerta(s).",
             slabs.len(),
             beams.len(),
             columns.len(),
             footings.len(),
+            round1(reinforcement.total_mass_kg()),
             report.warnings.len()
         ))
         .with_structured(json!({
@@ -447,6 +534,16 @@ impl FloorPlanApp {
             "pilares": columns,
             "sapatas": footings,
             "pilares_desalinhados": misaligned,
+            "armaduras": {
+                "carater": "estimativa preliminar para revisão; não é detalhamento executivo",
+                "vigas": reinforcement_beams,
+                "pilares": reinforcement_columns,
+                "lajes": reinforcement_slabs,
+                "sapatas": reinforcement_footings,
+                "tabela_aco": steel_schedule,
+                "massa_total_kg": round1(reinforcement.total_mass_kg()),
+                "avisos": reinforcement.warnings,
+            },
             "semaforo": verdicts_json(&crate::domain::verdict::structure_verdicts(
                 &self.project,
                 &report,
@@ -489,6 +586,14 @@ mod tests {
             .unwrap();
         assert_eq!(report["pilares"].as_array().unwrap().len(), 6);
         assert_eq!(report["lajes"].as_array().unwrap().len(), 2);
+        assert!(!report["armaduras"]["vigas"].as_array().unwrap().is_empty());
+        assert!(
+            !report["armaduras"]["tabela_aco"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(report["armaduras"]["massa_total_kg"].as_f64().unwrap() > 0.0);
         // Every element gets its traffic light (#101).
         let lights = report["semaforo"].as_array().unwrap();
         assert!(!lights.is_empty());

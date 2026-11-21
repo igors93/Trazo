@@ -10,6 +10,7 @@ use super::widgets::{primary_button, secondary_button};
 use crate::domain::discipline::Discipline;
 use crate::domain::fixtures::FixtureKind;
 use crate::domain::layers::LayerCategory;
+use crate::domain::reinforcement::{ReinforcementReport, steel_schedule_csv};
 use crate::domain::structure::{SlabKind, beam_diagrams_svg, section_cm};
 
 fn decimal(value: f64, places: usize) -> String {
@@ -29,6 +30,181 @@ enum StructureEdit {
     Slab(u64, SlabKind, f64),
     Beam(u64, f64, f64),
     Settings(crate::domain::structure::StructureSettings),
+}
+
+fn reinforcement_tab(ui: &mut Ui, report: &ReinforcementReport) {
+    let heading = |ui: &mut Ui, text: &str| {
+        ui.add_space(8.0);
+        ui.label(RichText::new(text).font(strong(13.0)));
+    };
+    let titles = |ui: &mut Ui, titles: &[&str]| {
+        for title in titles {
+            ui.label(RichText::new(*title).font(strong(12.0)).color(TEXT_2));
+        }
+        ui.end_row();
+    };
+    let bars = |set: &crate::domain::reinforcement::BarSet| {
+        format!(
+            "{} · {} / {} cm²",
+            set.notation(),
+            decimal(set.required_cm2, 2),
+            decimal(set.provided_cm2, 2)
+        )
+    };
+    let mesh = |set: &crate::domain::reinforcement::MeshBars| {
+        format!(
+            "{} · {} / {} cm²/m",
+            set.notation(),
+            decimal(set.required_cm2_m, 2),
+            decimal(set.provided_cm2_m, 2)
+        )
+    };
+
+    if report.is_empty() {
+        ui.label(
+            RichText::new(
+                "Nenhuma armadura emitida. Gere a estrutura e resolva os limites indicados.",
+            )
+            .color(MUTED),
+        );
+    }
+    if !report.beams.is_empty() {
+        heading(ui, "Vigas · CA-50");
+        egui::Grid::new("reinforcement_beams")
+            .striped(true)
+            .spacing([12.0, 6.0])
+            .show(ui, |ui| {
+                titles(
+                    ui,
+                    &[
+                        "Viga",
+                        "Inferior",
+                        "Sup. esq.",
+                        "Sup. dir.",
+                        "Estribos",
+                        "Aço",
+                    ],
+                );
+                for beam in &report.beams {
+                    ui.label(RichText::new(&beam.label).font(strong(12.5)));
+                    ui.label(bars(&beam.bottom));
+                    ui.label(bars(&beam.top_left));
+                    ui.label(bars(&beam.top_right));
+                    ui.label(beam.stirrups.notation());
+                    ui.label(format!("{} kg", decimal(beam.mass_kg, 1)));
+                    ui.end_row();
+                }
+            });
+    }
+    if !report.columns.is_empty() {
+        heading(ui, "Pilares · CA-50");
+        egui::Grid::new("reinforcement_columns")
+            .striped(true)
+            .spacing([14.0, 6.0])
+            .show(ui, |ui| {
+                titles(ui, &["Pilar", "Longitudinal", "Taxa", "Estribos", "Aço"]);
+                for column in &report.columns {
+                    ui.label(RichText::new(&column.label).font(strong(12.5)));
+                    ui.label(bars(&column.longitudinal));
+                    ui.label(format!("{} %", decimal(column.steel_ratio * 100.0, 2)));
+                    ui.label(column.ties.notation());
+                    ui.label(format!("{} kg", decimal(column.mass_kg, 1)));
+                    ui.end_row();
+                }
+            });
+    }
+    if !report.slabs.is_empty() {
+        heading(ui, "Lajes · armadura equivalente por metro");
+        egui::Grid::new("reinforcement_slabs")
+            .striped(true)
+            .spacing([14.0, 6.0])
+            .show(ui, |ui| {
+                titles(ui, &["Laje", "Cômodo", "Principal", "Distribuição", "Aço"]);
+                for slab in &report.slabs {
+                    ui.label(RichText::new(&slab.label).font(strong(12.5)));
+                    ui.label(&slab.room);
+                    ui.label(mesh(&slab.main));
+                    ui.label(mesh(&slab.distribution));
+                    ui.label(format!("{} kg", decimal(slab.mass_kg, 1)));
+                    ui.end_row();
+                }
+            });
+    }
+    if !report.footings.is_empty() {
+        heading(ui, "Sapatas · malha inferior CA-50");
+        egui::Grid::new("reinforcement_footings")
+            .striped(true)
+            .spacing([14.0, 6.0])
+            .show(ui, |ui| {
+                titles(ui, &["Sapata", "Direção X", "Direção Y", "Aço"]);
+                for footing in &report.footings {
+                    ui.label(RichText::new(&footing.label).font(strong(12.5)));
+                    ui.label(mesh(&footing.bars_x));
+                    ui.label(mesh(&footing.bars_y));
+                    ui.label(format!("{} kg", decimal(footing.mass_kg, 1)));
+                    ui.end_row();
+                }
+            });
+    }
+    if !report.schedule.is_empty() {
+        heading(ui, "Tabela de aço");
+        egui::Grid::new("steel_schedule")
+            .striped(true)
+            .spacing([12.0, 5.0])
+            .show(ui, |ui| {
+                titles(
+                    ui,
+                    &[
+                        "Marca",
+                        "Elemento",
+                        "Posição",
+                        "Ø",
+                        "Qtd.",
+                        "Unit.",
+                        "Total",
+                        "Massa",
+                    ],
+                );
+                for row in &report.schedule {
+                    ui.label(RichText::new(&row.mark).font(strong(12.0)));
+                    ui.label(&row.element);
+                    ui.label(&row.position);
+                    ui.label(format!("{} mm", decimal(row.diameter_mm, 1)));
+                    ui.label(row.quantity.to_string());
+                    ui.label(format!("{} m", decimal(row.unit_length_m, 2)));
+                    ui.label(format!("{} m", decimal(row.total_length_m, 2)));
+                    ui.label(format!("{} kg", decimal(row.mass_kg, 1)));
+                    ui.end_row();
+                }
+            });
+        ui.label(
+            RichText::new(format!(
+                "Massa total estimada: {} kg",
+                decimal(report.total_mass_kg(), 1)
+            ))
+            .font(strong(13.0))
+            .color(ACCENT_TEXT),
+        );
+    }
+    if !report.warnings.is_empty() {
+        ui.add_space(10.0);
+        ui.label(
+            RichText::new("Revisões necessárias")
+                .font(strong(13.0))
+                .color(WARNING),
+        );
+        for warning in &report.warnings {
+            ui.label(RichText::new(format!("• {warning}")).color(WARNING));
+        }
+    }
+    ui.add_space(8.0);
+    ui.label(
+        RichText::new(
+            "Estimativa preliminar pelo método já documentado para a NBR 6118:2023. A edição 2026 ainda exige auditoria; confirme cobrimentos, ancoragens, emendas e todo o detalhamento com engenheiro habilitado.",
+        )
+        .size(11.0)
+        .color(MUTED),
+    );
 }
 
 impl FloorPlanApp {
@@ -205,6 +381,22 @@ impl FloorPlanApp {
         };
     }
 
+    fn export_steel_schedule(&mut self) {
+        let report = self.project.cached_reinforcement_report();
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Planilha CSV", &["csv"])
+            .set_file_name("tabela-de-aco.csv")
+            .save_file()
+        else {
+            return;
+        };
+        let content = steel_schedule_csv(&report);
+        self.message = match std::fs::write(&path, content) {
+            Ok(()) => format!("Tabela de aço salva em {}", path.display()),
+            Err(error) => format!("Erro ao salvar a tabela de aço: {error}"),
+        };
+    }
+
     /// The "Estrutura" window: pre-sizing and the forces in the beams.
     pub(super) fn structure_dialog(&mut self, ctx: &egui::Context) {
         if self.active_doc_dialog != DocDialog::Structure {
@@ -213,11 +405,14 @@ impl FloorPlanApp {
         let mut open = true;
         let mut generate = false;
         let mut footings = false;
-        let mut export = None;
+        let mut export_forces = None;
+        let mut export_steel = false;
+        let mut export_memorial = false;
         let mut edits: Vec<StructureEdit> = Vec::new();
         let tab_id = egui::Id::unique("trazo_structure_tab");
         let mut tab: u8 = ctx.data(|data| data.get_temp(tab_id)).unwrap_or(0);
         let report = self.project.cached_structure_report();
+        let reinforcement = self.project.cached_reinforcement_report();
         let labels = self.project.structure_labels();
         let preview = if tab == 1 {
             svg_preview(
@@ -303,7 +498,7 @@ impl FloorPlanApp {
                 }
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    for (index, title) in ["Pré-dimensionamento", "Esforços nas vigas"].iter().enumerate() {
+                    for (index, title) in ["Pré-dimensionamento", "Esforços nas vigas", "Armaduras"].iter().enumerate() {
                         if ui
                             .selectable_label(tab == index as u8, RichText::new(*title).font(strong(12.5)))
                             .clicked()
@@ -314,10 +509,18 @@ impl FloorPlanApp {
                     if tab == 1 {
                         ui.separator();
                         if secondary_button(ui, "Exportar PDF").clicked() {
-                            export = Some(true);
+                            export_forces = Some(true);
                         }
                         if secondary_button(ui, "Exportar SVG").clicked() {
-                            export = Some(false);
+                            export_forces = Some(false);
+                        }
+                    } else if tab == 2 {
+                        ui.separator();
+                        if secondary_button(ui, "Exportar tabela CSV").clicked() {
+                            export_steel = true;
+                        }
+                        if secondary_button(ui, "Exportar memorial PDF").clicked() {
+                            export_memorial = true;
                         }
                     }
                 });
@@ -334,6 +537,10 @@ impl FloorPlanApp {
                                 ui.label(RichText::new("Nenhuma viga ainda.").color(MUTED));
                             }
                         }
+                        return;
+                    }
+                    if tab == 2 {
+                        reinforcement_tab(ui, &reinforcement);
                         return;
                     }
                     let heading = |ui: &mut Ui, text: &str| {
@@ -477,8 +684,14 @@ impl FloorPlanApp {
         if footings {
             self.size_footings();
         }
-        if let Some(pdf) = export {
+        if let Some(pdf) = export_forces {
             self.export_beam_diagrams(pdf);
+        }
+        if export_steel {
+            self.export_steel_schedule();
+        }
+        if export_memorial {
+            self.export_presizing_report();
         }
         if !edits.is_empty() {
             let previous = self.project.clone();

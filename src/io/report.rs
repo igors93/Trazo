@@ -241,6 +241,7 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
     let summary = safety_summary(project);
     let light_of = lights(&summary.verdicts);
     let report = project.structure_report();
+    let reinforcement = project.cached_reinforcement_report();
     let schedule = project.load_schedule();
     let s = project.structure.settings;
     let tb = &project.sheet.title_block;
@@ -720,6 +721,159 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                 );
             }
         }
+
+        if !reinforcement.is_empty() {
+            pages.subheading("Armaduras preliminares");
+            pages.paragraph(
+                "Estimativa pelo método documentado para a NBR 6118:2023; a edição 2026 ainda exige auditoria. Não é detalhamento executivo: ancoragens, emendas, aberturas e juntas devem ser verificadas por engenheiro estrutural.",
+                2.7,
+                "#8a5a00",
+            );
+
+            if !reinforcement.beams.is_empty() {
+                let rows: Vec<_> = reinforcement
+                    .beams
+                    .iter()
+                    .map(|beam| {
+                        (
+                            None,
+                            vec![
+                                if beam.span_index == 0 {
+                                    beam.label.clone()
+                                } else {
+                                    format!("{} v{}", beam.label, beam.span_index + 1)
+                                },
+                                beam.bottom.notation(),
+                                beam.top_left.notation(),
+                                beam.top_right.notation(),
+                                beam.stirrups.notation(),
+                                decimal(beam.mass_kg, 1),
+                            ],
+                        )
+                    })
+                    .collect();
+                pages.table(
+                    &["Viga", "Inferior", "Sup. E", "Sup. D", "Estribos", "kg"],
+                    &[1.4, 1.6, 1.6, 1.6, 2.1, 1.0],
+                    &rows,
+                );
+            }
+
+            if !reinforcement.columns.is_empty() {
+                let rows: Vec<_> = reinforcement
+                    .columns
+                    .iter()
+                    .map(|column| {
+                        (
+                            None,
+                            vec![
+                                column.label.clone(),
+                                column.longitudinal.notation(),
+                                column.ties.notation(),
+                                format!("{}%", decimal(column.steel_ratio * 100.0, 2)),
+                                decimal(column.mass_kg, 1),
+                            ],
+                        )
+                    })
+                    .collect();
+                pages.table(
+                    &["Pilar", "Longitudinal", "Estribos", "ρ", "kg"],
+                    &[1.3, 2.0, 2.3, 1.2, 1.0],
+                    &rows,
+                );
+            }
+
+            if !reinforcement.slabs.is_empty() {
+                let rows: Vec<_> = reinforcement
+                    .slabs
+                    .iter()
+                    .map(|slab| {
+                        (
+                            None,
+                            vec![
+                                format!("{} · {}", slab.label, slab.room),
+                                slab.kind.label().to_owned(),
+                                slab.main.notation(),
+                                slab.distribution.notation(),
+                                decimal(slab.mass_kg, 1),
+                            ],
+                        )
+                    })
+                    .collect();
+                pages.table(
+                    &["Laje", "Tipo", "Principal", "Distribuição", "kg"],
+                    &[2.3, 1.6, 2.0, 2.0, 1.0],
+                    &rows,
+                );
+            }
+
+            if !reinforcement.footings.is_empty() {
+                let rows: Vec<_> = reinforcement
+                    .footings
+                    .iter()
+                    .map(|footing| {
+                        (
+                            None,
+                            vec![
+                                footing.label.clone(),
+                                footing.bars_x.notation(),
+                                footing.bars_y.notation(),
+                                decimal(footing.mass_kg, 1),
+                            ],
+                        )
+                    })
+                    .collect();
+                pages.table(
+                    &["Sapata", "Direção X", "Direção Y", "kg"],
+                    &[1.5, 2.5, 2.5, 1.0],
+                    &rows,
+                );
+            }
+
+            pages.subheading("Tabela preliminar de aço");
+            let rows: Vec<_> = reinforcement
+                .schedule
+                .iter()
+                .map(|row| {
+                    (
+                        None,
+                        vec![
+                            row.mark.clone(),
+                            format!("{} · {}", row.element, row.position),
+                            decimal(row.diameter_mm, 1),
+                            row.quantity.to_string(),
+                            decimal(row.unit_length_m, 2),
+                            decimal(row.total_length_m, 2),
+                            decimal(row.mass_kg, 1),
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &[
+                    "Marca",
+                    "Elemento · posição",
+                    "Ø mm",
+                    "Qtd.",
+                    "Unit. m",
+                    "Total m",
+                    "kg",
+                ],
+                &[1.0, 3.2, 1.0, 0.9, 1.2, 1.2, 1.0],
+                &rows,
+            );
+            pages.paragraph(
+                &format!(
+                    "Massa teórica total, sem perdas: {} kg.",
+                    decimal(reinforcement.total_mass_kg(), 1)
+                ),
+                3.0,
+                INK,
+            );
+            for warning in &reinforcement.warnings {
+                pages.paragraph(&format!("• {warning}"), 2.7, "#8a5a00");
+            }
+        }
     }
 
     // 4. Electrical.
@@ -1004,6 +1158,8 @@ mod tests {
             "1. Dados de entrada",
             "2. Premissas, métodos e limites",
             "3. Resultados · estrutura",
+            "Armaduras preliminares",
+            "Tabela preliminar de aço",
             "4. Resultados · instalação elétrica",
             "5. Verificações (semáforo)",
             "6. Alertas",

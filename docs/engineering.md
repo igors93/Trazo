@@ -4,10 +4,13 @@ This guide documents every engineering calculation in Trazo: the formula, the st
 
 > **Pre-sizing, not design.** Every result here is a first estimate to guide decisions and the conversation with a licensed professional. Building requires a professional's responsibility (ART or RRT) and the municipal permits.
 
+> **Normative edition notice (2026).** The structural methods already present in Trazo were implemented and traced against ABNT NBR 6118:2023. The ABNT catalogue now lists NBR 6118:2026. The new edition has not yet received a clause-by-clause audit in Trazo, so no output claims compliance with the 2026 edition; every structural result remains explicitly preliminary until that audit and professional review are complete.
+
 - [Conventions](#conventions)
 - [Loads](#loads)
 - [Slabs](#slabs)
 - [Beams](#beams)
+- [Preliminary reinforcement](#preliminary-reinforcement)
 - [Columns](#columns)
 - [Load path across floors](#load-path-across-floors)
 - [Footings](#footings)
@@ -24,7 +27,7 @@ This guide documents every engineering calculation in Trazo: the formula, the st
 | Moments | Sagging positive: hogging (support) moments are negative |
 | Loads | Characteristic values unless stated; ultimate design uses γf = 1.4 (NBR 8681 normal combination, simplified) |
 | Quasi-permanent load | g + ψ2·q with ψ2 = 0.3 (dwellings, NBR 6118:2023, table 11.2) |
-| Code | `src/domain/structure.rs`, `src/domain/electrical.rs`, `src/domain/distribution.rs`, `src/domain/conduits.rs` |
+| Code | `src/domain/structure.rs`, `src/domain/reinforcement.rs`, `src/domain/electrical.rs`, `src/domain/distribution.rs`, `src/domain/conduits.rs` |
 
 ## Loads
 
@@ -87,7 +90,23 @@ From the end moments come the shears, the reactions (passed to the columns, or a
 3. The modulus is Ecs = 0.85 · 5600 · √fck MPa. This is the secant modulus of NBR 6118:2003; for fck = 25 MPa and granite aggregate it is within 2 % of the αi·Eci of NBR 6118:2023, 8.2.8.
 4. The curvature M/EI is integrated twice numerically (100 steps). The long-term value multiplies the immediate deflection by 1 + αf = 2.32 (αf = 1.32 for loading at about one month, no compression steel, 17.3.2.1.2).
 
-**Assumptions:** pinned supports (column stiffness ignored; see #94); no torsion; no shear design; reinforcement is only estimated for the stiffness.
+**Assumptions:** pinned supports (column stiffness ignored; see #94); no torsion. Reinforcement and shear are estimated as described below, but the analysis still has no frame action or torsion.
+
+## Preliminary reinforcement
+
+`build_reinforcement_report` turns the characteristic forces from `structure_report` into a reviewable reinforcement proposal and a theoretical bar schedule. It uses CA-50 (`fyk = 500 MPa`), steel density 7,850 kg/m³ and the same structural applicability limits. If the whole project or an element is outside those limits, it refuses to emit reinforcement for it.
+
+**Beams.** For the span and support moments, `Md = 1.4·|Mk|`. A singly reinforced rectangular section uses the 0.85 concrete stress block, `fcd = fck/1.4`, `fyd = 500/1.15 MPa`, effective depth `d = h − 4 cm` and lever arm `z = d·(1 − 0.4ξ)`. The required area is `As = Md/(z·fyd)`, never below the minimum ratio already used by the cracked-section calculation. The selector tries 10, 12.5, 16, 20 and 25 mm bars and checks whether one layer fits with cover, stirrup and clear spacing of at least the larger of 20 mm or one diameter.
+
+Stirrups compare `Vsd = 1.4·Vk` with `Vc = 0.60·fctd·bw·d`; the remaining shear gives `Asw/s = (Vsd − Vc)/(0.9·d·fyd)`, never below the minimum transverse ratio. Spacing is also capped as a function of effective depth and shear level. If diagonal compression is exceeded, the result warns that adding stirrups is not a valid fix and asks for a larger section.
+
+**Columns.** Longitudinal steel is the larger of 0.4% of the concrete area and the remainder needed after the concrete compression contribution in the existing axial pre-sizing equation. The selector uses an even number of bars, at least four. Tie spacing is capped by 20 cm, 12 longitudinal diameters and the smaller section dimension. This is still an axial estimate: slenderness, second-order effects and biaxial bending remain for #94.
+
+**Slabs.** A one-metre strip is treated as simply supported in the smaller direction with `Mk = q·lx²/8`. Principal reinforcement follows the same rectangular flexural calculation; distribution steel is at least 20% of the main requirement and 0.90 cm²/m. For lattice slabs, this is only an equivalent steel estimate and the selected joist/trellis must be confirmed with its manufacturer.
+
+**Footings.** Each direction is treated as a cantilever from the column face, with `Mk = σmax·a²/2` per metre and 7 cm nominal cover. It produces the bottom X/Y meshes only after the soil-pressure, overturning and punching checks have been run.
+
+**Schedule and limits.** The schedule lists mark, element, position, diameter, quantity, unit length, total length and theoretical mass. Beam/column lengths include simple preliminary allowances (generally 40 diameters) but not complete anchorage checks, hooks, bend deductions, lap zoning, curtailment, construction joints, openings, detailing congestion or cutting waste. It is therefore a takeoff aid, not a bending schedule for fabrication.
 
 ## Columns
 
@@ -183,6 +202,9 @@ The suite lives in `src/domain/validation.rs` and runs with `cargo test` on Wind
 | `branson_inertia_follows_nbr_6118_17_3_2_1_1` | NBR 6118:2023, 17.3.2.1.1 | Mr; I_eq = Ic below Mr and Branson's interpolation above | 1e-9 |
 | `eccentric_footing_pressure_follows_the_middle_third_rule` | Middle-third rule | σmax = N/A·(1 + 6e/B); FS = B/2e | 1e-9 |
 | `punching_at_the_column_face_follows_nbr_6118_19_5_3_1` | NBR 6118:2023, 19.5.3.1 | τSd/τRd2 | 1e-9 |
+| `bar_geometry_and_mass_match_the_physical_section` | Circular bar geometry and 7,850 kg/m³ steel density | Ø10 area and Ø10/Ø12.5 linear masses | 0.3 % |
+| `flexural_steel_matches_the_existing_branson_input` | Same rectangular ULS model used for cracked-section stiffness | beam `As` agrees between both calculation paths | 1 % |
+| `generated_house_has_reinforcement_and_a_balanced_schedule` | Internal equilibrium and minimum/detail selection rules | all four element families emitted; supplied steel ≥ required; schedule mass closes | exact |
 | `loads_are_conserved_from_the_slabs_to_the_columns` | Equilibrium | Σ column loads = slabs + beams + columns' own weight | 0.5 % |
 | `loads_are_conserved_across_floors` | Equilibrium | ground column = its own floor's load + the column above | 1e-9 |
 
@@ -196,3 +218,4 @@ Further checks live next to their modules: `nbr_5410_minimums_for_lighting_and_o
 - Wind, earthquake and load combinations beyond the simplified ones are not considered (#105).
 - Regional values (utility profiles, soil classes, demand tables) are typical, not site-specific (B21, #140).
 - The applicability limits are conservative choices, not values from a standard; a professional may well design beyond them with other methods.
+- Reinforcement is a preliminary estimate, not an executive detail: anchorage, laps, bends, openings, joints, cutting losses and bar drawings are incomplete, and NBR 6118:2026 still requires a clause-by-clause audit (#110).

@@ -66,6 +66,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 - An *Estrutura* tab with columns and footings that snap onto wall junctions, beams between columns and slabs over rooms, drawn as a formwork plan on a layer of their own with P, V, L and S labels and sections. **Gerar estrutura** lays out a first structure over the walls (#92).
 - Pre-sizing by the usual rules: slab thickness by span, beam height by span, column area by load and position, footing size by soil pressure, with loads going from the slabs through the beams to the soil and a warning for each element to review (#93).
 - Continuous beam analysis: bending moments, shear, reactions and long-term deflection against L/250, drawn as diagrams and exported to PDF and SVG (#94).
+- Preliminary reinforcement for beams, columns, slabs and footings, with section-fit warnings, shear checks, theoretical steel mass, CSV bar schedule and the same tables in the professional-review PDF and MCP output (#110, partial).
 - Discipline views: architecture, electrical and structure shown on their own on screen (the rest faded) and on sheets of their own, with *Planta de Instalações Elétricas* and *Planta de Forma* sheets in the sheet set (#96).
 - Two MCP tools, `projeto_estrutural` and `pre_dimensionamento`.
 - Entrance gates (*Portão*): pedestrian or vehicle, from 0.80 to 8 m, sliding by default, tagged "PT" and available to assistants.
