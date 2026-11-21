@@ -238,6 +238,33 @@ impl Project {
         }
         Cow::Owned(shown)
     }
+
+    /// Background reference underlay for a focused discipline tab (drawn under
+    /// the contrast veil before `paint_discipline_overlay`).
+    ///
+    /// Applies the discipline's `hidden()` rules (for example, hiding furniture
+    /// such as stoves, beds and tables in `Structure`/`Foundations`) and also
+    /// hides the discipline's own `focus()` category so it is painted once,
+    /// crisply on top of the veil.
+    pub fn for_underlay(&self, discipline: Discipline, hidden_layers: &[u64]) -> Cow<'_, Project> {
+        let hidden = discipline.hidden();
+        let focus = discipline.focus();
+        if hidden.is_empty() && focus.is_none() && hidden_layers.is_empty() {
+            return Cow::Borrowed(self);
+        }
+        let mut shown = self.clone();
+        shown.ensure_default_layers();
+        for layer in &mut shown.layers {
+            if layer
+                .category
+                .is_some_and(|c| hidden.contains(&c) || focus == Some(c))
+                || hidden_layers.contains(&layer.id)
+            {
+                layer.visible = false;
+            }
+        }
+        Cow::Owned(shown)
+    }
 }
 
 #[cfg(test)]
@@ -295,5 +322,16 @@ mod tests {
         assert!(!Discipline::Electrical.allows_architecture_edit());
         assert!(Discipline::Electrical.allows_fixture(FixtureKind::OutletLow));
         assert!(!Discipline::Electrical.allows_fixture(FixtureKind::Column));
+
+        // Structure underlay hides furniture (stoves, beds, tables), electrical
+        // and duplicate structure, keeping walls, openings, rooms and terrain.
+        let struct_bg = project.for_underlay(Discipline::Structure, &[]);
+        assert!(!struct_bg.category_visible(LayerCategory::Fixtures));
+        assert!(!struct_bg.category_visible(LayerCategory::Electrical));
+        assert!(!struct_bg.category_visible(LayerCategory::Structure));
+        assert!(struct_bg.category_visible(LayerCategory::Walls));
+        assert!(struct_bg.category_visible(LayerCategory::Openings));
+        assert!(struct_bg.category_visible(LayerCategory::Rooms));
+        assert!(struct_bg.category_visible(LayerCategory::Terrain));
     }
 }

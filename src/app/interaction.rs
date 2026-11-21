@@ -566,14 +566,13 @@ impl FloorPlanApp {
             })
             .unwrap_or_default();
         // In specialized discipline tabs (Structure, Foundations, Electrical,
-        // Plumbing), paint the clean general floor plan as a faded read-only
-        // contrast reference photo behind the active discipline's crisp overlay.
+        // Plumbing), paint the discipline's clean reference underlay (in
+        // Structure/Foundations: walls, openings, rooms and terrain only — no
+        // furniture like stoves, beds or tables) behind the contrast veil.
         let focused = self.discipline.focus().is_some();
         let shown = if focused {
-            self.project.for_view(
-                crate::domain::discipline::Discipline::All,
-                &self.active_hidden_layers,
-            )
+            self.project
+                .for_underlay(self.discipline, &self.active_hidden_layers)
         } else {
             self.project
                 .for_view(self.discipline, &self.active_hidden_layers)

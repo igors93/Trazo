@@ -582,8 +582,7 @@ impl FloorPlanApp {
                 pan: self.pan,
             };
             let bg_project = if side.discipline.focus().is_some() {
-                side.base_project
-                    .for_view(crate::domain::discipline::Discipline::All, &[])
+                side.base_project.for_underlay(side.discipline, &[])
             } else {
                 std::borrow::Cow::Borrowed(side.shown_project.as_ref())
             };
