@@ -21,6 +21,7 @@ mod modify_menu;
 mod notes;
 mod options_bar;
 mod print;
+mod quantities;
 pub(in crate::app) use print::PrintDialogState;
 mod repeat;
 mod report_problem;
@@ -137,6 +138,7 @@ impl FloorPlanApp {
         self.electrical_dialog(&context);
         self.structure_dialog(&context);
         self.safety_dialog(&context);
+        self.quantities_dialog(&context);
         self.underlay_dialog(&context);
         self.poll_xrefs(&context);
         self.xref_dialog(&context);

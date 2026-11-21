@@ -58,6 +58,7 @@ enum DocDialog {
     Electrical,
     Structure,
     Safety,
+    Quantities,
     Underlay,
     Xref,
     Compare,

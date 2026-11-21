@@ -802,6 +802,20 @@ impl FloorPlanApp {
             if tip(
                 ribbon_button(
                     ui,
+                    Icon::Table,
+                    "Quantitativos",
+                    self.active_doc_dialog == super::super::DocDialog::Quantities,
+                    false,
+                ),
+                "Blocos, meios-blocos, canaletas, vergas, argamassa, reboco e acabamentos por ambiente, para a lista de compras",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Quantities;
+            }
+            if tip(
+                ribbon_button(
+                    ui,
                     Icon::SectionView,
                     "Vistas",
                     self.active_doc_dialog == super::super::DocDialog::Views,
