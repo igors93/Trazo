@@ -36,6 +36,7 @@ mod updates;
 mod view;
 mod views;
 mod widgets;
+mod xref;
 
 use super::{FloorPlanApp, theme};
 
@@ -131,5 +132,7 @@ impl FloorPlanApp {
         self.ergonomics_dialog(&context);
         self.electrical_dialog(&context);
         self.underlay_dialog(&context);
+        self.poll_xrefs(&context);
+        self.xref_dialog(&context);
     }
 }

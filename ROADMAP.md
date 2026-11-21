@@ -140,7 +140,7 @@ Worth prototyping after M6, when the core is solid: #85, #86, #87, #94, #44, #45
 | 40 | Image and PDF underlay with two-point scale calibration, opacity and lock | P1 | M | M2 | ✅ |
 | 43 | Reusable blocks with attributes and a personal library shared between projects | P1 | M | M2 | ✅ |
 | 39 | DWG, through a reliable library or converter | P2 | L | M2 | ✅ |
-| 44 | External references (other drawings shown and updated live) | P2 | L | Exploratory | ⬜ |
+| 44 | External references (other drawings shown and updated live) | P2 | L | Exploratory | ✅ |
 | 45 | Visual comparison between two versions of a project | P2 | M | Exploratory | ⬜ |
 
 ### B. Construction site

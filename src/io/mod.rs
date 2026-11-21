@@ -10,6 +10,7 @@ pub mod recovery;
 pub mod settings;
 pub mod underlay;
 pub mod updates;
+pub mod xref;
 
 use std::path::PathBuf;
 

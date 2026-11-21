@@ -228,6 +228,10 @@ impl FloorPlanApp {
             self.active_doc_dialog = super::super::DocDialog::Underlay;
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Layers), "Referências externas (XREF)...", "").clicked() {
+            self.active_doc_dialog = super::super::DocDialog::Xref;
+            ui.close();
+        }
         menu_separator(ui);
         if menu_item(ui, Some(Icon::ExportImage), "Exportar imagem PNG...", "").clicked() {
             self.export_png();

@@ -566,6 +566,7 @@ impl FloorPlanApp {
                 underlay_textures: &underlay_textures,
             },
         );
+        self.paint_xrefs_overlay(&painter, view);
         if self.electrical_only {
             // The electrical plan: architecture behind a veil, devices on top.
             painter.rect_filled(rect, 0.0, egui::Color32::from_white_alpha(190));

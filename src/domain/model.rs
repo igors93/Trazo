@@ -145,6 +145,10 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub underlays: Vec<super::underlay::ImageUnderlay>,
 
+    /// External references (other `.trazo` or `.dxf` drawings shown and updated live) (#44).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub xrefs: Vec<super::xref::ExternalReference>,
+
     next_id: u64,
 }
 
@@ -213,6 +217,8 @@ impl Default for Project {
             electrical: super::electrical::ElectricalSettings::default(),
 
             underlays: Vec::new(),
+
+            xrefs: Vec::new(),
 
             next_id: 1,
         }

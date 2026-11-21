@@ -581,6 +581,20 @@ impl FloorPlanApp {
             {
                 self.active_doc_dialog = super::super::DocDialog::Underlay;
             }
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::Layers,
+                    "XREF",
+                    self.active_doc_dialog == super::super::DocDialog::Xref,
+                    false,
+                ),
+                "Anexar referências externas (.trazo / .dxf) com atualização automática ao vivo",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Xref;
+            }
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Janelas", |ui| {
