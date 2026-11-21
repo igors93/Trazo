@@ -500,23 +500,27 @@ impl Project {
                 .or_default()
                 .push((conduit.from, conduit.id));
         }
+        let devices: HashMap<u64, &Fixture> = self
+            .fixtures
+            .iter()
+            .filter(|f| f.kind.is_electrical())
+            .map(|f| (f.id, f))
+            .collect();
         let mut used: HashSet<u64> = HashSet::new();
         if let Some(panel) = tree.panel {
             tree.distance.insert(panel, 0.0);
             tree.board_of.insert(panel, panel);
             let mut queue = VecDeque::from([panel]);
             while let Some(node) = queue.pop_front() {
-                let here = self.device(node).map(|d| d.center);
+                let device = devices.get(&node).copied();
+                let here = device.map(|d| d.center);
                 let base = tree.distance[&node];
-                let child_board = if self
-                    .device(node)
-                    .is_some_and(|d| d.kind == FixtureKind::Panel)
-                {
+                let child_board = if device.is_some_and(|d| d.kind == FixtureKind::Panel) {
                     node
                 } else {
                     tree.board_of.get(&node).copied().unwrap_or(panel)
                 };
-                for (next, conduit) in links.get(&node).cloned().unwrap_or_default() {
+                for &(next, conduit) in links.get(&node).map(Vec::as_slice).unwrap_or(&[]) {
                     if used.contains(&conduit) {
                         continue;
                     }
@@ -525,7 +529,7 @@ impl Project {
                         tree.rings.push(conduit);
                         continue;
                     }
-                    let step = match (here, self.device(next)) {
+                    let step = match (here, devices.get(&next)) {
                         (Some(a), Some(b)) => a.distance(b.center),
                         _ => 0.0,
                     };
@@ -876,7 +880,7 @@ impl Project {
     /// The wires in every conduit, with the circuits sized by the load
     /// schedule.
     pub fn conduit_wiring(&self) -> Vec<ConduitWiring> {
-        let schedule = self.load_schedule();
+        let schedule = self.cached_load_schedule();
         let tree = self.conduit_tree();
         let sections = schedule
             .circuits
@@ -998,10 +1002,14 @@ impl Project {
     /// and the diameter where it is above the minimum.
     pub fn conduit_marks(&self) -> Vec<PlanMark> {
         let wiring = self.conduit_wiring();
+        let device_by_id: HashMap<u64, &Fixture> =
+            self.fixtures.iter().map(|f| (f.id, f)).collect();
         let mut marks = Vec::new();
         for run in &wiring {
-            let (Some(a), Some(b)) = (self.device(run.upstream), self.device(run.downstream))
-            else {
+            let (Some(&a), Some(&b)) = (
+                device_by_id.get(&run.upstream),
+                device_by_id.get(&run.downstream),
+            ) else {
                 continue;
             };
             let points = arc_points(a.center, b.center);
@@ -1065,12 +1073,12 @@ impl Project {
             }
         }
         let tag_obstacles: Vec<super::label_layout::Area> = self
-            .electrical_tags()
-            .into_iter()
+            .cached_electrical_tags()
+            .iter()
             .map(|(anchor, text)| {
                 super::label_layout::Area::centered(
                     (anchor.x, anchor.y),
-                    super::electrical::tag_size(&text),
+                    super::electrical::tag_size(text),
                 )
             })
             .collect();

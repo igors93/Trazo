@@ -749,17 +749,14 @@ impl Project {
     pub fn load_schedule(&self) -> LoadSchedule {
         let settings = self.electrical;
         let mut schedule = LoadSchedule::default();
-        let mut numbers: Vec<u32> = self
-            .electrical_devices()
-            .filter_map(|device| device.electrical.and_then(|data| data.circuit))
-            .collect();
-        numbers.sort_unstable();
-        numbers.dedup();
-        for number in numbers {
-            let devices: Vec<&Fixture> = self
-                .electrical_devices()
-                .filter(|device| device.electrical.and_then(|d| d.circuit) == Some(number))
-                .collect();
+        let mut by_circuit: std::collections::BTreeMap<u32, Vec<&Fixture>> =
+            std::collections::BTreeMap::new();
+        for device in self.electrical_devices() {
+            if let Some(number) = device.electrical.and_then(|data| data.circuit) {
+                by_circuit.entry(number).or_default().push(device);
+            }
+        }
+        for (number, devices) in by_circuit {
             let mut lighting = 0;
             let mut general = 0;
             let mut specific = 0;

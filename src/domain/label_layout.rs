@@ -170,23 +170,29 @@ impl Project {
             }
         }
         if self.category_visible(LayerCategory::Electrical) {
-            for (anchor, text) in self.electrical_tags() {
-                let (width, height) = super::electrical::tag_size(&text);
+            for (anchor, text) in self.cached_electrical_tags().iter() {
+                let (width, height) = super::electrical::tag_size(text);
                 let half = Point::new(width / 2.0, height / 2.0);
                 boxes.push((anchor.minus(half), anchor.translated(half)));
             }
-            for mark in self.conduit_marks() {
-                if let super::conduits::PlanMark::Text { anchor, text } = mark {
-                    let (width, height) = super::electrical::tag_size(&text);
-                    let half = Point::new(width / 2.0, height / 2.0);
-                    boxes.push((anchor.minus(half), anchor.translated(half)));
+            if !self.conduits.is_empty() {
+                for mark in self.cached_conduit_marks().iter() {
+                    if let super::conduits::PlanMark::Text { anchor, text } = mark {
+                        let (width, height) = super::electrical::tag_size(text);
+                        let half = Point::new(width / 2.0, height / 2.0);
+                        boxes.push((anchor.minus(half), anchor.translated(half)));
+                    }
                 }
             }
         }
-        if self.category_visible(LayerCategory::Structure) {
-            for mark in self.structure_marks() {
+        if self.category_visible(LayerCategory::Structure)
+            && (!self.structure.beams.is_empty()
+                || !self.structure.slabs.is_empty()
+                || self.fixtures.iter().any(|f| f.kind.is_structural()))
+        {
+            for mark in self.cached_structure_marks().iter() {
                 if let super::conduits::PlanMark::Text { anchor, text } = mark {
-                    let (width, height) = super::electrical::tag_size(&text);
+                    let (width, height) = super::electrical::tag_size(text);
                     let half = Point::new(width / 2.0, height / 2.0);
                     boxes.push((anchor.minus(half), anchor.translated(half)));
                 }

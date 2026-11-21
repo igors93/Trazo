@@ -185,13 +185,8 @@ pub(super) fn paint_conduits(painter: &Painter, view: ViewTransform, project: &P
     if project.conduits.is_empty() {
         return;
     }
-    paint_marks(
-        painter,
-        view,
-        project.conduit_marks(),
-        theme::ELECTRICAL,
-        50.0,
-    );
+    let marks = project.cached_conduit_marks();
+    paint_marks(painter, view, &marks, theme::ELECTRICAL, 50.0);
 }
 
 /// Beams and the P, V, L and S labels of the formwork plan.
@@ -202,13 +197,8 @@ pub(super) fn paint_structure(painter: &Painter, view: ViewTransform, project: &
     {
         return;
     }
-    paint_marks(
-        painter,
-        view,
-        project.structure_marks(),
-        theme::STRUCTURE,
-        35.0,
-    );
+    let marks = project.cached_structure_marks();
+    paint_marks(painter, view, &marks, theme::STRUCTURE, 35.0);
 }
 
 /// Plan marks in one colour: heavy lines always, the rest once the plan is
@@ -216,7 +206,7 @@ pub(super) fn paint_structure(painter: &Painter, view: ViewTransform, project: &
 fn paint_marks(
     painter: &Painter,
     view: ViewTransform,
-    marks: Vec<crate::domain::conduits::PlanMark>,
+    marks: &[crate::domain::conduits::PlanMark],
     ink: Color32,
     detail_scale: f32,
 ) {
@@ -230,12 +220,12 @@ fn paint_marks(
                 dashed,
                 heavy,
             } => {
-                if !heavy && !detailed {
+                if !*heavy && !detailed {
                     continue;
                 }
-                let stroke = Stroke::new(if heavy { 1.3 } else { 1.0 }, ink);
-                let points: Vec<Pos2> = points.into_iter().map(|p| view.to_screen(p)).collect();
-                if dashed {
+                let stroke = Stroke::new(if *heavy { 1.3 } else { 1.0 }, ink);
+                let points: Vec<Pos2> = points.iter().map(|&p| view.to_screen(p)).collect();
+                if *dashed {
                     painter.extend(egui::Shape::dashed_line(&points, stroke, 6.0, 4.0));
                 } else {
                     painter.add(egui::Shape::line(points, stroke));
@@ -243,14 +233,14 @@ fn paint_marks(
             }
             PlanMark::Circle { center, radius } if detailed => {
                 painter.circle_stroke(
-                    view.to_screen(center),
-                    radius as f32 * view.scale,
+                    view.to_screen(*center),
+                    *radius as f32 * view.scale,
                     Stroke::new(1.0, ink),
                 );
             }
             PlanMark::Text { anchor, text } if detailed => {
-                let galley = painter.layout_no_wrap(text, FontId::proportional(size), ink);
-                let rect = Rect::from_center_size(view.to_screen(anchor), galley.size());
+                let galley = painter.layout_no_wrap(text.clone(), FontId::proportional(size), ink);
+                let rect = Rect::from_center_size(view.to_screen(*anchor), galley.size());
                 painter.rect_filled(
                     rect.expand2(egui::vec2(2.0, 0.5)),
                     2.0,
@@ -271,9 +261,11 @@ pub(super) fn paint_electrical_tags(painter: &Painter, view: ViewTransform, proj
         return;
     }
     let size = (view.scale * 0.13).clamp(9.5, 13.0);
-    for (anchor, text) in project.electrical_tags() {
-        let galley = painter.layout_no_wrap(text, FontId::proportional(size), theme::ELECTRICAL);
-        let rect = Rect::from_center_size(view.to_screen(anchor), galley.size());
+    let tags = project.cached_electrical_tags();
+    for (anchor, text) in tags.iter() {
+        let galley =
+            painter.layout_no_wrap(text.clone(), FontId::proportional(size), theme::ELECTRICAL);
+        let rect = Rect::from_center_size(view.to_screen(*anchor), galley.size());
         // A light backdrop keeps the tag readable over walls and furniture.
         painter.rect_filled(
             rect.expand2(egui::vec2(3.0, 1.0)),

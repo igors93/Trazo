@@ -1,6 +1,7 @@
 pub mod annotations;
 pub mod areas;
 pub mod blocks;
+pub mod cache;
 pub mod circulation;
 pub mod compare;
 pub mod conduits;

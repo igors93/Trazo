@@ -377,21 +377,29 @@ impl Project {
         let mut circuit_board: std::collections::HashMap<u32, u64> =
             std::collections::HashMap::new();
         if tree.panel.is_some() {
+            let mut loads_by_circuit: std::collections::HashMap<
+                u32,
+                Vec<&super::fixtures::Fixture>,
+            > = std::collections::HashMap::new();
+            for device in self.electrical_devices() {
+                if matches!(
+                    device.kind.role(),
+                    Some(
+                        DeviceRole::Lighting
+                            | DeviceRole::GeneralOutlet
+                            | DeviceRole::SpecificOutlet
+                    )
+                ) && let Some(num) = device.electrical.and_then(|d| d.circuit)
+                {
+                    loads_by_circuit.entry(num).or_default().push(device);
+                }
+            }
             for row in &mut schedule.circuits {
                 let mut boards_seen: Vec<u64> = Vec::new();
-                let loads: Vec<(f64, f64)> = self
-                    .electrical_devices()
-                    .filter(|device| device.electrical.and_then(|d| d.circuit) == Some(row.number))
-                    .filter(|device| {
-                        matches!(
-                            device.kind.role(),
-                            Some(
-                                DeviceRole::Lighting
-                                    | DeviceRole::GeneralOutlet
-                                    | DeviceRole::SpecificOutlet
-                            )
-                        )
-                    })
+                let loads: Vec<(f64, f64)> = loads_by_circuit
+                    .get(&row.number)
+                    .into_iter()
+                    .flat_map(|list| list.iter().copied())
                     .filter_map(|device| {
                         if let Some(board_id) = self.serving_board(&tree, device)
                             && !boards_seen.contains(&board_id)

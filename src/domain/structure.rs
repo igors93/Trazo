@@ -1555,27 +1555,25 @@ impl Project {
             }
             i
         }
-        let shared_column = |a: &Beam, b: &Beam| {
-            let cols = |beam: &Beam| {
-                [beam.start_support(), beam.end_support()]
-                    .into_iter()
-                    .filter_map(|s| match s {
-                        BeamSupport::Column { id } => Some(id),
-                        BeamSupport::Beam { .. } => None,
-                    })
-                    .collect::<Vec<_>>()
-            };
-            let ca = cols(a);
-            let cb = cols(b);
-            ca.iter().any(|id| cb.contains(id))
-        };
-        for i in 0..beams.len() {
-            for j in i + 1..beams.len() {
-                let (a, b) = (&beams[i], &beams[j]);
-                let (da, db) = (direction(a.1, a.2), direction(b.1, b.2));
-                if shared_column(&a.0, &b.0) && da.cross(db).abs() < 0.02 {
-                    let (ra, rb) = (root(&mut parent, i), root(&mut parent, j));
-                    parent[ra] = rb;
+        // Index beams by their column supports so union-find only checks
+        // collinear beams meeting at the same column (O(B) instead of O(B²)).
+        let mut by_column: HashMap<u64, Vec<usize>> = HashMap::new();
+        for (idx, (beam, _, _)) in beams.iter().enumerate() {
+            for support in [beam.start_support(), beam.end_support()] {
+                if let BeamSupport::Column { id } = support {
+                    by_column.entry(id).or_default().push(idx);
+                }
+            }
+        }
+        let dirs: Vec<Point> = beams.iter().map(|(_, a, b)| direction(*a, *b)).collect();
+        for group in by_column.values() {
+            for a_idx in 0..group.len() {
+                for b_idx in a_idx + 1..group.len() {
+                    let (i, j) = (group[a_idx], group[b_idx]);
+                    if dirs[i].cross(dirs[j]).abs() < 0.02 {
+                        let (ra, rb) = (root(&mut parent, i), root(&mut parent, j));
+                        parent[ra] = rb;
+                    }
                 }
             }
         }
@@ -2468,12 +2466,13 @@ impl Project {
             }
         };
         let mut labelled: HashSet<String> = HashSet::new();
+        let beam_map: HashMap<u64, Beam> = self.valid_beams().map(|b| (b.id, *b)).collect();
         let lines = self.beam_lines();
         for line in &lines {
             // The longest span carries the line's label.
             let mut longest: Option<(f64, Point, Point, Beam)> = None;
             for id in &line.spans {
-                let Some(beam) = self.valid_beams().find(|b| b.id == *id).copied() else {
+                let Some(&beam) = beam_map.get(id) else {
                     continue;
                 };
                 let Some((pa, pb)) = self.beam_endpoints(&beam) else {

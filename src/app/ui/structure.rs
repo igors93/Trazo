@@ -209,7 +209,7 @@ impl FloorPlanApp {
         let mut edits: Vec<StructureEdit> = Vec::new();
         let tab_id = egui::Id::unique("trazo_structure_tab");
         let mut tab: u8 = ctx.data(|data| data.get_temp(tab_id)).unwrap_or(0);
-        let report = self.project.structure_report();
+        let report = self.project.cached_structure_report();
         let labels = self.project.structure_labels();
         let preview = if tab == 1 {
             svg_preview(
