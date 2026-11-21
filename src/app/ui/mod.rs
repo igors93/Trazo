@@ -11,6 +11,7 @@ mod dimensions;
 mod electrical;
 mod ergonomics;
 mod floors;
+mod foundations;
 mod header;
 pub(super) mod icons;
 pub(in crate::app) use icons::Glyph;

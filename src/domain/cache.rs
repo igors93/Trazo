@@ -220,6 +220,13 @@ fn structure_fingerprint(project: &Project) -> u64 {
     for slab in &project.structure.slabs {
         hash_slab(&mut h, slab);
     }
+    project.structure.balance_beams.len().hash(&mut h);
+    for beam in &project.structure.balance_beams {
+        beam.id.hash(&mut h);
+        beam.column.hash(&mut h);
+        beam.anchor.hash(&mut h);
+        hash_f64(&mut h, beam.width_m);
+    }
     // Include upper floors in the fingerprint so multi-storey load-path
     // caches invalidate when an upper storey changes.
     project.floors.active_floor_id.hash(&mut h);

@@ -421,8 +421,48 @@ impl FloorPlanApp {
                     discipline.label().to_lowercase()
                 )))
             }
+            "gerar_vigas_alavanca" => self.apply_change(
+                Some("Nenhuma sapata de divisa precisa de viga alavanca, ou todas já têm."),
+                |project| {
+                    let (added, alone) = project.generate_balance_beams();
+                    if added == 0 && alone == 0 {
+                        return Err("Nenhuma sapata de divisa fora do centro do pilar.".to_owned());
+                    }
+                    Ok(Change::new(format!(
+                        "{added} viga(s) alavanca lançada(s){}.",
+                        if alone > 0 {
+                            format!(
+                                "; {alone} pilar(es) de divisa sem pilar interno a até 10 m para ancorar"
+                            )
+                        } else {
+                            String::new()
+                        }
+                    ))
+                    .data(json!({ "vigas_alavanca": added, "sem_ancoragem": alone })))
+                },
+            ),
+            "ligar_viga_alavanca" => {
+                let column = element_id(args, "de")?;
+                let anchor = element_id(args, "para")?;
+                self.apply_change(None, |project| {
+                    let id = project.add_balance_beam(column, anchor)?;
+                    Ok(Change::new(format!(
+                        "Viga alavanca {id} do pilar {column} ao pilar {anchor}."
+                    ))
+                    .data(json!({ "id": id })))
+                })
+            }
+            "remover_viga_alavanca" => {
+                let id = element_id(args, "id")?;
+                self.apply_change(None, |project| {
+                    if !project.delete_balance_beam(id) {
+                        return Err("Viga alavanca não encontrada.".to_owned());
+                    }
+                    Ok(Change::new(format!("Viga alavanca {id} removida.")))
+                })
+            }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca ou vista.".to_owned(),
             ),
         }
     }
@@ -652,6 +692,23 @@ impl FloorPlanApp {
             "vigas": beams,
             "pilares": columns,
             "sapatas": footings,
+            "vigas_alavanca": report.balance_beams.iter().map(|b| json!({
+                "id": b.id,
+                "rotulo": b.label,
+                "pilar_divisa": b.column,
+                "pilar_interno": b.anchor,
+                "vao_m": round1(b.span_m * 100.0) / 100.0,
+                "excentricidade_cm": round1(b.eccentricity_m * 100.0),
+                "carga_pilar_kn": round1(b.column_load_kn),
+                "reacao_sapata_kn": round1(b.reaction_kn),
+                "alivio_kn": round1(b.relief_kn),
+                "levanta_apoio": b.uplift(),
+                "momento_knm": round1(b.moment_knm),
+                "cortante_kn": round1(b.shear_kn),
+                "secao_cm": b.height_m.map(|h| section_cm(b.width_m, h)),
+                "armadura_superior_cm2": (b.top_steel_cm2 * 100.0).round() / 100.0,
+                "barras": b.bars,
+            })).collect::<Vec<_>>(),
             "pilares_desalinhados": misaligned,
             "cargas_concentradas": concentrated_loads,
             "armaduras": {

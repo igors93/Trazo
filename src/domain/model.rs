@@ -927,6 +927,9 @@ impl Project {
         self.structure
             .beams
             .retain(|beam| beam.from != id && beam.to != id);
+        self.structure
+            .balance_beams
+            .retain(|beam| beam.column != id && beam.anchor != id);
         self.fixtures.len() < before
     }
 

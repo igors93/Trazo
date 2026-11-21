@@ -321,11 +321,17 @@ pub struct ProjectStructure {
     pub slabs: Vec<Slab>,
     #[serde(default, skip_serializing_if = "StructureSettings::is_default")]
     pub settings: StructureSettings,
+    /// Balance beams from boundary columns to interior ones (#144).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub balance_beams: Vec<super::foundations::BalanceBeam>,
 }
 
 impl ProjectStructure {
     pub fn is_empty(&self) -> bool {
-        self.beams.is_empty() && self.slabs.is_empty() && self.settings.is_default()
+        self.beams.is_empty()
+            && self.slabs.is_empty()
+            && self.settings.is_default()
+            && self.balance_beams.is_empty()
     }
 }
 
@@ -743,6 +749,8 @@ pub struct StructureReport {
     pub footings: Vec<FootingResult>,
     pub concentrated_loads: Vec<ConcentratedLoadResult>,
     pub misaligned_columns: Vec<MisalignedColumn>,
+    /// Balance beams centring the boundary footings (#144).
+    pub balance_beams: Vec<super::foundations::BalanceBeamResult>,
     pub warnings: Vec<String>,
 }
 
@@ -1333,7 +1341,13 @@ impl Project {
         self.structure
             .slabs
             .retain(|slab| rooms.contains(&slab.room_id));
+        let columns: HashSet<u64> = self.structural_columns().map(|c| c.id).collect();
+        let balance_before = self.structure.balance_beams.len();
+        self.structure
+            .balance_beams
+            .retain(|b| columns.contains(&b.column) && columns.contains(&b.anchor));
         before - self.structure.beams.len() - self.structure.slabs.len()
+            + (balance_before - self.structure.balance_beams.len())
     }
 
     /// Where a column or footing lands for the pointer at `point`: on the
@@ -2812,7 +2826,9 @@ impl Project {
             report.columns.push(result);
         }
 
-        // Footings.
+        // Footings. Balance beams (#144) centre the boundary footings under
+        // the lever's reaction and relieve the interior columns.
+        let balance = self.balance_effects(&report.columns);
         let mut footings: Vec<&Fixture> = self
             .fixtures
             .iter()
@@ -2826,7 +2842,12 @@ impl Project {
                 .filter_map(|c| Some((c, self.column(c.id)?)))
                 .find(|(_, col)| footing.contains(col.center));
             let column = col_fixture.map(|(c, _)| c);
-            let load = column.map_or(0.0, |c| c.load_kn);
+            let centred = balance.centred_load.get(&footing.id).copied();
+            let load = centred.unwrap_or_else(|| {
+                column.map_or(0.0, |c| {
+                    (c.load_kn - balance.relief.get(&c.id).copied().unwrap_or(0.0)).max(0.0)
+                })
+            });
             let area = 1.05 * load / settings.soil_kpa.max(10.0);
             // Same overhang on all sides of the column.
             let ((cw, cd), (ex, ey)) = col_fixture.map_or(((0.0, 0.0), (0.0, 0.0)), |(_, col)| {
@@ -2836,7 +2857,12 @@ impl Project {
                     (col.depth, col.width)
                 };
                 let local = footing.to_local(col.center);
-                (dims, (local.x.abs(), local.y.abs()))
+                // The balance beam takes the moment of the offset.
+                if centred.is_some() {
+                    (dims, (0.0, 0.0))
+                } else {
+                    (dims, (local.x.abs(), local.y.abs()))
+                }
             });
             let diff = cw - cd;
             let depth = ((-diff + (diff * diff + 4.0 * area).sqrt()) / 2.0).max(0.0);
@@ -2938,6 +2964,25 @@ impl Project {
                 ));
             }
         }
+        for beam in &balance.results {
+            if beam.uplift() {
+                report.warnings.push(format!(
+                    "{}: o alívio de {} kN levanta o pilar {} ({} kN); aumente o peso no apoio interno ou use sapata corrida.",
+                    beam.label,
+                    decimal(beam.relief_kn, 1),
+                    beam.anchor,
+                    decimal(beam.anchor_load_kn, 1)
+                ));
+            }
+            if beam.height_m.is_none() {
+                report.warnings.push(format!(
+                    "{}: nenhuma seção até 120 cm de altura resiste ao momento de {} kN·m; aproxime o pilar interno ou aumente a largura.",
+                    beam.label,
+                    decimal(beam.moment_knm, 1)
+                ));
+            }
+        }
+        report.balance_beams = balance.results;
         report.slabs.sort_by(|a, b| natural(&a.label, &b.label));
         report.beams.sort_by(|a, b| natural(&a.label, &b.label));
         report
@@ -3084,6 +3129,9 @@ impl Project {
                 text: format!("{text} {} kN", decimal(value, 1)),
             });
         }
+        // Balance beams, dashed (below ground).
+        let report = self.cached_structure_report();
+        marks.extend(self.balance_beam_marks(&report.balance_beams));
         super::label_layout::resolve_plan_mark_labels(&mut marks, &[]);
         marks
     }

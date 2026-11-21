@@ -89,6 +89,14 @@ impl FloorPlanApp {
                 self.size_footings();
             }
             if tip(
+                ribbon_button(ui, Icon::Glyph(Glyph::Join), "Vigas alavanca", false, false),
+                "Liga cada pilar de divisa, cuja sapata fica fora do centro para não sair do lote, ao pilar interno mais próximo por uma viga alavanca, que centra a sapata e descarrega o momento",
+            )
+            .clicked()
+            {
+                self.generate_balance_beams();
+            }
+            if tip(
                 ribbon_button(
                     ui,
                     Icon::CirculationCheck,

@@ -18,6 +18,7 @@ pub mod ergonomics;
 pub mod finishes;
 pub mod fixtures;
 pub mod floors;
+pub mod foundations;
 pub mod geometry;
 pub mod hatch;
 pub mod history;

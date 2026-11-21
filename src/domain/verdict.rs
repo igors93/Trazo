@@ -524,6 +524,61 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
             checks: vec![check],
         });
     }
+    for beam in &report.balance_beams {
+        let mut checks = vec![Check::new(
+            "Alívio no apoio interno",
+            beam.relief_kn / beam.anchor_load_kn.max(1e-6),
+            if beam.uplift() {
+                format!(
+                    "O pilar {} é levantado pela viga: ponha mais peso nele (bloco de concreto) ou troque por sapata corrida.",
+                    beam.anchor
+                )
+            } else {
+                format!("O pilar {} segura a viga sem ser levantado.", beam.anchor)
+            },
+            format!(
+                "R1 = P1·l/(l − e) = {} kN (P1 = {} kN, l = {} m, e = {} cm); ΔP = {} kN ≤ N2 = {} kN; metade de ΔP descontada da sapata interna (NBR 6122).",
+                decimal(beam.reaction_kn, 1),
+                decimal(beam.column_load_kn, 1),
+                decimal(beam.span_m, 2),
+                decimal(beam.eccentricity_m * 100.0, 0),
+                decimal(beam.relief_kn, 1),
+                decimal(beam.anchor_load_kn, 1)
+            ),
+        )];
+        match beam.height_m {
+            Some(h) => checks.push(Check::new(
+                "Seção",
+                beam.flexure_ratio.max(beam.shear_ratio),
+                format!(
+                    "Viga {}×{} cm com {} resiste ao momento de {} kN·m.",
+                    decimal(beam.width_m * 100.0, 0),
+                    decimal(h * 100.0, 0),
+                    beam.bars,
+                    decimal(beam.moment_knm, 1)
+                ),
+                format!(
+                    "M = P1·e = {} kN·m, V = {} kN; Md = 1,4 M, x/d ≤ 0,45, τwd ≤ τRd2; As = {} cm² (CA-50).",
+                    decimal(beam.moment_knm, 1),
+                    decimal(beam.shear_kn, 1),
+                    decimal(beam.top_steel_cm2, 2)
+                ),
+            )),
+            None => checks.push(Check::fail(
+                "Seção",
+                "Nenhuma seção até 120 cm resiste: aproxime o pilar interno ou alargue a viga.".to_owned(),
+                format!("M = {} kN·m.", decimal(beam.moment_knm, 1)),
+            )),
+        }
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!(
+                "Viga alavanca {} ({} → {})",
+                beam.label, beam.column, beam.anchor
+            ),
+            checks,
+        });
+    }
     for misaligned in &report.misaligned_columns {
         let element = format!(
             "Pilar {} ({})",
