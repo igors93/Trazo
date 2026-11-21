@@ -85,8 +85,10 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
     let (min, max) = project
         .bounds()
         .unwrap_or((Point::new(0.0, 0.0), Point::new(8.0, 6.0)));
-    let plan_w_mm = (max.x - min.x).max(0.5) * mm_per_m;
-    let plan_h_mm = (max.y - min.y).max(0.5) * mm_per_m;
+    let plan_w_m = (max.x - min.x).max(0.5);
+    let plan_h_m = (max.y - min.y).max(0.5);
+    let plan_w_mm = plan_w_m * mm_per_m;
+    let plan_h_mm = plan_h_m * mm_per_m;
 
     let reserve_bottom = if layout.title_block.show_title_block {
         50.0
@@ -94,6 +96,7 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
         14.0
     };
     let draw_area_h = (frame_h - reserve_bottom).max(20.0);
+    let plan_cropped = !layout.scale.fits(plan_w_m, plan_h_m, frame_w, draw_area_h);
     let origin_x = frame_x + (frame_w - plan_w_mm) * 0.5;
     let origin_y = frame_y + (draw_area_h - plan_h_mm) * 0.5;
 
@@ -972,6 +975,33 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
     if project.schedules.include_on_sheet {
         write_schedules_on_sheet(&mut svg, project, frame_x, frame_y, frame_w, frame_h);
     }
+    if plan_cropped {
+        let suggested =
+            crate::domain::sheet::DrawingScale::best_fit(plan_w_m, plan_h_m, frame_w, draw_area_h);
+        let suggestion = if suggested.fits(plan_w_m, plan_h_m, frame_w, draw_area_h) {
+            format!("use folha maior ou escala {}", suggested.label())
+        } else {
+            "use uma folha maior".to_owned()
+        };
+        let msg = format!(
+            "AVISO: planta recortada na folha {} em {} ({suggestion}).",
+            layout.size.short_name(),
+            layout.scale.label()
+        );
+        let box_w = (frame_w - 28.0).clamp(60.0, 155.0);
+        let bx = frame_x + 3.0;
+        let by = frame_y + 3.0;
+        let _ = writeln!(
+            svg,
+            "<g id=\"aviso-recorte\" data-cropped=\"true\">\n\
+             <rect x=\"{bx:.2}\" y=\"{by:.2}\" width=\"{box_w:.2}\" height=\"6.5\" rx=\"1.0\" fill=\"#fff3cd\" stroke=\"#b45309\" stroke-width=\"0.35\"/>\n\
+             <text x=\"{:.2}\" y=\"{:.2}\" font-family=\"{font_family}\" font-size=\"2.4\" font-weight=\"700\" fill=\"#92400e\">{}</text>\n\
+             </g>",
+            bx + 2.5,
+            by + 4.2,
+            escaped(&msg)
+        );
+    }
     svg.push_str("</svg>");
     svg
 }
@@ -1557,5 +1587,26 @@ mod tests {
         assert!(markup.contains("01/02"));
         assert!(markup.contains("R01"));
         assert!(markup.contains("Revisão de cotas"));
+    }
+
+    #[test]
+    fn cropped_sheet_includes_warning_banner_and_fitting_sheet_omits_it() {
+        let mut project = Project::default();
+        project.sheet = SheetLayout::standard(PaperSize::A4, Orientation::Portrait);
+        project.sheet.scale = DrawingScale::S1_25;
+        // 10 m × 8 m at 1:25 needs 400 × 320 mm — overflows A4 portrait.
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(10.0, 8.0), "Salão")
+            .unwrap();
+        let cropped = scaled_sheet_svg(&project);
+        assert!(cropped.contains("id=\"aviso-recorte\""));
+        assert!(cropped.contains("data-cropped=\"true\""));
+        assert!(cropped.contains("AVISO: planta recortada"));
+
+        // At 1:100 on A3 landscape (420 × 297 mm) it fits comfortably.
+        project.sheet = SheetLayout::standard(PaperSize::A3, Orientation::Landscape);
+        project.sheet.scale = DrawingScale::S1_100;
+        let fitting = scaled_sheet_svg(&project);
+        assert!(!fitting.contains("id=\"aviso-recorte\""));
     }
 }
