@@ -180,13 +180,27 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
   - `docs/engineering.md` documents every calculation (loads, slabs, beams, columns, the load path across floors, footings and the electrical installation) with its formula, standard clause, assumptions, limits and the test that checks it.
   - `src/domain/validation.rs` adds the validation suite: the AISC table 3-23 beam cases (simple span, two spans, three spans, central point loads), the 45° yield-line areas, the NBR 6118 Branson inertia and punching formulas, the middle-third footing pressure, and load conservation within a floor and across floors.
 - **Tests:** 11 new tests, all passing; full suite, Clippy and format pass on Windows (CI covers Linux and macOS).
-- **Commit:** recorded in the next log update.
+- **Commit:** `3b1b4db`.
 - **Limitations:**
   - The references are closed-form textbook results and standard formulas, not a comparison with a commercial program; the frame comparison comes with #94.
   - Three uncertain references were stated conservatively in the guide.
   - The utility profiles are documented as unverified (B21).
 
-### #101 Traffic-light results with margins and explanations — 🔵 In progress
+### #101 Traffic-light results with margins and explanations — ✅ Done
+
+- **Changes:**
+  - `src/domain/verdict.rs` turns every structural and electrical check into a utilisation (demand over capacity) with a light, a margin, a plain-language sentence on what to change and the technical detail with its standard. Light thresholds: green up to 85 %, yellow up to 100 %, red above.
+  - Checks covered: slab thickness and support; beam height, deflection and width; column section and smallest side; footing area, soil pressure, punching and overturning; transfer and unsupported columns; circuit current and voltage drop.
+  - The new *Segurança* window (ribbon *Estrutura* and *Elétrica*) lists every element worst first, with the overall status, a filter, optional technical detail and the assumptions.
+  - `pre_dimensionamento` and `quadro_de_cargas` return the traffic light per element (`semaforo`) and the assumptions (`premissas`).
+- **Tests:** 4 new unit tests (thresholds, a generated house with no red and every element judged, a shallow beam turning red with what to change, the electrical checks) and an MCP assertion. The full suite, Clippy and format pass on an export of exactly this commit.
+- **Commit:** recorded in the next log update.
+- **Limitations:**
+  - The window was checked by compiling and by unit tests of its data, not by a usability test.
+  - The structure and electrical dialogs still show their own warnings next to it.
+  - Conduit fill and the service entrance have no light yet.
+
+### #102 Applicability limits per module — 🔵 In progress
 
 ## Next up
 
@@ -354,8 +368,8 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | --- | --- | --- | --- | --- | --- |
 | 99 | Load path across floors: columns stacked through the storeys, loads summed from the real floors above, misaligned columns flagged as transfers (B03) | P0 | M | M3 | ✅ |
 | 100 | Engineering methods guide (`docs/engineering.md`): every calculation with its formula, standard, assumptions and limits, validated in CI against published worked examples (B12) | P0 | M | M3 | ✅ |
-| 101 | Results as a traffic light: margin to the limit, the assumptions used, and a plain-language explanation of what to change | P0 | M | M3 | 🔵 In progress |
-| 102 | Applicability limits per module (storeys, spans, loads, soils); outside them Trazo refuses to size and asks for a professional | P0 | S | M3 | ⬜ |
+| 101 | Results as a traffic light: margin to the limit, the assumptions used, and a plain-language explanation of what to change | P0 | M | M3 | ✅ |
+| 102 | Applicability limits per module (storeys, spans, loads, soils); outside them Trazo refuses to size and asks for a professional | P0 | S | M3 | 🔵 In progress |
 | 103 | Pre-sizing report (*memorial*) as PDF: inputs, assumptions, results, warnings and drawings, for a licensed professional to review and sign (ART or RRT) | P0 | M | M3 | ⬜ |
 | 104 | Release gate: a sheet set cannot be marked *Liberado para obra* with open red results unless a reviewer (name and CREA/CAU number) signs them off | P1 | S | M3 | ⬜ |
 

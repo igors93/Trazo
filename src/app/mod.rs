@@ -57,6 +57,7 @@ enum DocDialog {
     Ergonomics,
     Electrical,
     Structure,
+    Safety,
     Underlay,
     Xref,
     Compare,

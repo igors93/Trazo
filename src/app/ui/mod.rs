@@ -24,6 +24,7 @@ mod print;
 pub(in crate::app) use print::PrintDialogState;
 mod repeat;
 mod report_problem;
+mod safety;
 mod schedules;
 mod selection;
 mod sheet;
@@ -135,6 +136,7 @@ impl FloorPlanApp {
         self.ergonomics_dialog(&context);
         self.electrical_dialog(&context);
         self.structure_dialog(&context);
+        self.safety_dialog(&context);
         self.underlay_dialog(&context);
         self.poll_xrefs(&context);
         self.xref_dialog(&context);

@@ -83,6 +83,20 @@ impl FloorPlanApp {
             {
                 self.size_footings();
             }
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::CirculationCheck,
+                    "Segurança",
+                    self.active_doc_dialog == DocDialog::Safety,
+                    false,
+                ),
+                "Semáforo de todas as verificações: verde com folga, amarelo no limite, vermelho não atende, com o que mudar",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = DocDialog::Safety;
+            }
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Exibição", |ui| {

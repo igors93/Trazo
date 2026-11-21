@@ -35,6 +35,30 @@ fn room_arg(project: &Project, args: &Value) -> Result<u64, String> {
         .ok_or_else(|| format!("Nenhum cômodo chamado '{name}'."))
 }
 
+/// Traffic-light verdicts as tool output (#101).
+pub(super) fn verdicts_json(verdicts: &[crate::domain::verdict::Verdict]) -> Value {
+    Value::Array(
+        verdicts
+            .iter()
+            .map(|verdict| {
+                json!({
+                    "elemento": verdict.element,
+                    "disciplina": verdict.discipline.label(),
+                    "semaforo": verdict.light().key(),
+                    "verificacoes": verdict.checks.iter().map(|check| json!({
+                        "nome": check.name,
+                        "semaforo": check.light.key(),
+                        "uso_pct": check.utilisation.is_finite().then(|| (check.utilisation * 1000.0).round() / 10.0),
+                        "folga_pct": check.utilisation.is_finite().then(|| (check.margin_percent() * 10.0).round() / 10.0),
+                        "o_que_fazer": check.simple,
+                        "detalhe": check.detail,
+                    })).collect::<Vec<_>>(),
+                })
+            })
+            .collect(),
+    )
+}
+
 fn round1(value: f64) -> f64 {
     (value * 10.0).round() / 10.0
 }
@@ -335,6 +359,8 @@ impl FloorPlanApp {
             "vigas": beams,
             "pilares": columns,
             "sapatas": footings,
+            "semaforo": verdicts_json(&crate::domain::verdict::structure_verdicts(&report)),
+            "premissas": crate::domain::verdict::assumptions(&self.project),
             "alertas": report.warnings,
         })))
     }
@@ -365,6 +391,14 @@ mod tests {
             .unwrap();
         assert_eq!(report["pilares"].as_array().unwrap().len(), 6);
         assert_eq!(report["lajes"].as_array().unwrap().len(), 2);
+        // Every element gets its traffic light (#101).
+        let lights = report["semaforo"].as_array().unwrap();
+        assert!(!lights.is_empty());
+        assert!(
+            lights
+                .iter()
+                .all(|v| v["verificacoes"].as_array().is_some_and(|c| !c.is_empty()))
+        );
         assert!(report["alertas"].as_array().unwrap().is_empty(), "{report}");
         let beam = report["vigas"][0]["vaos"][0]["id"].as_u64().unwrap();
         assert!(

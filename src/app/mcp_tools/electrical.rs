@@ -336,6 +336,7 @@ impl FloorPlanApp {
             "eletrodutos": conduits,
             "pontos_sem_eletroduto": tree.unreached,
             "sem_circuito": schedule.unassigned,
+            "semaforo": super::structure::verdicts_json(&crate::domain::verdict::electrical_verdicts(&schedule)),
             "alertas": schedule.warnings,
         })))
     }
