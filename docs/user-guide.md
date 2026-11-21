@@ -199,6 +199,28 @@ Columns and footings are objects like furniture: they select, move, copy, rotate
 
 Warnings name each element that needs attention, including a support that a short span next to a long one would lift. Sheets that show the structure add a *Quadro de pilares e sapatas* table. This is pre-sizing for a first layout: the structural design belongs to a licensed engineer.
 
+### Safety and limits
+
+**Segurança** (on the *Estrutura* and *Elétrica* tabs) shows every engineering check as a traffic light:
+
+- **green** passes with a comfortable margin, using up to 85 % of the limit;
+- **yellow** passes with a small margin;
+- **red** fails.
+
+Each element is listed worst first, with its margin and one sentence on what to change. **Detalhes técnicos** adds the formula and the standard, and the assumptions close the list.
+
+Trazo refuses to size what its methods do not cover, and says why:
+
+- more than three storeys;
+- a storey taller than 4 m;
+- a live load above 5 kN/m²;
+- a beam span over 7 m;
+- a smaller slab span over 6.5 m;
+- footings on soil weaker than 100 kPa;
+- an electrical demand above 75 kVA.
+
+A project-wide limit blocks *Gerar estrutura* and *Ajustar sapatas*; an element beyond its limit shows no numbers, only the reason and a pointer to a professional. The methods and limits are in [Engineering methods](engineering.md).
+
 ## Discipline views
 
 Architecture, electrical and structure are views of the same model. The tabs choose what the plan shows:

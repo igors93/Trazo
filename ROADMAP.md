@@ -194,13 +194,27 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
   - The new *Segurança* window (ribbon *Estrutura* and *Elétrica*) lists every element worst first, with the overall status, a filter, optional technical detail and the assumptions.
   - `pre_dimensionamento` and `quadro_de_cargas` return the traffic light per element (`semaforo`) and the assumptions (`premissas`).
 - **Tests:** 4 new unit tests (thresholds, a generated house with no red and every element judged, a shallow beam turning red with what to change, the electrical checks) and an MCP assertion. The full suite, Clippy and format pass on an export of exactly this commit.
-- **Commit:** recorded in the next log update.
+- **Commit:** `53e445b`.
 - **Limitations:**
   - The window was checked by compiling and by unit tests of its data, not by a usability test.
   - The structure and electrical dialogs still show their own warnings next to it.
   - Conduit fill and the service entrance have no light yet.
 
-### #102 Applicability limits per module — 🔵 In progress
+### #102 Applicability limits per module — ✅ Done
+
+- **Changes:**
+  - `src/domain/limits.rs` sets the limits of the methods: at most 3 storeys (real floors or the *floors* setting), storey height 4 m, live load 5 kN/m², beam span 7 m, smaller slab span 6.5 m, soil at least 100 kPa for footings, demand 75 kVA for a low-voltage connection.
+  - A project-wide violation refuses the whole structural sizing. *Gerar estrutura* and *Ajustar sapatas* are blocked in the interface and over MCP, the traffic light shows a single red *Estrutura* verdict, and the structure window opens with the reason.
+  - An element beyond its limit keeps its place on the plan but gets a red *Fora dos limites* with no sizing numbers, the reason and what to do.
+  - `pre_dimensionamento` returns `limites` (refusal and refused elements).
+  - The limits are documented in `docs/engineering.md` and the user guide.
+- **Tests:** 4 new tests (a house within the limits, a 9 m span refused with an explanation and no numbers, too many storeys, too much load and too tall a storey refusing the whole structure, footings on soft soil), plus the existing traffic-light tests. The full suite, Clippy and format pass on an export of exactly this commit.
+- **Commit:** recorded in the next log update.
+- **Limitations:**
+  - The limit values are conservative choices for houses and small buildings, not values taken from a standard.
+  - The structure window still lists the numbers of refused elements in its own tables (the traffic light, the report and MCP do not).
+
+### #103 Pre-sizing report for professional review — 🔵 In progress
 
 ## Next up
 
@@ -369,8 +383,8 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 99 | Load path across floors: columns stacked through the storeys, loads summed from the real floors above, misaligned columns flagged as transfers (B03) | P0 | M | M3 | ✅ |
 | 100 | Engineering methods guide (`docs/engineering.md`): every calculation with its formula, standard, assumptions and limits, validated in CI against published worked examples (B12) | P0 | M | M3 | ✅ |
 | 101 | Results as a traffic light: margin to the limit, the assumptions used, and a plain-language explanation of what to change | P0 | M | M3 | ✅ |
-| 102 | Applicability limits per module (storeys, spans, loads, soils); outside them Trazo refuses to size and asks for a professional | P0 | S | M3 | 🔵 In progress |
-| 103 | Pre-sizing report (*memorial*) as PDF: inputs, assumptions, results, warnings and drawings, for a licensed professional to review and sign (ART or RRT) | P0 | M | M3 | ⬜ |
+| 102 | Applicability limits per module (storeys, spans, loads, soils); outside them Trazo refuses to size and asks for a professional | P0 | S | M3 | ✅ |
+| 103 | Pre-sizing report (*memorial*) as PDF: inputs, assumptions, results, warnings and drawings, for a licensed professional to review and sign (ART or RRT) | P0 | M | M3 | 🔵 In progress |
 | 104 | Release gate: a sheet set cannot be marked *Liberado para obra* with open red results unless a reviewer (name and CREA/CAU number) signs them off | P1 | S | M3 | ⬜ |
 
 ### C. Simulation core

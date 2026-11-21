@@ -73,6 +73,9 @@ impl FloorPlanApp {
                     if project.walls.is_empty() {
                         return Err("Desenhe as paredes antes de gerar a estrutura.".to_owned());
                     }
+                    if let Some(refusal) = crate::domain::limits::structural_refusal(project) {
+                        return Err(refusal);
+                    }
                     let report = project.generate_structure();
                     project.ensure_default_layers();
                     Ok(Change::new(format!(
@@ -241,6 +244,9 @@ impl FloorPlanApp {
             "ajustar_sapatas" => self.apply_change(
                 Some("As sapatas já têm o tamanho que o solo pede."),
                 |project| {
+                    if let Some(refusal) = crate::domain::limits::structural_refusal(project) {
+                        return Err(refusal);
+                    }
                     let changed = project.size_footings();
                     Ok(Change::new(format!("{changed} sapata(s) redimensionada(s).")))
                 },
@@ -359,7 +365,17 @@ impl FloorPlanApp {
             "vigas": beams,
             "pilares": columns,
             "sapatas": footings,
-            "semaforo": verdicts_json(&crate::domain::verdict::structure_verdicts(&report)),
+            "semaforo": verdicts_json(&crate::domain::verdict::structure_verdicts(
+                &self.project,
+                &report,
+            )),
+            "limites": {
+                "recusado": crate::domain::limits::structural_refusal(&self.project),
+                "elementos_fora": crate::domain::limits::element_violations(&report)
+                    .iter()
+                    .map(|v| json!({ "elemento": v.element, "motivo": v.message }))
+                    .collect::<Vec<_>>(),
+            },
             "premissas": crate::domain::verdict::assumptions(&self.project),
             "alertas": report.warnings,
         })))

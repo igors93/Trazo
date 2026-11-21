@@ -24,6 +24,7 @@ pub mod junctions;
 pub mod label_layout;
 pub mod layers;
 pub mod library;
+pub mod limits;
 pub mod masonry;
 pub mod model;
 pub mod notes;

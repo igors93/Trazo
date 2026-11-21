@@ -181,8 +181,50 @@ fn cm(metres: f64) -> String {
     format!("{:.0} cm", metres * 100.0)
 }
 
-/// The structural checks, from the pre-sizing report.
-pub fn structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
+/// The structural checks, from the pre-sizing report, with the
+/// applicability limits (#102) applied: a project beyond the limits gets one
+/// red verdict instead of any sizing, and an element beyond them gets a red
+/// "Fora dos limites" with no numbers.
+pub fn structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Verdict> {
+    let project_wide = super::limits::structure_violations(project);
+    if !project_wide.is_empty() {
+        return vec![Verdict {
+            discipline: Discipline::Structure,
+            element: "Estrutura".to_owned(),
+            checks: project_wide
+                .into_iter()
+                .map(|v| {
+                    let detail = limit_detail(&v);
+                    Check::fail("Fora dos limites", v.message, detail)
+                })
+                .collect(),
+        }];
+    }
+    let elements = super::limits::element_violations(report);
+    let mut verdicts = sized_structure_verdicts(report);
+    for verdict in &mut verdicts {
+        let refused: Vec<Check> = elements
+            .iter()
+            .filter(|v| v.element == verdict.element)
+            .map(|v| Check::fail("Fora dos limites", v.message.clone(), limit_detail(v)))
+            .collect();
+        if !refused.is_empty() {
+            verdict.checks = refused;
+        }
+    }
+    verdicts
+}
+
+fn limit_detail(violation: &super::limits::Violation) -> String {
+    format!(
+        "Valor {} acima do limite de aplicação {} (docs/engineering.md, limites de aplicação).",
+        decimal(violation.value, 2),
+        decimal(violation.limit, 2)
+    )
+}
+
+/// The structural checks of every element, before the limits.
+fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
     let mut verdicts = Vec::new();
     for slab in &report.slabs {
         let mut checks = Vec::new();
@@ -450,7 +492,18 @@ pub fn structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
 
 /// The electrical checks, from the load schedule.
 pub fn electrical_verdicts(schedule: &LoadSchedule) -> Vec<Verdict> {
-    let mut verdicts = Vec::new();
+    let mut verdicts: Vec<Verdict> = super::limits::electrical_violations(schedule)
+        .into_iter()
+        .map(|v| Verdict {
+            discipline: Discipline::Electrical,
+            element: v.element.clone(),
+            checks: vec![Check::fail(
+                "Fora dos limites",
+                v.message.clone(),
+                limit_detail(&v),
+            )],
+        })
+        .collect();
     for row in &schedule.circuits {
         let mut checks = Vec::new();
         match (row.breaker_a, row.wire_mm2) {
@@ -528,7 +581,7 @@ pub fn assumptions(project: &Project) -> Vec<String> {
 
 /// Every verdict of the project, worst first.
 pub fn safety_summary(project: &Project) -> SafetySummary {
-    let mut verdicts = structure_verdicts(&project.structure_report());
+    let mut verdicts = structure_verdicts(project, &project.structure_report());
     verdicts.extend(electrical_verdicts(&project.load_schedule()));
     verdicts.sort_by(|a, b| {
         b.light()

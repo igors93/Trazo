@@ -38,6 +38,10 @@ impl FloorPlanApp {
             self.message = "Desenhe as paredes antes de gerar a estrutura.".to_owned();
             return;
         }
+        if let Some(refusal) = crate::domain::limits::structural_refusal(&self.project) {
+            self.message = refusal;
+            return;
+        }
         let previous = self.project.clone();
         let report = self.project.generate_structure();
         if report.total() == 0 {
@@ -55,6 +59,10 @@ impl FloorPlanApp {
 
     /// Resizes the footings to what the soil asks for.
     pub(crate) fn size_footings(&mut self) {
+        if let Some(refusal) = crate::domain::limits::structural_refusal(&self.project) {
+            self.message = refusal;
+            return;
+        }
         let previous = self.project.clone();
         let changed = self.project.size_footings();
         if changed == 0 {
@@ -221,6 +229,9 @@ impl FloorPlanApp {
             None
         };
         let mut settings = self.project.structure.settings;
+        // Beyond the applicability limits (#102) Trazo refuses to size.
+        let refusal = crate::domain::limits::structural_refusal(&self.project);
+        let refused = crate::domain::limits::element_violations(&report);
         egui::Window::new("Estrutura · pré-dimensionamento e esforços")
             .open(&mut open)
             .collapsible(false)
@@ -236,6 +247,20 @@ impl FloorPlanApp {
                     .size(12.0)
                     .color(TEXT_2),
                 );
+                if let Some(refusal) = &refusal {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(format!("Fora dos limites do Trazo: {refusal}"))
+                            .font(strong(12.5))
+                            .color(DANGER),
+                    );
+                }
+                for violation in &refused {
+                    ui.label(
+                        RichText::new(format!("{}: {}", violation.element, violation.message))
+                            .color(DANGER),
+                    );
+                }
                 ui.add_space(6.0);
                 ui.horizontal_wrapped(|ui| {
                     generate = primary_button(ui, "Gerar estrutura").clicked();

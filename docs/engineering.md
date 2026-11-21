@@ -12,6 +12,7 @@ This guide documents every engineering calculation in Trazo: the formula, the st
 - [Load path across floors](#load-path-across-floors)
 - [Footings](#footings)
 - [Electrical installation](#electrical-installation)
+- [Applicability limits](#applicability-limits)
 - [Validation suite](#validation-suite)
 - [Known limitations](#known-limitations)
 
@@ -151,6 +152,22 @@ Allowable soil pressures by class (`SoilClass`): soft clay 80 kPa, medium clay 1
 
 The regional utility profiles (`UtilityProfile`: generic, Enel SP, CPFL, CEMIG, COPEL) change the supply thresholds, the minimum main breaker and feeder, and scale the demand. Their values have **not yet been checked against the published utility standards** (bug [B21](../ROADMAP.md#b21-regional-utility-profiles-are-not-traced-to-their-standards)); until they are, treat them as placeholders and check the local standard.
 
+## Applicability limits
+
+Each method holds only within a range of buildings (`src/domain/limits.rs`). Outside it Trazo refuses to size, says why and points to a professional, rather than showing numbers that look trustworthy and are not.
+
+| Limit | Value | Scope | Why |
+| --- | --- | --- | --- |
+| Storeys carried | at most 3 (real floors with structure, or the *floors* setting) | whole structure | The column rule ignores slenderness and frame action, and wind becomes significant |
+| Storey height | at most 4.0 m | whole structure | Columns are sized without a buckling check |
+| Live load | at most 5.0 kN/m² | whole structure | Beyond it the use is not residential or office (storage, industry) |
+| Beam span | at most 7.0 m | that beam span | The L/10–L/12 height rule and simple-support analysis lose accuracy on long spans |
+| Smaller slab span | at most 6.5 m | that slab | The thickness tables end there |
+| Soil for footings | at least 100 kPa | each footing | Soft soils need a soil survey and possibly deep foundations or a raft |
+| Electrical demand | at most 75 kVA | service entrance | Above it the utility requires a dedicated transformer |
+
+These values are conservative choices for houses and small buildings, not values from a standard. The traffic light ([#101](../ROADMAP.md#101-traffic-light-results-with-margins-and-explanations--done)) shows a refused element in red as *Fora dos limites*, with no sizing numbers.
+
 ## Validation suite
 
 The suite lives in `src/domain/validation.rs` and runs with `cargo test` on Windows, Linux and macOS in CI. Each test reproduces a published result.
@@ -178,4 +195,4 @@ Further checks live next to their modules: `nbr_5410_minimums_for_lighting_and_o
 - Slabs have no moment or deflection check of their own (#116).
 - Wind, earthquake and load combinations beyond the simplified ones are not considered (#105).
 - Regional values (utility profiles, soil classes, demand tables) are typical, not site-specific (B21, #140).
-- Applicability limits (#102) and traffic-light margins (#101) are being added; until then, warnings are the only signal.
+- The applicability limits are conservative choices, not values from a standard; a professional may well design beyond them with other methods.
