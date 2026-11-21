@@ -50,6 +50,8 @@ pub struct SheetPreview {
 /// Converts physical sheet dimensions in millimetres to hundredths of an inch,
 /// the unit used by Windows `PrintDocument` / `PaperSize` for 1:1 physical
 /// printing without shrink-to-fit distortion.
+// Only the Windows print path calls it; the tests use it on every platform.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub fn sheet_hundredths_of_inch(width_mm: f64, height_mm: f64) -> (i32, i32) {
     let w = ((width_mm / 25.4) * 100.0).round().max(100.0) as i32;
     let h = ((height_mm / 25.4) * 100.0).round().max(100.0) as i32;
@@ -239,6 +241,8 @@ pub fn list_printers() -> Vec<String> {
 /// Builds the PowerShell script that opens the native Windows `PrintDialog` (or
 /// prints directly) using `System.Drawing.Printing.PrintDocument` at exact 1:1
 /// physical millimetres without shrink-to-fit.
+// Only the Windows print path calls it; the tests use it on every platform.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 pub fn windows_print_script(
     image_path: &Path,
     sheet_mm: (f64, f64),
