@@ -99,8 +99,16 @@ impl FloorPlanApp {
                     }
                     let report = project.generate_structure();
                     project.ensure_default_layers();
+                    let skipped = if report.skipped > 0 {
+                        format!(
+                            " {} pilar(es) não couberam no terreno e ficaram de fora.",
+                            report.skipped
+                        )
+                    } else {
+                        String::new()
+                    };
                     Ok(Change::new(format!(
-                        "Estrutura gerada: {} pilar(es), {} viga(s), {} laje(s), {} sapata(s).",
+                        "Estrutura gerada: {} pilar(es), {} viga(s), {} laje(s), {} sapata(s).{skipped}",
                         report.columns, report.beams, report.slabs, report.footings
                     ))
                     .data(json!({
@@ -108,6 +116,7 @@ impl FloorPlanApp {
                         "vigas": report.beams,
                         "lajes": report.slabs,
                         "sapatas": report.footings,
+                        "pilares_fora": report.skipped,
                     })))
                 },
             ),
@@ -122,7 +131,9 @@ impl FloorPlanApp {
                 let width = centimetres(args, "largura_cm")?.unwrap_or(default_w);
                 let depth = centimetres(args, "profundidade_cm")?.unwrap_or(default_d);
                 self.apply_change(None, |project| {
-                    let (center, turns, angle_rad) = project.structural_placement_with_angle(point);
+                    // Flush inside the lot on a boundary wall (B23).
+                    let (center, turns, angle_rad) =
+                        project.structural_placement_fitted(kind, point, width, depth);
                     let id = project
                         .add_fixture(kind, center, width, depth, turns)
                         .ok_or_else(|| {

@@ -1052,8 +1052,10 @@ impl FloorPlanApp {
         let (width, depth) = kind.default_size();
         // Columns and footings sit on wall junctions and centre lines.
         if matches!(kind, FixtureKind::Column | FixtureKind::Footing) {
-            let (center, quarter_turns, angle_rad) =
-                self.project.structural_placement_with_angle(point);
+            // Flush inside the lot on a boundary wall (B23).
+            let (center, quarter_turns, angle_rad) = self
+                .project
+                .structural_placement_fitted(kind, point, width, depth);
             return Fixture {
                 id: 0,
                 kind,

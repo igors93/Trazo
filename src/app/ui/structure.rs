@@ -227,8 +227,16 @@ impl FloorPlanApp {
         self.project.ensure_default_layers();
         if self.record_change(previous) {
             self.message = format!(
-                "Estrutura gerada: {} pilar(es), {} viga(s), {} laje(s) e {} sapata(s). Veja o pré-dimensionamento.",
-                report.columns, report.beams, report.slabs, report.footings
+                "Estrutura gerada: {} pilar(es), {} viga(s), {} laje(s) e {} sapata(s). Veja o pré-dimensionamento.{}",
+                report.columns,
+                report.beams,
+                report.slabs,
+                report.footings,
+                if report.skipped > 0 {
+                    format!(" {} pilar(es) não couberam no terreno.", report.skipped)
+                } else {
+                    String::new()
+                }
             );
         }
     }

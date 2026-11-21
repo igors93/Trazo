@@ -118,7 +118,7 @@ Reviewed on 2026-11-21. Sources:
 | B20 | Medium | Quantities | The materials schedule counts blocks with a fixed 19 cm block height instead of the masonry's own height, so walls of shorter bricks get too few blocks. | Pendente — encontrado durante implementação (see [B20](#b20-materials-schedule-ignores-the-block-height)) |
 | B21 | Medium | Data | The regional utility profiles carry utility names and standards but thresholds and demand multipliers that are not traced to those standards. | Pendente — encontrado durante implementação (see [B21](#b21-regional-utility-profiles-are-not-traced-to-their-standards)) |
 | B22 | Low | Sheets | The sheet panel checks whether the plan fits (and computes *Melhor escala*) using `ph - 16 mm`, ignoring the 50 mm title-block reservation used during export. | Pendente — encontrado durante implementação (see [B22](#b22-sheet-panel-fit-check-ignores-title-block-height)) |
-| B23 | High | Structure | Columns and footings cannot stand on a boundary wall: they snap to the wall's centre line, which lies on the lot line, and are refused for leaving the lot; *Gerar estrutura* silently leaves those walls without columns. | Pendente — encontrado durante implementação (see [B23](#b23-columns-on-boundary-walls-are-refused-or-silently-skipped)) |
+| B23 | High | Structure | Columns and footings cannot stand on a boundary wall: they snap to the wall's centre line, which lies on the lot line, and are refused for leaving the lot; *Gerar estrutura* silently leaves those walls without columns. | ✅ Fixed: columns and footings snapped to a boundary wall are moved flush inside the lot (`fit_inside_lot`, `structural_placement_fitted`), *Gerar estrutura* places them and reports any it could not (`skipped`); regression test `columns_and_footings_on_a_boundary_wall_stand_flush_inside_the_lot`. |
 
 ### New bugs found during implementation
 
@@ -159,7 +159,7 @@ Recorded while working through the [implementation log](#implementation-log), an
 
 #### B23: Columns on boundary walls are refused or silently skipped
 
-- **Status:** Pendente — encontrado durante implementação (found while laying out the structure of a real project, the gourmet area of *Casa com área de lazer*, through MCP).
+- **Status:** ✅ Fixed (found while laying out the structure of a real project, the gourmet area of *Casa com área de lazer*, through MCP).
 - **Severity:** High. In Brazilian lots houses are commonly built against the boundary, and those walls are the ones that most need columns and special footings.
 - **Description:** `Project::structural_placement` snaps a column or footing to the nearest wall junction or centre line within 0.5 m. A wall drawn on the lot line has its centre line on the boundary, so the column extends half its section past the lot, and `add_fixture` refuses it ("o ponto precisa ficar dentro do terreno"). `generate_structure` calls `add_fixture` the same way and ignores the refusal, so it leaves boundary walls without columns without saying so.
 - **Expected:** columns on a boundary wall stand flush inside the lot (offset by half their section), with boundary footings (#144). *Gerar estrutura* reports any column it could not place.

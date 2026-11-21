@@ -753,6 +753,9 @@ pub struct StructureGeneration {
     pub beams: usize,
     pub footings: usize,
     pub slabs: usize,
+    /// Columns that could not be placed (outside the lot even when moved
+    /// inside it), so the caller can say so instead of staying silent.
+    pub skipped: usize,
 }
 
 impl StructureGeneration {
@@ -1358,6 +1361,94 @@ impl Project {
         best.map_or((point, 0, 0.0), |(_, at, turns, angle)| (at, turns, angle))
     }
 
+    /// Moves a fixture of this size just inside the lot when part of it would
+    /// stand outside: a column or footing on a boundary wall ends up flush
+    /// with the lot line instead of being refused (B23). The centre comes
+    /// back unchanged when it already fits or there is no lot.
+    pub fn fit_inside_lot(
+        &self,
+        kind: FixtureKind,
+        center: Point,
+        width: f64,
+        depth: f64,
+        quarter_turns: u8,
+        angle_rad: f64,
+    ) -> Point {
+        let Some(terrain) = &self.terrain else {
+            return center;
+        };
+        let outline = terrain.outline();
+        if outline.len() < 3 {
+            return center;
+        }
+        let mut probe = Fixture {
+            id: 0,
+            kind,
+            center,
+            width,
+            depth,
+            quarter_turns: quarter_turns % 4,
+            angle_rad,
+            electrical: None,
+            structural_load_kn: kind.default_structural_load_kn(),
+        };
+        let limit = width.max(depth);
+        for _ in 0..6 {
+            let (low, high) = probe.bounds();
+            let outside = [
+                low,
+                Point::new(high.x, low.y),
+                high,
+                Point::new(low.x, high.y),
+            ]
+            .into_iter()
+            .find(|corner| !terrain.contains(*corner));
+            let Some(corner) = outside else {
+                break;
+            };
+            let nearest = (0..outline.len())
+                .map(|i| {
+                    super::geometry::nearest_point_on_segment(
+                        corner,
+                        outline[i],
+                        outline[(i + 1) % outline.len()],
+                    )
+                    .0
+                })
+                .min_by(|a, b| a.distance(corner).total_cmp(&b.distance(corner)));
+            let Some(nearest) = nearest else {
+                break;
+            };
+            let Some(direction) = nearest.minus(corner).normalized() else {
+                break;
+            };
+            let step = nearest.distance(corner) + 0.001;
+            probe.center = probe.center.translated(direction.scaled(step));
+            if probe.center.distance(center) > limit {
+                return center;
+            }
+        }
+        probe.center
+    }
+
+    /// Where a column or footing of this size lands for the pointer at
+    /// `point`: on the nearest wall junction or centre line, then moved just
+    /// inside the lot if it would cross the lot line.
+    pub fn structural_placement_fitted(
+        &self,
+        kind: FixtureKind,
+        point: Point,
+        width: f64,
+        depth: f64,
+    ) -> (Point, u8, f64) {
+        let (at, turns, angle) = self.structural_placement_with_angle(point);
+        (
+            self.fit_inside_lot(kind, at, width, depth, turns, angle),
+            turns,
+            angle,
+        )
+    }
+
     /// Same as [`structural_placement_with_angle`], returning position and quarter turns.
     #[cfg(test)]
     pub fn structural_placement(&self, point: Point) -> (Point, u8) {
@@ -1768,15 +1859,24 @@ impl Project {
             let (turns, angle) = wall_orientation(along);
             let b = round_up(wall.thickness().max(0.14), 0.01).min(0.30);
             for end in [wall.start, wall.end] {
-                if !near(self, end)
-                    && let Some(id) = self.add_fixture(FixtureKind::Column, end, 0.30, b, turns)
-                {
-                    if angle.abs() > 1e-9
-                        && let Some(f) = self.fixtures.iter_mut().find(|f| f.id == id)
-                    {
-                        f.angle_rad = angle;
+                if near(self, end) {
+                    continue;
+                }
+                // On a boundary wall the column stands flush inside the lot.
+                let at = self.fit_inside_lot(FixtureKind::Column, end, 0.30, b, turns, angle);
+                if near(self, at) {
+                    continue;
+                }
+                match self.add_fixture(FixtureKind::Column, at, 0.30, b, turns) {
+                    Some(id) => {
+                        if angle.abs() > 1e-9
+                            && let Some(f) = self.fixtures.iter_mut().find(|f| f.id == id)
+                        {
+                            f.angle_rad = angle;
+                        }
+                        report.columns += 1;
                     }
-                    report.columns += 1;
+                    None => report.skipped += 1,
                 }
             }
         }
@@ -1811,16 +1911,21 @@ impl Project {
                             && !blocked.iter().any(|(a, z)| s > a && s < z)
                     });
                 if let Some(s) = spot {
-                    let at = wall.start.lerp(wall.end, s / length);
-                    if !near(self, at)
-                        && let Some(id) = self.add_fixture(FixtureKind::Column, at, 0.30, b, turns)
-                    {
-                        if angle.abs() > 1e-9
-                            && let Some(f) = self.fixtures.iter_mut().find(|f| f.id == id)
-                        {
-                            f.angle_rad = angle;
+                    let on_axis = wall.start.lerp(wall.end, s / length);
+                    let at =
+                        self.fit_inside_lot(FixtureKind::Column, on_axis, 0.30, b, turns, angle);
+                    if !near(self, at) {
+                        match self.add_fixture(FixtureKind::Column, at, 0.30, b, turns) {
+                            Some(id) => {
+                                if angle.abs() > 1e-9
+                                    && let Some(f) = self.fixtures.iter_mut().find(|f| f.id == id)
+                                {
+                                    f.angle_rad = angle;
+                                }
+                                report.columns += 1;
+                            }
+                            None => report.skipped += 1,
                         }
-                        report.columns += 1;
                     }
                 }
             }
@@ -1831,7 +1936,10 @@ impl Project {
             let mut on: Vec<(f64, u64)> = self
                 .structural_columns()
                 .filter(|column| {
-                    super::geometry::distance_to_segment(column.center, wall.start, wall.end) < 0.06
+                    // A column flush with the lot line sits up to half its
+                    // section off the wall's centre line.
+                    let off = 0.06 + column.width.max(column.depth) / 2.0;
+                    super::geometry::distance_to_segment(column.center, wall.start, wall.end) < off
                 })
                 .map(|column| (column.center.distance(wall.start), column.id))
                 .filter(|(s, _)| *s <= length + 0.06)
@@ -1867,14 +1975,19 @@ impl Project {
                 .fixtures
                 .iter()
                 .any(|f| f.kind == FixtureKind::Footing && f.contains(column.center));
+            // A footing under a boundary column stays inside the lot, off
+            // centre from its column (a boundary footing, see #144).
+            let at = self.fit_inside_lot(
+                FixtureKind::Footing,
+                column.center,
+                0.60,
+                0.60,
+                column.quarter_turns,
+                column.angle_rad,
+            );
             if !has
-                && let Some(id) = self.add_fixture(
-                    FixtureKind::Footing,
-                    column.center,
-                    0.60,
-                    0.60,
-                    column.quarter_turns,
-                )
+                && let Some(id) =
+                    self.add_fixture(FixtureKind::Footing, at, 0.60, 0.60, column.quarter_turns)
             {
                 if column.angle_rad.abs() > 1e-9
                     && let Some(f) = self.fixtures.iter_mut().find(|f| f.id == id)
@@ -1901,6 +2014,30 @@ impl Project {
                 footing.width = result.needed_width_m;
                 footing.depth = result.needed_depth_m;
                 changed += 1;
+            }
+        }
+        // A footing that grew across the lot line moves back inside it.
+        let fitted: Vec<(u64, Point)> = self
+            .fixtures
+            .iter()
+            .filter(|f| f.kind == FixtureKind::Footing)
+            .map(|f| {
+                (
+                    f.id,
+                    self.fit_inside_lot(
+                        f.kind,
+                        f.center,
+                        f.width,
+                        f.depth,
+                        f.quarter_turns,
+                        f.angle_rad,
+                    ),
+                )
+            })
+            .collect();
+        for (id, center) in fitted {
+            if let Some(footing) = self.fixtures.iter_mut().find(|f| f.id == id) {
+                footing.center = center;
             }
         }
         changed
@@ -3561,6 +3698,64 @@ mod tests {
         assert_eq!(project.structure.beams, beams);
         assert_eq!(project.structure.slabs, slabs);
         assert_eq!(project.conduits, conduits);
+    }
+
+    #[test]
+    fn columns_and_footings_on_a_boundary_wall_stand_flush_inside_the_lot() {
+        // B23: a room against the left lot line (x = 0).
+        let mut project = Project::default();
+        project.set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 20.0));
+        project
+            .add_room(Point::new(0.0, 2.0), Point::new(5.0, 6.0), "Gourmet")
+            .unwrap();
+        // Placing a column on that wall moves it inside instead of refusing it.
+        let (at, turns, angle) = project.structural_placement_fitted(
+            FixtureKind::Column,
+            Point::new(0.05, 4.0),
+            0.30,
+            0.14,
+        );
+        assert!(
+            project
+                .add_fixture(FixtureKind::Column, at, 0.30, 0.14, turns)
+                .is_some()
+        );
+        assert!((at.x - 0.07).abs() < 0.002, "{at:?}");
+        let _ = angle;
+        // Generating lays every corner column, boundary ones flush, and
+        // reports nothing skipped; the beams still find them.
+        let mut generated = Project::default();
+        generated.set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 20.0));
+        generated
+            .add_room(Point::new(0.0, 2.0), Point::new(4.0, 6.0), "Gourmet")
+            .unwrap();
+        let report = generated.generate_structure();
+        assert_eq!(report.columns, 4, "{report:?}");
+        assert_eq!(report.skipped, 0);
+        assert_eq!(report.beams, 4);
+        let boundary: Vec<_> = generated
+            .structural_columns()
+            .filter(|c| c.center.x < 1.0)
+            .collect();
+        assert_eq!(boundary.len(), 2);
+        for column in &boundary {
+            let (low, _) = column.bounds();
+            assert!(low.x >= -1e-9, "inside the lot: {column:?}");
+        }
+        // Their footings sit inside the lot too, off centre from the column.
+        for footing in generated
+            .fixtures
+            .iter()
+            .filter(|f| f.kind == FixtureKind::Footing)
+        {
+            let (low, _) = footing.bounds();
+            assert!(low.x >= -1e-9, "{footing:?}");
+        }
+        let report = generated.structure_report();
+        assert!(
+            report.footings.iter().any(|f| f.eccentricity_m > 0.1),
+            "boundary footings are eccentric"
+        );
     }
 
     #[test]

@@ -157,6 +157,7 @@ When real upper floors exist, the *floors* multiplier is not used.
 | Check | Rule | Source |
 | --- | --- | --- |
 | Plan area | A = 1.05 · N / σadm (5 % for the footing's own weight), the same overhang on every side of the column, at least 60 cm | Usual pre-sizing |
+| Boundary walls | A column or footing on a wall along the lot line is moved flush inside the lot; the footing is then off-centre from its column and checked for eccentric pressure and overturning (a balance beam, #144, relieves it) | Lot line (Código Civil art. 1.299–1.301) |
 | Height | h = 2/3 of the largest overhang, at least 25 cm (rigid footing) | NBR 6118:2023, 22.6.1 (rigidity) |
 | Eccentric pressure | while e ≤ B/6: σmax = N/A · (1 + 6ex/Bx + 6ey/By); beyond, an effective area (Bx − 2ex)(By − 2ey) | Classic soil mechanics (middle-third rule), NBR 6122:2019 |
 | Overturning | FS = 1 / (2·(ex/Bx + ey/By)) ≥ 1.5 | NBR 6122:2019 |
