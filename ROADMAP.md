@@ -117,6 +117,7 @@ Reviewed on 2026-11-21. Sources:
 | B19 | Low | Fixtures | The minimum fixture size dropped from 20 to 10 cm for every kind so that 14 cm columns fit; it should be a per-kind minimum. | ✅ Fixed: `FixtureKind::min_size` enforces 10 cm for columns and 20 cm for all other fixtures; regression test `minimum_size_is_per_kind`. |
 | B20 | Medium | Quantities | The materials schedule counts blocks with a fixed 19 cm block height instead of the masonry's own height, so walls of shorter bricks get too few blocks. | Pendente — encontrado durante implementação (see [B20](#b20-materials-schedule-ignores-the-block-height)) |
 | B21 | Medium | Data | The regional utility profiles carry utility names and standards but thresholds and demand multipliers that are not traced to those standards. | Pendente — encontrado durante implementação (see [B21](#b21-regional-utility-profiles-are-not-traced-to-their-standards)) |
+| B22 | Low | Sheets | The sheet panel checks whether the plan fits (and computes *Melhor escala*) using `ph - 16 mm`, ignoring the 50 mm title-block reservation used during export. | Pendente — encontrado durante implementação (see [B22](#b22-sheet-panel-fit-check-ignores-title-block-height)) |
 
 ### New bugs found during implementation
 
@@ -143,6 +144,17 @@ Recorded while working through the [implementation log](#implementation-log), an
 - **Steps to reproduce:** open *Projeto elétrico › Quadro e diagrama unifilar*, pick a utility profile, and compare the supply limits with the utility's published standard.
 - **Affected:** `src/domain/distribution.rs` (`UtilityProfile`, `UtilityRules`), the board summary, the single-line diagram and `quadro_de_cargas`.
 - **Impact:** a wrong supply category or main breaker under a utility's name, which a newcomer would trust. Documented as unverified in `docs/engineering.md` until fixed (#140).
+
+#### B22: Sheet panel fit check ignores title-block height
+
+- **Status:** Pendente — encontrado durante implementação (found while fixing B16).
+- **Severity:** Low. Misleads the user in the Sheet panel and can make *Melhor escala* pick a scale that overflows into the title block.
+- **Description:** `src/app/ui/sheet.rs` computes both `DrawingScale::best_fit` and `scale.fits` with `(ph - 16.0).max(20.0)` regardless of whether `title_block.show_title_block` is enabled, whereas `scaled_sheet_svg` in `src/io/export/sheet.rs` reserves `50.0 mm` at the bottom when the title block is shown (`14.0 mm` when hidden).
+- **Expected:** Both the Sheet panel fit check / *Melhor escala* button and the SVG/PDF sheet exporter share the same drawing-area height calculation (reserving 50 mm when `show_title_block` is true, 14 mm otherwise).
+- **Observed:** A plan whose scaled height lies between `frame_h - 50 mm` and `frame_h - 16 mm` displays *"cabe na folha"* in the UI while the exported sheet stamps `#aviso-recorte` and overlaps the title block.
+- **Steps to reproduce:** Create a plan whose height at 1:50 on A4 landscape (`frame_h = 190 mm`) is between `140 mm` (`7.0 m`) and `174 mm` (`8.7 m`) with the title block enabled; open the Sheet panel (shows green "cabe na folha") and export the sheet (shows the crop warning banner).
+- **Affected:** `src/app/ui/sheet.rs` (lines 183 and 198) and `src/io/export/sheet.rs` (`scaled_sheet_svg`).
+- **Impact:** Inconsistent fit status between screen and exported sheet, breaking the *screen equals paper* principle.
 
 ## Implementation log
 
