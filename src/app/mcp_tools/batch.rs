@@ -70,6 +70,7 @@ impl FloorPlanApp {
         let (dirty, recovery) = (self.dirty, self.recovery_pending);
         let selection = self.selected();
         let plan_log = self.plan_log.clone();
+        let sync_report = self.sync_report.clone();
         self.batch_depth += 1;
         let mut results = Vec::with_capacity(plan.len());
         for (index, (name, arguments)) in plan.iter().enumerate() {
@@ -86,6 +87,7 @@ impl FloorPlanApp {
                 self.dirty = dirty;
                 self.recovery_pending = recovery;
                 self.plan_log = plan_log;
+                self.sync_report = sync_report;
                 self.set_selection_set(selection);
                 return Err(format!(
                     "Ação {} ({name}) falhou: {error} Nenhuma ação do lote foi aplicada.",

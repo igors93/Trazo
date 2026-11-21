@@ -59,11 +59,11 @@ Engineering features follow these rules. They apply to everything in milestones 
 | Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
 | Electrical design (#88–#91) | ✅ Devices, NBR 5410 forecast, circuits, conduits with wiring, phase balancing, voltage drop, demand, service entrance, single-line diagram |
 | Structure (#92–#94) | ✅ Columns, beams, slabs and footings on a formwork plan, pre-sizing with warnings · 🟡 analysis covers continuous beams only |
-| Discipline views (#96) | 🟡 Architecture, electrical and structure on screen and per sheet; plumbing joins with #72 |
-| Plumbing (#72) | ⬜ Not started |
+| Discipline views (#96) | ✅ Architecture, electrical, structure, foundations and prepared plumbing views on synchronized linked tabs sharing a single live model; hydraulic pipe calculations join with #72 |
+| Plumbing (#72) | ⬜ Not started (sanitary fixture view discipline and dependency tracking prepared) |
 | Simulation, materials and planning | ⬜ Beam analysis is the only simulation so far; no material catalogue, costs or schedule |
-| AI (#46–#52, #74–#76) | 🟡 43 MCP tools, real-time sync, tunnel token; no approval or read-only mode |
-| Experience (#65–#69) | 🟡 Tabbed documents (#95) shipped; levels, guided flows and English interface not started |
+| AI (#46–#52, #74–#76) | 🟡 45 MCP tools (including synchronized tabs/views, floors, cross-discipline dependencies, regional utility/soil profiles, beam-on-beam supports and target `projeto_id` guard), real-time sync, tunnel token; no approval or read-only mode |
+| Experience (#65–#69) | 🟡 Synchronized multi-view tabs (#95) with `.trazo` workspace persistence shipped; levels, guided flows and English interface not started |
 
 **Shipped since the last update:** #38, #39, #40, #43, #44, #45, #63, #70, #77, #79, #81, #88, #89, #90, #91, #92, #93 and #95. They have left the tables below.
 
@@ -228,6 +228,20 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
     - the formwork plan, beam forces, electrical plan and single-line diagram.
   - *Exportar memorial (PDF)* in the *Segurança* window saves it.
 - **Tests:** 4 new tests (every section on valid, numbered SVG pages; the PDF page count with the drawings; a refused project stating the refusal with no structural numbers or drawings; the date). The report of the *Casa Térrea* sample (14 report pages and 4 drawings) was exported and its pages inspected as images. The full suite, Clippy and format pass on an export of exactly this commit.
+
+### Synchronized multi-view tabs, cross-discipline dependencies and MCP upgrade — ✅ Done
+
+- **Changes:**
+  - Separated single-source-of-truth `SharedProject` (`Project`, `History`, `file_path`, `dirty`, `PlanLog`, `DependencySyncReport`) from lightweight `ViewTab` visual state (`discipline`, `floor_id`, `hidden_layers`, `selection`, `scale`, `pan`, `pane`) in `src/app/tabs.rs`, eliminating duplicate project copies across linked tabs.
+  - Added `Discipline::Foundations` and prepared `Discipline::Plumbing` view overlays (`src/domain/discipline.rs`, `src/app/canvas.rs`) plus backward-compatible `Project.workspace_tabs` persistence so reopening a `.trazo` file restores all linked discipline tabs and split view.
+  - Added `src/domain/dependencies.rs` (`propagate_dependencies`, `audit_dependencies`) and cached canvas review badges: wall-mounted electrical/sanitary fixtures safely follow moved walls (preserving IDs and conduits), footings follow moved columns, unsafe moves and structural off-axis shifts are preserved and flagged for manual review without auto-approving engineering checks.
+  - Fixed file reopening deduplication (`open_in_tab` + MCP `abrir_projeto`) and last-link close safety (closing a secondary linked view never discards unsaved work; closing the last link prompts when dirty).
+  - Upgraded MCP to 45 tools (`src/mcp/protocol.rs`, `src/app/mcp_tools/`): added `pavimentos` and `dependencias`, expanded `abas` with `nova_visao`/`vincular`/`configurar_visao`/`lado_a_lado`/`fechar` and project/tab hierarchy, added `projeto_id` safety guard, per-tab/discipline `imagem_da_planta` & `exportar_planta`, regional utility/soil/occupancy presets, secondary boards, beam-on-beam supports and upper-floor load reporting.
+- **Tests:** 4 dependency unit tests (`domain::dependencies::tests`), 2 MCP synchronized-tab tests (`app::mcp_tools::tabs::tests`) and all 10 mandatory end-to-end scenarios (`app::tabs::synced_tabs_tests::scenario_01`–`scenario_10`); full suite (387 passed), Clippy (`-D warnings`) and `cargo fmt --check` pass on Windows.
+- **Commits:** `ab7d9fc`, `480a71a`, `137ac4d`, `9cf57e8`, `bc97588`.
+- **Limitations:**
+  - `Discipline::Plumbing` highlights sanitary fixtures and flags wall/opening conflicts; hydraulic pipe routing and sizing remain scheduled for #72.
+  - Side-by-side split view locks both panes to the active camera zoom/pan for visual alignment.
 - **Commit:** recorded in the next log update.
 - **Limitations:**
   - There is no PDF viewer on the development machine. The PDF itself was checked by structure (page count) and the pages through their SVG, not opened in a reader.
