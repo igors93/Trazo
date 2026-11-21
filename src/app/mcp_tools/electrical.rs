@@ -84,6 +84,7 @@ impl FloorPlanApp {
                 quarter_turns: turns,
                 angle_rad: 0.0,
                 electrical: kind.default_electrical(),
+                structural_load_kn: None,
             }
         };
         let on_wall = kind.mounts_on_wall() && placed.center != point;

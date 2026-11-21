@@ -951,6 +951,7 @@ impl FloorPlanApp {
                 quarter_turns: turns,
                 angle_rad: 0.0,
                 electrical: kind.default_electrical(),
+                structural_load_kn: kind.default_structural_load_kn(),
             }
         };
         let moved_to_wall = against_wall && placed.center != point;

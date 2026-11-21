@@ -578,7 +578,15 @@ impl FloorPlanApp {
                                 let mut cm = slab.thickness_m * 100.0;
                                 ui.add(egui::DragValue::new(&mut cm).range(5.0..=60.0).speed(0.0).max_decimals(0).suffix(" cm"));
                                 ui.label(format!("{:.0} cm", slab.thickness_min_m * 100.0));
-                                ui.label(format!("{} kN/m²", decimal(slab.load_kn_m2, 2)));
+                                ui.label(if slab.point_load_kn > 0.0 {
+                                    format!(
+                                        "{} kN/m² + {} kN",
+                                        decimal(slab.load_kn_m2, 2),
+                                        decimal(slab.point_load_kn, 1)
+                                    )
+                                } else {
+                                    format!("{} kN/m²", decimal(slab.load_kn_m2, 2))
+                                });
                                 status(ui, slab.ok());
                                 ui.end_row();
                                 if kind != slab.kind {
@@ -589,6 +597,35 @@ impl FloorPlanApp {
                                 }
                             }
                         });
+                    }
+                    if !report.concentrated_loads.is_empty() {
+                        heading(ui, "Cargas concentradas");
+                        egui::Grid::new("structure_concentrated_loads")
+                            .striped(true)
+                            .spacing([14.0, 6.0])
+                            .show(ui, |ui| {
+                                titles(ui, &["Carga", "Tipo", "Valor", "Caminho", "Momento local", "Situação"]);
+                                for load in &report.concentrated_loads {
+                                    ui.label(RichText::new(&load.label).font(strong(12.5)));
+                                    ui.label(load.kind.label());
+                                    ui.label(format!("{} kN", decimal(load.load_kn, 1)));
+                                    ui.label(&load.support);
+                                    ui.label(if load.local_moment_knm_m > 0.0 {
+                                        format!("{} kN·m/m", decimal(load.local_moment_knm_m, 1))
+                                    } else {
+                                        "—".to_owned()
+                                    });
+                                    status(
+                                        ui,
+                                        load.supported
+                                            && (load.slab.is_none()
+                                                || load
+                                                    .punching_ratio
+                                                    .is_some_and(|ratio| ratio <= 1.0)),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
                     }
                     if !report.beams.is_empty() {
                         heading(ui, "Vigas (contínuas, valores característicos)");

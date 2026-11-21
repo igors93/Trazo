@@ -51,6 +51,8 @@ pub enum FixtureKind {
     // Structural elements (see `structure.rs`).
     Column,
     Footing,
+    WaterTank,
+    HeavyEquipment,
 }
 
 impl FixtureKind {
@@ -120,6 +122,8 @@ impl FixtureKind {
             Self::DataPoint => "Ponto de dados/TV",
             Self::Column => "Pilar",
             Self::Footing => "Sapata",
+            Self::WaterTank => "Caixa-d'água",
+            Self::HeavyEquipment => "Equipamento pesado",
         }
     }
 
@@ -163,6 +167,8 @@ impl FixtureKind {
             Self::DataPoint => "ponto_dados",
             Self::Column => "pilar",
             Self::Footing => "sapata",
+            Self::WaterTank => "caixa_agua",
+            Self::HeavyEquipment => "equipamento_pesado",
         }
     }
 
@@ -211,6 +217,8 @@ impl FixtureKind {
             Self::DataPoint => (0.26, 0.2),
             Self::Column => (0.30, 0.14),
             Self::Footing => (0.80, 0.80),
+            Self::WaterTank => (1.20, 1.20),
+            Self::HeavyEquipment => (1.00, 1.00),
         }
     }
 
@@ -244,7 +252,9 @@ impl FixtureKind {
             | Self::WallLight
             | Self::DataPoint
             | Self::Column
-            | Self::Footing => 0.0,
+            | Self::Footing
+            | Self::WaterTank
+            | Self::HeavyEquipment => 0.0,
         }
     }
 
@@ -284,6 +294,8 @@ impl FixtureKind {
                 | Self::Shelves
                 | Self::Wardrobe
                 | Self::TvStand
+                | Self::WaterTank
+                | Self::HeavyEquipment
         )
     }
 }
@@ -318,6 +330,9 @@ pub struct Fixture {
     /// Circuit, power and height, for electrical devices.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub electrical: Option<super::electrical::ElectricalData>,
+    /// Characteristic concentrated load applied to the structure, in kN.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structural_load_kn: Option<f64>,
 }
 
 pub fn valid_size(kind: FixtureKind, width: f64, depth: f64) -> bool {
@@ -489,7 +504,10 @@ pub fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolShape> {
         | FixtureKind::WallLight
         | FixtureKind::Panel
         | FixtureKind::DataPoint => super::electrical::symbol(kind, width, depth),
-        FixtureKind::Column | FixtureKind::Footing => super::structure::symbol(kind, width, depth),
+        FixtureKind::Column
+        | FixtureKind::Footing
+        | FixtureKind::WaterTank
+        | FixtureKind::HeavyEquipment => super::structure::symbol(kind, width, depth),
         FixtureKind::Counter => vec![
             outline,
             line(&[(-hw, hd - 0.05), (hw, hd - 0.05)], false, Detail),
@@ -812,6 +830,7 @@ mod tests {
             quarter_turns: turns,
             angle_rad: 0.0,
             electrical: None,
+            structural_load_kn: None,
         }
     }
 

@@ -1051,7 +1051,7 @@ impl FloorPlanApp {
     pub(super) fn fixture_placement(&self, kind: FixtureKind, point: Point) -> Fixture {
         let (width, depth) = kind.default_size();
         // Columns and footings sit on wall junctions and centre lines.
-        if kind.is_structural() {
+        if matches!(kind, FixtureKind::Column | FixtureKind::Footing) {
             let (center, quarter_turns, angle_rad) =
                 self.project.structural_placement_with_angle(point);
             return Fixture {
@@ -1063,6 +1063,7 @@ impl FloorPlanApp {
                 quarter_turns,
                 angle_rad,
                 electrical: None,
+                structural_load_kn: None,
             };
         }
         if !kind.mounts_on_wall() {
@@ -1082,6 +1083,7 @@ impl FloorPlanApp {
                 quarter_turns: 0,
                 angle_rad: 0.0,
                 electrical: kind.default_electrical(),
+                structural_load_kn: kind.default_structural_load_kn(),
             };
         }
         self.place_against_wall(kind, point, width, depth, self.fixture_turns)
@@ -1112,6 +1114,7 @@ impl FloorPlanApp {
             quarter_turns: turns % 4,
             angle_rad: 0.0,
             electrical: kind.default_electrical(),
+            structural_load_kn: kind.default_structural_load_kn(),
         };
         let wall = self
             .project

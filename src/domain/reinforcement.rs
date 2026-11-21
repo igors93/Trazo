@@ -705,7 +705,8 @@ pub fn build_reinforcement_report(
             ));
             continue;
         }
-        let characteristic_moment = slab.load_kn_m2 * slab.lx_m.powi(2) / 8.0;
+        let characteristic_moment =
+            slab.load_kn_m2 * slab.lx_m.powi(2) / 8.0 + slab.point_moment_knm_m;
         let demand = flexural_demand(1.0, slab.thickness_m, 0.025, characteristic_moment, fck);
         let main_length = slab.lx_m + 0.30;
         let main = choose_mesh(demand.required_cm2, slab.ly_m, main_length);

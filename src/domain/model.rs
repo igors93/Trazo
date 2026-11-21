@@ -844,6 +844,7 @@ impl Project {
             quarter_turns: quarter_turns % 4,
             angle_rad: 0.0,
             electrical: kind.default_electrical(),
+            structural_load_kn: kind.default_structural_load_kn(),
         };
         if !self.fixture_fits(&fixture) {
             return None;
@@ -1340,6 +1341,9 @@ impl Project {
             fixture.center.x.is_finite()
                 && fixture.center.y.is_finite()
                 && fixtures::valid_size(fixture.kind, fixture.width, fixture.depth)
+                && fixture
+                    .structural_load_kn
+                    .is_none_or(|load| load.is_finite() && (0.1..=2_000.0).contains(&load))
         });
         if self.fixtures.len() < orig_fixtures {
             warnings.push(format!(
@@ -1349,6 +1353,13 @@ impl Project {
         }
         for fixture in &mut self.fixtures {
             fixture.quarter_turns %= 4;
+            if matches!(
+                fixture.kind,
+                FixtureKind::WaterTank | FixtureKind::HeavyEquipment
+            ) && fixture.structural_load_kn.is_none()
+            {
+                fixture.structural_load_kn = fixture.kind.default_structural_load_kn();
+            }
             max_id = max_id.max(fixture.id);
         }
         let (dropped, highest) = self.repair_drawings();

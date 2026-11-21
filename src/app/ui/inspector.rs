@@ -172,6 +172,8 @@ impl FloorPlanApp {
             fixture.kind.label(),
             if fixture.kind.is_electrical() {
                 "Instalação elétrica"
+            } else if fixture.kind.is_structural() {
+                "Estrutura"
             } else {
                 "Objeto · equipamento"
             },
@@ -186,6 +188,22 @@ impl FloorPlanApp {
                 property_label(ui, "Profundidade");
                 let depth = metres_field(ui, &mut self.fixture_depth_text);
                 ui.end_row();
+                if fixture.structural_load_kn.is_some() {
+                    property_label(ui, "Carga característica");
+                    let load = ui
+                        .horizontal(|ui| {
+                            let response = ui.add(
+                                egui::TextEdit::singleline(&mut self.fixture_load_text)
+                                    .desired_width(92.0)
+                                    .align(egui::Align2::RIGHT_CENTER),
+                            );
+                            ui.label(RichText::new("kN").color(MUTED));
+                            response
+                        })
+                        .inner;
+                    ui.end_row();
+                    submit |= load.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
+                }
                 submit |= (width.lost_focus() || depth.lost_focus())
                     && ui.input(|i| i.key_pressed(Key::Enter));
             });

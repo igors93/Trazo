@@ -250,6 +250,19 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
 
 ### #56 Construction quantities — 🔵 In progress
 
+### #110 Reinforcement pre-sizing and steel schedule — 🟡 Partial
+
+- **Changes:** preliminary longitudinal/transverse reinforcement for beams and columns, meshes for slabs and footings, section-fit and shear warnings, theoretical mass, CSV/PDF schedule, UI and MCP output.
+- **Tests:** bar geometry/mass, agreement with the existing cracked-section steel model, all four element families and refusal outside applicability limits.
+- **Commit:** `a777a93`.
+- **Remaining:** executive anchorage/laps/bar drawings and clause-by-clause audit against NBR 6118:2026.
+
+### #113 Concentrated loads — ✅ Done
+
+- **Changes:** water-tank and heavy-equipment objects with editable footprint/load; direct beam or slab-to-nearest-edge load path; recalculation of beams, columns, footings and reinforcement; solid-slab local bending/punching, explicit lattice-slab refusal, plan labels, traffic light, PDF and MCP.
+- **Tests:** exact load conservation through column reactions, increased beam demand, local slab/punching result, unsupported warning and direct-on-beam path.
+- **Limitations:** nearest-edge distribution is preliminary and dynamic equipment effects remain input/professional responsibilities.
+
 ## Next up
 
 The first ten items on the path, in order. The other items of each milestone fit in around them.
@@ -439,7 +452,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 110 | Reinforcement pre-sizing for beams, columns, slabs and footings, with a bar schedule (*tabela de aço*), steel weights and cracked-section deflection (B12) | P1 | L | M5 | 🟡 Preliminary bars, stirrups/meshes, fit and shear warnings, steel mass, CSV/PDF schedule and MCP output; executive anchorage/laps/bar drawings and NBR 6118:2026 audit remain |
 | 111 | Lintels and sills (*vergas e contravergas*) for every opening, and masonry checks for infill and load-bearing walls (NBR 16868) | P1 | M | M5 | ⬜ |
 | 112 | Foundations: soil from a survey (SPT) or a soil-type table; footing, raft (*radier*) and bored-pile (*broca*) options; eccentricity, punching and overturning checks (B11) | P1 | L | M5 | 🟡 Square and rectangular footings sized by soil pressure |
-| 113 | Point loads on the structure: water tank (*caixa d'água*) and heavy equipment, checked on the slab or beam below | P0 | S | M5 | ⬜ |
+| 113 | Point loads on the structure: water tank (*caixa d'água*) and heavy equipment, checked on the slab or beam below | P0 | S | M5 | ✅ |
 | 114 | Roof structure pre-sizing: timber trusses and rafters, tile weights and wind uplift, from the roof plan (#71) | P1 | L | M5 | ⬜ |
 | 115 | Stairs, balconies and cantilevers: slab and beam checks with the extra care cantilevers need | P1 | M | M5 | ⬜ |
 | 116 | Two-way slab moments and deflections by tables (Czerny, Marcus), and L-shaped rooms split into rectangular panels (B06) | P1 | M | M5 | 🟡 Minimum thickness by span; loads shared by edge length |

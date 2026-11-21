@@ -463,6 +463,67 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
             checks,
         });
     }
+    for load in &report.concentrated_loads {
+        let check = if !load.supported {
+            Check::fail(
+                "Caminho de carga",
+                "A carga está sem apoio: mova-a sobre uma laje apoiada ou diretamente sobre vigas."
+                    .to_owned(),
+                format!(
+                    "{} de {} kN em ({}, {}) não alcança laje ou viga.",
+                    load.kind.label(),
+                    decimal(load.load_kn, 1),
+                    decimal(load.center.x, 2),
+                    decimal(-load.center.y, 2)
+                ),
+            )
+        } else if load.slab.is_some() && load.punching_ratio.is_none() {
+            Check::new(
+                "Verificação local",
+                1.0,
+                "A carga chega às vigas, mas a laje treliçada precisa de faixa maciça ou vigotas confirmadas pelo fabricante."
+                    .to_owned(),
+                format!(
+                    "{}; momento local adicional {} kN·m/m. Punção não é verificável sem a geometria das nervuras.",
+                    load.support,
+                    decimal(load.local_moment_knm_m, 1)
+                ),
+            )
+        } else if let Some(ratio) = load.punching_ratio {
+            Check::new(
+                "Punção local",
+                ratio,
+                if ratio <= 1.0 {
+                    "A base da carga não excede a resistência preliminar à punção da laje."
+                        .to_owned()
+                } else {
+                    "A carga pode perfurar a laje: aumente a base ou a espessura, ou apoie-a sobre vigas."
+                        .to_owned()
+                },
+                format!(
+                    "τSd/τRd = {} ao redor da base; momento local adicional {} kN·m/m (modelo preliminar NBR 6118 19.5).",
+                    decimal(ratio, 2),
+                    decimal(load.local_moment_knm_m, 1)
+                ),
+            )
+        } else {
+            Check::new(
+                "Caminho de carga",
+                0.0,
+                "A carga está aplicada diretamente sobre uma viga e entra na análise.".to_owned(),
+                format!(
+                    "{}; carga característica {} kN.",
+                    load.support,
+                    decimal(load.load_kn, 1)
+                ),
+            )
+        };
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Carga {} ({})", load.label, load.kind.label()),
+            checks: vec![check],
+        });
+    }
     for misaligned in &report.misaligned_columns {
         let element = format!(
             "Pilar {} ({})",
@@ -573,7 +634,9 @@ pub fn assumptions(project: &Project) -> Vec<String> {
             decimal(s.masonry_kn_m3, 0)
         ),
         "Vigas contínuas sobre apoios simples (pilares), sem vento nem sismo.".to_owned(),
+        "Caixas-d'água e equipamentos entram como cargas concentradas permanentes; a carga informada de equipamento deve incluir impacto/vibração quando aplicável.".to_owned(),
         "Pilares por carga axial com fator de posição; sem flambagem nem flexão composta.".to_owned(),
+        "Métodos estruturais documentados para a NBR 6118:2023; a edição 2026 ainda requer auditoria e revisão profissional.".to_owned(),
         "Fios de cobre com isolação de PVC, método B1, 30 °C; queda de tensão até 4 %.".to_owned(),
         "Métodos, normas e limites: docs/engineering.md.".to_owned(),
     ]

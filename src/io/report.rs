@@ -562,6 +562,44 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                 &rows,
             );
         }
+        if !report.concentrated_loads.is_empty() {
+            pages.subheading("Cargas concentradas");
+            let rows: Vec<_> = report
+                .concentrated_loads
+                .iter()
+                .map(|load| {
+                    (
+                        None,
+                        vec![
+                            load.label.clone(),
+                            load.kind.label().to_owned(),
+                            format!("{} kN", decimal(load.load_kn, 1)),
+                            load.support.clone(),
+                            if load.local_moment_knm_m > 0.0 {
+                                format!("{} kN·m/m", decimal(load.local_moment_knm_m, 1))
+                            } else {
+                                "—".to_owned()
+                            },
+                            if !load.supported {
+                                "sem apoio"
+                            } else if load.slab.is_some() && load.punching_ratio.is_none() {
+                                "revisar sistema"
+                            } else if load.punching_ratio.is_some_and(|ratio| ratio > 1.0) {
+                                "punção excedida"
+                            } else {
+                                "atendida"
+                            }
+                            .to_owned(),
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &["Carga", "Tipo", "Valor", "Caminho", "M local", "Situação"],
+                &[1.1, 1.8, 1.2, 3.2, 1.5, 1.3],
+                &rows,
+            );
+        }
         if !report.beams.is_empty() {
             pages.subheading("Vigas (valores característicos)");
             let mut rows = Vec::new();
@@ -1179,6 +1217,24 @@ mod tests {
                 svg2pdf::usvg::Tree::from_str(page, &svg2pdf::usvg::Options::default()).is_ok()
             );
         }
+    }
+
+    #[test]
+    fn concentrated_loads_are_printed_in_the_review_report() {
+        let mut project = house();
+        project
+            .add_fixture(
+                crate::domain::fixtures::FixtureKind::WaterTank,
+                Point::new(2.0, 2.0),
+                1.20,
+                1.20,
+                0,
+            )
+            .unwrap();
+        let all = report_pages(&project, "21/11/2026").join("\n");
+        assert!(all.contains("Cargas concentradas"));
+        assert!(all.contains("CC1"));
+        assert!(all.contains("Caixa-d'água"));
     }
 
     #[test]

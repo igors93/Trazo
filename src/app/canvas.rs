@@ -415,6 +415,12 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
         crate::domain::fixtures::FixtureKind::Column if tone == FixtureTone::Normal => {
             (theme::STRUCTURE, theme::STRUCTURE, Color32::WHITE)
         }
+        crate::domain::fixtures::FixtureKind::WaterTank
+        | crate::domain::fixtures::FixtureKind::HeavyEquipment
+            if tone == FixtureTone::Normal =>
+        {
+            (theme::STRUCTURE, theme::STRUCTURE, Color32::TRANSPARENT)
+        }
         _ => (ink, detail, fill),
     };
     let screen = |local: Point| view.to_screen(fixture.to_world(local));

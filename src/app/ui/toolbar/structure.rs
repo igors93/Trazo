@@ -20,6 +20,11 @@ impl FloorPlanApp {
             self.fixture_button(ui, FixtureKind::Footing, "Sapata");
         });
         vertical_divider(ui, 72.0);
+        ribbon_panel(ui, "Cargas", |ui| {
+            self.fixture_button(ui, FixtureKind::WaterTank, "Caixa-d'água");
+            self.fixture_button(ui, FixtureKind::HeavyEquipment, "Equipamento");
+        });
+        vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Vigas", |ui| {
             if tip(
                 ribbon_button(ui, Icon::Glyph(Glyph::Join), "Ligar pilares", false, false),

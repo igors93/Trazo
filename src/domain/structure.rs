@@ -345,10 +345,28 @@ fn reading(a: Point, b: Point) -> Ordering {
 }
 
 impl FixtureKind {
-    pub const STRUCTURAL: [FixtureKind; 2] = [FixtureKind::Column, FixtureKind::Footing];
+    pub const STRUCTURAL: [FixtureKind; 4] = [
+        FixtureKind::Column,
+        FixtureKind::Footing,
+        FixtureKind::WaterTank,
+        FixtureKind::HeavyEquipment,
+    ];
 
     pub fn is_structural(self) -> bool {
-        matches!(self, Self::Column | Self::Footing)
+        matches!(
+            self,
+            Self::Column | Self::Footing | Self::WaterTank | Self::HeavyEquipment
+        )
+    }
+
+    /// Default characteristic concentrated load. A 1,000 L water tank uses
+    /// 9.81 kN of water plus a conservative 1.0 kN for tank and fittings.
+    pub fn default_structural_load_kn(self) -> Option<f64> {
+        match self {
+            Self::WaterTank => Some(10.81),
+            Self::HeavyEquipment => Some(15.0),
+            _ => None,
+        }
     }
 }
 
@@ -408,6 +426,44 @@ pub(super) fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolSha
             }
             shapes
         }
+        FixtureKind::WaterTank => vec![
+            SymbolShape::Circle {
+                center: Point::new(0.0, 0.0),
+                radius: hw.min(hd),
+                weight: Weight::Outline,
+            },
+            SymbolShape::Circle {
+                center: Point::new(0.0, 0.0),
+                radius: hw.min(hd) * 0.72,
+                weight: Weight::Detail,
+            },
+            SymbolShape::Polyline {
+                points: vec![Point::new(-hw * 0.65, 0.0), Point::new(hw * 0.65, 0.0)],
+                closed: false,
+                dashed: false,
+                weight: Weight::Detail,
+            },
+        ],
+        FixtureKind::HeavyEquipment => vec![
+            SymbolShape::Polyline {
+                points: corners,
+                closed: true,
+                dashed: false,
+                weight: Weight::Outline,
+            },
+            SymbolShape::Polyline {
+                points: vec![Point::new(-hw, -hd), Point::new(hw, hd)],
+                closed: false,
+                dashed: false,
+                weight: Weight::Detail,
+            },
+            SymbolShape::Polyline {
+                points: vec![Point::new(hw, -hd), Point::new(-hw, hd)],
+                closed: false,
+                dashed: false,
+                weight: Weight::Detail,
+            },
+        ],
         _ => Vec::new(),
     }
 }
@@ -635,6 +691,10 @@ pub struct SlabResult {
     pub thickness_min_m: f64,
     /// Total characteristic load, kN/m².
     pub load_kn_m2: f64,
+    /// Sum of concentrated characteristic loads supported by this slab, kN.
+    pub point_load_kn: f64,
+    /// Additional conservative one-metre-strip moment from concentrated loads, kN·m/m.
+    pub point_moment_knm_m: f64,
     /// Whether some beam carries it.
     pub supported: bool,
 }
@@ -657,6 +717,23 @@ pub struct MisalignedColumn {
     pub transfer_beam: Option<String>,
 }
 
+/// A water tank or heavy item and the structural element that receives it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ConcentratedLoadResult {
+    pub id: u64,
+    pub label: String,
+    pub kind: FixtureKind,
+    pub center: Point,
+    pub load_kn: f64,
+    pub support: String,
+    pub slab: Option<String>,
+    pub local_moment_knm_m: f64,
+    /// Punching utilisation around the loaded footprint; `None` when the
+    /// load is directly on a beam or the slab system needs manufacturer data.
+    pub punching_ratio: Option<f64>,
+    pub supported: bool,
+}
+
 /// The pre-sizing of the whole structure.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StructureReport {
@@ -664,6 +741,7 @@ pub struct StructureReport {
     pub beams: Vec<BeamLineResult>,
     pub columns: Vec<ColumnResult>,
     pub footings: Vec<FootingResult>,
+    pub concentrated_loads: Vec<ConcentratedLoadResult>,
     pub misaligned_columns: Vec<MisalignedColumn>,
     pub warnings: Vec<String>,
 }
@@ -1160,6 +1238,15 @@ struct UpperColumnLoad {
     load_kn: f64,
 }
 
+#[derive(Clone, Copy)]
+struct BeamPointLoad {
+    /// Parameter along `beam.from -> beam.to`.
+    t: f64,
+    load_kn: f64,
+    /// Fraction retained in the quasi-permanent service combination.
+    quasi_factor: f64,
+}
+
 impl Project {
     pub fn structural_columns(&self) -> impl Iterator<Item = &Fixture> {
         self.fixtures
@@ -1480,7 +1567,8 @@ impl Project {
         (lx, ly)
     }
 
-    /// Column, beam, slab and footing labels: P1, V1, L1, S1… in reading
+    /// Column, beam, slab, footing and concentrated-load labels: P1, V1,
+    /// L1, S1 and CC1… in reading
     /// order, footings after the column they carry.
     pub fn structure_labels(&self) -> HashMap<u64, String> {
         let mut labels = HashMap::new();
@@ -1524,6 +1612,20 @@ impl Project {
         slabs.sort_by(|a, b| reading(a.0, b.0));
         for (i, (_, id)) in slabs.iter().enumerate() {
             labels.insert(*id, format!("L{}", i + 1));
+        }
+        let mut loads: Vec<&Fixture> = self
+            .fixtures
+            .iter()
+            .filter(|fixture| {
+                matches!(
+                    fixture.kind,
+                    FixtureKind::WaterTank | FixtureKind::HeavyEquipment
+                )
+            })
+            .collect();
+        loads.sort_by(|a, b| reading(a.center, b.center));
+        for (index, load) in loads.iter().enumerate() {
+            labels.insert(load.id, format!("CC{}", index + 1));
         }
         labels
     }
@@ -1907,7 +2009,7 @@ impl Project {
         // Match upper-floor columns against columns on this floor; misaligned
         // columns transfer as point loads onto a beam below or warn if unsupported.
         let mut incoming_column_load: HashMap<u64, f64> = HashMap::new();
-        let mut beam_point_loads: HashMap<u64, Vec<(f64, f64)>> = HashMap::new();
+        let mut beam_point_loads: HashMap<u64, Vec<BeamPointLoad>> = HashMap::new();
         for upper in incoming_upper {
             let aligned = self
                 .structural_columns()
@@ -1938,7 +2040,11 @@ impl Project {
                         beam_point_loads
                             .entry(beam_id)
                             .or_default()
-                            .push((t.clamp(0.02, 0.98), upper.load_kn));
+                            .push(BeamPointLoad {
+                                t: t.clamp(0.02, 0.98),
+                                load_kn: upper.load_kn,
+                                quasi_factor: 1.0,
+                            });
                     }
                     report.misaligned_columns.push(MisalignedColumn {
                         floor_name: upper.floor_name.clone(),
@@ -1969,6 +2075,73 @@ impl Project {
                         decimal(upper.load_kn, 1)
                     ));
                 }
+            }
+        }
+
+        // Loads that physically overlap a beam go straight to that beam.
+        // The remaining loads are picked up by the slab panel below and
+        // distributed to its nearest supported edges in the slab pass.
+        let mut concentrated: Vec<&Fixture> = self
+            .fixtures
+            .iter()
+            .filter(|fixture| {
+                matches!(
+                    fixture.kind,
+                    FixtureKind::WaterTank | FixtureKind::HeavyEquipment
+                ) && fixture.structural_load_kn.is_some()
+            })
+            .collect();
+        concentrated.sort_by(|a, b| reading(a.center, b.center));
+        let concentrated_labels: HashMap<u64, String> = concentrated
+            .iter()
+            .enumerate()
+            .map(|(index, fixture)| (fixture.id, format!("CC{}", index + 1)))
+            .collect();
+        let mut handled_concentrated = HashSet::new();
+        for fixture in &concentrated {
+            let load_kn = fixture.structural_load_kn.unwrap_or(0.0);
+            if !load_kn.is_finite() || load_kn <= 0.0 {
+                report.warnings.push(format!(
+                    "{}: carga concentrada inválida; informe um valor positivo em kN.",
+                    concentrated_labels[&fixture.id]
+                ));
+                continue;
+            }
+            let direct = beams
+                .iter()
+                .filter_map(|(beam, a, b)| {
+                    let (nearest, t) =
+                        super::geometry::nearest_point_on_segment(fixture.center, *a, *b);
+                    fixture.contains(nearest).then_some((
+                        nearest.distance(fixture.center),
+                        beam.id,
+                        t,
+                    ))
+                })
+                .min_by(|a, b| a.0.total_cmp(&b.0));
+            if let Some((_, beam_id, t)) = direct {
+                beam_point_loads
+                    .entry(beam_id)
+                    .or_default()
+                    .push(BeamPointLoad {
+                        t: t.clamp(0.02, 0.98),
+                        load_kn,
+                        quasi_factor: 1.0,
+                    });
+                let beam_label = label(beam_id);
+                report.concentrated_loads.push(ConcentratedLoadResult {
+                    id: fixture.id,
+                    label: concentrated_labels[&fixture.id].clone(),
+                    kind: fixture.kind,
+                    center: fixture.center,
+                    load_kn,
+                    support: format!("direto na viga {beam_label}"),
+                    slab: None,
+                    local_moment_knm_m: 0.0,
+                    punching_ratio: None,
+                    supported: true,
+                });
+                handled_concentrated.insert(fixture.id);
             }
         }
         // Slab loads shared by the beams along the slab's sides.
@@ -2020,6 +2193,139 @@ impl Project {
                 *beam_dead.entry(*id).or_default() += dead * area * share / total.max(1e-9);
                 *beam_live.entry(*id).or_default() += live * area * share / total.max(1e-9);
             }
+            let mut point_load_kn = 0.0;
+            let mut point_moment_knm_m = 0.0;
+            if let Some(outline) = self.room_outline(room) {
+                let slab_loads: Vec<_> = concentrated
+                    .iter()
+                    .copied()
+                    .filter(|fixture| {
+                        !handled_concentrated.contains(&fixture.id)
+                            && super::geometry::polygon_contains_point(&outline, fixture.center)
+                    })
+                    .collect();
+                for fixture in slab_loads {
+                    let load_kn = fixture.structural_load_kn.unwrap_or(0.0);
+                    if !load_kn.is_finite() || load_kn <= 0.0 {
+                        continue;
+                    }
+                    let effective_width = (fixture.width.min(fixture.depth)
+                        + 2.0 * slab.thickness_m)
+                        .clamp(0.50, ly.max(0.50));
+                    let local_moment = load_kn * lx / (4.0 * effective_width);
+                    let punching_ratio = if slab.kind == SlabKind::Solid {
+                        let d = (slab.thickness_m - 0.025).max(0.05);
+                        let fck = settings.fck_mpa.max(20.0);
+                        let f_sd = 1.4 * load_kn;
+                        let fcd_kn_m2 = fck / 1.4 * 1000.0;
+                        let alpha_v2 = (1.0 - fck / 250.0).max(0.1);
+                        let tau_rd2 = 0.27 * alpha_v2 * fcd_kn_m2;
+                        let u0 = 2.0 * (fixture.width + fixture.depth).max(0.40);
+                        let tau_sd0 = f_sd / (u0 * d);
+                        let u1 = 2.0 * (fixture.width + fixture.depth + 2.0 * d);
+                        let tau_sd1 = f_sd / (u1 * d);
+                        let k_size = (1.0 + (0.20 / d).sqrt()).min(2.0);
+                        let tau_rd1 = 0.13 * k_size * (100.0 * 0.002 * fck).cbrt() * 1000.0;
+                        Some((tau_sd0 / tau_rd2).max(tau_sd1 / tau_rd1))
+                    } else {
+                        None
+                    };
+                    point_load_kn += load_kn;
+                    point_moment_knm_m += local_moment;
+
+                    let mut distance_by_beam: HashMap<u64, f64> = HashMap::new();
+                    for (beam_id, a, b) in &supported_segments {
+                        let distance = super::geometry::distance_to_segment(fixture.center, *a, *b);
+                        distance_by_beam
+                            .entry(*beam_id)
+                            .and_modify(|old| *old = old.min(distance))
+                            .or_insert(distance);
+                    }
+                    let nearest = distance_by_beam
+                        .values()
+                        .copied()
+                        .fold(f64::INFINITY, f64::min);
+                    let hosts: Vec<u64> = distance_by_beam
+                        .iter()
+                        .filter_map(|(beam_id, distance)| {
+                            (*distance <= nearest + 0.05).then_some(*beam_id)
+                        })
+                        .collect();
+                    if hosts.is_empty() {
+                        report.concentrated_loads.push(ConcentratedLoadResult {
+                            id: fixture.id,
+                            label: concentrated_labels[&fixture.id].clone(),
+                            kind: fixture.kind,
+                            center: fixture.center,
+                            load_kn,
+                            support: "laje sem viga de apoio".to_owned(),
+                            slab: Some(label(slab.id)),
+                            local_moment_knm_m: local_moment,
+                            punching_ratio,
+                            supported: false,
+                        });
+                        report.warnings.push(format!(
+                            "{}: {} de {} kN está sobre a laje {} sem viga de apoio.",
+                            concentrated_labels[&fixture.id],
+                            fixture.kind.label(),
+                            decimal(load_kn, 1),
+                            label(slab.id)
+                        ));
+                    } else {
+                        let share = load_kn / hosts.len() as f64;
+                        let mut host_labels = Vec::new();
+                        for beam_id in hosts {
+                            let Some((_, a, b)) =
+                                beams.iter().find(|(beam, _, _)| beam.id == beam_id)
+                            else {
+                                continue;
+                            };
+                            let (_, t) =
+                                super::geometry::nearest_point_on_segment(fixture.center, *a, *b);
+                            beam_point_loads
+                                .entry(beam_id)
+                                .or_default()
+                                .push(BeamPointLoad {
+                                    t: t.clamp(0.02, 0.98),
+                                    load_kn: share,
+                                    quasi_factor: 1.0,
+                                });
+                            host_labels.push(label(beam_id));
+                        }
+                        host_labels.sort();
+                        host_labels.dedup();
+                        report.concentrated_loads.push(ConcentratedLoadResult {
+                            id: fixture.id,
+                            label: concentrated_labels[&fixture.id].clone(),
+                            kind: fixture.kind,
+                            center: fixture.center,
+                            load_kn,
+                            support: format!(
+                                "laje {} → {}",
+                                label(slab.id),
+                                host_labels.join(", ")
+                            ),
+                            slab: Some(label(slab.id)),
+                            local_moment_knm_m: local_moment,
+                            punching_ratio,
+                            supported: true,
+                        });
+                        if slab.kind == SlabKind::Ribbed {
+                            report.warnings.push(format!(
+                                "{}: carga concentrada sobre laje treliçada; apoie sobre viga ou detalhe faixa maciça e vigotas com o fabricante.",
+                                concentrated_labels[&fixture.id]
+                            ));
+                        } else if punching_ratio.is_some_and(|ratio| ratio > 1.0) {
+                            report.warnings.push(format!(
+                                "{}: punção local da laje excedida ({:.0}%); aumente a base/espessura ou apoie a carga sobre vigas.",
+                                concentrated_labels[&fixture.id],
+                                punching_ratio.unwrap_or(0.0) * 100.0
+                            ));
+                        }
+                    }
+                    handled_concentrated.insert(fixture.id);
+                }
+            }
             report.slabs.push(SlabResult {
                 id: slab.id,
                 label: label(slab.id),
@@ -2030,8 +2336,38 @@ impl Project {
                 thickness_m: slab.thickness_m,
                 thickness_min_m: slab.kind.minimum_thickness(lx),
                 load_kn_m2: dead + live,
+                point_load_kn,
+                point_moment_knm_m,
                 supported: total > 0.0,
             });
+        }
+
+        for fixture in concentrated {
+            if handled_concentrated.contains(&fixture.id) {
+                continue;
+            }
+            let load_kn = fixture.structural_load_kn.unwrap_or(0.0);
+            if !load_kn.is_finite() || load_kn <= 0.0 {
+                continue;
+            }
+            report.concentrated_loads.push(ConcentratedLoadResult {
+                id: fixture.id,
+                label: concentrated_labels[&fixture.id].clone(),
+                kind: fixture.kind,
+                center: fixture.center,
+                load_kn,
+                support: "sem laje ou viga abaixo".to_owned(),
+                slab: None,
+                local_moment_knm_m: 0.0,
+                punching_ratio: None,
+                supported: false,
+            });
+            report.warnings.push(format!(
+                "{}: {} de {} kN está sem laje ou viga abaixo; reposicione ou projete apoio próprio.",
+                concentrated_labels[&fixture.id],
+                fixture.kind.label(),
+                decimal(load_kn, 1)
+            ));
         }
 
         // Continuous beams, ordered deepest-first so secondary beams resting on
@@ -2058,6 +2394,7 @@ impl Project {
             let mut spans = Vec::new();
             let mut stiff = Vec::new();
             let mut span_points: Vec<Vec<(f64, f64)>> = Vec::new();
+            let mut span_point_records: Vec<Vec<BeamPointLoad>> = Vec::new();
             for (i, id) in line.spans.iter().enumerate() {
                 let Some((beam, b_start, b_end)) = beams.iter().find(|(b, _, _)| b.id == *id)
                 else {
@@ -2112,20 +2449,28 @@ impl Project {
                 // Map incoming secondary-beam reactions `(t, P)` along `beam.from -> beam.to`
                 // into distance `x` from this span's left joint `a`.
                 let reversed = a.distance(*b_end) < a.distance(*b_start);
-                let pts: Vec<(f64, f64)> = beam_point_loads
+                let point_records: Vec<BeamPointLoad> = beam_point_loads
                     .get(id)
                     .map(|list| {
                         list.iter()
-                            .map(|&(t, p)| {
-                                let t_span = if reversed { 1.0 - t } else { t };
-                                ((t_span * length).clamp(0.0, length), p)
+                            .map(|point| {
+                                let t_span = if reversed { 1.0 - point.t } else { point.t };
+                                BeamPointLoad {
+                                    t: (t_span * length).clamp(0.0, length),
+                                    ..*point
+                                }
                             })
                             .collect()
                     })
                     .unwrap_or_default();
+                let pts: Vec<(f64, f64)> = point_records
+                    .iter()
+                    .map(|point| (point.t, point.load_kn))
+                    .collect();
                 spans.push((beam.id, length, dead, live, beam.width_m, beam.height_m));
                 stiff.push((length, dead + live, modulus * inertia));
                 span_points.push(pts);
+                span_point_records.push(point_records);
             }
             if spans.len() != line.spans.len() {
                 continue;
@@ -2139,6 +2484,7 @@ impl Project {
             {
                 let w = dead + live;
                 let pts = &span_points[i];
+                let point_records = &span_point_records[i];
                 let p_sum: f64 = pts.iter().map(|(_, p)| *p).sum();
                 let point_v_left: f64 = pts
                     .iter()
@@ -2170,10 +2516,16 @@ impl Project {
                 // factor 1 + 1.32 (NBR 6118 17.3.2.1).
                 let w_qp = dead + 0.3 * live;
                 let ratio = if w > 0.0 { w_qp / w } else { 1.0 };
-                let pts_qp: Vec<(f64, f64)> =
-                    pts.iter().map(|&(a_pos, p)| (a_pos, p * ratio)).collect();
+                let pts_qp: Vec<(f64, f64)> = point_records
+                    .iter()
+                    .map(|point| (point.t, point.load_kn * point.quasi_factor))
+                    .collect();
                 let m_k_max = span_moment.max(0.0).max(left.abs()).max(right.abs());
-                let m_a_qp = m_k_max * ratio;
+                let service_ratio = point_records
+                    .iter()
+                    .map(|point| point.quasi_factor)
+                    .fold(ratio, f64::max);
+                let m_a_qp = m_k_max * service_ratio;
                 let stiffness =
                     effective_beam_stiffness(*b, *h, settings.fck_mpa, modulus, m_k_max, m_a_qp);
                 let ei = modulus * stiffness.i_eq_m4;
@@ -2181,8 +2533,8 @@ impl Project {
                     *length,
                     w_qp,
                     &pts_qp,
-                    left * ratio,
-                    right * ratio,
+                    left * service_ratio,
+                    right * service_ratio,
                     ei,
                 ) * (1.0 + 1.32);
                 let end_span = i == 0 || i + 1 == count;
@@ -2216,7 +2568,13 @@ impl Project {
                             beam_point_loads
                                 .entry(beam_id)
                                 .or_default()
-                                .push((t, *reaction));
+                                .push(BeamPointLoad {
+                                    t,
+                                    load_kn: *reaction,
+                                    // A supporting beam receives a conservative permanent
+                                    // reaction until dead/live components are separated.
+                                    quasi_factor: 1.0,
+                                });
                         }
                     }
                 }
@@ -2571,6 +2929,23 @@ impl Project {
                     ),
                 });
             }
+        }
+        for load in self.fixtures.iter().filter(|fixture| {
+            matches!(
+                fixture.kind,
+                FixtureKind::WaterTank | FixtureKind::HeavyEquipment
+            )
+        }) {
+            let Some(text) = labels.get(&load.id) else {
+                continue;
+            };
+            let value = load.structural_load_kn.unwrap_or(0.0);
+            marks.push(PlanMark::Text {
+                anchor: load
+                    .center
+                    .translated(Point::new(0.0, load.depth / 2.0 + 0.16)),
+                text: format!("{text} {} kN", decimal(value, 1)),
+            });
         }
         super::label_layout::resolve_plan_mark_labels(&mut marks, &[]);
         marks
@@ -3031,6 +3406,93 @@ mod tests {
         let svg = beam_diagrams_svg(&project);
         assert!(svg2pdf::usvg::Tree::from_str(&svg, &svg2pdf::usvg::Options::default()).is_ok());
         assert!(svg.contains(">V1<"));
+    }
+
+    #[test]
+    fn concentrated_load_flows_from_slab_to_beams_columns_and_footings() {
+        let mut project = Project::default();
+        project.set_terrain(Point::new(-2.0, -2.0), Point::new(12.0, 12.0));
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 4.0), "Sala")
+            .unwrap();
+        project.generate_structure();
+        let room = project.rooms[0].id;
+        project.set_slab(room, SlabKind::Solid, Some(0.12)).unwrap();
+        let before = project.structure_report();
+        let before_columns: f64 = before.columns.iter().map(|column| column.load_kn).sum();
+        let before_moment = before
+            .beams
+            .iter()
+            .flat_map(|line| &line.spans)
+            .map(|span| span.moment_span)
+            .fold(0.0, f64::max);
+
+        let tank = project
+            .add_fixture(FixtureKind::WaterTank, Point::new(2.0, 2.0), 1.20, 1.20, 0)
+            .unwrap();
+        let load_kn = project
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.id == tank)
+            .and_then(|fixture| fixture.structural_load_kn)
+            .unwrap();
+        let after = project.structure_report();
+        let after_columns: f64 = after.columns.iter().map(|column| column.load_kn).sum();
+        let after_moment = after
+            .beams
+            .iter()
+            .flat_map(|line| &line.spans)
+            .map(|span| span.moment_span)
+            .fold(0.0, f64::max);
+
+        assert!((after_columns - before_columns - load_kn).abs() < 1e-6);
+        assert!(after_moment > before_moment);
+        assert_eq!(after.concentrated_loads.len(), 1);
+        let result = &after.concentrated_loads[0];
+        assert_eq!(result.label, "CC1");
+        assert!(result.supported && result.slab.is_some());
+        assert!(result.local_moment_knm_m > 0.0);
+        assert!(result.punching_ratio.is_some());
+        assert_eq!(after.slabs[0].point_load_kn, load_kn);
+        assert!(
+            crate::domain::verdict::structure_verdicts(&project, &after)
+                .iter()
+                .any(|verdict| verdict.element.starts_with("Carga CC1"))
+        );
+        assert!(
+            project.structure_marks().iter().any(
+                |mark| matches!(mark, PlanMark::Text { text, .. } if text.starts_with("CC1 "))
+            )
+        );
+
+        project
+            .update_fixture(tank, Some(Point::new(8.0, 8.0)), None, None)
+            .unwrap();
+        let unsupported = project.structure_report();
+        assert!(!unsupported.concentrated_loads[0].supported);
+        assert!(
+            unsupported
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("sem laje ou viga"))
+        );
+    }
+
+    #[test]
+    fn a_load_directly_on_a_beam_skips_the_slab_local_check() {
+        let mut project = house();
+        project.generate_structure();
+        let beam = project.structure.beams[0];
+        let (a, b) = project.beam_endpoints(&beam).unwrap();
+        project
+            .add_fixture(FixtureKind::HeavyEquipment, a.midpoint(b), 0.40, 0.40, 0)
+            .unwrap();
+        let report = project.structure_report();
+        let load = &report.concentrated_loads[0];
+        assert!(load.supported);
+        assert!(load.slab.is_none());
+        assert!(load.support.contains("direto na viga"));
+        assert_eq!(load.punching_ratio, None);
     }
 
     #[test]

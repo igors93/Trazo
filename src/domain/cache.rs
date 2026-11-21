@@ -82,6 +82,12 @@ fn hash_fixture(h: &mut DefaultHasher, f: &Fixture) {
     } else {
         false.hash(h);
     }
+    if let Some(load) = f.structural_load_kn {
+        true.hash(h);
+        hash_f64(h, load);
+    } else {
+        false.hash(h);
+    }
 }
 
 fn hash_beam(h: &mut DefaultHasher, b: &Beam) {
@@ -395,6 +401,20 @@ mod tests {
         assert!(!Arc::ptr_eq(&s1, &s3));
         let m3 = project.cached_structure_marks();
         assert!(Arc::ptr_eq(&m1, &m3));
+
+        let tank = project
+            .add_fixture(FixtureKind::WaterTank, Point::new(2.0, 1.5), 1.20, 1.20, 0)
+            .unwrap();
+        let loaded = project.cached_structure_report();
+        assert!(!Arc::ptr_eq(&r1, &loaded));
+        project
+            .fixtures
+            .iter_mut()
+            .find(|fixture| fixture.id == tank)
+            .unwrap()
+            .structural_load_kn = Some(15.0);
+        let changed_load = project.cached_structure_report();
+        assert!(!Arc::ptr_eq(&loaded, &changed_load));
 
         // Mutating a structural parameter invalidates structural caches.
         project.structure.settings.live_kn_m2 = 3.0;

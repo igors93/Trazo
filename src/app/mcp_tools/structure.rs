@@ -154,6 +154,94 @@ impl FloorPlanApp {
                     })))
                 })
             }
+            "inserir_carga" => {
+                let kind = match text(args, "tipo")
+                    .unwrap_or_else(|| "caixa_agua".to_owned())
+                    .to_lowercase()
+                    .as_str()
+                {
+                    "caixa_agua" | "caixa-d'agua" | "caixa-d'água" => FixtureKind::WaterTank,
+                    "equipamento" | "equipamento_pesado" => FixtureKind::HeavyEquipment,
+                    _ => return Err("'tipo' deve ser caixa_agua ou equipamento_pesado.".to_owned()),
+                };
+                let point = to_model(required_number(args, "x")?, required_number(args, "y")?);
+                let (default_w, default_d) = kind.default_size();
+                let width = centimetres(args, "largura_cm")?.unwrap_or(default_w);
+                let depth = centimetres(args, "profundidade_cm")?.unwrap_or(default_d);
+                let load_kn = number(args, "carga_kn")?
+                    .or_else(|| kind.default_structural_load_kn())
+                    .unwrap_or(0.0);
+                if !(0.1..=2_000.0).contains(&load_kn) {
+                    return Err("'carga_kn' deve ficar entre 0,1 e 2.000.".to_owned());
+                }
+                self.apply_change(None, |project| {
+                    let id = project
+                        .add_fixture(kind, point, width, depth, 0)
+                        .ok_or("A carga deve caber dentro do terreno.")?;
+                    let fixture = project
+                        .fixtures
+                        .iter_mut()
+                        .find(|fixture| fixture.id == id)
+                        .ok_or("Carga não encontrada depois da inserção.")?;
+                    fixture.structural_load_kn = Some(load_kn);
+                    project.ensure_default_layers();
+                    Ok(Change::new(format!(
+                        "{} inserido(a) com {} kN (id {id}).",
+                        kind.label(),
+                        round1(load_kn)
+                    ))
+                    .select(Selection::Fixture(id))
+                    .data(json!({
+                        "id": id,
+                        "tipo": kind.key(),
+                        "centro": xy(point),
+                        "carga_kn": round1(load_kn),
+                        "base_cm": section_cm(width, depth),
+                    })))
+                })
+            }
+            "editar_carga" => {
+                let id = element_id(args, "id")?;
+                let load_kn = required_number(args, "carga_kn")?;
+                if !(0.1..=2_000.0).contains(&load_kn) {
+                    return Err("'carga_kn' deve ficar entre 0,1 e 2.000.".to_owned());
+                }
+                self.apply_change(Some("A carga já tinha esse valor."), |project| {
+                    let fixture = project
+                        .fixtures
+                        .iter_mut()
+                        .find(|fixture| {
+                            fixture.id == id
+                                && matches!(
+                                    fixture.kind,
+                                    FixtureKind::WaterTank | FixtureKind::HeavyEquipment
+                                )
+                        })
+                        .ok_or("Carga concentrada não encontrada.")?;
+                    fixture.structural_load_kn = Some(load_kn);
+                    Ok(Change::new(format!(
+                        "Carga {} atualizada para {} kN.",
+                        id,
+                        round1(load_kn)
+                    )))
+                })
+            }
+            "remover_carga" => {
+                let id = element_id(args, "id")?;
+                self.apply_change(None, |project| {
+                    let exists = project.fixtures.iter().any(|fixture| {
+                        fixture.id == id
+                            && matches!(
+                                fixture.kind,
+                                FixtureKind::WaterTank | FixtureKind::HeavyEquipment
+                            )
+                    });
+                    if !exists || !project.delete_fixture(id) {
+                        return Err("Carga concentrada não encontrada.".to_owned());
+                    }
+                    Ok(Change::new(format!("Carga {id} removida.")))
+                })
+            }
             "ligar_pilares" => {
                 let from = element_id(args, "de")?;
                 let to = element_id(args, "para")?;
@@ -323,7 +411,7 @@ impl FloorPlanApp {
                 )))
             }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas ou vista.".to_owned(),
             ),
         }
     }
@@ -345,6 +433,8 @@ impl FloorPlanApp {
                     "espessura_cm": round1(s.thickness_m * 100.0),
                     "espessura_minima_cm": round1(s.thickness_min_m * 100.0),
                     "carga_kn_m2": round1(s.load_kn_m2 * 10.0) / 10.0,
+                    "cargas_concentradas_kn": round1(s.point_load_kn),
+                    "momento_local_knm_m": round1(s.point_moment_knm_m),
                     "apoiada": s.supported,
                     "atende": s.ok(),
                 })
@@ -422,6 +512,24 @@ impl FloorPlanApp {
                     "centro": xy(m.center),
                     "carga_kn": round1(m.load_kn),
                     "viga_transicao": m.transfer_beam,
+                })
+            })
+            .collect();
+        let concentrated_loads: Vec<Value> = report
+            .concentrated_loads
+            .iter()
+            .map(|load| {
+                json!({
+                    "id": load.id,
+                    "rotulo": load.label,
+                    "tipo": load.kind.key(),
+                    "centro": xy(load.center),
+                    "carga_kn": round1(load.load_kn),
+                    "apoio": load.support,
+                    "laje": load.slab,
+                    "momento_local_knm_m": round1(load.local_moment_knm_m),
+                    "puncao_razao": load.punching_ratio.map(|ratio| (ratio * 100.0).round() / 100.0),
+                    "apoiada": load.supported,
                 })
             })
             .collect();
@@ -534,6 +642,7 @@ impl FloorPlanApp {
             "pilares": columns,
             "sapatas": footings,
             "pilares_desalinhados": misaligned,
+            "cargas_concentradas": concentrated_loads,
             "armaduras": {
                 "carater": "estimativa preliminar para revisão; não é detalhamento executivo",
                 "vigas": reinforcement_beams,
@@ -610,6 +719,33 @@ mod tests {
                 .unwrap()
                 > 0.0
         );
+
+        let load = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({
+                "acao": "inserir_carga",
+                "tipo": "caixa_agua",
+                "x": 3.0,
+                "y": 3.0,
+                "carga_kn": 12.0
+            }),
+        );
+        assert!(!load.is_error, "{}", load.text);
+        let load_id = load.structured.unwrap()["id"].as_u64().unwrap();
+        let with_load = app
+            .run_mcp_tool("pre_dimensionamento", &json!({}))
+            .structured
+            .unwrap();
+        assert_eq!(
+            with_load["cargas_concentradas"].as_array().unwrap().len(),
+            1
+        );
+        assert_eq!(with_load["cargas_concentradas"][0]["carga_kn"], 12.0);
+        let edited_load = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({ "acao": "editar_carga", "id": load_id, "carga_kn": 13.5 }),
+        );
+        assert!(!edited_load.is_error, "{}", edited_load.text);
 
         // A beam too shallow is flagged; a solid slab is set by room name.
         let edited = app.run_mcp_tool(

@@ -9,6 +9,7 @@ This guide documents every engineering calculation in Trazo: the formula, the st
 - [Conventions](#conventions)
 - [Loads](#loads)
 - [Slabs](#slabs)
+- [Concentrated loads](#concentrated-loads)
 - [Beams](#beams)
 - [Preliminary reinforcement](#preliminary-reinforcement)
 - [Columns](#columns)
@@ -62,6 +63,16 @@ Loads are applied as uniform loads per beam span, plus point loads where a beam 
 - edges without a beam carry nothing, and their share goes to the supported ones.
 
 **Assumptions:** slabs simply supported on beams; no two-way moment or deflection check yet (#116).
+
+## Concentrated loads
+
+Water tanks and heavy equipment are stored as structural fixtures with a footprint and a positive characteristic load. The water-tank default is 10.81 kN: 9.81 kN for 1,000 L of water plus 1.0 kN for the tank and fittings. The 15 kN equipment default is only an editable placeholder and must be replaced with manufacturer data. The load is treated as permanent in the quasi-permanent service combination.
+
+**Load path.** If the footprint intersects a beam axis, the full load becomes a point load at that position on the beam. Otherwise Trazo finds the containing slab and sends the load to the nearest supported edge beam(s); beams at practically the same distance (within 5 cm) share it equally. The beam stiffness analysis then passes the reactions to columns and footings. A load outside every slab and beam is red and contributes nothing until it is repositioned or given its own support.
+
+**Local slab model.** For a load on a slab, the conservative additional one-metre-strip moment is `Mk,local = P·lx/(4·beff)`, with `beff = min(ly, max(0.50 m, smaller footprint side + 2h))`. That moment is added to the slab flexural reinforcement demand. For a solid slab, punching is checked around the loaded footprint at its face and at the `d/2` contour using the same `τRd2` and simplified `τRd1` expressions documented for footings. For a lattice/ribbed slab, Trazo does not know the joist and filler geometry, so it deliberately leaves punching unverified and asks for a beam, solid strip or manufacturer check.
+
+**Limitations:** the nearest-edge split is a transparent preliminary load path, not plate finite-element analysis; load dispersion through pedestals, vibration/impact and dynamic equipment forces are not modelled. Equipment input must already include those effects when applicable.
 
 ## Beams
 
@@ -205,6 +216,8 @@ The suite lives in `src/domain/validation.rs` and runs with `cargo test` on Wind
 | `bar_geometry_and_mass_match_the_physical_section` | Circular bar geometry and 7,850 kg/m³ steel density | Ø10 area and Ø10/Ø12.5 linear masses | 0.3 % |
 | `flexural_steel_matches_the_existing_branson_input` | Same rectangular ULS model used for cracked-section stiffness | beam `As` agrees between both calculation paths | 1 % |
 | `generated_house_has_reinforcement_and_a_balanced_schedule` | Internal equilibrium and minimum/detail selection rules | all four element families emitted; supplied steel ≥ required; schedule mass closes | exact |
+| `concentrated_load_flows_from_slab_to_beams_columns_and_footings` | Equilibrium and the declared local slab model | added column reactions equal the point load; beam moment, local moment and punching are present; unsupported case is red | 1e-6 kN |
+| `a_load_directly_on_a_beam_skips_the_slab_local_check` | Direct footprint/beam intersection | point load enters the beam without a fictitious slab punching check | exact |
 | `loads_are_conserved_from_the_slabs_to_the_columns` | Equilibrium | Σ column loads = slabs + beams + columns' own weight | 0.5 % |
 | `loads_are_conserved_across_floors` | Equilibrium | ground column = its own floor's load + the column above | 1e-9 |
 
@@ -219,3 +232,4 @@ Further checks live next to their modules: `nbr_5410_minimums_for_lighting_and_o
 - Regional values (utility profiles, soil classes, demand tables) are typical, not site-specific (B21, #140).
 - The applicability limits are conservative choices, not values from a standard; a professional may well design beyond them with other methods.
 - Reinforcement is a preliminary estimate, not an executive detail: anchorage, laps, bends, openings, joints, cutting losses and bar drawings are incomplete, and NBR 6118:2026 still requires a clause-by-clause audit (#110).
+- Concentrated loads use a conservative nearest-edge slab distribution; dynamic equipment, pedestals and detailed plate behaviour still require professional analysis (#113).

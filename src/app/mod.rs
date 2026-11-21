@@ -257,6 +257,7 @@ pub struct FloorPlanApp {
     fixture_turns: u8,
     fixture_width_text: String,
     fixture_depth_text: String,
+    fixture_load_text: String,
     /// Distances measured with the ruler in this session (never saved).
     measurements: Vec<(Point, Point)>,
     /// Walls and rooms follow the block module while drawn.
@@ -472,6 +473,7 @@ impl FloorPlanApp {
             fixture_turns: 0,
             fixture_width_text: String::new(),
             fixture_depth_text: String::new(),
+            fixture_load_text: String::new(),
             measurements: Vec::new(),
             modulation_enabled: preferences.modulation,
             show_dimensions: preferences.dimensions,
@@ -1739,11 +1741,34 @@ impl FloorPlanApp {
             return;
         };
         let previous = self.project.clone();
+        let has_structural_load = self
+            .project
+            .fixtures
+            .iter()
+            .find(|fixture| fixture.id == id)
+            .is_some_and(|fixture| fixture.structural_load_kn.is_some());
+        let structural_load = match (has_structural_load, parse(&self.fixture_load_text)) {
+            (true, Some(value)) if (0.1..=2_000.0).contains(&value) => Some(value),
+            (true, _) => {
+                self.message = "Informe uma carga entre 0,1 e 2.000 kN.".to_owned();
+                return;
+            }
+            (false, _) => None,
+        };
         match self
             .project
             .update_fixture(id, None, Some((width, depth)), None)
         {
             Ok(()) => {
+                if let Some(load) = structural_load
+                    && let Some(fixture) = self
+                        .project
+                        .fixtures
+                        .iter_mut()
+                        .find(|fixture| fixture.id == id)
+                {
+                    fixture.structural_load_kn = Some(load);
+                }
                 if !self.record_change(previous) {
                     return;
                 }
@@ -2040,6 +2065,10 @@ impl FloorPlanApp {
                 if let Some(fixture) = self.project.fixtures.iter().find(|f| f.id == id) {
                     self.fixture_width_text = format!("{:.2}", fixture.width).replace('.', ",");
                     self.fixture_depth_text = format!("{:.2}", fixture.depth).replace('.', ",");
+                    self.fixture_load_text = fixture
+                        .structural_load_kn
+                        .map(|load| format!("{load:.2}").replace('.', ","))
+                        .unwrap_or_default();
                 }
             }
             Some(Selection::Wall(id)) => {

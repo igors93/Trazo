@@ -183,6 +183,7 @@ The *Estrutura* (structure) tab lays out a first reinforced-concrete structure o
 | Group | Tools |
 | --- | --- |
 | **Elementos** | **Pilar** (column, 30 × 14 cm) and **Sapata** (footing, 80 × 80 cm). Both snap onto the nearest wall junction, or onto the wall's centre line, turned along the wall |
+| **Cargas** | **Caixa-d'água** (10.81 kN by default, including 1,000 L of water plus tank/fittings) and **Equipamento** (an illustrative 15 kN default that must be replaced with manufacturer data). Place them over a slab or beam and edit their footprint and characteristic load in Properties |
 | **Vigas** (beams) | **Ligar pilares** joins the selected columns (Shift+click) in order; **Remover vigas** removes the beams between them, or all the beams of one column |
 | **Projeto (NBR 6118)** | **Gerar estrutura**, **Pré-dimensionar**, **Esforços** and **Ajustar sapatas** |
 | **Exibição** | **Só estrutura** (the formwork view) and **Ocultar estrutura** |
@@ -197,6 +198,7 @@ Columns and footings are objects like furniture: they select, move, copy, rotate
   - **Footings**: area = 1.05 · N / allowable soil pressure, with the same overhang on every side of the column and a height for a rigid footing. **Ajustar sapatas** resizes them all.
 - **Esforços** (forces) draws every continuous beam with its supports, the bending moment diagram, the moments at the supports and in the spans, the shear, the reactions and the deflection. The analysis uses the stiffness method on pinned supports. Deflection uses the quasi-permanent load (g + 0.3q), about half the gross inertia for cracking and a creep factor of 2.32, checked against L/250. **Exportar PDF** and **Exportar SVG** save it as an A3 sheet.
 - **Armaduras** estimates longitudinal bars and stirrups for beams and columns, the principal/distribution mesh for slabs and the bottom mesh for footings. It also gives the theoretical steel mass and a preliminary bar schedule. **Exportar tabela CSV** saves that schedule; **Exportar memorial PDF** includes the same proposal. Bar anchorage, laps, bends, openings, construction joints and losses are not fully detailed, so these outputs cannot be sent directly to construction.
+- **Concentrated loads** receive a `CC` label on the plan. If the footprint crosses a beam, the full load enters that beam. Otherwise, it enters the slab, is shared by the nearest supported edges and continues through beams, columns and footings. Solid slabs get a preliminary local bending and punching check; a lattice slab asks for a supporting beam or a solid strip/joist check from its manufacturer instead of inventing a resistance.
 
 Warnings name each element that needs attention, including a support that a short span next to a long one would lift. Sheets that show the structure add a *Quadro de pilares e sapatas* table. This is pre-sizing for a first layout: the structural design belongs to a licensed engineer.
 
