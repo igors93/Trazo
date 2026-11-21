@@ -776,10 +776,7 @@ impl Project {
                         element_id: Some(col.id),
                         related_ids: Vec::new(),
                         position: Some(col.center),
-                        message: format!(
-                            "Pilar #{} está sem sapata sob seu eixo.",
-                            col.id
-                        ),
+                        message: format!("Pilar #{} está sem sapata sob seu eixo.", col.id),
                         suggestion: "Insira ou alinhe uma sapata sob este pilar.".to_owned(),
                     });
                 }
@@ -799,10 +796,7 @@ impl Project {
                     element_id: Some(ft.id),
                     related_ids: Vec::new(),
                     position: Some(ft.center),
-                    message: format!(
-                        "Sapata #{} não possui pilar apoiado sobre sua base.",
-                        ft.id
-                    ),
+                    message: format!("Sapata #{} não possui pilar apoiado sobre sua base.", ft.id),
                     suggestion: "Mova a sapata para sob o pilar correspondente ou remova-a."
                         .to_owned(),
                 });
