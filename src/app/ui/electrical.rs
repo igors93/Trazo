@@ -351,7 +351,7 @@ impl FloorPlanApp {
                             .changed();
                         ui.end_row();
                     }
-                    if let Some(room) = self.project.room_holding(fixture.center) {
+                    if let Some(room) = self.project.room_for_fixture(fixture) {
                         property_label(ui, "Cômodo");
                         ui.label(room.display_name());
                         ui.end_row();

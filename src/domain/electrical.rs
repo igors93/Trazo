@@ -596,6 +596,73 @@ impl Project {
         })
     }
 
+    fn polygon_edge_distance(polygon: &[Point], point: Point) -> f64 {
+        (0..polygon.len())
+            .map(|i| {
+                geometry::distance_to_segment(point, polygon[i], polygon[(i + 1) % polygon.len()])
+            })
+            .fold(f64::INFINITY, f64::min)
+    }
+
+    /// The room that strictly contains `point` (clear of shared boundaries).
+    fn room_strictly_holding(&self, point: Point) -> Option<&Room> {
+        const EDGE_EPS: f64 = 1e-3;
+        self.rooms.iter().find(|room| {
+            self.room_polygon(room).is_some_and(|polygon| {
+                geometry::polygon_contains_point(&polygon, point)
+                    && Self::polygon_edge_distance(&polygon, point) > EDGE_EPS
+            })
+        })
+    }
+
+    /// The room a fixture belongs to.
+    ///
+    /// Wall-mounted devices stand with their back against the wall and their
+    /// front facing into the room they serve (`+Y` in local coordinates), so a
+    /// device placed right on a shared wall boundary is assigned to the room
+    /// its front faces rather than whichever room happens to come first.
+    pub fn room_for_fixture(&self, fixture: &Fixture) -> Option<&Room> {
+        if fixture.kind != FixtureKind::CeilingLight {
+            let front_probes = [
+                fixture.to_world(Point::new(0.0, fixture.depth * 0.45)),
+                fixture.to_world(Point::new(0.0, fixture.depth * 0.5 + 0.05)),
+                fixture.to_world(Point::new(fixture.width * 0.25, fixture.depth * 0.45)),
+                fixture.to_world(Point::new(-fixture.width * 0.25, fixture.depth * 0.45)),
+            ];
+            for probe in front_probes {
+                if let Some(room) = self.room_strictly_holding(probe) {
+                    return Some(room);
+                }
+            }
+        }
+        if let Some(room) = self.room_strictly_holding(fixture.center) {
+            return Some(room);
+        }
+        let samples = [
+            fixture.center,
+            fixture.to_world(Point::new(fixture.width * 0.35, fixture.depth * 0.35)),
+            fixture.to_world(Point::new(-fixture.width * 0.35, fixture.depth * 0.35)),
+            fixture.to_world(Point::new(fixture.width * 0.35, -fixture.depth * 0.35)),
+            fixture.to_world(Point::new(-fixture.width * 0.35, -fixture.depth * 0.35)),
+        ];
+        self.rooms
+            .iter()
+            .filter_map(|room| {
+                let poly = self.room_polygon(room)?;
+                let hits = samples
+                    .iter()
+                    .filter(|&&p| {
+                        geometry::polygon_contains_point(&poly, p)
+                            && Self::polygon_edge_distance(&poly, p) > 1e-4
+                    })
+                    .count();
+                (hits > 0).then_some((room, hits))
+            })
+            .max_by_key(|&(_, hits)| hits)
+            .map(|(room, _)| room)
+            .or_else(|| self.room_holding(fixture.center))
+    }
+
     fn room_class(room: &Room) -> RoomClass {
         RoomClass::from_name(room.display_name())
     }
@@ -637,7 +704,7 @@ impl Project {
                     outlet_va: 0.0,
                 };
                 for device in self.electrical_devices() {
-                    if self.room_holding(device.center).map(|r| r.id) != Some(room.id) {
+                    if self.room_for_fixture(device).map(|r| r.id) != Some(room.id) {
                         continue;
                     }
                     let power = device.electrical.map_or(0.0, |data| data.power_va);
@@ -687,7 +754,7 @@ impl Project {
                     _ => {}
                 }
                 power += device.electrical.map_or(0.0, |data| data.power_va);
-                if let Some(room) = self.room_holding(device.center) {
+                if let Some(room) = self.room_for_fixture(device) {
                     let class = Self::room_class(room);
                     wet |= class.is_wet() || class == RoomClass::Balcony;
                     let name = room.display_name().to_owned();
@@ -789,7 +856,7 @@ impl Project {
             .enumerate()
             .filter(|(_, fixture)| fixture.kind.is_electrical())
             .map(|(index, fixture)| {
-                let room = self.room_holding(fixture.center);
+                let room = self.room_for_fixture(fixture);
                 (index, room.map(|r| r.id), room.map(Self::room_class))
             })
             .collect();
@@ -1051,7 +1118,7 @@ impl Project {
             // A switch on the room side of the first door, by the jamb.
             let has_switch = self.electrical_devices().any(|device| {
                 device.kind.role() == Some(DeviceRole::Switch)
-                    && self.room_holding(device.center).map(|r| r.id) == Some(room.id)
+                    && self.room_for_fixture(device).map(|r| r.id) == Some(room.id)
             });
             if !has_switch {
                 'sides: for side in &sides {
@@ -1453,5 +1520,68 @@ mod tests {
                 .update_electrical(table, None, Some(100.0), None)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn boundary_device_is_assigned_to_the_room_it_faces() {
+        let mut project = Project::default();
+        let sala = project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Sala")
+            .unwrap();
+        let banheiro = project
+            .add_room(Point::new(4.0, 0.0), Point::new(6.0, 3.0), "Banheiro")
+            .unwrap();
+        let (w, d) = FixtureKind::OutletLow.default_size();
+        // Both outlets sit right on the shared wall centreline (x = 4.0):
+        // quarter_turns = 1 faces left (-X, into Sala);
+        // quarter_turns = 3 faces right (+X, into Banheiro).
+        let into_sala = project
+            .add_fixture(FixtureKind::OutletLow, Point::new(4.0, 1.0), w, d, 1)
+            .unwrap();
+        let into_bath = project
+            .add_fixture(FixtureKind::OutletLow, Point::new(4.0, 2.0), w, d, 3)
+            .unwrap();
+
+        let sala_dev = project.fixtures.iter().find(|f| f.id == into_sala).unwrap();
+        let bath_dev = project.fixtures.iter().find(|f| f.id == into_bath).unwrap();
+        assert_eq!(project.room_for_fixture(sala_dev).map(|r| r.id), Some(sala));
+        assert_eq!(
+            project.room_for_fixture(bath_dev).map(|r| r.id),
+            Some(banheiro)
+        );
+
+        project.assign_circuits();
+        let sala_circuit = project
+            .fixtures
+            .iter()
+            .find(|f| f.id == into_sala)
+            .unwrap()
+            .electrical
+            .unwrap()
+            .circuit
+            .unwrap();
+        let bath_circuit = project
+            .fixtures
+            .iter()
+            .find(|f| f.id == into_bath)
+            .unwrap()
+            .electrical
+            .unwrap()
+            .circuit
+            .unwrap();
+        assert_ne!(sala_circuit, bath_circuit);
+        let schedule = project.load_schedule();
+        let sala_row = schedule
+            .circuits
+            .iter()
+            .find(|c| c.number == sala_circuit)
+            .unwrap();
+        let bath_row = schedule
+            .circuits
+            .iter()
+            .find(|c| c.number == bath_circuit)
+            .unwrap();
+        assert!(!sala_row.needs_rcd);
+        assert!(bath_row.needs_rcd);
     }
 }

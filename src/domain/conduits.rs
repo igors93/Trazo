@@ -556,7 +556,7 @@ impl Project {
             .map(|fixture| {
                 (
                     fixture.id,
-                    self.room_holding(fixture.center).map(|room| room.id),
+                    self.room_for_fixture(fixture).map(|room| room.id),
                 )
             })
             .collect();
@@ -773,7 +773,7 @@ impl Project {
         let room = |project: &Project, id: u64| {
             project
                 .device(id)
-                .and_then(|d| project.room_holding(d.center))
+                .and_then(|d| project.room_for_fixture(d))
                 .map(|room| room.id)
         };
         let is_hub = |project: &Project, id: u64| {

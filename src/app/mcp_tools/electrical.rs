@@ -76,7 +76,7 @@ impl FloorPlanApp {
                 .find(|fixture| fixture.id == id)
                 .and_then(|fixture| fixture.electrical);
             let room = project
-                .room_holding(placed.center)
+                .room_for_fixture(&placed)
                 .map(|room| room.display_name().to_owned());
             Ok(Change::new(format!(
                 "{} inserido(a) (id {id}){}{}.",

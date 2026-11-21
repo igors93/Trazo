@@ -104,7 +104,7 @@ Reviewed on 2026-11-21. Sources:
 | B07 | Medium | Structure | Columns turn in quarter turns only, so they come out misoriented on angled walls. Beams can only rest on columns, not on other beams. | Open → #117 |
 | B08 | Medium | Electrical | Two-way switches are wired in pairs only; intermediate (four-way) switches are counted as one-way, giving wrong wire counts. | Open → #128 |
 | B09 | Medium | Electrical | Only the first board is used, so sub-boards (QDC) are not modelled. | Open → #127 |
-| B10 | Medium | Electrical | Devices are assigned to rooms by their centre. A device right on a room boundary can land in the neighbouring room, which changes its circuit and RCD. | Open → #128 |
+| B10 | Medium | Electrical | Devices are assigned to rooms by their centre. A device right on a room boundary can land in the neighbouring room, which changes its circuit and RCD. | ✅ Fixed: `Project::room_for_fixture` resolves boundary devices by the room their front face points into (with footprint-overlap fallback); regression test `boundary_device_is_assigned_to_the_room_it_faces`. |
 | B11 | Medium | Structure | Footings are checked by area only: no eccentric load, punching or overturning check. | Open → #112 |
 | B12 | Medium | Structure | Deflection uses half the gross inertia and no reinforcement, so it can be off in either direction. | Open → #110, #100 |
 | B13 | Medium | Data | Demand factors, entrance tables, live loads and soil pressures are generic Brazilian values; some utilities and regions differ. | Open → #140 |
