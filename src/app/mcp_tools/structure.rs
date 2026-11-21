@@ -74,7 +74,7 @@ impl FloorPlanApp {
                 let width = centimetres(args, "largura_cm")?.unwrap_or(default_w);
                 let depth = centimetres(args, "profundidade_cm")?.unwrap_or(default_d);
                 self.apply_change(None, |project| {
-                    let (center, turns) = project.structural_placement(point);
+                    let (center, turns, angle_rad) = project.structural_placement_with_angle(point);
                     let id = project
                         .add_fixture(kind, center, width, depth, turns)
                         .ok_or_else(|| {
@@ -84,6 +84,11 @@ impl FloorPlanApp {
                                 crate::domain::fixtures::MAX_SIZE
                             )
                         })?;
+                    if angle_rad.abs() > 1e-9
+                        && let Some(f) = project.fixtures.iter_mut().find(|f| f.id == id)
+                    {
+                        f.angle_rad = angle_rad;
+                    }
                     project.ensure_default_layers();
                     let label = project.structure_labels().get(&id).cloned();
                     Ok(Change::new(format!(

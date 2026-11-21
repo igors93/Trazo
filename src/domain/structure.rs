@@ -25,16 +25,52 @@ use super::model::Project;
 /// Reinforced concrete unit weight, kN/m³.
 pub const CONCRETE_KN_M3: f64 = 25.0;
 
-/// A beam between two columns.
+/// Support specification for one end of a beam: either a column fixture id or
+/// a point along another beam (`beam_id`, parameter `t` in `0.0..=1.0`).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BeamSupport {
+    Column { id: u64 },
+    Beam { beam_id: u64, t: f64 },
+}
+
+impl BeamSupport {
+    pub fn target_id(self) -> u64 {
+        match self {
+            Self::Column { id } => id,
+            Self::Beam { beam_id, .. } => beam_id,
+        }
+    }
+}
+
+/// A beam between two supports (columns or other beams).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Beam {
     pub id: u64,
     pub from: u64,
     pub to: u64,
+    /// Optional explicit start support (defaults to `BeamSupport::Column { id: from }`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_support: Option<BeamSupport>,
+    /// Optional explicit end support (defaults to `BeamSupport::Column { id: to }`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_support: Option<BeamSupport>,
     /// Section width (b), metres.
     pub width_m: f64,
     /// Section height (h), metres.
     pub height_m: f64,
+}
+
+impl Beam {
+    pub fn start_support(&self) -> BeamSupport {
+        self.from_support
+            .unwrap_or(BeamSupport::Column { id: self.from })
+    }
+
+    pub fn end_support(&self) -> BeamSupport {
+        self.to_support
+            .unwrap_or(BeamSupport::Column { id: self.to })
+    }
 }
 
 /// How a slab is built.
@@ -383,8 +419,10 @@ pub struct BeamLine {
     pub label: String,
     /// Beam ids, span by span.
     pub spans: Vec<u64>,
-    /// Column ids at the supports, in order (one more than the spans).
+    /// Support ids (column or supporting beam id), in order (one more than the spans).
     pub joints: Vec<u64>,
+    /// Detailed support specs matching `joints` 1:1.
+    pub supports: Vec<BeamSupport>,
 }
 
 /// One span of a continuous beam, analysed.
@@ -660,30 +698,58 @@ fn solve(mut a: Vec<Vec<f64>>, mut b: Vec<f64>) -> Option<Vec<f64>> {
 /// End moments (sagging positive, kN·m) of a continuous beam on pinned
 /// supports, by the slope-deflection (stiffness) method: `spans` gives each
 /// span's length, uniform load and EI.
+#[cfg(test)]
 pub fn continuous_beam(spans: &[(f64, f64, f64)]) -> Vec<(f64, f64)> {
+    let empty: Vec<Vec<(f64, f64)>> = vec![Vec::new(); spans.len()];
+    continuous_beam_with_point_loads(spans, &empty)
+}
+
+/// Same as [`continuous_beam`], with optional concentrated point loads
+/// `(distance_from_left_m, load_kn)` per span (e.g. reactions of secondary
+/// beams supported on this beam).
+pub fn continuous_beam_with_point_loads(
+    spans: &[(f64, f64, f64)],
+    point_loads: &[Vec<(f64, f64)>],
+) -> Vec<(f64, f64)> {
     let n = spans.len() + 1;
     let mut k = vec![vec![0.0; n]; n];
     let mut f = vec![0.0; n];
-    for (i, (length, load, ei)) in spans.iter().enumerate() {
+    let fems: Vec<(f64, f64)> = spans
+        .iter()
+        .enumerate()
+        .map(|(i, (length, load, _))| {
+            let l = length.max(1e-6);
+            // Fixed-end moments (clockwise positive): -wL²/12 at left, +wL²/12 at right.
+            let mut fem_ab = -load * l * l / 12.0;
+            let mut fem_ba = load * l * l / 12.0;
+            if let Some(loads) = point_loads.get(i) {
+                for &(a, p) in loads {
+                    let a = a.clamp(0.0, l);
+                    let b = l - a;
+                    fem_ab -= p * a * b * b / (l * l);
+                    fem_ba += p * a * a * b / (l * l);
+                }
+            }
+            (fem_ab, fem_ba)
+        })
+        .collect();
+    for (i, (length, _, ei)) in spans.iter().enumerate() {
         let s = 2.0 * ei / length.max(1e-6);
         k[i][i] += 2.0 * s;
         k[i][i + 1] += s;
         k[i + 1][i] += s;
         k[i + 1][i + 1] += 2.0 * s;
-        // Fixed-end moments, clockwise positive: -wL²/12 and +wL²/12.
-        let fem = load * length * length / 12.0;
-        f[i] += fem;
-        f[i + 1] -= fem;
+        f[i] -= fems[i].0;
+        f[i + 1] -= fems[i].1;
     }
     let theta = solve(k, f).unwrap_or_else(|| vec![0.0; n]);
     spans
         .iter()
         .enumerate()
-        .map(|(i, (length, load, ei))| {
+        .map(|(i, (length, _, ei))| {
             let s = 2.0 * ei / length.max(1e-6);
-            let fem = load * length * length / 12.0;
-            let m_ab = s * (2.0 * theta[i] + theta[i + 1]) - fem;
-            let m_ba = s * (theta[i] + 2.0 * theta[i + 1]) + fem;
+            let m_ab = s * (2.0 * theta[i] + theta[i + 1]) + fems[i].0;
+            let m_ba = s * (theta[i] + 2.0 * theta[i + 1]) + fems[i].1;
             (m_ab, -m_ba)
         })
         .collect()
@@ -771,11 +837,38 @@ pub fn effective_beam_stiffness(
 
 /// Largest deflection of a span with end moments and a uniform load, by
 /// integrating the curvature twice; same units as `ei`.
+#[cfg(test)]
 pub fn span_deflection(length: f64, load: f64, left: f64, right: f64, ei: f64) -> f64 {
+    span_deflection_with_point_loads(length, load, &[], left, right, ei)
+}
+
+/// Same as [`span_deflection`], including concentrated point loads `(a_m, p_kn)`.
+pub fn span_deflection_with_point_loads(
+    length: f64,
+    load: f64,
+    point_loads: &[(f64, f64)],
+    left: f64,
+    right: f64,
+    ei: f64,
+) -> f64 {
     let steps = 100;
-    let dx = length / steps as f64;
-    let shear = load * length / 2.0 + (right - left) / length.max(1e-6);
-    let moment = |x: f64| left + shear * x - load * x * x / 2.0;
+    let l = length.max(1e-6);
+    let dx = l / steps as f64;
+    let point_v_left: f64 = point_loads
+        .iter()
+        .map(|&(a, p)| p * (l - a.clamp(0.0, l)) / l)
+        .sum();
+    let v_left = load * l / 2.0 + point_v_left + (right - left) / l;
+    let moment = |x: f64| {
+        let mut m = left + v_left * x - load * x * x / 2.0;
+        for &(a, p) in point_loads {
+            let a = a.clamp(0.0, l);
+            if x > a {
+                m -= p * (x - a);
+            }
+        }
+        m
+    };
     let mut slope = 0.0;
     let mut deflection = vec![0.0; steps + 1];
     for i in 0..steps {
@@ -788,6 +881,31 @@ pub fn span_deflection(length: f64, load: f64, left: f64, right: f64, ei: f64) -
     (0..=steps)
         .map(|i| (deflection[i] - end * i as f64 / steps as f64).abs())
         .fold(0.0, f64::max)
+}
+
+/// Converts a wall direction vector into `(quarter_turns, angle_rad)`.
+/// Orthogonal walls stay exact quarter turns (`angle_rad = 0.0`); angled
+/// walls carry their exact radian angle in `[-π/2, π/2)` so columns align
+/// cleanly along the wall.
+fn wall_orientation(along: Point) -> (u8, f64) {
+    let len = along.x.hypot(along.y);
+    if len < 1e-6 {
+        return (0, 0.0);
+    }
+    let mut theta = along.y.atan2(along.x);
+    if theta >= std::f64::consts::FRAC_PI_2 {
+        theta -= std::f64::consts::PI;
+    } else if theta < -std::f64::consts::FRAC_PI_2 {
+        theta += std::f64::consts::PI;
+    }
+    let tol = 0.5_f64.to_radians();
+    if theta.abs() <= tol {
+        (0, 0.0)
+    } else if (theta.abs() - std::f64::consts::FRAC_PI_2).abs() <= tol {
+        (1, 0.0)
+    } else {
+        (0, theta)
+    }
 }
 
 /// Splits a slab polygon into rectangular sub-panels (trying horizontal and
@@ -1030,16 +1148,70 @@ impl Project {
         self.structural_columns().find(|column| column.id == id)
     }
 
-    /// The beams whose two ends are columns of the plan.
-    pub fn valid_beams(&self) -> impl Iterator<Item = &Beam> {
-        self.structure.beams.iter().filter(|beam| {
-            beam.from != beam.to
-                && self.column(beam.from).is_some()
-                && self.column(beam.to).is_some()
-        })
+    fn beam_by_id(&self, id: u64) -> Option<&Beam> {
+        self.structure.beams.iter().find(|beam| beam.id == id)
     }
 
-    /// Drops beams left without a column and slabs left without a room.
+    fn resolve_support(&self, support: BeamSupport, visited: &mut HashSet<u64>) -> Option<Point> {
+        match support {
+            BeamSupport::Column { id } => self.column(id).map(|c| c.center),
+            BeamSupport::Beam { beam_id, t } => {
+                if !t.is_finite() || !(0.0..=1.0).contains(&t) || !visited.insert(beam_id) {
+                    return None;
+                }
+                let host = self.beam_by_id(beam_id)?;
+                let (a, b) = self.beam_endpoints_inner(host, visited)?;
+                visited.remove(&beam_id);
+                Some(a.lerp(b, t))
+            }
+        }
+    }
+
+    fn beam_endpoints_inner(
+        &self,
+        beam: &Beam,
+        visited: &mut HashSet<u64>,
+    ) -> Option<(Point, Point)> {
+        let start = self.resolve_support(beam.start_support(), visited)?;
+        let end = self.resolve_support(beam.end_support(), visited)?;
+        if start.distance(end) < 1e-4 {
+            return None;
+        }
+        Some((start, end))
+    }
+
+    /// World-space start and end points of `beam`, whether supported on
+    /// columns or on other beams.
+    pub fn beam_endpoints(&self, beam: &Beam) -> Option<(Point, Point)> {
+        let mut visited = HashSet::from([beam.id]);
+        self.beam_endpoints_inner(beam, &mut visited)
+    }
+
+    /// Support depth of a beam: 0 when resting only on columns, 1 when resting
+    /// on a primary beam, etc.
+    fn beam_support_depth(&self, beam: &Beam, visited: &mut HashSet<u64>) -> usize {
+        let mut depth = 0;
+        for support in [beam.start_support(), beam.end_support()] {
+            if let BeamSupport::Beam { beam_id, .. } = support
+                && visited.insert(beam_id)
+                && let Some(host) = self.beam_by_id(beam_id)
+            {
+                depth = depth.max(1 + self.beam_support_depth(host, visited));
+                visited.remove(&beam_id);
+            }
+        }
+        depth
+    }
+
+    /// The beams whose two ends are valid supports (columns or acyclic host beams).
+    pub fn valid_beams(&self) -> impl Iterator<Item = &Beam> {
+        self.structure
+            .beams
+            .iter()
+            .filter(|beam| self.beam_endpoints(beam).is_some())
+    }
+
+    /// Drops beams left without a valid support and slabs left without a room.
     pub fn prune_structure(&mut self) -> usize {
         let before = self.structure.beams.len() + self.structure.slabs.len();
         let valid: HashSet<u64> = self.valid_beams().map(|beam| beam.id).collect();
@@ -1053,50 +1225,112 @@ impl Project {
 
     /// Where a column or footing lands for the pointer at `point`: on the
     /// nearest wall junction within 0.5 m, else on the nearest wall's
-    /// centre line, turned along the wall.
-    pub fn structural_placement(&self, point: Point) -> (Point, u8) {
-        let mut best: Option<(f64, Point, u8)> = None;
+    /// centre line, turned along the wall (at any angle for diagonal walls).
+    pub fn structural_placement_with_angle(&self, point: Point) -> (Point, u8, f64) {
+        let mut best: Option<(f64, Point, u8, f64)> = None;
         for wall in &self.walls {
             let along = wall.end.minus(wall.start);
-            let turns = if along.x.abs() >= along.y.abs() { 0 } else { 1 };
+            let (turns, angle) = wall_orientation(along);
             // Junctions win over a plain point on the wall.
             for end in [wall.start, wall.end] {
                 let d = end.distance(point);
                 let score = d - 0.2;
-                if d < 0.5 && best.is_none_or(|(b, _, _)| score < b) {
-                    best = Some((score, end, turns));
+                if d < 0.5 && best.is_none_or(|(b, _, _, _)| score < b) {
+                    best = Some((score, end, turns, angle));
                 }
             }
             let (on, _) = super::geometry::nearest_point_on_segment(point, wall.start, wall.end);
             let d = on.distance(point);
-            if d < 0.5 && best.is_none_or(|(b, _, _)| d < b) {
-                best = Some((d, on, turns));
+            if d < 0.5 && best.is_none_or(|(b, _, _, _)| d < b) {
+                best = Some((d, on, turns, angle));
             }
         }
-        best.map_or((point, 0), |(_, at, turns)| (at, turns))
+        best.map_or((point, 0, 0.0), |(_, at, turns, angle)| (at, turns, angle))
+    }
+
+    /// Same as [`structural_placement_with_angle`], returning position and quarter turns.
+    #[cfg(test)]
+    pub fn structural_placement(&self, point: Point) -> (Point, u8) {
+        let (at, turns, _) = self.structural_placement_with_angle(point);
+        (at, turns)
     }
 
     /// Joins two columns with a beam. Returns its id.
     pub fn add_beam(&mut self, from: u64, to: u64, width: f64, height: f64) -> Result<u64, String> {
+        self.add_beam_on_supports(
+            BeamSupport::Column { id: from },
+            BeamSupport::Column { id: to },
+            width,
+            height,
+        )
+    }
+
+    /// Joins two supports (columns or points along existing beams) with a beam.
+    pub fn add_beam_on_supports(
+        &mut self,
+        from: BeamSupport,
+        to: BeamSupport,
+        width: f64,
+        height: f64,
+    ) -> Result<u64, String> {
         if from == to {
-            return Err("Escolha dois pilares diferentes.".to_owned());
+            return Err("Escolha dois apoios diferentes.".to_owned());
         }
-        for id in [from, to] {
-            if self.column(id).is_none() {
-                return Err(format!("O id {id} não é um pilar."));
+        for support in [from, to] {
+            match support {
+                BeamSupport::Column { id } => {
+                    if self.column(id).is_none() {
+                        return Err(format!("O id {id} não é um pilar."));
+                    }
+                }
+                BeamSupport::Beam { beam_id, t } => {
+                    if !t.is_finite() || !(0.01..=0.99).contains(&t) {
+                        return Err(
+                            "A posição do apoio na viga deve ficar entre 0,01 e 0,99.".to_owned()
+                        );
+                    }
+                    if self
+                        .beam_by_id(beam_id)
+                        .and_then(|b| self.beam_endpoints(b))
+                        .is_none()
+                    {
+                        return Err(format!("O id {beam_id} não é uma viga válida."));
+                    }
+                }
             }
         }
         validate_section(width, height)?;
-        if self.valid_beams().any(|beam| {
-            (beam.from == from && beam.to == to) || (beam.from == to && beam.to == from)
-        }) {
+        let mut visited = HashSet::new();
+        let a = self
+            .resolve_support(from, &mut visited)
+            .ok_or("Apoio inicial inválido.")?;
+        visited.clear();
+        let b = self
+            .resolve_support(to, &mut visited)
+            .ok_or("Apoio final inválido.")?;
+        if a.distance(b) < 0.05 {
+            return Err("Os apoios da viga estão muito próximos.".to_owned());
+        }
+        if let (BeamSupport::Column { id: c1 }, BeamSupport::Column { id: c2 }) = (from, to)
+            && self.valid_beams().any(|beam| {
+                matches!(
+                    (beam.start_support(), beam.end_support()),
+                    (BeamSupport::Column { id: a }, BeamSupport::Column { id: b })
+                        if (a == c1 && b == c2) || (a == c2 && b == c1)
+                )
+            })
+        {
             return Err("Esses pilares já estão ligados por uma viga.".to_owned());
         }
         let id = self.id();
+        let from_support = matches!(from, BeamSupport::Beam { .. }).then_some(from);
+        let to_support = matches!(to, BeamSupport::Beam { .. }).then_some(to);
         self.structure.beams.push(Beam {
             id,
-            from,
-            to,
+            from: from.target_id(),
+            to: to.target_id(),
+            from_support,
+            to_support,
             width_m: width,
             height_m: height,
         });
@@ -1131,10 +1365,35 @@ impl Project {
         Ok(())
     }
 
-    /// Beams touching any of `columns`.
+    /// Beams touching any of `columns`, including secondary beams transitively
+    /// supported on them.
     pub fn beams_of(&self, columns: &[u64]) -> Vec<u64> {
+        let mut affected: HashSet<u64> = self
+            .valid_beams()
+            .filter(|beam| {
+                matches!(beam.start_support(), BeamSupport::Column { id } if columns.contains(&id))
+                    || matches!(beam.end_support(), BeamSupport::Column { id } if columns.contains(&id))
+            })
+            .map(|beam| beam.id)
+            .collect();
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for beam in self.valid_beams() {
+                if affected.contains(&beam.id) {
+                    continue;
+                }
+                let rests_on_affected = [beam.start_support(), beam.end_support()]
+                    .into_iter()
+                    .any(|s| matches!(s, BeamSupport::Beam { beam_id, .. } if affected.contains(&beam_id)));
+                if rests_on_affected {
+                    affected.insert(beam.id);
+                    changed = true;
+                }
+            }
+        }
         self.valid_beams()
-            .filter(|beam| columns.contains(&beam.from) || columns.contains(&beam.to))
+            .filter(|beam| affected.contains(&beam.id))
             .map(|beam| beam.id)
             .collect()
     }
@@ -1251,11 +1510,8 @@ impl Project {
         let beams: Vec<(Beam, Point, Point)> = self
             .valid_beams()
             .filter_map(|beam| {
-                Some((
-                    *beam,
-                    self.column(beam.from)?.center,
-                    self.column(beam.to)?.center,
-                ))
+                let (a, b) = self.beam_endpoints(beam)?;
+                Some((*beam, a, b))
             })
             .collect();
         let direction = |a: Point, b: Point| {
@@ -1266,7 +1522,7 @@ impl Project {
                 d.scaled(-1.0)
             }
         };
-        // Union-find over beams joined end to end in a straight line.
+        // Union-find over beams joined end to end at a shared column in a straight line.
         let mut parent: Vec<usize> = (0..beams.len()).collect();
         fn root(parent: &mut [usize], i: usize) -> usize {
             let mut i = i;
@@ -1276,14 +1532,25 @@ impl Project {
             }
             i
         }
+        let shared_column = |a: &Beam, b: &Beam| {
+            let cols = |beam: &Beam| {
+                [beam.start_support(), beam.end_support()]
+                    .into_iter()
+                    .filter_map(|s| match s {
+                        BeamSupport::Column { id } => Some(id),
+                        BeamSupport::Beam { .. } => None,
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let ca = cols(a);
+            let cb = cols(b);
+            ca.iter().any(|id| cb.contains(id))
+        };
         for i in 0..beams.len() {
             for j in i + 1..beams.len() {
                 let (a, b) = (&beams[i], &beams[j]);
-                let shared = [a.0.from, a.0.to]
-                    .iter()
-                    .any(|id| *id == b.0.from || *id == b.0.to);
                 let (da, db) = (direction(a.1, a.2), direction(b.1, b.2));
-                if shared && da.cross(db).abs() < 0.02 {
+                if shared_column(&a.0, &b.0) && da.cross(db).abs() < 0.02 {
                     let (ra, rb) = (root(&mut parent, i), root(&mut parent, j));
                     parent[ra] = rb;
                 }
@@ -1302,11 +1569,14 @@ impl Project {
                 let mut spans: Vec<&(Beam, Point, Point)> =
                     members.iter().map(|i| &beams[*i]).collect();
                 spans.sort_by(|a, b| along(a.1.midpoint(a.2)).total_cmp(&along(b.1.midpoint(b.2))));
-                let mut joints: Vec<(f64, u64)> = Vec::new();
+                let mut joints: Vec<(f64, BeamSupport)> = Vec::new();
                 for (beam, a, b) in &spans {
-                    for (id, p) in [(beam.from, *a), (beam.to, *b)] {
-                        if !joints.iter().any(|(_, j)| *j == id) {
-                            joints.push((along(p), id));
+                    for (support, p) in [(beam.start_support(), *a), (beam.end_support(), *b)] {
+                        let already = joints
+                            .iter()
+                            .any(|(pos, s)| *s == support && (*pos - along(p)).abs() < 1e-3);
+                        if !already {
+                            joints.push((along(p), support));
                         }
                     }
                 }
@@ -1325,6 +1595,8 @@ impl Project {
                 } else {
                     (2, min_y, min_x)
                 };
+                let supports: Vec<BeamSupport> = joints.into_iter().map(|(_, s)| s).collect();
+                let joint_ids: Vec<u64> = supports.iter().map(|s| s.target_id()).collect();
                 (
                     group,
                     key1,
@@ -1332,7 +1604,8 @@ impl Project {
                     BeamLine {
                         label: String::new(),
                         spans: spans.iter().map(|(beam, _, _)| beam.id).collect(),
-                        joints: joints.into_iter().map(|(_, id)| id).collect(),
+                        joints: joint_ids,
+                        supports,
                     },
                 )
             })
@@ -1366,17 +1639,20 @@ impl Project {
                 .any(|column| column.center.distance(p) < 0.3)
         };
         let walls = self.walls.clone();
-        // Columns at junctions and ends.
+        // Columns at junctions and ends (oriented along angled walls too).
         for wall in &walls {
             let along = wall.end.minus(wall.start);
-            let turns = if along.x.abs() >= along.y.abs() { 0 } else { 1 };
+            let (turns, angle) = wall_orientation(along);
             let b = round_up(wall.thickness().max(0.14), 0.01).min(0.30);
             for end in [wall.start, wall.end] {
                 if !near(self, end)
-                    && self
-                        .add_fixture(FixtureKind::Column, end, 0.30, b, turns)
-                        .is_some()
+                    && let Some(id) = self.add_fixture(FixtureKind::Column, end, 0.30, b, turns)
                 {
+                    if angle.abs() > 1e-9
+                        && let Some(f) = self.fixtures.iter_mut().find(|f| f.id == id)
+                    {
+                        f.angle_rad = angle;
+                    }
                     report.columns += 1;
                 }
             }
@@ -1388,7 +1664,7 @@ impl Project {
                 continue;
             }
             let along = wall.end.minus(wall.start);
-            let turns = if along.x.abs() >= along.y.abs() { 0 } else { 1 };
+            let (turns, angle) = wall_orientation(along);
             let b = round_up(wall.thickness().max(0.14), 0.01).min(0.30);
             let blocked: Vec<(f64, f64)> = self
                 .openings
@@ -1414,10 +1690,13 @@ impl Project {
                 if let Some(s) = spot {
                     let at = wall.start.lerp(wall.end, s / length);
                     if !near(self, at)
-                        && self
-                            .add_fixture(FixtureKind::Column, at, 0.30, b, turns)
-                            .is_some()
+                        && let Some(id) = self.add_fixture(FixtureKind::Column, at, 0.30, b, turns)
                     {
+                        if angle.abs() > 1e-9
+                            && let Some(f) = self.fixtures.iter_mut().find(|f| f.id == id)
+                        {
+                            f.angle_rad = angle;
+                        }
                         report.columns += 1;
                     }
                 }
@@ -1466,16 +1745,19 @@ impl Project {
                 .iter()
                 .any(|f| f.kind == FixtureKind::Footing && f.contains(column.center));
             if !has
-                && self
-                    .add_fixture(
-                        FixtureKind::Footing,
-                        column.center,
-                        0.60,
-                        0.60,
-                        column.quarter_turns,
-                    )
-                    .is_some()
+                && let Some(id) = self.add_fixture(
+                    FixtureKind::Footing,
+                    column.center,
+                    0.60,
+                    0.60,
+                    column.quarter_turns,
+                )
             {
+                if column.angle_rad.abs() > 1e-9
+                    && let Some(f) = self.fixtures.iter_mut().find(|f| f.id == id)
+                {
+                    f.angle_rad = column.angle_rad;
+                }
                 report.footings += 1;
             }
         }
@@ -1512,11 +1794,8 @@ impl Project {
         let beams: Vec<(Beam, Point, Point)> = self
             .valid_beams()
             .filter_map(|beam| {
-                Some((
-                    *beam,
-                    self.column(beam.from)?.center,
-                    self.column(beam.to)?.center,
-                ))
+                let (a, b) = self.beam_endpoints(beam)?;
+                Some((*beam, a, b))
             })
             .collect();
         // Slab loads shared by the beams along the slab's sides.
@@ -1582,30 +1861,50 @@ impl Project {
             });
         }
 
-        // Continuous beams.
+        // Continuous beams, ordered deepest-first so secondary beams resting on
+        // other beams transfer their reactions as point loads onto host girders.
         let modulus = settings.modulus_kn_m2();
         let mut column_load: HashMap<u64, f64> = HashMap::new();
+        let mut beam_point_loads: HashMap<u64, Vec<(f64, f64)>> = HashMap::new();
         let mut incident: HashMap<u64, Vec<Point>> = HashMap::new();
-        for line in self.beam_lines() {
+        let mut ordered_lines = self.beam_lines();
+        ordered_lines.sort_by(|a, b| {
+            let line_depth = |line: &BeamLine| {
+                line.spans
+                    .iter()
+                    .filter_map(|id| self.beam_by_id(*id))
+                    .map(|beam| {
+                        let mut v = HashSet::from([beam.id]);
+                        self.beam_support_depth(beam, &mut v)
+                    })
+                    .max()
+                    .unwrap_or(0)
+            };
+            line_depth(b).cmp(&line_depth(a))
+        });
+        for line in ordered_lines {
             let mut spans = Vec::new();
             let mut stiff = Vec::new();
+            let mut span_points: Vec<Vec<(f64, f64)>> = Vec::new();
             for (i, id) in line.spans.iter().enumerate() {
-                let Some((beam, _, _)) = beams.iter().find(|(b, _, _)| b.id == *id) else {
+                let Some((beam, b_start, b_end)) = beams.iter().find(|(b, _, _)| b.id == *id)
+                else {
                     continue;
                 };
-                let (a, b) = (
-                    self.column(line.joints[i]).map(|c| c.center),
-                    self.column(line.joints[i + 1]).map(|c| c.center),
-                );
+                let mut v0 = HashSet::new();
+                let a = self.resolve_support(line.supports[i], &mut v0);
+                let mut v1 = HashSet::new();
+                let b = self.resolve_support(line.supports[i + 1], &mut v1);
                 let (Some(a), Some(b)) = (a, b) else {
                     continue;
                 };
                 let length = a.distance(b).max(0.1);
-                for (from, to) in [(line.joints[i], b), (line.joints[i + 1], a)] {
-                    if let Some(c) = self.column(from)
+                for (support, to) in [(line.supports[i], b), (line.supports[i + 1], a)] {
+                    if let BeamSupport::Column { id: col_id } = support
+                        && let Some(c) = self.column(col_id)
                         && let Some(d) = to.minus(c.center).normalized()
                     {
-                        incident.entry(from).or_default().push(d);
+                        incident.entry(col_id).or_default().push(d);
                     }
                 }
                 // Walls of the floors above stand on the beams.
@@ -1629,13 +1928,28 @@ impl Project {
                 let dead = own + walls_kn_m + beam_dead.get(id).copied().unwrap_or(0.0) / length;
                 let live = beam_live.get(id).copied().unwrap_or(0.0) / length;
                 let inertia = beam.width_m * beam.height_m.powi(3) / 12.0;
+                // Map incoming secondary-beam reactions `(t, P)` along `beam.from -> beam.to`
+                // into distance `x` from this span's left joint `a`.
+                let reversed = a.distance(*b_end) < a.distance(*b_start);
+                let pts: Vec<(f64, f64)> = beam_point_loads
+                    .get(id)
+                    .map(|list| {
+                        list.iter()
+                            .map(|&(t, p)| {
+                                let t_span = if reversed { 1.0 - t } else { t };
+                                ((t_span * length).clamp(0.0, length), p)
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 spans.push((beam.id, length, dead, live, beam.width_m, beam.height_m));
                 stiff.push((length, dead + live, modulus * inertia));
+                span_points.push(pts);
             }
             if spans.len() != line.spans.len() {
                 continue;
             }
-            let moments = continuous_beam(&stiff);
+            let moments = continuous_beam_with_point_loads(&stiff, &span_points);
             let mut reactions = vec![0.0; line.joints.len()];
             let mut results = Vec::new();
             let count = spans.len();
@@ -1643,24 +1957,53 @@ impl Project {
                 spans.iter().zip(&moments).enumerate()
             {
                 let w = dead + live;
-                let v_left = w * length / 2.0 + (right - left) / length;
-                let v_right = v_left - w * length;
+                let pts = &span_points[i];
+                let p_sum: f64 = pts.iter().map(|(_, p)| *p).sum();
+                let point_v_left: f64 = pts
+                    .iter()
+                    .map(|&(a_pos, p)| p * (length - a_pos) / length)
+                    .sum();
+                let v_left = w * length / 2.0 + point_v_left + (right - left) / length;
+                let v_right = v_left - w * length - p_sum;
                 reactions[i] += v_left;
                 reactions[i + 1] -= v_right;
-                let x = (v_left / w.max(1e-9)).clamp(0.0, *length);
-                let span_moment = left + v_left * x - w * x * x / 2.0;
+                let moment_at = |x: f64| {
+                    let mut m = left + v_left * x - w * x * x / 2.0;
+                    for &(a_pos, p) in pts {
+                        if x > a_pos {
+                            m -= p * (x - a_pos);
+                        }
+                    }
+                    m
+                };
+                let span_moment = if pts.is_empty() {
+                    let x = (v_left / w.max(1e-9)).clamp(0.0, *length);
+                    moment_at(x)
+                } else {
+                    (0..=100)
+                        .map(|k| moment_at(*length * k as f64 / 100.0))
+                        .fold(f64::NEG_INFINITY, f64::max)
+                };
                 // Quasi-permanent load (ψ2 = 0.3), Branson's equivalent inertia
                 // with cracking moment Mr and pre-sized CA-50 steel, plus creep
                 // factor 1 + 1.32 (NBR 6118 17.3.2.1).
                 let w_qp = dead + 0.3 * live;
                 let ratio = if w > 0.0 { w_qp / w } else { 1.0 };
+                let pts_qp: Vec<(f64, f64)> =
+                    pts.iter().map(|&(a_pos, p)| (a_pos, p * ratio)).collect();
                 let m_k_max = span_moment.max(0.0).max(left.abs()).max(right.abs());
                 let m_a_qp = m_k_max * ratio;
                 let stiffness =
                     effective_beam_stiffness(*b, *h, settings.fck_mpa, modulus, m_k_max, m_a_qp);
                 let ei = modulus * stiffness.i_eq_m4;
-                let deflection =
-                    span_deflection(*length, w_qp, left * ratio, right * ratio, ei) * (1.0 + 1.32);
+                let deflection = span_deflection_with_point_loads(
+                    *length,
+                    w_qp,
+                    &pts_qp,
+                    left * ratio,
+                    right * ratio,
+                    ei,
+                ) * (1.0 + 1.32);
                 let end_span = i == 0 || i + 1 == count;
                 let divisor = if count > 1 && !end_span { 12.0 } else { 10.0 };
                 results.push(SpanResult {
@@ -1679,9 +2022,23 @@ impl Project {
                     height_min_m: round_up(length / divisor, 0.05).max(0.25),
                 });
             }
-            for (joint, reaction) in line.joints.iter().zip(&reactions) {
-                // An upward reaction does not relieve the column below.
-                *column_load.entry(*joint).or_default() += reaction.max(0.0);
+            for ((joint, support), reaction) in
+                line.joints.iter().zip(&line.supports).zip(&reactions)
+            {
+                match *support {
+                    BeamSupport::Column { id } => {
+                        // An upward reaction does not relieve the column below.
+                        *column_load.entry(id).or_default() += reaction.max(0.0);
+                    }
+                    BeamSupport::Beam { beam_id, t } => {
+                        if *reaction > 0.0 {
+                            beam_point_loads
+                                .entry(beam_id)
+                                .or_default()
+                                .push((t, *reaction));
+                        }
+                    }
+                }
                 if *reaction < -0.5 {
                     report.warnings.push(format!(
                         "{}: o apoio {} é puxado para cima ({} kN); evite um vão muito curto ao lado de um longo.",
@@ -1910,11 +2267,16 @@ impl Project {
         let labels = self.structure_labels();
         let mut marks = Vec::new();
         let extent = |column: &Fixture, dir: Point| {
-            let (u, v) = match column.quarter_turns % 2 {
-                0 => (Point::new(1.0, 0.0), Point::new(0.0, 1.0)),
-                _ => (Point::new(0.0, 1.0), Point::new(1.0, 0.0)),
-            };
+            let (s, c) = column.rotation_rad().sin_cos();
+            let u = Point::new(c, s);
+            let v = Point::new(-s, c);
             dir.dot(u).abs() * column.width / 2.0 + dir.dot(v).abs() * column.depth / 2.0
+        };
+        let support_trim = |support: BeamSupport, dir: Point| match support {
+            BeamSupport::Column { id } => self.column(id).map_or(0.0, |c| extent(c, dir)),
+            BeamSupport::Beam { beam_id, .. } => {
+                self.beam_by_id(beam_id).map_or(0.0, |b| b.width_m / 2.0)
+            }
         };
         let mut labelled: HashSet<String> = HashSet::new();
         let lines = self.beam_lines();
@@ -1925,15 +2287,15 @@ impl Project {
                 let Some(beam) = self.valid_beams().find(|b| b.id == *id).copied() else {
                     continue;
                 };
-                let (Some(a), Some(b)) = (self.column(beam.from), self.column(beam.to)) else {
+                let Some((pa, pb)) = self.beam_endpoints(&beam) else {
                     continue;
                 };
-                let Some(dir) = b.center.minus(a.center).normalized() else {
+                let Some(dir) = pb.minus(pa).normalized() else {
                     continue;
                 };
                 let normal = Point::new(-dir.y, dir.x);
-                let start = a.center.translated(dir.scaled(extent(a, dir)));
-                let end = b.center.translated(dir.scaled(-extent(b, dir)));
+                let start = pa.translated(dir.scaled(support_trim(beam.start_support(), dir)));
+                let end = pb.translated(dir.scaled(-support_trim(beam.end_support(), dir)));
                 for side in [-1.0, 1.0] {
                     let off = normal.scaled(side * beam.width_m / 2.0);
                     marks.push(PlanMark::Line {
@@ -1942,9 +2304,9 @@ impl Project {
                         heavy: true,
                     });
                 }
-                let length = a.center.distance(b.center);
+                let length = pa.distance(pb);
                 if longest.is_none_or(|(l, _, _, _)| length > l) {
-                    longest = Some((length, a.center, b.center, beam));
+                    longest = Some((length, pa, pb, beam));
                 }
             }
             if let Some((_, a, b, beam)) = longest
@@ -2674,5 +3036,90 @@ mod tests {
         assert!((shares[&4] - 0.125).abs() < 1e-6, "short: {}", shares[&4]);
         let sum: f64 = shares.values().sum();
         assert!((sum - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn angled_columns_and_beam_on_beam_supports_transfer_loads_accurately() {
+        // 1. Angled wall at 45°: generated columns inherit the 45° angle instead
+        // of snapping to quarter turns.
+        let mut angled = Project::default();
+        angled.set_terrain(Point::new(-2.0, -2.0), Point::new(10.0, 10.0));
+        angled
+            .add_wall(Point::new(0.0, 0.0), Point::new(3.0, 3.0))
+            .unwrap();
+        angled.generate_structure();
+        let col = angled.structural_columns().next().unwrap();
+        assert!(
+            (col.rotation_rad() - std::f64::consts::FRAC_PI_4).abs() < 1e-4,
+            "expected 45° column, got {} rad",
+            col.rotation_rad()
+        );
+        // Local +X axis of the column runs along the 45° wall.
+        let tip = col.to_world(Point::new(0.15, 0.0));
+        let delta = tip.minus(col.center);
+        assert!((delta.x - delta.y).abs() < 1e-6);
+
+        // 2. Secondary beam resting on two primary girders transfers its exact
+        // self-weight to the girders and down to the four corner columns.
+        let mut frame = Project::default();
+        frame.set_terrain(Point::new(-2.0, -2.0), Point::new(12.0, 12.0));
+        let c1 = frame
+            .add_fixture(FixtureKind::Column, Point::new(0.0, 0.0), 0.30, 0.14, 0)
+            .unwrap();
+        let c2 = frame
+            .add_fixture(FixtureKind::Column, Point::new(4.0, 0.0), 0.30, 0.14, 0)
+            .unwrap();
+        let c3 = frame
+            .add_fixture(FixtureKind::Column, Point::new(0.0, 4.0), 0.30, 0.14, 0)
+            .unwrap();
+        let c4 = frame
+            .add_fixture(FixtureKind::Column, Point::new(4.0, 4.0), 0.30, 0.14, 0)
+            .unwrap();
+        let g1 = frame.add_beam(c1, c2, 0.15, 0.40).unwrap();
+        let g2 = frame.add_beam(c3, c4, 0.15, 0.40).unwrap();
+
+        let before = frame.structure_report();
+        let g1_moment_before = before
+            .beams
+            .iter()
+            .flat_map(|l| &l.spans)
+            .find(|s| s.beam == g1)
+            .unwrap()
+            .moment_span;
+
+        // Add a secondary beam spanning from midpoint of g1 to midpoint of g2.
+        let sec = frame
+            .add_beam_on_supports(
+                BeamSupport::Beam {
+                    beam_id: g1,
+                    t: 0.5,
+                },
+                BeamSupport::Beam {
+                    beam_id: g2,
+                    t: 0.5,
+                },
+                0.15,
+                0.35,
+            )
+            .unwrap();
+        let after = frame.structure_report();
+        let g1_span_after = after
+            .beams
+            .iter()
+            .flat_map(|l| &l.spans)
+            .find(|s| s.beam == g1)
+            .unwrap();
+        let sec_weight = CONCRETE_KN_M3 * 0.15 * 0.35 * 4.0;
+        // Point load at mid-span increases primary girder's mid-span moment by P*L/4.
+        let expected_extra_moment = (sec_weight / 2.0) * 4.0 / 4.0;
+        assert!(
+            ((g1_span_after.moment_span - g1_moment_before) - expected_extra_moment).abs() < 0.05,
+            "extra moment {} vs expected {}",
+            g1_span_after.moment_span - g1_moment_before,
+            expected_extra_moment
+        );
+        // Deleting a column removes its girder AND the secondary beam resting on it.
+        let affected = frame.beams_of(&[c1]);
+        assert!(affected.contains(&g1) && affected.contains(&sec));
     }
 }

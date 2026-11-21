@@ -61,6 +61,7 @@ impl FloorPlanApp {
                 width,
                 depth,
                 quarter_turns: turns,
+                angle_rad: 0.0,
                 electrical: kind.default_electrical(),
             }
         };

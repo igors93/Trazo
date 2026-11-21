@@ -835,6 +835,7 @@ impl Project {
             width,
             depth,
             quarter_turns: quarter_turns % 4,
+            angle_rad: 0.0,
             electrical: kind.default_electrical(),
         };
         if !self.fixture_fits(&fixture) {

@@ -1045,7 +1045,8 @@ impl FloorPlanApp {
         let (width, depth) = kind.default_size();
         // Columns and footings sit on wall junctions and centre lines.
         if kind.is_structural() {
-            let (center, quarter_turns) = self.project.structural_placement(point);
+            let (center, quarter_turns, angle_rad) =
+                self.project.structural_placement_with_angle(point);
             return Fixture {
                 id: 0,
                 kind,
@@ -1053,6 +1054,7 @@ impl FloorPlanApp {
                 width,
                 depth,
                 quarter_turns,
+                angle_rad,
                 electrical: None,
             };
         }
@@ -1071,6 +1073,7 @@ impl FloorPlanApp {
                 width,
                 depth,
                 quarter_turns: 0,
+                angle_rad: 0.0,
                 electrical: kind.default_electrical(),
             };
         }
@@ -1100,6 +1103,7 @@ impl FloorPlanApp {
             width,
             depth,
             quarter_turns: turns % 4,
+            angle_rad: 0.0,
             electrical: kind.default_electrical(),
         };
         let wall = self
@@ -1137,7 +1141,12 @@ impl FloorPlanApp {
             placed.depth,
             placed.quarter_turns,
         ) {
-            Some(_) => {
+            Some(id) => {
+                if placed.angle_rad.abs() > 1e-9
+                    && let Some(f) = self.project.fixtures.iter_mut().find(|f| f.id == id)
+                {
+                    f.angle_rad = placed.angle_rad;
+                }
                 if !self.record_change(previous) {
                     return;
                 }

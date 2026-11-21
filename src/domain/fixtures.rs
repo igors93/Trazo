@@ -281,6 +281,10 @@ pub const MIN_SIZE: f64 = 0.2;
 pub const MIN_COLUMN_SIZE: f64 = 0.1;
 pub const MAX_SIZE: f64 = 8.0;
 
+fn is_zero_angle(angle: &f64) -> bool {
+    angle.abs() < 1e-9
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Fixture {
     pub id: u64,
@@ -294,6 +298,10 @@ pub struct Fixture {
     /// the right, 2 down and 3 to the left.
     #[serde(default)]
     pub quarter_turns: u8,
+    /// Additional free rotation in radians (clockwise on screen), used e.g.
+    /// for columns aligned to angled walls.
+    #[serde(default, skip_serializing_if = "is_zero_angle")]
+    pub angle_rad: f64,
     /// Circuit, power and height, for electrical devices.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub electrical: Option<super::electrical::ElectricalData>,
@@ -318,24 +326,47 @@ fn rotate(local: Point, turns: u8) -> Point {
 }
 
 impl Fixture {
+    /// Total clockwise rotation angle in radians (screen / plan coordinates).
+    pub fn rotation_rad(self) -> f64 {
+        f64::from(self.quarter_turns % 4) * std::f64::consts::FRAC_PI_2 + self.angle_rad
+    }
+
     /// A point of the fixture's own frame (x along the width, y from the
     /// back at -depth/2 to the front at +depth/2) in plan coordinates.
     pub fn to_world(self, local: Point) -> Point {
-        let rotated = rotate(local, self.quarter_turns);
+        let rotated = if self.angle_rad.abs() < 1e-9 {
+            rotate(local, self.quarter_turns)
+        } else {
+            let (s, c) = self.rotation_rad().sin_cos();
+            Point::new(local.x * c - local.y * s, local.x * s + local.y * c)
+        };
         Point::new(self.center.x + rotated.x, self.center.y + rotated.y)
     }
 
     pub fn to_local(self, world: Point) -> Point {
         let offset = Point::new(world.x - self.center.x, world.y - self.center.y);
-        rotate(offset, 4 - self.quarter_turns % 4)
+        if self.angle_rad.abs() < 1e-9 {
+            rotate(offset, 4 - self.quarter_turns % 4)
+        } else {
+            let (s, c) = self.rotation_rad().sin_cos();
+            Point::new(offset.x * c + offset.y * s, -offset.x * s + offset.y * c)
+        }
     }
 
     /// Width and depth as laid on the plan's X and Y axes.
     pub fn extent(&self) -> (f64, f64) {
-        if self.quarter_turns.is_multiple_of(2) {
-            (self.width, self.depth)
+        if self.angle_rad.abs() < 1e-9 {
+            if self.quarter_turns.is_multiple_of(2) {
+                (self.width, self.depth)
+            } else {
+                (self.depth, self.width)
+            }
         } else {
-            (self.depth, self.width)
+            let (s, c) = self.rotation_rad().sin_cos();
+            (
+                c.abs() * self.width + s.abs() * self.depth,
+                s.abs() * self.width + c.abs() * self.depth,
+            )
         }
     }
 
@@ -766,6 +797,7 @@ mod tests {
             width: 2.0,
             depth: 0.6,
             quarter_turns: turns,
+            angle_rad: 0.0,
             electrical: None,
         }
     }
