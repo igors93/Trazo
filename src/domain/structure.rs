@@ -599,6 +599,86 @@ pub fn continuous_beam(spans: &[(f64, f64, f64)]) -> Vec<(f64, f64)> {
         .collect()
 }
 
+/// Cracked-section stiffness summary for a rectangular RC beam span per
+/// ABNT NBR 6118:2023 (17.3.2.1.1 — Branson's equivalent inertia).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BeamStiffness {
+    /// Gross concrete inertia I_c, m⁴.
+    pub ic_m4: f64,
+    /// Stage II cracked transformed inertia I_II, m⁴.
+    pub i_cracked_m4: f64,
+    /// Branson equivalent inertia I_eq, m⁴.
+    pub i_eq_m4: f64,
+    /// Cracking moment M_r, kN·m.
+    pub m_r_knm: f64,
+    /// Pre-sized longitudinal tension steel area A_s (CA-50), cm².
+    pub as_cm2: f64,
+}
+
+/// Computes Branson's equivalent moment of inertia (NBR 6118 17.3.2.1.1) for a
+/// rectangular beam (`b` × `h`, metres) of concrete `fck_mpa` under design
+/// characteristic moment `m_k_design` (for tension steel pre-sizing) and
+/// quasi-permanent service moment `m_a_qp` (kN·m).
+pub fn effective_beam_stiffness(
+    b: f64,
+    h: f64,
+    fck_mpa: f64,
+    modulus_kn_m2: f64,
+    m_k_design: f64,
+    m_a_qp: f64,
+) -> BeamStiffness {
+    let fck = fck_mpa.max(10.0);
+    let ic = (b * h.powi(3) / 12.0).max(1e-9);
+    // NBR 6118 8.2.5 & 17.3.1: fct,m = 0.3·fck^(2/3) (MPa), α = 1.5 for rectangular beams.
+    let fct_m_kn_m2 = 0.3 * fck.powf(2.0 / 3.0) * 1000.0;
+    let m_r = 1.5 * fct_m_kn_m2 * ic / (h * 0.5).max(1e-6);
+
+    // Pre-size tension reinforcement (CA-50, fyd = 500/1.15 MPa) at ULS (γf = 1.4),
+    // never below NBR 6118 Table 17.3 minimum ratio ρ_min.
+    let d = (h - 0.04).max(0.7 * h).max(0.05);
+    let fcd_kn_m2 = (fck / 1.4) * 1000.0;
+    let fyd_kn_m2 = (500.0 / 1.15) * 1000.0;
+    let m_d = 1.4 * m_k_design.abs();
+    let mu = (m_d / (b * d * d * 0.85 * fcd_kn_m2).max(1e-9)).min(0.295);
+    let xi = ((1.0 - (1.0 - 2.0 * mu).max(0.0).sqrt()) / 0.8).clamp(0.0, 0.45);
+    let z = d * (1.0 - 0.4 * xi);
+    let rho_min = if fck <= 30.0 {
+        0.0015
+    } else if fck <= 35.0 {
+        0.00173
+    } else if fck <= 40.0 {
+        0.00208
+    } else if fck <= 45.0 {
+        0.00245
+    } else {
+        0.00284
+    };
+    let as_m2 = (m_d / (z * fyd_kn_m2).max(1e-9)).max(rho_min * b * h);
+
+    // Stage II cracked transformed section inertia I_II.
+    const ES_KN_M2: f64 = 210_000_000.0;
+    let alpha_e = ES_KN_M2 / modulus_kn_m2.max(1.0);
+    let as_tr = alpha_e * as_m2;
+    let x_ii = (-as_tr + (as_tr * as_tr + 2.0 * b * as_tr * d).sqrt()) / b.max(1e-6);
+    let i_ii = (b * x_ii.powi(3) / 3.0 + as_tr * (d - x_ii).powi(2)).min(ic);
+
+    // Branson interpolation (NBR 6118 17.3.2.1.1).
+    let m_a = m_a_qp.abs();
+    let i_eq = if m_a <= m_r || m_a <= 1e-9 {
+        ic
+    } else {
+        let r3 = (m_r / m_a).powi(3);
+        (r3 * ic + (1.0 - r3) * i_ii).min(ic)
+    };
+    BeamStiffness {
+        ic_m4: ic,
+        i_cracked_m4: i_ii,
+        i_eq_m4: i_eq,
+        m_r_knm: m_r,
+        as_cm2: as_m2 * 10_000.0,
+    }
+}
+
 /// Largest deflection of a span with end moments and a uniform load, by
 /// integrating the curvature twice; same units as `ei`.
 pub fn span_deflection(length: f64, load: f64, left: f64, right: f64, ei: f64) -> f64 {
@@ -1242,11 +1322,16 @@ impl Project {
                 reactions[i + 1] -= v_right;
                 let x = (v_left / w.max(1e-9)).clamp(0.0, *length);
                 let span_moment = left + v_left * x - w * x * x / 2.0;
-                // Quasi-permanent load (ψ2 = 0.3), cracked inertia about half
-                // the gross, creep factor 1 + 1.32 (NBR 6118).
+                // Quasi-permanent load (ψ2 = 0.3), Branson's equivalent inertia
+                // with cracking moment Mr and pre-sized CA-50 steel, plus creep
+                // factor 1 + 1.32 (NBR 6118 17.3.2.1).
                 let w_qp = dead + 0.3 * live;
                 let ratio = if w > 0.0 { w_qp / w } else { 1.0 };
-                let ei = modulus * b * h.powi(3) / 12.0 * 0.5;
+                let m_k_max = span_moment.max(0.0).max(left.abs()).max(right.abs());
+                let m_a_qp = m_k_max * ratio;
+                let stiffness =
+                    effective_beam_stiffness(*b, *h, settings.fck_mpa, modulus, m_k_max, m_a_qp);
+                let ei = modulus * stiffness.i_eq_m4;
                 let deflection =
                     span_deflection(*length, w_qp, left * ratio, right * ratio, ei) * (1.0 + 1.32);
                 let end_span = i == 0 || i + 1 == count;
@@ -1891,7 +1976,7 @@ pub fn beam_diagrams_svg(project: &Project) -> String {
     let notes_y = height - 22.0;
     for (i, note) in [
         "Vigas contínuas sobre apoios simples (pilares), carga uniforme por vão: peso próprio, lajes repartidas pelas bordas e paredes dos pavimentos de cima.",
-        "Flecha com carga quase permanente (g + 0,3q), inércia fissurada ≈ 50 % da bruta e fluência (1 + 1,32), comparada a L/250 (NBR 6118).",
+        "Flecha com carga quase permanente (g + 0,3q), inércia equivalente de Branson (Mr e armadura CA-50) e fluência (1 + 1,32), comparada a L/250 (NBR 6118).",
         "Pré-dimensionamento para estudo: o projeto estrutural final é de um engenheiro habilitado (ART).",
     ]
     .iter()
@@ -2104,5 +2189,27 @@ mod tests {
         // A column placed near a junction snaps onto it.
         let (at, _) = project.structural_placement(Point::new(4.2, 0.1));
         assert!(at.distance(Point::new(4.0, 0.0)) < 1e-6, "{at:?}");
+    }
+
+    #[test]
+    fn branson_deflection_uses_uncracked_inertia_below_mr_and_cracked_as_above_mr() {
+        let settings = StructureSettings::default(); // fck = 25 MPa
+        let modulus = settings.modulus_kn_m2();
+        let (b, h): (f64, f64) = (0.15, 0.40);
+        let ic = b * h.powi(3) / 12.0;
+
+        // Light load below cracking moment Mr: beam stays uncracked (I_eq == I_c),
+        // unlike the old fixed 0.5 * I_c approximation.
+        let uncracked = effective_beam_stiffness(b, h, settings.fck_mpa, modulus, 5.0, 4.0);
+        assert!((uncracked.i_eq_m4 - ic).abs() < 1e-12);
+        assert!(uncracked.m_r_knm > 10.0);
+        assert!(uncracked.as_cm2 >= 0.0015 * b * h * 10_000.0 - 1e-6);
+
+        // Heavy service moment well above Mr: I_eq drops smoothly toward the
+        // cracked transformed inertia I_II computed from the pre-sized steel.
+        let cracked = effective_beam_stiffness(b, h, settings.fck_mpa, modulus, 60.0, 48.0);
+        assert!(cracked.i_eq_m4 < ic);
+        assert!(cracked.i_eq_m4 >= cracked.i_cracked_m4 - 1e-12);
+        assert!(cracked.as_cm2 > uncracked.as_cm2);
     }
 }
