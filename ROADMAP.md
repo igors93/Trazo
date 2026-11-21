@@ -102,7 +102,7 @@ Reviewed on 2026-11-21. Sources:
 | B05 | Medium | Drawings | Conduit, beam, column and footing labels ignore the label layout, so they overlap at crowded wall junctions (seen on the sample house). | Open → #106 |
 | B06 | Medium | Structure | Slab spans come from the room's bounding box, which is wrong for L-shaped rooms. Slab loads are shared by edge length, a rough stand-in for the yield-line method. | Open → #116, #109 |
 | B07 | Medium | Structure | Columns turn in quarter turns only, so they come out misoriented on angled walls. Beams can only rest on columns, not on other beams. | Open → #117 |
-| B08 | Medium | Electrical | Two-way switches are wired in pairs only; intermediate (four-way) switches are counted as one-way, giving wrong wire counts. | Open → #128 |
+| B08 | Medium | Electrical | Two-way switches are wired in pairs only; intermediate (four-way) switches are counted as one-way, giving wrong wire counts. | ✅ Fixed: added `FixtureKind::SwitchIntermediate` (four-way) and generalized multi-way switch chains in `conduit_wiring`; regression test `intermediate_switches_carry_four_travellers_and_chain_multiple_points`. |
 | B09 | Medium | Electrical | Only the first board is used, so sub-boards (QDC) are not modelled. | Open → #127 |
 | B10 | Medium | Electrical | Devices are assigned to rooms by their centre. A device right on a room boundary can land in the neighbouring room, which changes its circuit and RCD. | ✅ Fixed: `Project::room_for_fixture` resolves boundary devices by the room their front face points into (with footprint-overlap fallback); regression test `boundary_device_is_assigned_to_the_room_it_faces`. |
 | B11 | Medium | Structure | Footings are checked by area only: no eccentric load, punching or overturning check. | Open → #112 |
@@ -331,7 +331,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 125 | Lighting calculation (lumen method): lux per room against the NBR ISO/CIE 8995-1 targets | P2 | M | M7 | ⬜ |
 | 126 | Photovoltaic pre-sizing: consumption, kWp, panels on the roof planes and monthly generation for the city | P2 | M | M7 | ⬜ |
 | 127 | Several boards (main and sub-boards), short-circuit estimate and breaker selectivity (B09) | P2 | L | M7 | ⬜ |
-| 128 | Intermediate (four-way) switches, and devices on room boundaries assigned to the right room (B08, B10) | P1 | S | M7 | ⬜ |
+| 128 | Intermediate (four-way) switches, and devices on room boundaries assigned to the right room (B08, B10) | P1 | S | M7 | ✅ |
 | 129 | Earthing layout and a simplified lightning-protection risk check (NBR 5419) | P2 | M | M7 | ⬜ |
 
 ### G. Comfort and performance

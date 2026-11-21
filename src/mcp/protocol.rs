@@ -732,11 +732,11 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "inserir_ponto_eletrico",
             title: "Inserir ponto elétrico",
-            description: "Insere um ponto da instalação elétrica (NBR 5410): tomada_baixa (0,30 m), tomada_media (1,20 m), tomada_alta (2,20 m), tomada_tue (uso específico, como chuveiro ou forno), interruptor, interruptor_paralelo (three-way), luz_teto, arandela, quadro (de distribuição) ou ponto_dados. Pontos de parede encostam sozinhos na face da parede mais próxima (até 0,8 m); luz_teto fica no ponto informado. Opcional: circuito, potência e altura.",
+            description: "Insere um ponto da instalação elétrica (NBR 5410): tomada_baixa (0,30 m), tomada_media (1,20 m), tomada_alta (2,20 m), tomada_tue (uso específico, como chuveiro ou forno), interruptor, interruptor_paralelo (three-way), interruptor_intermediario (four-way), luz_teto, arandela, quadro (de distribuição) ou ponto_dados. Pontos de parede encostam sozinhos na face da parede mais próxima (até 0,8 m); luz_teto fica no ponto informado. Opcional: circuito, potência e altura.",
             properties: json!({
                 "tipo": {
                     "type": "string",
-                    "enum": ["tomada_baixa", "tomada_media", "tomada_alta", "tomada_tue", "interruptor", "interruptor_paralelo", "luz_teto", "arandela", "quadro", "ponto_dados"],
+                    "enum": ["tomada_baixa", "tomada_media", "tomada_alta", "tomada_tue", "interruptor", "interruptor_paralelo", "interruptor_intermediario", "luz_teto", "arandela", "quadro", "ponto_dados"],
                     "description": "Tipo do ponto.",
                 },
                 "x": number("X do ponto, em metros."),

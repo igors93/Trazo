@@ -83,13 +83,14 @@ pub enum DeviceRole {
 }
 
 impl FixtureKind {
-    pub const ELECTRICAL: [FixtureKind; 10] = [
+    pub const ELECTRICAL: [FixtureKind; 11] = [
         FixtureKind::OutletLow,
         FixtureKind::OutletMid,
         FixtureKind::OutletHigh,
         FixtureKind::OutletSpecific,
         FixtureKind::Switch,
         FixtureKind::SwitchTwoWay,
+        FixtureKind::SwitchIntermediate,
         FixtureKind::CeilingLight,
         FixtureKind::WallLight,
         FixtureKind::Panel,
@@ -104,7 +105,7 @@ impl FixtureKind {
         Some(match self {
             Self::OutletLow | Self::OutletMid | Self::OutletHigh => DeviceRole::GeneralOutlet,
             Self::OutletSpecific => DeviceRole::SpecificOutlet,
-            Self::Switch | Self::SwitchTwoWay => DeviceRole::Switch,
+            Self::Switch | Self::SwitchTwoWay | Self::SwitchIntermediate => DeviceRole::Switch,
             Self::CeilingLight | Self::WallLight => DeviceRole::Lighting,
             Self::Panel => DeviceRole::Panel,
             Self::DataPoint => DeviceRole::Data,
@@ -125,7 +126,7 @@ impl FixtureKind {
             Self::OutletMid => (100.0, 1.20),
             Self::OutletHigh => (100.0, 2.20),
             Self::OutletSpecific => (1500.0, 0.30),
-            Self::Switch | Self::SwitchTwoWay => (0.0, 1.10),
+            Self::Switch | Self::SwitchTwoWay | Self::SwitchIntermediate => (0.0, 1.10),
             Self::CeilingLight => (100.0, 0.0),
             Self::WallLight => (60.0, 2.00),
             Self::Panel => (0.0, 1.50),
@@ -185,24 +186,31 @@ pub(super) fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolSha
             shapes.push(circle(0.0, -hd / 3.0, radius * 0.35, Outline));
             shapes
         }
-        FixtureKind::Switch | FixtureKind::SwitchTwoWay => {
+        FixtureKind::Switch | FixtureKind::SwitchTwoWay | FixtureKind::SwitchIntermediate => {
             let r = radius * 0.8;
             let mut shapes = vec![
                 circle(0.0, 0.0, r, Outline),
                 poly(&[(0.0, -hd), (0.0, -r)], false, Detail),
             ];
-            // One stroke for a one-way switch, two for a two-way (three-way).
-            let strokes: &[f64] = if kind == FixtureKind::Switch {
-                &[0.0]
+            if kind == FixtureKind::SwitchIntermediate {
+                // Four-way (intermediate) switch: crossed strokes inside the circle.
+                let d = r * 0.55;
+                shapes.push(poly(&[(-d, d), (d, -d)], false, Outline));
+                shapes.push(poly(&[(-d, -d), (d, d)], false, Outline));
             } else {
-                &[-r * 0.45, r * 0.45]
-            };
-            for dx in strokes {
-                shapes.push(poly(
-                    &[(dx - r * 0.35, r * 0.55), (dx + r * 0.35, -r * 0.55)],
-                    false,
-                    Outline,
-                ));
+                // One stroke for a one-way switch, two for a two-way (three-way).
+                let strokes: &[f64] = if kind == FixtureKind::Switch {
+                    &[0.0]
+                } else {
+                    &[-r * 0.45, r * 0.45]
+                };
+                for dx in strokes {
+                    shapes.push(poly(
+                        &[(dx - r * 0.35, r * 0.55), (dx + r * 0.35, -r * 0.55)],
+                        false,
+                        Outline,
+                    ));
+                }
             }
             shapes
         }

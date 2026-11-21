@@ -43,6 +43,7 @@ pub enum FixtureKind {
     OutletSpecific,
     Switch,
     SwitchTwoWay,
+    SwitchIntermediate,
     CeilingLight,
     WallLight,
     Panel,
@@ -112,6 +113,7 @@ impl FixtureKind {
             Self::OutletSpecific => "Tomada de uso específico (TUE)",
             Self::Switch => "Interruptor simples",
             Self::SwitchTwoWay => "Interruptor paralelo",
+            Self::SwitchIntermediate => "Interruptor intermediário",
             Self::CeilingLight => "Ponto de luz no teto",
             Self::WallLight => "Arandela",
             Self::Panel => "Quadro de distribuição",
@@ -154,6 +156,7 @@ impl FixtureKind {
             Self::OutletSpecific => "tomada_tue",
             Self::Switch => "interruptor",
             Self::SwitchTwoWay => "interruptor_paralelo",
+            Self::SwitchIntermediate => "interruptor_intermediario",
             Self::CeilingLight => "luz_teto",
             Self::WallLight => "arandela",
             Self::Panel => "quadro",
@@ -201,7 +204,7 @@ impl FixtureKind {
             Self::OutletLow | Self::OutletMid | Self::OutletHigh | Self::OutletSpecific => {
                 (0.3, 0.22)
             }
-            Self::Switch | Self::SwitchTwoWay => (0.24, 0.24),
+            Self::Switch | Self::SwitchTwoWay | Self::SwitchIntermediate => (0.24, 0.24),
             Self::CeilingLight => (0.4, 0.4),
             Self::WallLight => (0.3, 0.2),
             Self::Panel => (0.5, 0.2),
@@ -236,6 +239,7 @@ impl FixtureKind {
             | Self::OutletSpecific
             | Self::Switch
             | Self::SwitchTwoWay
+            | Self::SwitchIntermediate
             | Self::CeilingLight
             | Self::WallLight
             | Self::DataPoint
@@ -436,6 +440,7 @@ pub fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolShape> {
         | FixtureKind::OutletSpecific
         | FixtureKind::Switch
         | FixtureKind::SwitchTwoWay
+        | FixtureKind::SwitchIntermediate
         | FixtureKind::CeilingLight
         | FixtureKind::WallLight
         | FixtureKind::Panel

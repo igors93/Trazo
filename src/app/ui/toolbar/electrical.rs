@@ -26,6 +26,7 @@ impl FloorPlanApp {
             self.fixture_button(ui, FixtureKind::WallLight, "Arandela");
             self.fixture_button(ui, FixtureKind::Switch, "Interruptor");
             self.fixture_button(ui, FixtureKind::SwitchTwoWay, "Paralelo");
+            self.fixture_button(ui, FixtureKind::SwitchIntermediate, "Intermediário");
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Quadro e dados", |ui| {

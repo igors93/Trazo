@@ -562,13 +562,12 @@ impl Project {
             .collect();
 
         // Who commands each light: switches and lights of the same circuit
-        // and room, each light on its nearest switch. A pair of two-way
-        // switches acts as one control, fed at the first and returning from
-        // the second.
+        // and room, each light on its nearest control. Two-way (three-way)
+        // and intermediate (four-way) switches form a switching chain:
+        // phase enters `chain[0]`, each consecutive link carries two
+        // travellers, and `chain.last()` returns to the commanded lights.
         struct Control {
-            feed: u64,
-            out: u64,
-            travellers: bool,
+            chain: Vec<u64>,
             lights: Vec<u64>,
         }
         let mut controls: Vec<(u32, Control)> = Vec::new();
@@ -580,6 +579,29 @@ impl Project {
             .collect();
         groups.sort_unstable();
         groups.dedup();
+        let build_chain = |start: &Fixture, mids: &[&Fixture], end: &Fixture| -> Vec<u64> {
+            let mut chain = Vec::with_capacity(mids.len() + 2);
+            chain.push(start.id);
+            let mut remaining: Vec<&Fixture> = mids.to_vec();
+            let mut current = start.center;
+            while !remaining.is_empty() {
+                let next_idx = remaining
+                    .iter()
+                    .enumerate()
+                    .min_by(|(_, a), (_, b)| {
+                        a.center
+                            .distance(current)
+                            .total_cmp(&b.center.distance(current))
+                    })
+                    .map(|(i, _)| i)
+                    .unwrap_or(0);
+                let picked = remaining.remove(next_idx);
+                chain.push(picked.id);
+                current = picked.center;
+            }
+            chain.push(end.id);
+            chain
+        };
         for (circuit, room) in groups {
             let in_group = |d: &&&Fixture| circuit_of(d) == Some(circuit) && room_of[&d.id] == room;
             let switches: Vec<&Fixture> = devices
@@ -599,30 +621,73 @@ impl Project {
                 .filter(|d| d.kind == FixtureKind::SwitchTwoWay)
                 .copied()
                 .collect();
+            let intermediates: Vec<&Fixture> = switches
+                .iter()
+                .filter(|d| d.kind == FixtureKind::SwitchIntermediate)
+                .copied()
+                .collect();
+            let one_way: Vec<&Fixture> = switches
+                .iter()
+                .filter(|d| d.kind == FixtureKind::Switch)
+                .copied()
+                .collect();
             let mut group: Vec<Control> = Vec::new();
-            let mut singles: Vec<&Fixture> = switches.clone();
             if two_way.len() >= 2 {
-                singles.retain(|d| d.id != two_way[0].id && d.id != two_way[1].id);
-                group.push(Control {
-                    feed: two_way[0].id,
-                    out: two_way[1].id,
-                    travellers: true,
-                    lights: Vec::new(),
-                });
+                if intermediates.is_empty()
+                    && two_way.len().is_multiple_of(2)
+                    && lights.len() >= two_way.len() / 2
+                {
+                    // Multiple independent two-way pairs for separate lighting groups.
+                    for pair in two_way.as_chunks::<2>().0 {
+                        group.push(Control {
+                            chain: vec![pair[0].id, pair[1].id],
+                            lights: Vec::new(),
+                        });
+                    }
+                } else {
+                    // Two-way ends with any intermediate switches (plus any extra
+                    // two-way switches in the same group) wired in series.
+                    let mut mids = intermediates;
+                    if two_way.len() > 2 {
+                        mids.extend_from_slice(&two_way[2..]);
+                    }
+                    group.push(Control {
+                        chain: build_chain(two_way[0], &mids, two_way[1]),
+                        lights: Vec::new(),
+                    });
+                }
+            } else {
+                let mut multi: Vec<&Fixture> =
+                    Vec::with_capacity(two_way.len() + intermediates.len());
+                multi.extend_from_slice(&two_way);
+                multi.extend_from_slice(&intermediates);
+                if multi.len() >= 2 {
+                    let first = multi[0];
+                    let last = *multi.last().unwrap_or(&first);
+                    let mids = &multi[1..multi.len() - 1];
+                    group.push(Control {
+                        chain: build_chain(first, mids, last),
+                        lights: Vec::new(),
+                    });
+                } else if let Some(&lone) = multi.first() {
+                    group.push(Control {
+                        chain: vec![lone.id],
+                        lights: Vec::new(),
+                    });
+                }
             }
-            group.extend(singles.iter().map(|d| Control {
-                feed: d.id,
-                out: d.id,
-                travellers: false,
+            group.extend(one_way.iter().map(|d| Control {
+                chain: vec![d.id],
                 lights: Vec::new(),
             }));
             for light in lights {
                 let nearest = group.iter_mut().min_by(|a, b| {
-                    let at = |id: u64| {
-                        self.device(id)
+                    let at = |control: &Control| {
+                        let out_id = *control.chain.last().unwrap_or(&control.chain[0]);
+                        self.device(out_id)
                             .map_or(f64::MAX, |d| d.center.distance(light.center))
                     };
-                    at(a.out).total_cmp(&at(b.out))
+                    at(a).total_cmp(&at(b))
                 });
                 if let Some(control) = nearest {
                     control.lights.push(light.id);
@@ -689,18 +754,18 @@ impl Project {
                 });
                 let mut returns = 0u8;
                 for (_, control) in controls.iter().filter(|(c, _)| c == circuit) {
-                    if control.lights.is_empty() {
+                    if control.lights.is_empty() || control.chain.is_empty() {
                         continue;
                     }
-                    phase |= inside(control.feed);
-                    if control.travellers && inside(control.feed) != inside(control.out) {
-                        returns += 2;
+                    let feed = control.chain[0];
+                    let out = *control.chain.last().unwrap_or(&feed);
+                    phase |= inside(feed);
+                    for pair in control.chain.windows(2) {
+                        if inside(pair[0]) != inside(pair[1]) {
+                            returns += 2;
+                        }
                     }
-                    if control
-                        .lights
-                        .iter()
-                        .any(|l| inside(*l) != inside(control.out))
-                    {
+                    if control.lights.iter().any(|l| inside(*l) != inside(out)) {
                         returns += 1;
                     }
                 }
@@ -1104,6 +1169,42 @@ mod tests {
         // Phase down to the first, two travellers back up; travellers down
         // to the second and the return up to the light.
         assert_eq!(to(a).circuits[0].short(), "F R R");
+        assert_eq!(to(b).circuits[0].short(), "R R R");
+    }
+
+    #[test]
+    fn intermediate_switches_carry_four_travellers_and_chain_multiple_points() {
+        let mut project = Project::default();
+        project.set_terrain(Point::new(-1.0, -1.0), Point::new(20.0, 20.0));
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(8.0, 3.0), "Corredor")
+            .unwrap();
+        let mut add = |kind: FixtureKind, x: f64, y: f64| {
+            let (w, d) = kind.default_size();
+            let id = project
+                .add_fixture(kind, Point::new(x, y), w, d, 0)
+                .unwrap();
+            if kind != FixtureKind::Panel {
+                project
+                    .update_electrical(id, Some(Some(1)), None, None)
+                    .unwrap();
+            }
+            id
+        };
+        let panel = add(FixtureKind::Panel, 0.3, 0.2);
+        let light = add(FixtureKind::CeilingLight, 4.0, 1.5);
+        let a = add(FixtureKind::SwitchTwoWay, 0.8, 0.2);
+        let mid = add(FixtureKind::SwitchIntermediate, 4.0, 0.2);
+        let b = add(FixtureKind::SwitchTwoWay, 7.4, 0.2);
+        for (from, to) in [(panel, light), (light, a), (light, mid), (light, b)] {
+            project.add_conduit(from, to, ConduitRun::Ceiling).unwrap();
+        }
+        let wiring = project.conduit_wiring();
+        let to = |id: u64| wiring.iter().find(|w| w.downstream == id).unwrap();
+        // Feed two-way gets phase + 2 travellers, intermediate gets 4 travellers
+        // (two in, two out), exit two-way gets 2 travellers + 1 return to the light.
+        assert_eq!(to(a).circuits[0].short(), "F R R");
+        assert_eq!(to(mid).circuits[0].short(), "R R R R");
         assert_eq!(to(b).circuits[0].short(), "R R R");
     }
 }
