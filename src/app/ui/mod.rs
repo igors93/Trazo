@@ -30,6 +30,8 @@ mod status_bar;
 mod tabs;
 mod templates;
 mod toolbar;
+mod underlay;
+pub(in crate::app) use underlay::{UnderlayUiState, paint_image_underlays};
 mod updates;
 mod view;
 mod views;
@@ -128,5 +130,6 @@ impl FloorPlanApp {
         self.library_dialog(&context);
         self.ergonomics_dialog(&context);
         self.electrical_dialog(&context);
+        self.underlay_dialog(&context);
     }
 }

@@ -31,6 +31,7 @@ pub mod sheet_set;
 pub mod snap;
 pub mod templates;
 pub mod transform;
+pub mod underlay;
 pub mod views;
 pub mod wall_layers;
 pub mod wall_reference;

@@ -137,7 +137,7 @@ Worth prototyping after M6, when the core is solid: #85, #86, #87, #94, #44, #45
 | --- | --- | --- | --- | --- | --- |
 | 38 | DXF import and export: walls, openings, fixtures, drawings, dimensions, texts and hatches, with layers, colours and units | P0 | L | M2 | ✅ |
 | 70 | Print to a printer at exact scale, with the system print dialog and sheet preview | P0 | M | M2 | ✅ |
-| 40 | Image and PDF underlay with two-point scale calibration, opacity and lock | P1 | M | M2 | ⬜ The faded underlay of the floor below exists (#22); external images do not |
+| 40 | Image and PDF underlay with two-point scale calibration, opacity and lock | P1 | M | M2 | ✅ |
 | 43 | Reusable blocks with attributes and a personal library shared between projects | P1 | M | M2 | 🟡 The library (#23) customises symbols; there are no user blocks with attributes yet |
 | 39 | DWG, through a reliable library or converter | P2 | L | M2 | ⬜ |
 | 44 | External references (other drawings shown and updated live) | P2 | L | Exploratory | ⬜ |

@@ -18,6 +18,7 @@ base64 = "0.23"
 # A small blocking HTTP server for the MCP endpoint (no async runtime).
 tiny_http = "0.12"
 resvg = "0.50"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "bmp"] }
 # The font parser egui uses, to check a system font before handing it over.
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
 svg2pdf = "0.13"

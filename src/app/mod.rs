@@ -56,6 +56,7 @@ enum DocDialog {
     Library,
     Ergonomics,
     Electrical,
+    Underlay,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -199,6 +200,7 @@ pub struct FloorPlanApp {
     update_receiver: Option<mpsc::Receiver<crate::io::updates::UpdateStatus>>,
     active_doc_dialog: DocDialog,
     print_state: ui::PrintDialogState,
+    underlay_state: ui::UnderlayUiState,
     new_layer_name: String,
     new_note_text: String,
     new_revision_text: String,
@@ -395,6 +397,7 @@ impl FloorPlanApp {
             update_receiver: None,
             active_doc_dialog: DocDialog::None,
             print_state: ui::PrintDialogState::default(),
+            underlay_state: ui::UnderlayUiState::default(),
             new_layer_name: String::new(),
             new_note_text: String::new(),
             new_revision_text: String::new(),
@@ -2405,7 +2408,12 @@ impl FloorPlanApp {
             context.copy_text(note);
         }
         if actions.escape {
-            if self.show_help || self.show_mcp_dialog || self.active_doc_dialog != DocDialog::None {
+            if self.underlay_state.calibration.take().is_some() {
+                self.message = "Calibração de escala cancelada.".to_owned();
+            } else if self.show_help
+                || self.show_mcp_dialog
+                || self.active_doc_dialog != DocDialog::None
+            {
                 self.show_help = false;
                 self.show_mcp_dialog = false;
                 self.active_doc_dialog = DocDialog::None;

@@ -268,6 +268,44 @@ impl FloorPlanApp {
         });
         self.draft_aim = snapped;
 
+        self.sync_underlay_textures(ui.ctx());
+        let underlay_textures = self.underlay_state.texture_pairs();
+
+        if self.underlay_state.calibration.is_some() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Crosshair);
+            let clicked_pos = ui.input(|input| {
+                if input.pointer.primary_clicked() {
+                    input.pointer.interact_pos().filter(|pos| on_canvas(*pos))
+                } else {
+                    None
+                }
+            });
+            if let Some(pos) = clicked_pos {
+                let pt = view.to_world(pos);
+                self.handle_calibration_click(pt);
+            }
+            if ui.input(|input| input.pointer.secondary_clicked()) {
+                self.underlay_state.calibration = None;
+                self.message = "Calibração de escala cancelada.".to_owned();
+            }
+            canvas::paint(
+                &painter,
+                view,
+                &self.project,
+                PaintOptions {
+                    selection: self.selection,
+                    show_grid: self.show_grid,
+                    dimensions: self.show_dimensions,
+                    underlay_textures: &underlay_textures,
+                    ..Default::default()
+                },
+            );
+            self.paint_underlay_calibration_overlay(&painter, view, world);
+            self.paint_view_aids(&painter, view);
+            self.canvas_navigation(ui, navigation);
+            return;
+        }
+
         if let Some(corners) = &self.pending_room {
             // Keep the drawn room on screen while it is named.
             canvas::paint(
@@ -278,6 +316,7 @@ impl FloorPlanApp {
                     selection: self.selection,
                     show_grid: self.show_grid,
                     dimensions: self.show_dimensions,
+                    underlay_textures: &underlay_textures,
                     ..Default::default()
                 },
             );
@@ -524,6 +563,7 @@ impl FloorPlanApp {
                 ghost,
                 dimensions: self.show_dimensions,
                 wall_reference: self.wall_reference,
+                underlay_textures: &underlay_textures,
             },
         );
         if self.electrical_only {

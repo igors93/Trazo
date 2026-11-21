@@ -133,6 +133,10 @@ pub struct Project {
     )]
     pub electrical: super::electrical::ElectricalSettings,
 
+    /// External raster image and PDF underlays with two-point scale calibration (#40).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub underlays: Vec<super::underlay::ImageUnderlay>,
+
     next_id: u64,
 }
 
@@ -195,6 +199,8 @@ impl Default for Project {
             library: Vec::new(),
 
             electrical: super::electrical::ElectricalSettings::default(),
+
+            underlays: Vec::new(),
 
             next_id: 1,
         }
@@ -1964,10 +1970,12 @@ impl Project {
     }
 
     pub fn bounds(&self) -> Option<(Point, Point)> {
+        let has_visible_underlay = self.underlays.iter().any(|u| u.visible);
         if self.walls.is_empty()
             && self.fixtures.is_empty()
             && self.drawings.is_empty()
             && self.terrain.is_none()
+            && !has_visible_underlay
         {
             return None;
         }
@@ -1992,6 +2000,17 @@ impl Project {
             max.x = max.x.max(content_max.x);
 
             max.y = max.y.max(content_max.y);
+        }
+
+        for underlay in &self.underlays {
+            if !underlay.visible {
+                continue;
+            }
+            let (u_min, u_max) = underlay.bounds();
+            min.x = min.x.min(u_min.x);
+            min.y = min.y.min(u_min.y);
+            max.x = max.x.max(u_max.x);
+            max.y = max.y.max(u_max.y);
         }
 
         Some((min, max))

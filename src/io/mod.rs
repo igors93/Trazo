@@ -6,6 +6,7 @@ pub mod print;
 pub mod project_file;
 pub mod recovery;
 pub mod settings;
+pub mod underlay;
 pub mod updates;
 
 use std::path::PathBuf;

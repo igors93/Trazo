@@ -213,6 +213,17 @@ impl FloorPlanApp {
             self.import_dxf();
             ui.close();
         }
+        if menu_item(
+            ui,
+            Some(Icon::ExportImage),
+            "Imagem / PDF de fundo (Underlay)...",
+            "",
+        )
+        .clicked()
+        {
+            self.active_doc_dialog = super::super::DocDialog::Underlay;
+            ui.close();
+        }
         menu_separator(ui);
         if menu_item(ui, Some(Icon::ExportImage), "Exportar imagem PNG...", "").clicked() {
             self.export_png();

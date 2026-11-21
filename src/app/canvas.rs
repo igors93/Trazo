@@ -75,6 +75,8 @@ pub struct PaintOptions<'a> {
     pub dimensions: bool,
     /// Active reference line when previewing walls or rooms.
     pub wall_reference: WallReference,
+    /// Loaded GPU textures for visible external image/PDF underlays.
+    pub underlay_textures: &'a [(u64, egui::TextureId)],
 }
 
 /// Door and window type tags ("P1 80/210") beside each opening: on the side
@@ -457,6 +459,7 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         ghost,
         dimensions,
         wall_reference,
+        underlay_textures,
     } = options;
     let marks = Marks {
         selection,
@@ -533,6 +536,7 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         }
     }
 
+    super::ui::paint_image_underlays(painter, view, project, underlay_textures);
     paint_floor_underlay(painter, view, project);
 
     if project.category_visible(crate::domain::layers::LayerCategory::Rooms) {

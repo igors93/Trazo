@@ -567,6 +567,20 @@ impl FloorPlanApp {
             {
                 self.active_doc_dialog = super::super::DocDialog::Layers;
             }
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::ExportImage,
+                    "Fundo",
+                    self.active_doc_dialog == super::super::DocDialog::Underlay,
+                    false,
+                ),
+                "Importar imagem ou PDF de fundo com calibração por 2 pontos, opacidade e bloqueio",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Underlay;
+            }
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Janelas", |ui| {

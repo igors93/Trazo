@@ -538,6 +538,7 @@ impl FloorPlanApp {
                     ghost: None,
                     dimensions: self.show_dimensions,
                     wall_reference: self.wall_reference,
+                    underlay_textures: &[],
                 },
             );
             let floor = document

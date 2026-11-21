@@ -109,6 +109,34 @@ fn document(project: &Project) -> SvgDocument {
             );
         }
     }
+    for underlay in &project.underlays {
+        if !underlay.visible {
+            continue;
+        }
+        let Some(ref b64) = underlay.embedded_png_base64 else {
+            continue;
+        };
+        let (x, y) = point(underlay.origin);
+        let w = underlay.width_m * pixels_per_meter;
+        let h = underlay.height_m() * pixels_per_meter;
+        let opacity = underlay.opacity.clamp(0.05, 1.0);
+        if underlay.rotation_deg.abs() > 1e-3 {
+            let cx = x + w * 0.5;
+            let cy = y + h * 0.5;
+            let _ = writeln!(
+                svg,
+                "<image href=\"data:image/png;base64,{b64}\" x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" opacity=\"{opacity:.2}\" transform=\"rotate({:.2} {cx:.1} {cy:.1})\" data-underlay=\"{}\"/>",
+                underlay.rotation_deg,
+                escaped(&underlay.name)
+            );
+        } else {
+            let _ = writeln!(
+                svg,
+                "<image href=\"data:image/png;base64,{b64}\" x=\"{x:.1}\" y=\"{y:.1}\" width=\"{w:.1}\" height=\"{h:.1}\" opacity=\"{opacity:.2}\" data-underlay=\"{}\"/>",
+                escaped(&underlay.name)
+            );
+        }
+    }
     if project.category_visible(crate::domain::layers::LayerCategory::Rooms) {
         for room in &project.rooms {
             if let Some(poly) = project.room_polygon(room) {
@@ -1114,5 +1142,33 @@ mod tests {
         let _ = fs::remove_file(pdf_path);
         let _ = fs::remove_file(svg_path);
         let _ = fs::remove_dir(directory);
+    }
+
+    #[test]
+    fn visible_underlay_exports_as_svg_image_with_opacity() {
+        let mut project = Project::default();
+        let id = project.add_underlay(
+            "Levantamento".to_owned(),
+            "lev.png".to_owned(),
+            1,
+            100,
+            50,
+            Point::new(0.0, 0.0),
+            10.0,
+            Some("iVBORw0KGgo=".to_owned()),
+        );
+        let markup = document(&project).markup;
+        assert!(markup.contains("<image href=\"data:image/png;base64,iVBORw0KGgo=\""));
+        assert!(markup.contains("opacity=\"0.45\""));
+        assert!(markup.contains("data-underlay=\"Levantamento\""));
+
+        project
+            .underlays
+            .iter_mut()
+            .find(|u| u.id == id)
+            .unwrap()
+            .visible = false;
+        let hidden_markup = document(&project).markup;
+        assert!(!hidden_markup.contains("data-underlay=\"Levantamento\""));
     }
 }
