@@ -5,6 +5,7 @@
 use eframe::egui::{self, Color32, RichText, Ui};
 
 use super::super::{DocDialog, FloorPlanApp, theme::*};
+use super::widgets::secondary_button;
 use crate::domain::verdict::{Light, SafetySummary, safety_summary};
 
 pub(crate) fn light_color(light: Light) -> Color32 {
@@ -37,6 +38,7 @@ impl FloorPlanApp {
         let mut detail: bool = ctx.data(|d| d.get_temp(detail_id)).unwrap_or(false);
         let mut filter: u8 = ctx.data(|d| d.get_temp(filter_id)).unwrap_or(0);
         let summary: SafetySummary = safety_summary(&self.project);
+        let mut export = false;
         egui::Window::new("Segurança · semáforo dos resultados")
             .open(&mut open)
             .collapsible(false)
@@ -86,6 +88,8 @@ impl FloorPlanApp {
                     }
                     ui.separator();
                     ui.checkbox(&mut detail, "Detalhes técnicos");
+                    ui.separator();
+                    export = secondary_button(ui, "Exportar memorial (PDF)").clicked();
                 });
                 if summary.verdicts.is_empty() {
                     ui.add_space(8.0);
@@ -165,8 +169,31 @@ impl FloorPlanApp {
             d.insert_temp(detail_id, detail);
             d.insert_temp(filter_id, filter);
         });
+        if export {
+            self.export_presizing_report();
+        }
         if !open {
             self.active_doc_dialog = DocDialog::None;
         }
+    }
+
+    /// Saves the pre-sizing report (#103) for a professional to review.
+    pub(crate) fn export_presizing_report(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Documento PDF", &["pdf"])
+            .set_file_name("memorial-pre-dimensionamento.pdf")
+            .save_file()
+        else {
+            return;
+        };
+        let date = crate::io::report::today();
+        self.message = match crate::io::report::export_presizing_report(&self.project, &date, &path)
+        {
+            Ok(pages) => format!(
+                "Memorial de pré-dimensionamento ({pages} páginas) salvo em {}",
+                path.display()
+            ),
+            Err(error) => format!("Erro ao exportar o memorial: {error}"),
+        };
     }
 }

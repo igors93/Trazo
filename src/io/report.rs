@@ -1,0 +1,1069 @@
+//! Pre-sizing report (*memorial de pré-dimensionamento*, #103): a multi-page
+//! PDF for a licensed professional to review and sign. It holds the inputs,
+//! the assumptions and applicability limits, every structural and
+//! electrical result with its traffic light, the warnings, and the
+//! drawings (formwork plan, electrical plan, beam forces, single-line
+//! diagram), with a review box for the professional's name, registration
+//! and ART or RRT.
+
+use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
+
+use crate::domain::discipline::Discipline;
+use crate::domain::distribution::{phase_label, section_label, single_line_svg};
+use crate::domain::limits;
+use crate::domain::model::Project;
+use crate::domain::structure::{beam_diagrams_svg, section_cm};
+use crate::domain::verdict::{Light, Verdict, safety_summary};
+
+const W: f64 = 210.0;
+const H: f64 = 297.0;
+/// ABNT NBR 16752 margins: 25 mm for binding on the left, 7 mm elsewhere,
+/// plus room for the running header and footer.
+const LEFT: f64 = 25.0;
+const RIGHT: f64 = 203.0;
+const TOP: f64 = 26.0;
+const BOTTOM: f64 = 280.0;
+const INK: &str = "#1d2836";
+const MUTED: &str = "#5b6b7c";
+const TOTAL: &str = "{{TOTAL}}";
+
+fn esc(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn decimal(value: f64, places: usize) -> String {
+    let text = format!("{value:.places$}");
+    // "-0,0" for a value that rounds to zero reads as a sign error.
+    let text = if text.starts_with('-') && text[1..].chars().all(|c| c == '0' || c == '.') {
+        text[1..].to_owned()
+    } else {
+        text
+    };
+    text.replace('.', ",")
+}
+
+fn light_color(light: Light) -> &'static str {
+    match light {
+        Light::Green => "#22925f",
+        Light::Yellow => "#d5841b",
+        Light::Red => "#cc3f33",
+    }
+}
+
+/// Splits `text` into lines of about `chars` characters, at spaces.
+fn wrap(text: &str, chars: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        if !line.is_empty() && line.chars().count() + 1 + word.chars().count() > chars {
+            lines.push(std::mem::take(&mut line));
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(word);
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    lines
+}
+
+/// A4 pages written top to bottom, starting a new page when one fills up.
+struct Pages {
+    project: String,
+    done: Vec<String>,
+    body: String,
+    y: f64,
+}
+
+impl Pages {
+    fn new(project: &str) -> Self {
+        Self {
+            project: project.to_owned(),
+            done: Vec::new(),
+            body: String::new(),
+            y: TOP,
+        }
+    }
+
+    fn text(&mut self, x: f64, y: f64, size: f64, bold: bool, color: &str, value: &str) {
+        self.body.push_str(&format!(
+            "<text x=\"{x:.2}\" y=\"{y:.2}\" font-family=\"Arial, sans-serif\" font-size=\"{size}\"{} fill=\"{color}\">{}</text>\n",
+            if bold { " font-weight=\"700\"" } else { "" },
+            esc(value)
+        ));
+    }
+
+    fn dot(&mut self, x: f64, y: f64, light: Light) {
+        self.body.push_str(&format!(
+            "<circle cx=\"{x:.2}\" cy=\"{y:.2}\" r=\"1.3\" fill=\"{}\"/>\n",
+            light_color(light)
+        ));
+    }
+
+    fn line(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, width: f64, color: &str) {
+        self.body.push_str(&format!(
+            "<line x1=\"{x1:.2}\" y1=\"{y1:.2}\" x2=\"{x2:.2}\" y2=\"{y2:.2}\" stroke=\"{color}\" stroke-width=\"{width}\"/>\n"
+        ));
+    }
+
+    fn page_break(&mut self) {
+        let number = self.done.len() + 1;
+        let mut page = format!(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
+             <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{W}mm\" height=\"{H}mm\" viewBox=\"0 0 {W} {H}\">\n\
+             <rect width=\"{W}\" height=\"{H}\" fill=\"#ffffff\"/>\n"
+        );
+        page.push_str(&format!(
+            "<text x=\"{LEFT}\" y=\"14\" font-family=\"Arial, sans-serif\" font-size=\"2.6\" fill=\"{MUTED}\">{} · Memorial de pré-dimensionamento</text>\n\
+             <line x1=\"{LEFT}\" y1=\"16\" x2=\"{RIGHT}\" y2=\"16\" stroke=\"#b8c4d0\" stroke-width=\"0.2\"/>\n\
+             <line x1=\"{LEFT}\" y1=\"286\" x2=\"{RIGHT}\" y2=\"286\" stroke=\"#b8c4d0\" stroke-width=\"0.2\"/>\n\
+             <text x=\"{LEFT}\" y=\"290.5\" font-family=\"Arial, sans-serif\" font-size=\"2.4\" fill=\"{MUTED}\">Pré-dimensionamento para revisão de profissional habilitado. Não é projeto executivo.</text>\n\
+             <text x=\"{RIGHT}\" y=\"290.5\" font-family=\"Arial, sans-serif\" font-size=\"2.4\" fill=\"{MUTED}\" text-anchor=\"end\">{number}/{TOTAL}</text>\n",
+            esc(&self.project)
+        ));
+        page.push_str(&std::mem::take(&mut self.body));
+        page.push_str("</svg>\n");
+        self.done.push(page);
+        self.y = TOP;
+    }
+
+    /// Makes room for `height` mm, breaking the page if needed.
+    fn room(&mut self, height: f64) {
+        if self.y + height > BOTTOM {
+            self.page_break();
+        }
+    }
+
+    fn heading(&mut self, title: &str) {
+        self.room(16.0);
+        self.y += 4.0;
+        let y = self.y;
+        self.text(LEFT, y, 4.6, true, INK, title);
+        self.y += 2.5;
+        let y = self.y;
+        self.line(LEFT, y, RIGHT, y, 0.35, INK);
+        self.y += 5.0;
+    }
+
+    fn subheading(&mut self, title: &str) {
+        self.room(12.0);
+        self.y += 2.0;
+        let y = self.y;
+        self.text(LEFT, y, 3.4, true, INK, title);
+        self.y += 5.0;
+    }
+
+    fn paragraph(&mut self, text: &str, size: f64, color: &str) {
+        let chars = ((RIGHT - LEFT) / (size * 0.5)) as usize;
+        for line in wrap(text, chars) {
+            self.room(size * 1.5);
+            let y = self.y;
+            self.text(LEFT, y, size, false, color, &line);
+            self.y += size * 1.45;
+        }
+        self.y += size * 0.4;
+    }
+
+    /// A table whose rows may start with a traffic light.
+    fn table(&mut self, headers: &[&str], widths: &[f64], rows: &[(Option<Light>, Vec<String>)]) {
+        let total: f64 = widths.iter().sum();
+        let scale = (RIGHT - LEFT) / total;
+        let row_h = 5.0;
+        let header = |pages: &mut Pages| {
+            let y = pages.y;
+            pages.body.push_str(&format!(
+                "<rect x=\"{LEFT}\" y=\"{:.2}\" width=\"{:.2}\" height=\"{row_h}\" fill=\"#edf2f7\"/>\n",
+                y - 3.6,
+                RIGHT - LEFT
+            ));
+            let mut x = LEFT;
+            for (title, w) in headers.iter().zip(widths) {
+                pages.text(x + 1.0, y, 2.5, true, INK, title);
+                x += w * scale;
+            }
+            pages.y += row_h;
+        };
+        self.room(row_h * 2.0);
+        header(self);
+        for (light, cells) in rows {
+            if self.y + row_h > BOTTOM {
+                self.page_break();
+                header(self);
+            }
+            let y = self.y;
+            let mut x = LEFT;
+            for (i, (cell, w)) in cells.iter().zip(widths).enumerate() {
+                if i == 0
+                    && let Some(light) = light
+                {
+                    self.dot(x + 1.6, y - 0.9, *light);
+                    self.text(x + 3.8, y, 2.5, false, INK, cell);
+                } else {
+                    self.text(x + 1.0, y, 2.5, false, INK, cell);
+                }
+                x += w * scale;
+            }
+            self.line(LEFT, y + 1.4, RIGHT, y + 1.4, 0.1, "#d5dde6");
+            self.y += row_h;
+        }
+        self.y += 3.0;
+    }
+
+    fn finish(mut self) -> Vec<String> {
+        if !self.body.is_empty() {
+            self.page_break();
+        }
+        let total = self.done.len().to_string();
+        self.done
+            .into_iter()
+            .map(|page| page.replace(TOTAL, &total))
+            .collect()
+    }
+}
+
+/// The light of each element by its name in the verdicts.
+fn lights(verdicts: &[Verdict]) -> HashMap<String, Light> {
+    verdicts
+        .iter()
+        .map(|v| (v.element.clone(), v.light()))
+        .collect()
+}
+
+/// The report's own A4 pages (without the drawings).
+pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
+    let summary = safety_summary(project);
+    let light_of = lights(&summary.verdicts);
+    let report = project.structure_report();
+    let schedule = project.load_schedule();
+    let s = project.structure.settings;
+    let tb = &project.sheet.title_block;
+    let mut pages = Pages::new(&project.name);
+
+    // Cover.
+    pages.y = 60.0;
+    pages.text(
+        LEFT,
+        60.0,
+        8.0,
+        true,
+        INK,
+        "MEMORIAL DE PRÉ-DIMENSIONAMENTO",
+    );
+    pages.text(
+        LEFT,
+        70.0,
+        4.0,
+        false,
+        MUTED,
+        "Estrutura e instalações elétricas · para revisão profissional",
+    );
+    pages.line(LEFT, 76.0, RIGHT, 76.0, 0.5, INK);
+    let mut y = 88.0;
+    for (label, value) in [
+        ("Projeto", project.name.clone()),
+        ("Cliente", tb.client.clone()),
+        ("Endereço", tb.address.clone()),
+        ("Elaborado por", tb.author.clone()),
+        ("Registro", tb.registration.clone()),
+        (
+            "Data",
+            if tb.date.trim().is_empty() {
+                date.to_owned()
+            } else {
+                tb.date.clone()
+            },
+        ),
+    ] {
+        pages.text(LEFT, y, 3.0, true, MUTED, label);
+        pages.text(
+            LEFT + 35.0,
+            y,
+            3.4,
+            false,
+            INK,
+            if value.trim().is_empty() {
+                "—"
+            } else {
+                value.trim()
+            },
+        );
+        y += 7.0;
+    }
+    y += 6.0;
+    if let Some(worst) = summary.worst() {
+        pages.dot(LEFT + 2.0, y - 1.2, worst);
+        pages.text(
+            LEFT + 6.0,
+            y,
+            4.0,
+            true,
+            light_color(worst),
+            &format!("Situação geral: {}", worst.meaning()),
+        );
+        y += 7.0;
+        pages.text(
+            LEFT + 6.0,
+            y,
+            3.2,
+            false,
+            INK,
+            &format!(
+                "{} vermelho(s) · {} amarelo(s) · {} verde(s) em {} elemento(s) verificados",
+                summary.red,
+                summary.yellow,
+                summary.green,
+                summary.verdicts.len()
+            ),
+        );
+        y += 10.0;
+    }
+    pages.body.push_str(&format!(
+        "<rect x=\"{:.1}\" y=\"{y:.1}\" width=\"{:.1}\" height=\"22\" fill=\"#fdf3e7\" stroke=\"#d5841b\" stroke-width=\"0.3\"/>\n",
+        LEFT - 3.0,
+        RIGHT - LEFT + 6.0
+    ));
+    pages.y = y + 6.0;
+    pages.paragraph(
+        "Este documento é um pré-dimensionamento por regras práticas, para orientar decisões. Não é projeto estrutural nem elétrico executivo. Construir exige um profissional habilitado, com ART (CREA) ou RRT (CAU), e as licenças da prefeitura. Os métodos, normas e limites estão em docs/engineering.md do Trazo.",
+        3.0,
+        INK,
+    );
+    let y = 200.0;
+    pages.text(
+        LEFT,
+        y,
+        3.6,
+        true,
+        INK,
+        "Revisão do profissional habilitado",
+    );
+    pages.body.push_str(&format!(
+        "<rect x=\"{LEFT}\" y=\"{:.1}\" width=\"{:.1}\" height=\"64\" fill=\"none\" stroke=\"{INK}\" stroke-width=\"0.35\"/>\n",
+        y + 3.0,
+        RIGHT - LEFT
+    ));
+    let mut ry = y + 12.0;
+    for label in [
+        "Nome",
+        "Registro (CREA/CAU)",
+        "ART/RRT nº",
+        "Data",
+        "Assinatura",
+    ] {
+        pages.text(LEFT + 3.0, ry, 3.0, false, INK, label);
+        pages.line(LEFT + 45.0, ry + 0.5, RIGHT - 4.0, ry + 0.5, 0.2, MUTED);
+        ry += 9.0;
+    }
+    pages.text(
+        LEFT + 3.0,
+        ry + 1.0,
+        3.0,
+        false,
+        INK,
+        "Parecer:  ( ) aprovado    ( ) aprovado com ressalvas    ( ) reprovado",
+    );
+    pages.page_break();
+
+    // 1. Inputs.
+    pages.heading("1. Dados de entrada");
+    pages.subheading("Edificação");
+    let storeys = limits::storeys(project);
+    let rooms: Vec<(Option<Light>, Vec<String>)> = project
+        .rooms
+        .iter()
+        .map(|room| {
+            (
+                None,
+                vec![
+                    room.display_name().to_owned(),
+                    format!("{} m²", decimal(project.room_area(room).unwrap_or(0.0), 2)),
+                ],
+            )
+        })
+        .collect();
+    pages.paragraph(
+        &format!(
+            "{} pavimento(s) com estrutura, pé-direito {} m, {} cômodo(s), {} parede(s).",
+            storeys,
+            decimal(project.wall_height, 2),
+            project.rooms.len(),
+            project.walls.len()
+        ),
+        3.0,
+        INK,
+    );
+    if !rooms.is_empty() {
+        pages.table(&["Cômodo", "Área (eixos)"], &[3.0, 1.0], &rooms);
+    }
+    pages.subheading("Materiais e cargas");
+    pages.table(
+        &["Parâmetro", "Valor"],
+        &[3.0, 2.0],
+        &[
+            (
+                None,
+                vec!["Concreto (fck)".into(), format!("{:.0} MPa", s.fck_mpa)],
+            ),
+            (None, vec!["Aço".into(), "CA-50".into()]),
+            (
+                None,
+                vec![
+                    "Tensão admissível do solo".into(),
+                    format!("{:.0} kPa", s.soil_kpa),
+                ],
+            ),
+            (
+                None,
+                vec![
+                    "Sobrecarga".into(),
+                    format!("{} kN/m²", decimal(s.live_kn_m2, 1)),
+                ],
+            ),
+            (
+                None,
+                vec![
+                    "Revestimento".into(),
+                    format!("{} kN/m²", decimal(s.finish_kn_m2, 1)),
+                ],
+            ),
+            (
+                None,
+                vec![
+                    "Alvenaria".into(),
+                    format!("{} kN/m³", decimal(s.masonry_kn_m3, 0)),
+                ],
+            ),
+            (
+                None,
+                vec![
+                    "Tensão dos circuitos".into(),
+                    format!(
+                        "{:.0} V (uso específico {:.0} V)",
+                        project.electrical.voltage_v, project.electrical.specific_voltage_v
+                    ),
+                ],
+            ),
+            (
+                None,
+                vec!["Ligação em uso".into(), schedule.supply.label().to_owned()],
+            ),
+        ],
+    );
+
+    // 2. Assumptions and limits.
+    pages.heading("2. Premissas, métodos e limites");
+    for assumption in &summary.assumptions {
+        pages.paragraph(&format!("• {assumption}"), 3.0, INK);
+    }
+    pages.subheading("Limites de aplicação");
+    let refusal = limits::structural_refusal(project);
+    let refused = limits::element_violations(&report);
+    let mut limit_rows: Vec<(Option<Light>, Vec<String>)> = Vec::new();
+    for (name, value, limit, ok) in [
+        (
+            "Pavimentos",
+            storeys.to_string(),
+            format!("até {}", limits::MAX_STOREYS),
+            storeys <= limits::MAX_STOREYS,
+        ),
+        (
+            "Pé-direito",
+            format!("{} m", decimal(project.wall_height, 2)),
+            format!("até {} m", decimal(limits::MAX_STOREY_HEIGHT_M, 1)),
+            project.wall_height <= limits::MAX_STOREY_HEIGHT_M,
+        ),
+        (
+            "Sobrecarga",
+            format!("{} kN/m²", decimal(s.live_kn_m2, 1)),
+            format!("até {} kN/m²", decimal(limits::MAX_LIVE_LOAD_KN_M2, 1)),
+            s.live_kn_m2 <= limits::MAX_LIVE_LOAD_KN_M2,
+        ),
+    ] {
+        limit_rows.push((
+            Some(if ok { Light::Green } else { Light::Red }),
+            vec![name.to_owned(), value, limit],
+        ));
+    }
+    for violation in &refused {
+        limit_rows.push((
+            Some(Light::Red),
+            vec![
+                violation.element.clone(),
+                decimal(violation.value, 2),
+                format!("limite {}", decimal(violation.limit, 2)),
+            ],
+        ));
+    }
+    pages.table(
+        &["Limite", "Projeto", "Aplicação"],
+        &[3.0, 2.0, 2.0],
+        &limit_rows,
+    );
+    if let Some(refusal) = &refusal {
+        pages.paragraph(
+            &format!("Dimensionamento estrutural recusado: {refusal}"),
+            3.0,
+            "#cc3f33",
+        );
+    }
+
+    // 3. Structure.
+    pages.heading("3. Resultados · estrutura");
+    if refusal.is_some() {
+        pages.paragraph(
+            "O projeto está fora dos limites de aplicação: nenhum elemento estrutural foi dimensionado.",
+            3.0,
+            "#cc3f33",
+        );
+    } else if report.slabs.is_empty() && report.beams.is_empty() && report.columns.is_empty() {
+        pages.paragraph("Nenhum elemento estrutural no projeto.", 3.0, MUTED);
+    } else {
+        let refused_names: Vec<&str> = refused.iter().map(|v| v.element.as_str()).collect();
+        if !report.slabs.is_empty() {
+            pages.subheading("Lajes");
+            let rows: Vec<_> = report
+                .slabs
+                .iter()
+                .map(|slab| {
+                    let name = format!("Laje {} ({})", slab.label, slab.room);
+                    let out = refused_names.contains(&name.as_str());
+                    (
+                        light_of.get(&name).copied(),
+                        vec![
+                            format!("{} · {}", slab.label, slab.room),
+                            slab.kind.label().to_owned(),
+                            format!("{} × {} m", decimal(slab.lx_m, 2), decimal(slab.ly_m, 2)),
+                            if out {
+                                "fora dos limites".into()
+                            } else {
+                                format!("{:.0} cm", slab.thickness_m * 100.0)
+                            },
+                            if out {
+                                "—".into()
+                            } else {
+                                format!("{:.0} cm", slab.thickness_min_m * 100.0)
+                            },
+                            format!("{} kN/m²", decimal(slab.load_kn_m2, 2)),
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &["Laje", "Tipo", "Vãos", "Espessura", "Mínima", "Carga"],
+                &[3.0, 1.6, 2.0, 1.6, 1.3, 1.6],
+                &rows,
+            );
+        }
+        if !report.beams.is_empty() {
+            pages.subheading("Vigas (valores característicos)");
+            let mut rows = Vec::new();
+            for line in &report.beams {
+                for (i, span) in line.spans.iter().enumerate() {
+                    let name = if line.spans.len() > 1 {
+                        format!("Viga {} · vão {}", line.label, i + 1)
+                    } else {
+                        format!("Viga {}", line.label)
+                    };
+                    let out = refused_names.contains(&name.as_str());
+                    let label = if line.spans.len() > 1 {
+                        format!("{} v{}", line.label, i + 1)
+                    } else {
+                        line.label.clone()
+                    };
+                    rows.push((
+                        light_of.get(&name).copied(),
+                        if out {
+                            vec![
+                                label,
+                                format!("{} m", decimal(span.length_m, 2)),
+                                "fora dos limites".into(),
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                            ]
+                        } else {
+                            vec![
+                                label,
+                                format!("{} m", decimal(span.length_m, 2)),
+                                section_cm(span.width_m, span.height_m),
+                                decimal(span.dead_kn_m + span.live_kn_m, 1),
+                                decimal(span.moment_left.min(span.moment_right), 1),
+                                decimal(span.moment_span, 1),
+                                format!(
+                                    "{}/{}",
+                                    decimal(span.deflection_mm, 1),
+                                    decimal(span.limit_mm, 0)
+                                ),
+                            ]
+                        },
+                    ));
+                }
+            }
+            pages.table(
+                &[
+                    "Viga",
+                    "Vão",
+                    "b×h (cm)",
+                    "q (kN/m)",
+                    "M− (kN·m)",
+                    "M+ (kN·m)",
+                    "Flecha (mm)",
+                ],
+                &[1.6, 1.3, 1.5, 1.3, 1.5, 1.5, 1.6],
+                &rows,
+            );
+        }
+        if !report.columns.is_empty() {
+            pages.subheading("Pilares");
+            let rows: Vec<_> = report
+                .columns
+                .iter()
+                .map(|c| {
+                    (
+                        light_of.get(&format!("Pilar {}", c.label)).copied(),
+                        vec![
+                            c.label.clone(),
+                            section_cm(c.width_m, c.depth_m),
+                            c.position.label().to_owned(),
+                            decimal(c.load_kn, 1),
+                            decimal(c.upper_load_kn, 1),
+                            format!("{:.0}", c.area_needed_cm2.max(360.0)),
+                            format!("{:.0}", c.area_cm2),
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &[
+                    "Pilar",
+                    "Seção (cm)",
+                    "Posição",
+                    "N (kN)",
+                    "De cima (kN)",
+                    "Ac nec. (cm²)",
+                    "Ac (cm²)",
+                ],
+                &[1.2, 1.5, 1.9, 1.3, 1.6, 1.8, 1.4],
+                &rows,
+            );
+        }
+        if !report.footings.is_empty() {
+            pages.subheading("Sapatas");
+            let rows: Vec<_> = report
+                .footings
+                .iter()
+                .map(|f| {
+                    let name = format!("Sapata {}", f.label);
+                    let out = refused_names.contains(&name.as_str());
+                    (
+                        light_of.get(&name).copied(),
+                        if out {
+                            vec![
+                                f.label.clone(),
+                                f.column.clone().unwrap_or_else(|| "—".into()),
+                                "fora dos limites".into(),
+                                String::new(),
+                                String::new(),
+                                String::new(),
+                            ]
+                        } else {
+                            vec![
+                                f.label.clone(),
+                                f.column.clone().unwrap_or_else(|| "—".into()),
+                                section_cm(f.width_m, f.depth_m),
+                                decimal(f.load_kn, 1),
+                                format!("{:.0}/{:.0}", f.max_pressure_kpa, f.soil_kpa),
+                                decimal(f.punching_ratio, 2),
+                            ]
+                        },
+                    )
+                })
+                .collect();
+            pages.table(
+                &[
+                    "Sapata",
+                    "Pilar",
+                    "B×L (cm)",
+                    "N (kN)",
+                    "σ/σadm (kPa)",
+                    "Punção",
+                ],
+                &[1.3, 1.2, 1.6, 1.3, 1.8, 1.2],
+                &rows,
+            );
+        }
+        if !report.misaligned_columns.is_empty() {
+            pages.subheading("Pilares de transição");
+            for m in &report.misaligned_columns {
+                pages.paragraph(
+                    &format!(
+                        "• {} ({}): {:.1} kN {}",
+                        m.column_label,
+                        m.floor_name,
+                        m.load_kn,
+                        m.transfer_beam
+                            .as_ref()
+                            .map_or("sem apoio no pavimento inferior".to_owned(), |b| format!(
+                                "sobre a viga {b}"
+                            ))
+                    ),
+                    3.0,
+                    INK,
+                );
+            }
+        }
+    }
+
+    // 4. Electrical.
+    pages.heading("4. Resultados · instalação elétrica");
+    if schedule.circuits.is_empty() {
+        pages.paragraph("Nenhum circuito no projeto.", 3.0, MUTED);
+    } else {
+        let rows: Vec<_> = schedule
+            .circuits
+            .iter()
+            .map(|row| {
+                (
+                    light_of
+                        .get(&format!("Circuito C{} ({})", row.number, row.kind.short()))
+                        .copied(),
+                    vec![
+                        format!("C{}", row.number),
+                        row.kind.short().to_owned(),
+                        format!("{:.0}", row.power_va),
+                        decimal(row.current_a, 1),
+                        phase_label(&row.phases),
+                        row.wire_mm2.map_or("—".into(), section_label),
+                        row.breaker_a.map_or("—".into(), |b| format!("{b:.0}")),
+                        if row.needs_rcd {
+                            "Sim".into()
+                        } else {
+                            "—".into()
+                        },
+                        row.drop_percent.map_or("—".into(), |d| decimal(d, 2)),
+                    ],
+                )
+            })
+            .collect();
+        pages.table(
+            &[
+                "Circ.",
+                "Tipo",
+                "VA",
+                "I (A)",
+                "Fase",
+                "Fio (mm²)",
+                "Disj. (A)",
+                "DR",
+                "Queda (%)",
+            ],
+            &[1.0, 1.0, 1.1, 1.0, 1.0, 1.3, 1.3, 0.8, 1.3],
+            &rows,
+        );
+        let d = schedule.demand;
+        pages.paragraph(
+            &format!(
+                "Carga instalada {:.0} VA; demanda provável {} kVA ({:.0} VA × {} + {:.0} VA × {}); ligação {}.",
+                schedule.total_va,
+                decimal(d.demand_va / 1000.0, 2),
+                d.general_va,
+                decimal(d.general_factor, 2),
+                d.specific_va,
+                decimal(d.specific_factor, 2),
+                schedule.supply.label().to_lowercase()
+            ),
+            3.0,
+            INK,
+        );
+        if let Some(e) = schedule.entrance {
+            pages.paragraph(
+                &format!(
+                    "Entrada: disjuntor geral {}, ramal {} mm², eletroduto Ø{} mm, {} A na fase mais carregada.",
+                    e.breaker_a.map_or("—".into(), |b| format!("{b:.0} A")),
+                    e.wire_mm2.map_or("—".into(), section_label),
+                    e.conduit_mm.map_or("—".into(), |c| c.to_string()),
+                    decimal(e.current_a, 1)
+                ),
+                3.0,
+                INK,
+            );
+        }
+    }
+
+    // 5. Every check.
+    pages.heading("5. Verificações (semáforo)");
+    pages.paragraph(
+        "Verde: usa até 85 % do limite. Amarelo: entre 85 % e 100 %. Vermelho: não atende ou está fora dos limites de aplicação.",
+        3.0,
+        MUTED,
+    );
+    for verdict in &summary.verdicts {
+        pages.room(12.0);
+        let y = pages.y;
+        pages.dot(LEFT + 1.5, y - 1.0, verdict.light());
+        pages.text(
+            LEFT + 4.5,
+            y,
+            3.0,
+            true,
+            INK,
+            &format!("{} · {}", verdict.discipline.label(), verdict.element),
+        );
+        pages.y += 4.6;
+        for check in &verdict.checks {
+            let usage = if check.utilisation.is_finite() {
+                format!(
+                    " (uso {} %, folga {} %)",
+                    decimal(check.utilisation * 100.0, 0),
+                    decimal(check.margin_percent(), 0)
+                )
+            } else {
+                String::new()
+            };
+            pages.room(5.0);
+            let y = pages.y;
+            pages.dot(LEFT + 6.0, y - 0.9, check.light);
+            pages.text(
+                LEFT + 9.0,
+                y,
+                2.7,
+                true,
+                INK,
+                &format!("{}{usage}", check.name),
+            );
+            pages.y += 3.8;
+            for line in wrap(&check.simple, 105) {
+                pages.room(4.0);
+                let y = pages.y;
+                pages.text(LEFT + 9.0, y, 2.6, false, INK, &line);
+                pages.y += 3.6;
+            }
+            for line in wrap(&check.detail, 118) {
+                pages.room(4.0);
+                let y = pages.y;
+                pages.text(LEFT + 9.0, y, 2.3, false, MUTED, &line);
+                pages.y += 3.3;
+            }
+            pages.y += 1.0;
+        }
+        pages.y += 1.5;
+    }
+
+    // 6. Warnings.
+    pages.heading("6. Alertas");
+    let warnings: Vec<&String> = report.warnings.iter().chain(&schedule.warnings).collect();
+    if warnings.is_empty() {
+        pages.paragraph("Nenhum alerta.", 3.0, MUTED);
+    }
+    for warning in warnings {
+        pages.paragraph(&format!("• {warning}"), 3.0, INK);
+    }
+    pages.finish()
+}
+
+/// The drawings appended to the report: formwork plan, electrical plan,
+/// beam forces and single-line diagram, when the project has them.
+pub fn drawing_pages(project: &Project) -> Vec<String> {
+    let mut out = Vec::new();
+    let has_structure = project.structural_columns().next().is_some();
+    if has_structure && limits::structural_refusal(project).is_none() {
+        out.push(super::export::sheet::scaled_sheet_svg(
+            &project.for_discipline(Discipline::Structure),
+        ));
+        if !project.structure.beams.is_empty() {
+            out.push(beam_diagrams_svg(project));
+        }
+    }
+    if !project.load_schedule().circuits.is_empty() {
+        out.push(super::export::sheet::scaled_sheet_svg(
+            &project.for_discipline(Discipline::Electrical),
+        ));
+        out.push(single_line_svg(project));
+    }
+    out
+}
+
+/// Joins SVG pages (each with its own size) into one PDF.
+pub fn pages_to_pdf(pages: &[String]) -> Result<Vec<u8>, String> {
+    use pdf_writer::{Content, Finish, Name, Pdf, Rect, Ref};
+    let options = super::export::svg2pdf_options();
+    let mut alloc = Ref::new(1);
+    let catalog_id = alloc.bump();
+    let tree_id = alloc.bump();
+    let mut pdf = Pdf::new();
+    let mut kids = Vec::new();
+    let mut chunks = Vec::new();
+    for markup in pages {
+        let tree = svg2pdf::usvg::Tree::from_str(markup, &options).map_err(|e| e.to_string())?;
+        let (chunk, svg_id) = svg2pdf::to_chunk(&tree, svg2pdf::ConversionOptions::default())
+            .map_err(|e| e.to_string())?;
+        let mut map = HashMap::new();
+        let chunk = chunk.renumber(|old| *map.entry(old).or_insert_with(|| alloc.bump()));
+        let svg_id = map[&svg_id];
+        // usvg sizes are CSS pixels (96 per inch); PDF uses points (72).
+        let (w, h) = (
+            tree.size().width() * 72.0 / 96.0,
+            tree.size().height() * 72.0 / 96.0,
+        );
+        let page_id = alloc.bump();
+        let content_id = alloc.bump();
+        kids.push(page_id);
+        let mut page = pdf.page(page_id);
+        page.media_box(Rect::new(0.0, 0.0, w, h));
+        page.parent(tree_id);
+        page.contents(content_id);
+        page.resources().x_objects().pair(Name(b"S"), svg_id);
+        page.finish();
+        let mut content = Content::new();
+        content
+            .transform([w, 0.0, 0.0, h, 0.0, 0.0])
+            .x_object(Name(b"S"));
+        pdf.stream(content_id, &content.finish());
+        chunks.push(chunk);
+    }
+    pdf.catalog(catalog_id).pages(tree_id);
+    pdf.pages(tree_id)
+        .kids(kids.iter().copied())
+        .count(kids.len() as i32);
+    for chunk in &chunks {
+        pdf.extend(chunk);
+    }
+    Ok(pdf.finish())
+}
+
+/// Today's date as dd/mm/aaaa (UTC), for the cover.
+pub fn today() -> String {
+    let days = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() / 86_400) as i64;
+    // Days since 1970-01-01 to a civil date (H. Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{day:02}/{month:02}/{year}")
+}
+
+/// Writes the pre-sizing report with its drawings to `path`.
+pub fn export_presizing_report(
+    project: &Project,
+    date: &str,
+    path: &Path,
+) -> Result<usize, String> {
+    let mut pages = report_pages(project, date);
+    pages.extend(drawing_pages(project));
+    let pdf = pages_to_pdf(&pages)?;
+    fs::write(path, pdf).map_err(|e| e.to_string())?;
+    Ok(pages.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::geometry::Point;
+
+    fn house() -> Project {
+        let mut project = Project::default();
+        project.name = "Casa Teste".to_owned();
+        project.set_terrain(Point::new(-2.0, -2.0), Point::new(30.0, 30.0));
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 4.0), "Sala")
+            .unwrap();
+        project
+            .add_room(Point::new(4.0, 0.0), Point::new(7.0, 4.0), "Cozinha")
+            .unwrap();
+        project.generate_structure();
+        project.generate_electrical_points();
+        project.assign_circuits();
+        project
+    }
+
+    #[test]
+    fn the_report_holds_every_section_on_valid_numbered_pages() {
+        let project = house();
+        let pages = report_pages(&project, "21/11/2026");
+        assert!(pages.len() >= 3);
+        let all = pages.join("\n");
+        for needed in [
+            "MEMORIAL DE PRÉ-DIMENSIONAMENTO",
+            "Revisão do profissional habilitado",
+            "ART/RRT nº",
+            "1. Dados de entrada",
+            "2. Premissas, métodos e limites",
+            "3. Resultados · estrutura",
+            "4. Resultados · instalação elétrica",
+            "5. Verificações (semáforo)",
+            "6. Alertas",
+            "Não é projeto executivo",
+        ] {
+            assert!(all.contains(needed), "{needed}");
+        }
+        let total = pages.len();
+        for (i, page) in pages.iter().enumerate() {
+            assert!(
+                page.contains(&format!("{}/{total}", i + 1)),
+                "page {}",
+                i + 1
+            );
+            assert!(!page.contains(TOTAL));
+            assert!(
+                svg2pdf::usvg::Tree::from_str(page, &svg2pdf::usvg::Options::default()).is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn the_pdf_has_one_page_per_svg_page_and_the_drawings() {
+        let project = house();
+        let mut pages = report_pages(&project, "21/11/2026");
+        let report_only = pages.len();
+        let drawings = drawing_pages(&project);
+        assert_eq!(
+            drawings.len(),
+            4,
+            "formwork, beam forces, electrical plan, single-line"
+        );
+        pages.extend(drawings);
+        let pdf = pages_to_pdf(&pages).unwrap();
+        assert!(pdf.starts_with(b"%PDF"));
+        let text = String::from_utf8_lossy(&pdf);
+        assert!(
+            text.contains(&format!("/Count {}", report_only + 4)),
+            "page count"
+        );
+    }
+
+    #[test]
+    fn today_is_a_plausible_date() {
+        let date = today();
+        let parts: Vec<u32> = date.split('/').map(|p| p.parse().unwrap()).collect();
+        assert!((1..=31).contains(&parts[0]) && (1..=12).contains(&parts[1]) && parts[2] >= 2024);
+    }
+
+    #[test]
+    fn a_refused_project_says_so_and_shows_no_structural_numbers() {
+        let mut project = house();
+        project.structure.settings.floors = 5;
+        let pages = report_pages(&project, "21/11/2026").join("\n");
+        assert!(pages.contains("Dimensionamento estrutural recusado"));
+        assert!(pages.contains("nenhum elemento estrutural foi dimensionado"));
+        assert!(!pages.contains(">Pilares<"));
+        assert!(
+            drawing_pages(&project).len() == 2,
+            "no formwork plan or beam forces"
+        );
+    }
+}

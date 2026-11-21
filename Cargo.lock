@@ -2934,6 +2934,7 @@ dependencies = [
  "base64 0.23.1",
  "eframe",
  "image",
+ "pdf-writer",
  "proptest",
  "resvg 0.50.0",
  "rfd",

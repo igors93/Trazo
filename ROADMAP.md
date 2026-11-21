@@ -209,12 +209,32 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
   - `pre_dimensionamento` returns `limites` (refusal and refused elements).
   - The limits are documented in `docs/engineering.md` and the user guide.
 - **Tests:** 4 new tests (a house within the limits, a 9 m span refused with an explanation and no numbers, too many storeys, too much load and too tall a storey refusing the whole structure, footings on soft soil), plus the existing traffic-light tests. The full suite, Clippy and format pass on an export of exactly this commit.
-- **Commit:** recorded in the next log update.
+- **Commit:** `cf70684`.
 - **Limitations:**
   - The limit values are conservative choices for houses and small buildings, not values taken from a standard.
   - The structure window still lists the numbers of refused elements in its own tables (the traffic light, the report and MCP do not).
 
-### #103 Pre-sizing report for professional review — 🔵 In progress
+### #103 Pre-sizing report for professional review — ✅ Done
+
+- **Changes:**
+  - `src/io/report.rs` builds the report as numbered A4 pages and joins them into one PDF with `pdf-writer` (the version `svg2pdf` already uses), with the drawings appended at their own sheet size.
+  - Report contents:
+    - a cover with the project data, the overall traffic light and a review box for the professional (name, CREA/CAU, ART/RRT number, date, signature, opinion);
+    - the inputs (building, rooms, materials and loads, supply);
+    - the assumptions and applicability limits, with any refusal;
+    - the slab, beam, column, footing and circuit tables with their lights, refused elements shown without numbers;
+    - every check with its margin, what to change and the technical detail;
+    - the warnings;
+    - the formwork plan, beam forces, electrical plan and single-line diagram.
+  - *Exportar memorial (PDF)* in the *Segurança* window saves it.
+- **Tests:** 4 new tests (every section on valid, numbered SVG pages; the PDF page count with the drawings; a refused project stating the refusal with no structural numbers or drawings; the date). The report of the *Casa Térrea* sample (14 report pages and 4 drawings) was exported and its pages inspected as images. The full suite, Clippy and format pass on an export of exactly this commit.
+- **Commit:** recorded in the next log update.
+- **Limitations:**
+  - There is no PDF viewer on the development machine. The PDF itself was checked by structure (page count) and the pages through their SVG, not opened in a reader.
+  - The report has no MCP tool, since it does not change the model.
+  - The cover date uses UTC.
+
+### #56 Construction quantities — 🔵 In progress
 
 ## Next up
 
@@ -372,7 +392,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 53 | Automatic dimension chains locating each door and window along its wall, plus internal room dimensions | P0 | M | M2 | 🟡 Associative dimensions can anchor to openings and internal room dimensions can be generated; no automatic opening chains |
 | 54 | First-course plan and wall elevations with block paging: whole, half and cut blocks, lintels and sills | P1 | L | M2 | 🟡 Properties show each wall's first course; there is no drawing |
 | 55 | Setting-out plan (*locação*): cumulative dimensions from an origin on the lot, for marking out the building | P1 | M | M2 | ⬜ |
-| 56 | Construction quantities: blocks with waste, half blocks and U-blocks, lintels per opening, laying mortar, plaster, flooring and wall finishes per room | P0 | M | M2 | 🟡 Block estimate, wall area and finish quantities exist separately; no consolidated takeoff |
+| 56 | Construction quantities: blocks with waste, half blocks and U-blocks, lintels per opening, laying mortar, plaster, flooring and wall finishes per room | P0 | M | M2 | 🔵 In progress |
 | 57 | One-click construction set: A3 at 1:50 with dimensions, openings, schedules, first course, setting-out and legend | P0 | M | M2 | 🟡 Sheets, scales, templates and title blocks exist |
 | 71 | Roof plan (*planta de cobertura*): roof planes, slopes, ridges, gutters and downpipes | P1 | L | M2 | ⬜ |
 
@@ -384,7 +404,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 100 | Engineering methods guide (`docs/engineering.md`): every calculation with its formula, standard, assumptions and limits, validated in CI against published worked examples (B12) | P0 | M | M3 | ✅ |
 | 101 | Results as a traffic light: margin to the limit, the assumptions used, and a plain-language explanation of what to change | P0 | M | M3 | ✅ |
 | 102 | Applicability limits per module (storeys, spans, loads, soils); outside them Trazo refuses to size and asks for a professional | P0 | S | M3 | ✅ |
-| 103 | Pre-sizing report (*memorial*) as PDF: inputs, assumptions, results, warnings and drawings, for a licensed professional to review and sign (ART or RRT) | P0 | M | M3 | 🔵 In progress |
+| 103 | Pre-sizing report (*memorial*) as PDF: inputs, assumptions, results, warnings and drawings, for a licensed professional to review and sign (ART or RRT) | P0 | M | M3 | ✅ |
 | 104 | Release gate: a sheet set cannot be marked *Liberado para obra* with open red results unless a reviewer (name and CREA/CAU number) signs them off | P1 | S | M3 | ⬜ |
 
 ### C. Simulation core

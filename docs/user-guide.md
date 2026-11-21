@@ -221,6 +221,16 @@ Trazo refuses to size what its methods do not cover, and says why:
 
 A project-wide limit blocks *Gerar estrutura* and *Ajustar sapatas*; an element beyond its limit shows no numbers, only the reason and a pointer to a professional. The methods and limits are in [Engineering methods](engineering.md).
 
+**Exportar memorial (PDF)**, in the same window, saves the pre-sizing report (*memorial de pré-dimensionamento*) for a licensed professional to review. It contains:
+
+- a cover with the overall traffic light and a review box (name, CREA or CAU registration, ART or RRT number, date, signature and opinion);
+- the inputs, the assumptions and the applicability limits;
+- the slab, beam, column, footing and circuit tables with their lights;
+- every check with its margin and what to change, and the warnings;
+- the drawings: the formwork plan, the beam forces, the electrical plan and the single-line diagram, as available.
+
+The report pages are A4 and numbered; the drawings follow at their own sheet size.
+
 ## Discipline views
 
 Architecture, electrical and structure are views of the same model. The tabs choose what the plan shows:

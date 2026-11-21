@@ -7,6 +7,7 @@ pub mod personal_library;
 pub mod print;
 pub mod project_file;
 pub mod recovery;
+pub mod report;
 pub mod settings;
 pub mod underlay;
 pub mod updates;

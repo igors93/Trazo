@@ -22,6 +22,8 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # The font parser egui uses, to check a system font before handing it over.
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
 svg2pdf = "0.13"
+# Several SVG pages in one PDF (the pre-sizing report); the version svg2pdf uses.
+pdf-writer = "0.12"
 
 [dev-dependencies]
 proptest = "1"
