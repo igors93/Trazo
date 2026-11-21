@@ -1,5 +1,6 @@
 pub mod annotations;
 pub mod areas;
+pub mod blocks;
 pub mod circulation;
 pub mod curves;
 pub mod dimensions;

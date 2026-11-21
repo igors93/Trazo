@@ -2,6 +2,7 @@ pub mod crash_log;
 pub mod dxf;
 pub mod export;
 pub mod instance;
+pub mod personal_library;
 pub mod print;
 pub mod project_file;
 pub mod recovery;

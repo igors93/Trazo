@@ -126,6 +126,14 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub library: Vec<super::library::LibraryItem>,
 
+    /// Reusable user-authored CAD blocks with structured attributes (#43).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub blocks: Vec<super::blocks::BlockDefinition>,
+
+    /// Placed instances of reusable blocks with per-instance attribute values (#43).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub block_instances: Vec<super::blocks::BlockInstance>,
+
     /// Voltages of the electrical design (NBR 5410).
     #[serde(
         default,
@@ -197,6 +205,10 @@ impl Default for Project {
             floors: super::floors::ProjectFloors::default(),
 
             library: Vec::new(),
+
+            blocks: Vec::new(),
+
+            block_instances: Vec::new(),
 
             electrical: super::electrical::ElectricalSettings::default(),
 

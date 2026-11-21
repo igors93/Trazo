@@ -13,7 +13,7 @@ use crate::domain::transform::Transform;
 
 /// Elements taken out of a project with their relations: rooms keep their
 /// walls and openings stay on theirs.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Fragment {
     pub walls: Vec<Wall>,
     pub rooms: Vec<Room>,

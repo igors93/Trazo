@@ -42,7 +42,7 @@ Trazo should serve both ends of the spectrum on the same project and file:
 | Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
 | Release (#58–#64) | 🟡 CI, licence, property tests, file migrations, release binaries, crash reports and Windows installer done; samples, schema and signing remain |
 | Experience (#65–#67) | ⬜ Not started |
-| Electrical design | ✅ Devices, NBR 5410 forecast, generated points, circuits and load schedule · 🟡 no conduits or single-line diagram yet (#88, #89) |
+| Electrical design | ✅ Devices, NBR 5410 forecast, generated points, circuits, load schedule, conduits with wiring, phase balancing, voltage drop, demand, service entrance and single-line diagram (#88–#91) |
 | Plumbing and structure | ⬜ Not started (#72, #92–#94) |
 | Several projects | ✅ One project per window, each with its own recovery draft and AI server · 🟡 no tabs yet (#95) |
 
@@ -138,7 +138,7 @@ Worth prototyping after M6, when the core is solid: #85, #86, #87, #94, #44, #45
 | 38 | DXF import and export: walls, openings, fixtures, drawings, dimensions, texts and hatches, with layers, colours and units | P0 | L | M2 | ✅ |
 | 70 | Print to a printer at exact scale, with the system print dialog and sheet preview | P0 | M | M2 | ✅ |
 | 40 | Image and PDF underlay with two-point scale calibration, opacity and lock | P1 | M | M2 | ✅ |
-| 43 | Reusable blocks with attributes and a personal library shared between projects | P1 | M | M2 | 🟡 The library (#23) customises symbols; there are no user blocks with attributes yet |
+| 43 | Reusable blocks with attributes and a personal library shared between projects | P1 | M | M2 | ✅ |
 | 39 | DWG, through a reliable library or converter | P2 | L | M2 | ⬜ |
 | 44 | External references (other drawings shown and updated live) | P2 | L | Exploratory | ⬜ |
 | 45 | Visual comparison between two versions of a project | P2 | M | Exploratory | ⬜ |
@@ -205,13 +205,13 @@ A chosen level must never be a wall. A newcomer can open an advanced tool when n
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 88 | Conduits (*eletrodutos*) from devices to the panel, drawn on the plan along walls and ceiling, with the wires of each run | P0 | L | M4 | ⬜ Devices, circuits and the load schedule exist |
-| 89 | Single-line diagram (*diagrama unifilar*) and panel schedule generated from the circuits | P0 | M | M4 | ⬜ |
+| 88 | Conduits (*eletrodutos*) from devices to the panel, drawn on the plan along walls and ceiling, with the wires of each run | P0 | L | M4 | ✅ |
+| 89 | Single-line diagram (*diagrama unifilar*) and panel schedule generated from the circuits | P0 | M | M4 | ✅ |
 | 96 | Discipline views: architecture, electrical, plumbing and structure as views of one model, each with its own visibility, colours and sheets | P1 | M | M4 | 🟡 The electrical layer and the *Só elétrica* view exist |
-| 90 | Voltage drop, demand factors and service entrance sizing (*padrão de entrada*) | P1 | M | M4 | ⬜ |
+| 90 | Voltage drop, demand factors and service entrance sizing (*padrão de entrada*) | P1 | M | M4 | ✅ |
 | 92 | Structural elements on the plan: columns, beams, slabs and footings as 2D elements with sections and a layer of their own (formwork plan, *planta de forma*) | P1 | L | M4 | ⬜ |
 | 93 | Structural pre-sizing: spans, tributary areas and rules of thumb for columns, beams and slabs, with warnings | P2 | M | M4 | ⬜ |
-| 91 | Phase balancing for two- and three-phase panels | P2 | S | M4 | ⬜ |
+| 91 | Phase balancing for two- and three-phase panels | P2 | S | M4 | ✅ |
 | 94 | Structural analysis and simulation: loads, internal forces and deflections of the 2D frame | P2 | XL | Exploratory | ⬜ Needs #92 and #93 first |
 | 95 | Tabbed documents: several projects in one window, with copy and paste between them | P2 | L | M6 | ✅ |
 
