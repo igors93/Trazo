@@ -44,6 +44,7 @@ pub mod snap;
 pub mod soil;
 pub mod structure;
 pub mod templates;
+pub mod timber_posts;
 pub mod transform;
 pub mod underlay;
 #[cfg(test)]

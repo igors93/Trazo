@@ -560,7 +560,7 @@ impl FloorPlanApp {
                         return;
                     }
                     if tab == 4 {
-                        if let Some(action) = super::roof::roof_tab(ui, &self.project, &report.roofs) {
+                        if let Some(action) = super::roof::roof_tab(ui, &self.project, &report) {
                             edits.push(StructureEdit::Roof(action));
                         }
                         return;
@@ -789,6 +789,10 @@ impl FloorPlanApp {
                     }
                     StructureEdit::Roof(super::roof::RoofAction::Update(id, roof)) => {
                         self.project.update_roof(id, roof)
+                    }
+                    StructureEdit::Roof(super::roof::RoofAction::PostTimber(class)) => {
+                        self.project.structure.post_timber = class;
+                        Ok(())
                     }
                     StructureEdit::Roof(super::roof::RoofAction::Remove(id)) => {
                         self.project.remove_roof(id);

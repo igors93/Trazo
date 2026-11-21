@@ -412,7 +412,10 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
             (theme::STRUCTURE, theme::STRUCTURE, Color32::TRANSPARENT)
         }
         crate::domain::fixtures::FixtureKind::Footing => (ink, detail, Color32::TRANSPARENT),
-        crate::domain::fixtures::FixtureKind::Column if tone == FixtureTone::Normal => {
+        crate::domain::fixtures::FixtureKind::Column
+        | crate::domain::fixtures::FixtureKind::TimberPost
+            if tone == FixtureTone::Normal =>
+        {
             (theme::STRUCTURE, theme::STRUCTURE, Color32::WHITE)
         }
         crate::domain::fixtures::FixtureKind::WaterTank

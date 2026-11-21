@@ -245,6 +245,7 @@ fn structure_fingerprint(project: &Project) -> u64 {
         hash_f64(&mut h, survey.footing_depth_m);
         survey.name.hash(&mut h);
     }
+    (project.structure.post_timber as u8).hash(&mut h);
     project.structure.roofs.len().hash(&mut h);
     for roof in &project.structure.roofs {
         roof.id.hash(&mut h);

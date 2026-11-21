@@ -53,6 +53,8 @@ pub enum FixtureKind {
     Footing,
     WaterTank,
     HeavyEquipment,
+    /// A timber post (*mourão*), round when width = depth (#146).
+    TimberPost,
 }
 
 impl FixtureKind {
@@ -124,6 +126,7 @@ impl FixtureKind {
             Self::Footing => "Sapata",
             Self::WaterTank => "Caixa-d'água",
             Self::HeavyEquipment => "Equipamento pesado",
+            Self::TimberPost => "Mourão de madeira",
         }
     }
 
@@ -169,6 +172,7 @@ impl FixtureKind {
             Self::Footing => "sapata",
             Self::WaterTank => "caixa_agua",
             Self::HeavyEquipment => "equipamento_pesado",
+            Self::TimberPost => "mourao",
         }
     }
 
@@ -219,6 +223,7 @@ impl FixtureKind {
             Self::Footing => (0.80, 0.80),
             Self::WaterTank => (1.20, 1.20),
             Self::HeavyEquipment => (1.00, 1.00),
+            Self::TimberPost => (0.15, 0.15),
         }
     }
 
@@ -254,7 +259,8 @@ impl FixtureKind {
             | Self::Column
             | Self::Footing
             | Self::WaterTank
-            | Self::HeavyEquipment => 0.0,
+            | Self::HeavyEquipment
+            | Self::TimberPost => 0.0,
         }
     }
 
@@ -264,7 +270,7 @@ impl FixtureKind {
     /// 10 cm; every other fixture keeps the 20 cm minimum.
     pub fn min_size(self) -> f64 {
         match self {
-            Self::Column => MIN_COLUMN_SIZE,
+            Self::Column | Self::TimberPost => MIN_COLUMN_SIZE,
             _ => MIN_SIZE,
         }
     }
@@ -507,7 +513,8 @@ pub fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolShape> {
         FixtureKind::Column
         | FixtureKind::Footing
         | FixtureKind::WaterTank
-        | FixtureKind::HeavyEquipment => super::structure::symbol(kind, width, depth),
+        | FixtureKind::HeavyEquipment
+        | FixtureKind::TimberPost => super::structure::symbol(kind, width, depth),
         FixtureKind::Counter => vec![
             outline,
             line(&[(-hw, hd - 0.05), (hw, hd - 0.05)], false, Detail),

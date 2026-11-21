@@ -630,6 +630,85 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
             checks,
         });
     }
+    for post in &report.timber_posts {
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Mourão {}", post.label),
+            checks: vec![
+                Check::new(
+                    "Compressão e flambagem",
+                    post.ratio,
+                    if post.ratio <= 1.0 + 1e-9 {
+                        format!(
+                            "{} {} cm com {} m aguenta {} kN.",
+                            if post.round { "Ø" } else { "Seção" },
+                            decimal(post.size_m * 100.0, 0),
+                            decimal(post.height_m, 2),
+                            decimal(post.load_kn, 1)
+                        )
+                    } else {
+                        match post.needed_m {
+                            Some(size) => format!("Use {} cm.", decimal(size * 100.0, 0)),
+                            None => "Nem 30 cm resiste: diminua a altura ou a carga.".to_owned(),
+                        }
+                    },
+                    format!(
+                        "NBR 7190: λ = L0/i = {}; até 40 σNd ≤ fc0,d, acima σNd/fc0,d + σMd/fc0,d ≤ 1 com ed = (h/30 + L0/300 + ec)·FE/(FE − Nd); N = {} kN.",
+                        decimal(post.slenderness, 0),
+                        decimal(post.load_kn, 1)
+                    ),
+                ),
+                Check::new(
+                    "Esbeltez",
+                    post.slenderness / super::timber_posts::MAX_POST_SLENDERNESS,
+                    format!("λ = {:.0}, no máximo 140.", post.slenderness),
+                    "NBR 7190: peças comprimidas com λ ≤ 140.".to_owned(),
+                ),
+                Check::new(
+                    "Base",
+                    post.base_kpa / post.soil_kpa.max(1e-6),
+                    format!(
+                        "Bloco de concreto de {} cm com chumbador; a madeira não toca o solo.",
+                        decimal(post.base_m * 100.0, 0)
+                    ),
+                    format!(
+                        "B = √(1,05 N / σadm) ≥ 40 cm; σ = {:.0} kPa.",
+                        post.base_kpa
+                    ),
+                ),
+            ],
+        });
+    }
+    for beam in &report.eave_beams {
+        let section = format!(
+            "{:.0}×{:.0} cm entre {} e {}",
+            beam.section_cm.0, beam.section_cm.1, beam.from_post, beam.to_post
+        );
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Viga de madeira {}", beam.label),
+            checks: vec![
+                Check::new(
+                    "Flexão",
+                    beam.bending_ratio,
+                    format!("{section}, vão de {} m.", decimal(beam.span_m, 2)),
+                    "σ = 1,4 M / W ≤ fc0,d (NBR 7190), cargas das vigas do telhado e peso próprio.".to_owned(),
+                ),
+                Check::new(
+                    "Cisalhamento",
+                    beam.shear_ratio,
+                    format!("{section}."),
+                    "τ = 1,5·1,4 V / (b·h) ≤ fv0,d (NBR 7190).".to_owned(),
+                ),
+                Check::new(
+                    "Flecha",
+                    beam.deflection_ratio,
+                    format!("{section}."),
+                    "Soma das flechas máximas de cada carga e do peso próprio ≤ L/200, Ec0,ef = kmod·Ec0,m.".to_owned(),
+                ),
+            ],
+        });
+    }
     for foundation in &report.wall_foundations {
         let check = match foundation.kind {
             super::wall_foundations::WallFoundationKind::GroundBeam => match foundation.height_m {

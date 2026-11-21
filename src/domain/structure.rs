@@ -333,6 +333,13 @@ pub struct ProjectStructure {
     /// Timber roofs over this floor (#114).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub roofs: Vec<super::roof::Roof>,
+    /// Strength class of the timber posts (#146).
+    #[serde(default, skip_serializing_if = "is_default_timber")]
+    pub post_timber: super::roof::TimberClass,
+}
+
+fn is_default_timber(class: &super::roof::TimberClass) -> bool {
+    *class == super::roof::TimberClass::default()
 }
 
 impl ProjectStructure {
@@ -344,6 +351,7 @@ impl ProjectStructure {
             && self.wall_foundations.is_empty()
             && self.soil_survey.is_none()
             && self.roofs.is_empty()
+            && is_default_timber(&self.post_timber)
     }
 }
 
@@ -363,17 +371,22 @@ fn reading(a: Point, b: Point) -> Ordering {
 }
 
 impl FixtureKind {
-    pub const STRUCTURAL: [FixtureKind; 4] = [
+    pub const STRUCTURAL: [FixtureKind; 5] = [
         FixtureKind::Column,
         FixtureKind::Footing,
         FixtureKind::WaterTank,
         FixtureKind::HeavyEquipment,
+        FixtureKind::TimberPost,
     ];
 
     pub fn is_structural(self) -> bool {
         matches!(
             self,
-            Self::Column | Self::Footing | Self::WaterTank | Self::HeavyEquipment
+            Self::Column
+                | Self::Footing
+                | Self::WaterTank
+                | Self::HeavyEquipment
+                | Self::TimberPost
         )
     }
 
@@ -444,6 +457,34 @@ pub(super) fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolSha
             }
             shapes
         }
+        // A round post: its section and a growth ring; a square one, its
+        // section crossed.
+        FixtureKind::TimberPost if (width - depth).abs() < 1e-6 => vec![
+            SymbolShape::Circle {
+                center: Point::new(0.0, 0.0),
+                radius: hw,
+                weight: Weight::Outline,
+            },
+            SymbolShape::Circle {
+                center: Point::new(0.0, 0.0),
+                radius: hw * 0.55,
+                weight: Weight::Detail,
+            },
+        ],
+        FixtureKind::TimberPost => vec![
+            SymbolShape::Polyline {
+                points: corners,
+                closed: true,
+                dashed: false,
+                weight: Weight::Outline,
+            },
+            SymbolShape::Polyline {
+                points: vec![Point::new(-hw, -hd), Point::new(hw, hd)],
+                closed: false,
+                dashed: false,
+                weight: Weight::Detail,
+            },
+        ],
         FixtureKind::WaterTank => vec![
             SymbolShape::Circle {
                 center: Point::new(0.0, 0.0),
@@ -777,6 +818,9 @@ pub struct StructureReport {
     pub wall_foundations: Vec<super::wall_foundations::WallFoundationResult>,
     /// Timber roofs and where they bear (#114).
     pub roofs: Vec<super::roof::RoofResult>,
+    /// Timber posts and the timber beams over them (#146).
+    pub timber_posts: Vec<super::timber_posts::TimberPostResult>,
+    pub eave_beams: Vec<super::timber_posts::EaveBeamResult>,
     pub warnings: Vec<String>,
 }
 
@@ -2255,6 +2299,12 @@ impl Project {
                     element.element.label().to_lowercase()
                 ));
             }
+            report.roofs.push(result);
+        }
+        // The rest bears on timber posts (#146), directly or through a
+        // timber beam along the edge.
+        let posts = self.post_effects(&mut report.roofs);
+        for result in &report.roofs {
             let loose: Vec<&super::roof::RoofReaction> = result
                 .reactions
                 .iter()
@@ -2262,14 +2312,42 @@ impl Project {
                 .collect();
             if !loose.is_empty() {
                 report.warnings.push(format!(
-                    "Telhado {}: {} apoio(s) de viga sem pilar nem viga embaixo (até {} kN cada); ponha pilares ou mourões nesses pontos.",
+                    "Telhado {}: {} apoio(s) de viga sem pilar, mourão nem viga embaixo (até {} kN cada); ponha pilares ou mourões nesses pontos.",
                     result.label,
                     loose.len(),
                     decimal(loose.iter().map(|r| r.load_kn).fold(0.0, f64::max), 1)
                 ));
             }
-            report.roofs.push(result);
         }
+        for post in posts.posts.iter().filter(|p| !p.ok()) {
+            report.warnings.push(match post.needed_m {
+                Some(size) => format!(
+                    "Mourão {}: {} cm não resiste à compressão com flambagem (λ = {:.0}, uso {:.0} %); use {} cm.",
+                    post.label,
+                    decimal(post.size_m * 100.0, 0),
+                    post.slenderness,
+                    (post.ratio * 100.0).min(999.0),
+                    decimal(size * 100.0, 0)
+                ),
+                None => format!(
+                    "Mourão {}: nem 30 cm resiste; diminua a altura ou a carga.",
+                    post.label
+                ),
+            });
+        }
+        for beam in posts.eave_beams.iter().filter(|b| !b.ok) {
+            report.warnings.push(format!(
+                "Viga de madeira {}: nem {}×{} cm vence {} m entre {} e {}; ponha um mourão no meio.",
+                beam.label,
+                beam.section_cm.0,
+                beam.section_cm.1,
+                decimal(beam.span_m, 2),
+                beam.from_post,
+                beam.to_post
+            ));
+        }
+        report.timber_posts = posts.posts;
+        report.eave_beams = posts.eave_beams;
         for upper in incoming_upper {
             let aligned = self
                 .structural_columns()
@@ -3315,6 +3393,10 @@ impl Project {
         marks.extend(self.balance_beam_marks(&report.balance_beams));
         marks.extend(self.wall_foundation_marks(&report.wall_foundations));
         marks.extend(self.roof_marks(&report.roofs));
+        marks.extend(self.post_marks(&super::timber_posts::PostEffects {
+            posts: report.timber_posts.clone(),
+            eave_beams: report.eave_beams.clone(),
+        }));
         super::label_layout::resolve_plan_mark_labels(&mut marks, &[]);
         marks
     }

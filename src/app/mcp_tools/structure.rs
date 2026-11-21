@@ -728,6 +728,34 @@ impl FloorPlanApp {
                 ))
                 .with_structured(foundation_study_json(&study)))
             }
+            "inserir_mourao" => {
+                let x = required_number(args, "x")?;
+                let y = required_number(args, "y")?;
+                let size = centimetres(args, "diametro_cm")?.unwrap_or(0.15);
+                if !(0.10..=0.40).contains(&size) {
+                    return Err("'diametro_cm' deve ficar entre 10 e 40.".to_owned());
+                }
+                let timber = match text(args, "madeira") {
+                    Some(raw) => Some(
+                        crate::domain::roof::TimberClass::parse(&raw)
+                            .ok_or("'madeira' deve ser c20, c30, c40 ou c60.")?,
+                    ),
+                    None => None,
+                };
+                self.apply_change(None, |project| {
+                    if let Some(class) = timber {
+                        project.structure.post_timber = class;
+                    }
+                    let id = project
+                        .add_fixture(FixtureKind::TimberPost, to_model(x, y), size, size, 0)
+                        .ok_or("O mourão não cabe aí (fora do terreno?).")?;
+                    Ok(
+                        Change::new(format!("Mourão {id} de Ø {:.0} cm.", size * 100.0))
+                            .select(Selection::Fixture(id))
+                            .data(json!({ "id": id })),
+                    )
+                })
+            }
             "definir_telhado" => {
                 let existing = match number(args, "id")? {
                     Some(id) => Some(
@@ -802,7 +830,7 @@ impl FloorPlanApp {
                 })
             }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao ou vista.".to_owned(),
             ),
         }
     }
@@ -1035,6 +1063,29 @@ impl FloorPlanApp {
             "pilares": columns,
             "sapatas": footings,
             "telhados": report.roofs.iter().map(roof_json).collect::<Vec<_>>(),
+            "mouroes": report.timber_posts.iter().map(|p| json!({
+                "id": p.id,
+                "rotulo": p.label,
+                "secao": if p.round { "redonda" } else { "quadrada" },
+                "diametro_cm": round1(p.size_m * 100.0),
+                "altura_m": (p.height_m * 100.0).round() / 100.0,
+                "carga_kn": round1(p.load_kn),
+                "esbeltez": p.slenderness.round(),
+                "uso": (p.ratio.min(9.99) * 100.0).round() / 100.0,
+                "atende": p.ok(),
+                "diametro_necessario_cm": p.needed_m.map(|s| round1(s * 100.0)),
+                "base_cm": round1(p.base_m * 100.0),
+                "pressao_base_kpa": round1(p.base_kpa),
+            })).collect::<Vec<_>>(),
+            "vigas_madeira": report.eave_beams.iter().map(|b| json!({
+                "rotulo": b.label,
+                "de": b.from_post,
+                "para": b.to_post,
+                "vao_m": (b.span_m * 100.0).round() / 100.0,
+                "secao_cm": format!("{}x{}", b.section_cm.0, b.section_cm.1),
+                "atende": b.ok,
+                "cargas_kn": b.loads.iter().map(|(_, p)| round1(*p)).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
             "fundacao_paredes": report.wall_foundations.iter().map(|f| json!({
                 "rotulo": f.label,
                 "parede": f.wall_id,
@@ -1290,6 +1341,50 @@ mod tests {
         );
         assert!(!removed.is_error, "{}", removed.text);
         assert!(app.project.structure.roofs.is_empty());
+    }
+
+    #[test]
+    fn timber_posts_carry_the_low_edge_of_a_roof() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        let built = app.run_mcp_tool(
+            "executar_lote",
+            &json!({ "acoes": [
+                { "ferramenta": "definir_terreno", "argumentos": { "largura": 10, "comprimento": 50 } },
+                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "inserir_mourao", "x": 4.92, "y": 25.83, "diametro_cm": 15 } },
+                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "inserir_mourao", "x": 4.92, "y": 33.1, "diametro_cm": 15, "madeira": "c40" } },
+                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "inserir_mourao", "x": 4.92, "y": 40.42, "diametro_cm": 15 } },
+                { "ferramenta": "projeto_estrutural", "argumentos": {
+                    "acao": "definir_telhado", "x": 0, "y": 25.75, "largura_m": 5, "comprimento_m": 14.75,
+                    "lado_alto": "oeste", "altura_alta_m": 4.3, "altura_baixa_m": 2.6,
+                } },
+            ] }),
+        );
+        assert!(!built.is_error, "{}", built.text);
+        assert_eq!(
+            app.project.structure.post_timber,
+            crate::domain::roof::TimberClass::C40
+        );
+        let report = app
+            .run_mcp_tool("pre_dimensionamento", &json!({}))
+            .structured
+            .unwrap();
+        let posts = report["mouroes"].as_array().unwrap();
+        assert_eq!(posts.len(), 3, "{report}");
+        assert!(posts.iter().all(|p| p["carga_kn"].as_f64().unwrap() > 0.0));
+        // Two timber beams, post to post, carry the beam ends in between.
+        assert_eq!(report["vigas_madeira"].as_array().unwrap().len(), 2);
+        let low_loose = report["telhados"][0]["apoios"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|a| a["lado"] == "baixo" && a["apoio"].is_null())
+            .count();
+        assert_eq!(low_loose, 0, "{report}");
+        let bad = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({ "acao": "inserir_mourao", "x": 2, "y": 2, "diametro_cm": 60 }),
+        );
+        assert!(bad.is_error);
     }
 
     #[test]

@@ -25,6 +25,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::conduits::PlanMark;
+use super::fixtures::FixtureKind;
 use super::geometry::Point;
 use super::model::Project;
 
@@ -170,6 +171,18 @@ impl TimberClass {
 /// kmod = kmod1 · kmod2 · kmod3 (long-term loads, service class 1–2,
 /// second-grade sawn timber).
 pub const KMOD: f64 = 0.70 * 1.0 * 0.80;
+
+/// Design values of a timber class: fc0,d and fv0,d and Ec0,ef in kPa, and
+/// the unit weight in kN/m³.
+pub fn timber_design(timber: TimberClass) -> (f64, f64, f64, f64) {
+    let (fc0k, fv0k, e0m, density) = timber.properties();
+    (
+        KMOD * fc0k / 1.4 * 1000.0,
+        KMOD * fv0k / 1.8 * 1000.0,
+        KMOD * e0m * 1000.0,
+        density * 9.81 / 1000.0,
+    )
+}
 
 /// The side of the rectangle where the roof is highest.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -317,7 +330,7 @@ impl Roof {
     }
 
     /// Position along the eaves, metres.
-    fn along(&self, p: Point) -> f64 {
+    pub(crate) fn along(&self, p: Point) -> f64 {
         if self.along_x() {
             p.x - self.min.x
         } else {
@@ -343,6 +356,15 @@ impl Roof {
             RoofSide::North => Point::new(self.min.x + along, self.min.y),
             RoofSide::South => Point::new(self.min.x + along, self.max.y),
         }
+    }
+
+    /// Which edge `p` lies on (within `tolerance`, within the eaves):
+    /// `Some(true)` the high one, `Some(false)` the low one.
+    pub(crate) fn edge_of(&self, p: Point, tolerance: f64) -> Option<bool> {
+        if !self.on_edge(p, tolerance) {
+            return None;
+        }
+        Some(self.distance_from_high(p) < self.run_m() / 2.0)
     }
 
     /// Whether `p` lies on the high or low edge (within `tolerance`) and
@@ -752,8 +774,11 @@ impl Project {
                 each_m: slope_length,
             }));
         }
+        // Concrete columns and timber posts (#146) on the edges.
         let anchors: Vec<f64> = self
-            .structural_columns()
+            .fixtures
+            .iter()
+            .filter(|f| matches!(f.kind, FixtureKind::Column | FixtureKind::TimberPost))
             .filter(|c| roof.on_edge(c.center, 0.35))
             .map(|c| roof.along(c.center))
             .collect();
@@ -879,7 +904,6 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::fixtures::FixtureKind;
 
     fn gourmet_roof() -> Roof {
         // 5.00 × 14.75 m, high on the west at 4.30 m, low on the east at 2.60 m.

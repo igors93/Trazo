@@ -243,7 +243,22 @@ A mono-pitch roof (*meia-água*) over a plan rectangle (`src/domain/roof.rs`): t
 | Main beams | at the columns found on the high and low edges (within 35 cm), more added so none is farther apart than the spacing set (3 m by default); each carries its tributary width | — |
 | Supports | each beam end, (g + q) · run / 2, is a point load on the column under it (within 35 cm), else on the concrete beam under it (within 25 cm); a roof load is never multiplied by the *floors* setting | — |
 
-*Ajustar as paredes ao telhado* gives the walls under the roof its height at their ends (#145): the wall on the high side rises and the gables slope. The timber and tile quantities come out per piece. Checked by `the_slope_and_heights_follow_the_high_side`, `beams_line_up_with_the_columns_and_fill_wide_gaps`, `a_beam_matches_the_hand_calculation`, `the_gourmet_roof_is_framed_and_bears_on_the_columns` and `an_assistant_roofs_the_gourmet_area_and_the_columns_take_it`. Not covered yet: gable and hip roofs, overhangs, trusses, the 1 kN maintenance point load, wind uplift and anchorage (#147), and timber posts at the low edge (#146).
+*Ajustar as paredes ao telhado* gives the walls under the roof its height at their ends (#145): the wall on the high side rises and the gables slope. The timber and tile quantities come out per piece. Checked by `the_slope_and_heights_follow_the_high_side`, `beams_line_up_with_the_columns_and_fill_wide_gaps`, `a_beam_matches_the_hand_calculation`, `the_gourmet_roof_is_framed_and_bears_on_the_columns` and `an_assistant_roofs_the_gourmet_area_and_the_columns_take_it`. Not covered yet: gable and hip roofs, overhangs, trusses, the 1 kN maintenance point load, and wind uplift and anchorage (#147).
+
+### Timber posts (*mourões*) and timber beams
+
+A roof beam end with no concrete column or beam under it bears on a timber post (`src/domain/timber_posts.rs`) within 35 cm, or on a timber beam along the roof edge that spans from post to post (simply supported; each load shared by statics, P·b/L and P·a/L). The posts take part in lining up the roof beams. Round posts when width = depth (A = πd²/4, I = πd⁴/64), square otherwise; the post height is the roof height over it.
+
+| Check | Rule | Source |
+| --- | --- | --- |
+| Slenderness | λ = L0 / i, L0 = the post height (braced at the top by the roof), at most 140 | NBR 7190:1997, 7.5 |
+| Short post (λ ≤ 40) | σNd = 1.4 (Ngk + Nqk) / A ≤ fc0,d | NBR 7190 |
+| Medium and slender posts | σNd / fc0,d + σMd / fc0,d ≤ 1, Md = Nd · ed, ed = (h/30 + L0/300 + ec) · FE / (FE − Nd), FE = π² Ec0,ef I / L0² | NBR 7190 |
+| Creep (λ > 80) | ec = (h/30 + L0/300) · (exp(φ Ngq / (FE − Ngq)) − 1), φ = 0.8, Ngq = Ngk + 0.2 Nqk | NBR 7190 |
+| Timber beam | 6 × 12 to 12 × 30 cm: σ = 1.4 M / W ≤ fc0,d, τ = 1.5 · 1.4 V / (b h) ≤ fv0,d, the deflections of each load (P b (L² − b²)^1.5 / (9√3 L E I)) and of the own weight added, within L / 200 | NBR 7190 |
+| Base | concrete block B = √(1.05 N / σadm), at least 40 cm, in 5 cm steps, with a steel anchor so the timber stays off the ground | Usual practice, NBR 7190 durability |
+
+The posts' timber class is one for all of them (C30 by default). Checked by `a_short_post_is_checked_in_plain_compression`, `a_slender_post_pays_for_buckling_and_creep`, `the_gourmet_posts_carry_the_low_edge_of_the_roof` and `timber_posts_carry_the_low_edge_of_a_roof`. Wind on the open side, which bends the posts and asks for bracing, comes with #147.
 
 ## Electrical installation
 

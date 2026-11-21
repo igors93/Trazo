@@ -1,5 +1,6 @@
 //! The "Telhado" tab of the structure window (#114): mono-pitch timber
-//! roofs, their framing sized piece by piece and where they bear.
+//! roofs, their framing sized piece by piece and where they bear, and the
+//! timber posts with the timber beams over them (#146).
 
 use eframe::egui::{self, RichText, Ui};
 
@@ -8,6 +9,7 @@ use super::widgets::{primary_button, secondary_button};
 use crate::domain::geometry::Point;
 use crate::domain::model::Project;
 use crate::domain::roof::{Roof, RoofResult, RoofSide, TileKind, TimberClass};
+use crate::domain::structure::StructureReport;
 
 /// What the roof tab asks for.
 pub(super) enum RoofAction {
@@ -15,6 +17,8 @@ pub(super) enum RoofAction {
     Update(u64, Roof),
     Remove(u64),
     FitWalls(u64),
+    /// The strength class of every timber post.
+    PostTimber(TimberClass),
 }
 
 fn decimal(value: f64, places: usize) -> String {
@@ -36,8 +40,9 @@ fn plan_bounds(project: &Project) -> Option<(Point, Point)> {
 pub(super) fn roof_tab(
     ui: &mut Ui,
     project: &Project,
-    results: &[RoofResult],
+    report: &StructureReport,
 ) -> Option<RoofAction> {
+    let results: &[RoofResult] = &report.roofs;
     let mut action = None;
     ui.add_space(6.0);
     ui.label(
@@ -265,5 +270,129 @@ pub(super) fn roof_tab(
             .color(if loose > 0 { WARNING } else { MUTED }),
         );
     }
+    if let Some(posts) = posts_section(ui, project, report) {
+        action = Some(posts);
+    }
+    action
+}
+
+/// The timber posts and the timber beams over them (#146).
+fn posts_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Option<RoofAction> {
+    let mut action = None;
+    ui.add_space(10.0);
+    ui.separator();
+    ui.label(RichText::new("Mourões e vigas de madeira").font(strong(13.5)));
+    ui.horizontal(|ui| {
+        ui.label("Madeira dos mourões");
+        let mut timber = project.structure.post_timber;
+        egui::ComboBox::from_id_salt("post_timber")
+            .selected_text(timber.label())
+            .show_ui(ui, |ui| {
+                for class in TimberClass::ALL {
+                    if ui
+                        .selectable_value(&mut timber, class, class.label())
+                        .changed()
+                    {
+                        action = Some(RoofAction::PostTimber(class));
+                    }
+                }
+            });
+    });
+    if report.timber_posts.is_empty() {
+        ui.label(
+            RichText::new("Nenhum mourão: use Mourão na faixa Estrutura para pôr um na ponta de cada viga do telhado que não tem pilar embaixo.")
+                .color(MUTED),
+        );
+        return action;
+    }
+    egui::Grid::new("timber_posts")
+        .striped(true)
+        .spacing([14.0, 4.0])
+        .show(ui, |ui| {
+            for title in [
+                "Mourão",
+                "Seção",
+                "Altura",
+                "Carga",
+                "Esbeltez",
+                "Uso",
+                "Base",
+                "Situação",
+            ] {
+                ui.label(RichText::new(title).font(strong(12.0)).color(TEXT_2));
+            }
+            ui.end_row();
+            for post in &report.timber_posts {
+                ui.label(RichText::new(&post.label).font(strong(12.5)));
+                ui.label(format!(
+                    "{}{} cm",
+                    if post.round { "Ø " } else { "" },
+                    decimal(post.size_m * 100.0, 0)
+                ));
+                ui.label(format!("{} m", decimal(post.height_m, 2)));
+                ui.label(format!("{} kN", decimal(post.load_kn, 1)));
+                ui.label(format!("λ {:.0}", post.slenderness));
+                ui.label(if post.ratio.is_finite() {
+                    format!("{:.0} %", post.ratio * 100.0)
+                } else {
+                    "—".to_owned()
+                });
+                ui.label(format!("{} cm", decimal(post.base_m * 100.0, 0)));
+                if post.ok() {
+                    ui.label(RichText::new("Atende").color(SUCCESS));
+                } else {
+                    ui.label(
+                        RichText::new(match post.needed_m {
+                            Some(size) => format!("Use {} cm", decimal(size * 100.0, 0)),
+                            None => "Revise".to_owned(),
+                        })
+                        .color(WARNING),
+                    );
+                }
+                ui.end_row();
+            }
+        });
+    if !report.eave_beams.is_empty() {
+        ui.add_space(4.0);
+        egui::Grid::new("eave_beams")
+            .striped(true)
+            .spacing([14.0, 4.0])
+            .show(ui, |ui| {
+                for title in ["Viga", "De", "Para", "Vão", "Seção", "Cargas", "Situação"] {
+                    ui.label(RichText::new(title).font(strong(12.0)).color(TEXT_2));
+                }
+                ui.end_row();
+                for beam in &report.eave_beams {
+                    ui.label(RichText::new(&beam.label).font(strong(12.5)));
+                    ui.label(&beam.from_post);
+                    ui.label(&beam.to_post);
+                    ui.label(format!("{} m", decimal(beam.span_m, 2)));
+                    ui.label(format!(
+                        "{:.0} × {:.0} cm",
+                        beam.section_cm.0, beam.section_cm.1
+                    ));
+                    ui.label(if beam.loads.is_empty() {
+                        "só amarra".to_owned()
+                    } else {
+                        beam.loads
+                            .iter()
+                            .map(|(_, p)| format!("{} kN", decimal(*p, 1)))
+                            .collect::<Vec<_>>()
+                            .join(" + ")
+                    });
+                    if beam.ok {
+                        ui.label(RichText::new("Atende").color(SUCCESS));
+                    } else {
+                        ui.label(RichText::new("Revise").color(WARNING));
+                    }
+                    ui.end_row();
+                }
+            });
+    }
+    ui.label(
+        RichText::new("Mourões pela NBR 7190 (compressão com flambagem, λ ≤ 140), sobre bloco de concreto com chumbador: a madeira não toca o solo. O vento no lado aberto ainda não entra (#147).")
+            .size(11.0)
+            .color(MUTED),
+    );
     action
 }
