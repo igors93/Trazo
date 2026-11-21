@@ -96,7 +96,7 @@ Reviewed on 2026-11-21. Sources:
 | ID | Severity | Area | Problem | Status / fix |
 | --- | --- | --- | --- | --- |
 | B01 | High | Floors | Switching floors left conduits, beams and slabs behind, and the pruning on the next edit deleted those of the other floor. | ✅ Fixed in this update: they travel with their floor; regression test `each_floor_keeps_its_beams_slabs_and_conduits`. |
-| B02 | High | CI | CI runs only on Linux, so code behind `cfg(windows)` or `cfg(macos)` is only checked by the release workflow. Windows-only print helpers already broke the Linux clippy run once. | Open → #97 |
+| B02 | High | CI | CI runs only on Linux, so code behind `cfg(windows)` or `cfg(macos)` is only checked by the release workflow. Windows-only print helpers already broke the Linux clippy run once. | ✅ Fixed: CI workflow runs format, Clippy and tests across `ubuntu-latest`, `windows-latest` and `macos-latest` (#97). |
 | B03 | High | Structure | Each floor's structure is sized on its own, and the load of the floors above comes from a *floors* multiplier, not from the real upper floors. Columns that do not line up between floors are not detected. | Open → #99 |
 | B04 | Medium | Performance | Conduit marks, structure marks, the load schedule and device tags are recomputed on every frame. The cost grows with the square of the device and beam count, so large plans will stutter. | Open → #108, #62 |
 | B05 | Medium | Drawings | Conduit, beam, column and footing labels ignore the label layout, so they overlap at crowded wall junctions (seen on the sample house). | Open → #106 |
@@ -398,7 +398,7 @@ A chosen level must never be a wall. A newcomer can open an advanced tool when n
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 97 | CI on Windows and macOS as well as Linux: format, lint and tests on every platform (B02) | P0 | S | M1 | ⬜ |
+| 97 | CI on Windows and macOS as well as Linux: format, lint and tests on every platform (B02) | P0 | S | M1 | ✅ |
 | 98 | Line-ending policy (`.gitattributes`) for a clean working tree on every platform (B18) | P2 | S | M1 | ⬜ |
 | 80 | Documented project file format (JSON Schema) for third-party tools | P1 | M | M1 | ⬜ |
 | 78 | Signed Windows binaries | P2 | S | M1 | ⬜ |
