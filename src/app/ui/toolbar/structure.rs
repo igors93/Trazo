@@ -97,6 +97,14 @@ impl FloorPlanApp {
                 self.generate_balance_beams();
             }
             if tip(
+                ribbon_button(ui, Icon::Glyph(Glyph::Line), "Baldrames", false, false),
+                "Fundação de todas as paredes do térreo: viga baldrame sobre as sapatas onde a parede vai de pilar a pilar, sapata corrida nas demais (como as paredes internas dos banheiros)",
+            )
+            .clicked()
+            {
+                self.generate_wall_foundations();
+            }
+            if tip(
                 ribbon_button(
                     ui,
                     Icon::CirculationCheck,

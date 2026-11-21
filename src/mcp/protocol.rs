@@ -800,9 +800,9 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "projeto_estrutural",
             title: "Projeto estrutural (pré-dimensionamento)",
-            description: "Comandos da estrutura (planta de forma e fundações). gerar_estrutura: pilares, vigas, lajes e sapatas. inserir_pilar / inserir_sapata. inserir_carga / editar_carga / remover_carga: caixa-d'água ou equipamento pesado, com carga concentrada transmitida à laje ou viga. ligar_pilares e apoiar_em_viga. editar_viga / remover_viga. definir_laje / remover_laje. configurar materiais e cargas. ajustar_sapatas. gerar_vigas_alavanca: viga alavanca de cada pilar de divisa (sapata fora do centro) ao pilar interno mais próximo; ligar_viga_alavanca: do pilar 'de' (divisa) ao pilar 'para' (interno); remover_viga_alavanca: pela 'id'. vista: seleciona a disciplina da aba ativa.",
+            description: "Comandos da estrutura (planta de forma e fundações). gerar_estrutura: pilares, vigas, lajes e sapatas. inserir_pilar / inserir_sapata. inserir_carga / editar_carga / remover_carga: caixa-d'água ou equipamento pesado, com carga concentrada transmitida à laje ou viga. ligar_pilares e apoiar_em_viga. editar_viga / remover_viga. definir_laje / remover_laje. configurar materiais e cargas. ajustar_sapatas. gerar_vigas_alavanca: viga alavanca de cada pilar de divisa (sapata fora do centro) ao pilar interno mais próximo; ligar_viga_alavanca: do pilar 'de' (divisa) ao pilar 'para' (interno); remover_viga_alavanca: pela 'id'. gerar_fundacao_paredes: viga baldrame nas paredes entre pilares e sapata corrida nas demais (as abertas ficam de fora); definir_fundacao_parede: parede 'id', 'tipo' baldrame ou sapata_corrida, largura_cm opcional; remover_fundacao_paredes. vista: seleciona a disciplina da aba ativa.",
             properties: json!({
-                "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "vista"], "description": "O que fazer." },
+                "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "gerar_fundacao_paredes", "definir_fundacao_parede", "remover_fundacao_paredes", "vista"], "description": "O que fazer." },
                 "x": number("Para inserir pilar, sapata ou carga: posição x, em metros."),
                 "y": number("Para inserir pilar, sapata ou carga: posição y, em metros."),
                 "largura_cm": number("Largura do pilar, da sapata ou da viga, em cm."),
@@ -816,7 +816,7 @@ fn catalogue() -> Vec<Tool> {
                 "t_para": number("Para apoiar_em_viga: posição fracionária (0,01 a 0,99) em viga_para."),
                 "id": integer("Para editar/remover viga ou carga: id do elemento."),
                 "comodo": { "type": ["string", "integer"], "description": "Para definir_laje e remover_laje: nome ou id do cômodo." },
-                "tipo": { "type": "string", "enum": ["trelicada", "macica", "caixa_agua", "equipamento_pesado"], "description": "Tipo da laje ou da carga concentrada." },
+                "tipo": { "type": "string", "enum": ["trelicada", "macica", "caixa_agua", "equipamento_pesado", "baldrame", "sapata_corrida"], "description": "Tipo da laje ou da carga concentrada." },
                 "carga_kn": number("Para inserir_carga ou editar_carga: carga característica em kN (0,1 a 2.000)."),
                 "espessura_cm": number("Para definir_laje: espessura, em cm."),
                 "fck_mpa": number("Para configurar: resistência do concreto, MPa (20 a 50)."),

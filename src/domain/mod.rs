@@ -48,6 +48,7 @@ pub mod underlay;
 mod validation;
 pub mod verdict;
 pub mod views;
+pub mod wall_foundations;
 pub mod wall_layers;
 pub mod wall_reference;
 pub mod xref;

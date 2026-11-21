@@ -324,6 +324,9 @@ pub struct ProjectStructure {
     /// Balance beams from boundary columns to interior ones (#144).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub balance_beams: Vec<super::foundations::BalanceBeam>,
+    /// Ground beams and strip footings under the walls (#143).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wall_foundations: Vec<super::wall_foundations::WallFoundation>,
 }
 
 impl ProjectStructure {
@@ -332,6 +335,7 @@ impl ProjectStructure {
             && self.slabs.is_empty()
             && self.settings.is_default()
             && self.balance_beams.is_empty()
+            && self.wall_foundations.is_empty()
     }
 }
 
@@ -751,6 +755,8 @@ pub struct StructureReport {
     pub misaligned_columns: Vec<MisalignedColumn>,
     /// Balance beams centring the boundary footings (#144).
     pub balance_beams: Vec<super::foundations::BalanceBeamResult>,
+    /// Ground beams and strip footings under the walls (#143).
+    pub wall_foundations: Vec<super::wall_foundations::WallFoundationResult>,
     pub warnings: Vec<String>,
 }
 
@@ -1342,6 +1348,10 @@ impl Project {
             .slabs
             .retain(|slab| rooms.contains(&slab.room_id));
         let columns: HashSet<u64> = self.structural_columns().map(|c| c.id).collect();
+        let walls: HashSet<u64> = self.walls.iter().map(|w| w.id).collect();
+        self.structure
+            .wall_foundations
+            .retain(|f| walls.contains(&f.wall_id));
         let balance_before = self.structure.balance_beams.len();
         self.structure
             .balance_beams
@@ -2828,7 +2838,9 @@ impl Project {
 
         // Footings. Balance beams (#144) centre the boundary footings under
         // the lever's reaction and relieve the interior columns.
-        let balance = self.balance_effects(&report.columns);
+        // Ground beams (#143) bring the walls' weight down to the footings.
+        let ground = self.wall_foundation_effects();
+        let balance = self.balance_effects(&report.columns, &ground.at_column);
         let mut footings: Vec<&Fixture> = self
             .fixtures
             .iter()
@@ -2845,7 +2857,9 @@ impl Project {
             let centred = balance.centred_load.get(&footing.id).copied();
             let load = centred.unwrap_or_else(|| {
                 column.map_or(0.0, |c| {
-                    (c.load_kn - balance.relief.get(&c.id).copied().unwrap_or(0.0)).max(0.0)
+                    (c.load_kn + ground.at_column.get(&c.id).copied().unwrap_or(0.0)
+                        - balance.relief.get(&c.id).copied().unwrap_or(0.0))
+                    .max(0.0)
                 })
             });
             let area = 1.05 * load / settings.soil_kpa.max(10.0);
@@ -2983,6 +2997,28 @@ impl Project {
             }
         }
         report.balance_beams = balance.results;
+        for result in &ground.results {
+            if result.kind == super::wall_foundations::WallFoundationKind::GroundBeam
+                && result.height_m.is_none()
+            {
+                report.warnings.push(format!(
+                    "{}: nenhuma seção de baldrame até 80 cm resiste ({} kN·m); acrescente pilares na parede.",
+                    result.label,
+                    decimal(result.moment_knm, 1)
+                ));
+            }
+            if result.kind == super::wall_foundations::WallFoundationKind::StripFooting
+                && result.pressure_kpa > result.soil_kpa + 1e-6
+            {
+                report.warnings.push(format!(
+                    "{}: largura de {:.0} cm é pouca para o solo; use {:.0} cm.",
+                    result.label,
+                    result.width_m * 100.0,
+                    result.needed_width_m * 100.0
+                ));
+            }
+        }
+        report.wall_foundations = ground.results;
         report.slabs.sort_by(|a, b| natural(&a.label, &b.label));
         report.beams.sort_by(|a, b| natural(&a.label, &b.label));
         report
@@ -3132,6 +3168,7 @@ impl Project {
         // Balance beams, dashed (below ground).
         let report = self.cached_structure_report();
         marks.extend(self.balance_beam_marks(&report.balance_beams));
+        marks.extend(self.wall_foundation_marks(&report.wall_foundations));
         super::label_layout::resolve_plan_mark_labels(&mut marks, &[]);
         marks
     }

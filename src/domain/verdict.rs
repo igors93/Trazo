@@ -524,6 +524,62 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
             checks: vec![check],
         });
     }
+    for foundation in &report.wall_foundations {
+        let check = match foundation.kind {
+            super::wall_foundations::WallFoundationKind::GroundBeam => match foundation.height_m {
+                Some(h) => Check::new(
+                    "Seção",
+                    foundation.flexure_ratio.max(foundation.shear_ratio),
+                    format!(
+                        "Baldrame {}×{} cm com {} leva a parede até as sapatas.",
+                        decimal(foundation.width_m * 100.0, 0),
+                        decimal(h * 100.0, 0),
+                        foundation.bars
+                    ),
+                    format!(
+                        "q = {} kN/m (parede e peso próprio), M = {} kN·m, V = {} kN; viga contínua sobre os pilares, Md = 1,4 M, x/d ≤ 0,45; As = {} cm².",
+                        decimal(foundation.load_kn_m, 1),
+                        decimal(foundation.moment_knm, 1),
+                        decimal(foundation.shear_kn, 1),
+                        decimal(foundation.steel_cm2, 2)
+                    ),
+                ),
+                None => Check::fail(
+                    "Seção",
+                    "Nenhum baldrame até 80 cm resiste: acrescente pilares nessa parede."
+                        .to_owned(),
+                    format!("M = {} kN·m.", decimal(foundation.moment_knm, 1)),
+                ),
+            },
+            super::wall_foundations::WallFoundationKind::StripFooting => Check::new(
+                "Pressão no solo",
+                foundation.pressure_kpa / foundation.soil_kpa.max(1e-6),
+                if foundation.pressure_kpa <= foundation.soil_kpa + 1e-6 {
+                    format!(
+                        "A sapata corrida de {} cm distribui o peso da parede no solo.",
+                        decimal(foundation.width_m * 100.0, 0)
+                    )
+                } else {
+                    format!(
+                        "Alargue a sapata corrida para {} cm.",
+                        decimal(foundation.needed_width_m * 100.0, 0)
+                    )
+                },
+                format!(
+                    "B = 1,05·q / σadm = 1,05 × {} kN/m / {:.0} kPa = {} cm (mínimo 40 cm); σ = {:.0} kPa.",
+                    decimal(foundation.load_kn_m, 1),
+                    foundation.soil_kpa,
+                    decimal(foundation.needed_width_m * 100.0, 0),
+                    foundation.pressure_kpa
+                ),
+            ),
+        };
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("{} {}", foundation.kind.label(), foundation.label),
+            checks: vec![check],
+        });
+    }
     for beam in &report.balance_beams {
         let mut checks = vec![Check::new(
             "Alívio no apoio interno",

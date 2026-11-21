@@ -167,6 +167,19 @@ When real upper floors exist, the *floors* multiplier is not used.
 Allowable soil pressures by class (`SoilClass`): soft clay 80 kPa, medium clay 150 kPa, medium sand 200 kPa, dense sand 300 kPa, weathered rock 500 kPa. These are typical values for a first estimate; a soil survey (SPT) and a geotechnical engineer set the real value.
 
 
+### Wall foundations: ground beams and strip footings
+
+Every ground-floor wall reaches the soil through a ground beam or a strip footing (`src/domain/wall_foundations.rs`):
+
+| Quantity | Rule |
+| --- | --- |
+| Wall load | q = γ · t · (net wall area) / L, kN/m, openings discounted, plus the foundation's own weight (ground beam with a 40 cm first guess, strip 25 cm thick) |
+| Choice | a ground beam (*viga baldrame*) when a column stands within 30 cm of each end of the wall; a strip footing (*sapata corrida*) otherwise; walls whose openings take 90 % or more of their length are left out |
+| Ground beam | a continuous beam over the columns on the wall's line, the wall beyond the end columns hanging on them; sized from 30 to 80 cm for Md = 1.4 M and Vd = 1.4 V, with its steel; its reactions are added to the footings under those columns (and to P₁ of a balance beam) |
+| Strip footing | B = 1.05 · q / σadm, at least 40 cm, in 5 cm steps; pressure 1.05 · q / B checked against σadm |
+
+Checked by `walls_between_columns_get_ground_beams_and_the_others_strip_footings` and `ground_beam_reactions_reach_the_footings`. The wall height is the storey height until walls have their own (#145).
+
 ### Balance beams (*vigas alavanca*)
 
 A boundary footing stands off its column by e. A balance beam to an interior column at distance l turns the pair into a lever (`src/domain/foundations.rs`):

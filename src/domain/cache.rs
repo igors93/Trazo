@@ -220,6 +220,18 @@ fn structure_fingerprint(project: &Project) -> u64 {
     for slab in &project.structure.slabs {
         hash_slab(&mut h, slab);
     }
+    project.structure.wall_foundations.len().hash(&mut h);
+    for f in &project.structure.wall_foundations {
+        f.id.hash(&mut h);
+        f.wall_id.hash(&mut h);
+        (f.kind as u8).hash(&mut h);
+        hash_f64(&mut h, f.width_m.unwrap_or(-1.0));
+    }
+    for opening in &project.openings {
+        opening.wall_id.hash(&mut h);
+        hash_f64(&mut h, opening.width());
+        hash_f64(&mut h, opening.height().unwrap_or(-1.0));
+    }
     project.structure.balance_beams.len().hash(&mut h);
     for beam in &project.structure.balance_beams {
         beam.id.hash(&mut h);

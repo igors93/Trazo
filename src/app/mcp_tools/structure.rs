@@ -452,6 +452,44 @@ impl FloorPlanApp {
                     .data(json!({ "id": id })))
                 })
             }
+            "gerar_fundacao_paredes" => self.apply_change(
+                Some("Todas as paredes já têm fundação."),
+                |project| {
+                    let (beams, strips) = project.generate_wall_foundations();
+                    Ok(Change::new(format!(
+                        "Fundação das paredes: {beams} viga(s) baldrame e {strips} sapata(s) corrida(s)."
+                    ))
+                    .data(json!({ "baldrames": beams, "sapatas_corridas": strips })))
+                },
+            ),
+            "definir_fundacao_parede" => {
+                let wall = element_id(args, "id")?;
+                let kind = match text(args, "tipo").as_deref() {
+                    Some("baldrame") | None => {
+                        crate::domain::wall_foundations::WallFoundationKind::GroundBeam
+                    }
+                    Some("sapata_corrida") => {
+                        crate::domain::wall_foundations::WallFoundationKind::StripFooting
+                    }
+                    Some(_) => return Err("'tipo' deve ser baldrame ou sapata_corrida.".to_owned()),
+                };
+                let width = centimetres(args, "largura_cm")?;
+                self.apply_change(Some("A fundação da parede já era essa."), |project| {
+                    let id = project.set_wall_foundation(wall, kind, width)?;
+                    Ok(Change::new(format!(
+                        "Parede {wall}: {}.",
+                        kind.label().to_lowercase()
+                    ))
+                    .data(json!({ "id": id })))
+                })
+            }
+            "remover_fundacao_paredes" => self.apply_change(None, |project| {
+                let count = project.remove_wall_foundations();
+                if count == 0 {
+                    return Err("Nenhuma fundação de parede para remover.".to_owned());
+                }
+                Ok(Change::new(format!("{count} fundação(ões) de parede removida(s).")))
+            }),
             "remover_viga_alavanca" => {
                 let id = element_id(args, "id")?;
                 self.apply_change(None, |project| {
@@ -462,7 +500,7 @@ impl FloorPlanApp {
                 })
             }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes ou vista.".to_owned(),
             ),
         }
     }
@@ -692,6 +730,23 @@ impl FloorPlanApp {
             "vigas": beams,
             "pilares": columns,
             "sapatas": footings,
+            "fundacao_paredes": report.wall_foundations.iter().map(|f| json!({
+                "rotulo": f.label,
+                "parede": f.wall_id,
+                "tipo": match f.kind {
+                    crate::domain::wall_foundations::WallFoundationKind::GroundBeam => "baldrame",
+                    crate::domain::wall_foundations::WallFoundationKind::StripFooting => "sapata_corrida",
+                },
+                "comprimento_m": round1(f.length_m * 100.0) / 100.0,
+                "carga_kn_m": round1(f.load_kn_m),
+                "secao_cm": f.height_m.map(|h| section_cm(f.width_m, h)),
+                "largura_cm": round1(f.width_m * 100.0),
+                "momento_knm": round1(f.moment_knm),
+                "armadura_cm2": (f.steel_cm2 * 100.0).round() / 100.0,
+                "barras": f.bars,
+                "pressao_solo_kpa": round1(f.pressure_kpa),
+                "largura_necessaria_cm": round1(f.needed_width_m * 100.0),
+            })).collect::<Vec<_>>(),
             "vigas_alavanca": report.balance_beams.iter().map(|b| json!({
                 "id": b.id,
                 "rotulo": b.label,

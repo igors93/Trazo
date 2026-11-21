@@ -91,11 +91,27 @@ const MU_LIMIT: f64 = 0.295;
 /// The smallest height (in 5 cm steps, 40 to 120 cm) that carries `md`
 /// (kN·m) and `vd` (kN) with width `b`, and the top steel it needs.
 pub fn size_balance_beam(b: f64, md: f64, vd: f64, fck_mpa: f64) -> (Option<f64>, f64, f64, f64) {
+    size_rectangular_beam(b, md, vd, fck_mpa, 0.40, 1.20)
+}
+
+/// The smallest height from `h_min` to `h_max` (5 cm steps) of a
+/// rectangular beam `b` wide that carries `md` (kN·m) and `vd` (kN), with
+/// μ/μlim, τwd/τRd2 and the tension steel (cm²) of that height.
+pub fn size_rectangular_beam(
+    b: f64,
+    md: f64,
+    vd: f64,
+    fck_mpa: f64,
+    h_min: f64,
+    h_max: f64,
+) -> (Option<f64>, f64, f64, f64) {
     let fcd = fck_mpa.max(10.0) / 1.4 * 1000.0; // kN/m²
     let fyd = 500.0 / 1.15 * 1000.0;
     let tau_rd2 = 0.27 * (1.0 - fck_mpa / 250.0) * fcd;
     let mut last = (0.0, 0.0, 0.0);
-    for step in 8..=24 {
+    let first = (h_min / 0.05).round() as u32;
+    let final_step = (h_max / 0.05).round() as u32;
+    for step in first..=final_step {
         let h = f64::from(step) * 0.05;
         let d = h - 0.05;
         let mu = md / (0.85 * fcd * b * d * d);
@@ -112,7 +128,7 @@ pub fn size_balance_beam(b: f64, md: f64, vd: f64, fck_mpa: f64) -> (Option<f64>
 }
 
 /// Top bars for `steel_cm2` (2 to 6 bars of 10 to 20 mm).
-fn choose_bars(steel_cm2: f64) -> String {
+pub(super) fn choose_bars(steel_cm2: f64) -> String {
     for diameter in [10.0, 12.5, 16.0, 20.0] {
         let count = ((steel_cm2 / bar_area_cm2(diameter)).ceil() as u32).max(2);
         if count <= 6 {
@@ -232,7 +248,11 @@ impl Project {
 
     /// The balance beams' statics, sizing and effect on the footings, from
     /// the column loads of the pre-sizing.
-    pub fn balance_effects(&self, columns: &[ColumnResult]) -> BalanceEffects {
+    pub fn balance_effects(
+        &self,
+        columns: &[ColumnResult],
+        ground: &HashMap<u64, f64>,
+    ) -> BalanceEffects {
         let mut effects = BalanceEffects::default();
         let fck = self.structure.settings.fck_mpa;
         let load_of = |id: u64| columns.iter().find(|c| c.id == id);
@@ -246,6 +266,9 @@ impl Project {
             let (Some(p1), Some(n2)) = (load_of(beam.column), load_of(beam.anchor)) else {
                 continue;
             };
+            // The column's load plus the ground beams reaching its footing.
+            let p1_load = p1.load_kn + ground.get(&beam.column).copied().unwrap_or(0.0);
+            let n2_load = n2.load_kn + ground.get(&beam.anchor).copied().unwrap_or(0.0);
             let footing = self.footing_under(column);
             let axis = anchor.center.minus(column.center);
             let span = axis.length().max(0.1);
@@ -253,10 +276,10 @@ impl Project {
             let e = footing
                 .map_or(0.0, |f| f.center.minus(column.center).dot(direction))
                 .clamp(0.0, span * 0.9);
-            let reaction = p1.load_kn * span / (span - e);
-            let relief = reaction - p1.load_kn;
-            let moment = p1.load_kn * e;
-            let shear = relief.max(if e > 1e-6 { p1.load_kn } else { 0.0 });
+            let reaction = p1_load * span / (span - e);
+            let relief = reaction - p1_load;
+            let moment = p1_load * e;
+            let shear = relief.max(if e > 1e-6 { p1_load } else { 0.0 });
             let (height, flexure_ratio, shear_ratio, steel) =
                 size_balance_beam(beam.width_m, 1.4 * moment, 1.4 * shear, fck);
             if let Some(f) = footing {
@@ -271,10 +294,10 @@ impl Project {
                 footing_id: footing.map(|f| f.id),
                 span_m: span,
                 eccentricity_m: e,
-                column_load_kn: p1.load_kn,
+                column_load_kn: p1_load,
                 reaction_kn: reaction,
                 relief_kn: relief,
-                anchor_load_kn: n2.load_kn,
+                anchor_load_kn: n2_load,
                 moment_knm: moment,
                 shear_kn: shear,
                 width_m: beam.width_m,
@@ -372,7 +395,8 @@ mod tests {
             area_needed_cm2: 0.0,
             area_cm2: 400.0,
         };
-        let effects = project.balance_effects(&[col(a, "P1", 100.0), col(b, "P2", 150.0)]);
+        let none = HashMap::new();
+        let effects = project.balance_effects(&[col(a, "P1", 100.0), col(b, "P2", 150.0)], &none);
         let r = &effects.results[0];
         assert!((r.eccentricity_m - 0.30).abs() < 1e-9);
         assert!((r.reaction_kn - 100.0 * 4.0 / 3.7).abs() < 1e-9);
@@ -382,7 +406,7 @@ mod tests {
         assert!(r.height_m.is_some());
         assert!((effects.relief[&b] - r.relief_kn / 2.0).abs() < 1e-9);
         // A light interior column is lifted.
-        let lifted = project.balance_effects(&[col(a, "P1", 100.0), col(b, "P2", 5.0)]);
+        let lifted = project.balance_effects(&[col(a, "P1", 100.0), col(b, "P2", 5.0)], &none);
         assert!(lifted.results[0].uplift());
     }
 

@@ -329,7 +329,7 @@ What the model holds today:
 
 | Gap | Why it matters here | Item |
 | --- | --- | --- |
-| Ground beams (*vigas baldrame*) and wall foundations | The left wall between footings and the bathroom and pantry walls have nothing carrying them to the footings | #143 |
+| Ground beams (*vigas baldrame*) and wall foundations | ✅ *Baldrames* puts ground beams under the left wall and strip footings under the bathroom and pantry walls | #143 |
 | Boundary columns and footings | ✅ Columns stand flush inside the lot (B23) and *Vigas alavanca* centres their footings; the posts on the pool side still need concrete bases to anchor them | #144 |
 | Wall height per wall, sloped wall tops | The left wall is about 1.5 m taller than the storey height to give the roof its slope | #145 |
 | Roof structure and its loads | The roof weight, live load and wind are missing, so the columns show only their own weight (4–10 kN) | #114, #71 |
@@ -534,7 +534,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 115 | Stairs, balconies and cantilevers: slab and beam checks with the extra care cantilevers need | P1 | M | M5 | ⬜ |
 | 116 | Two-way slab moments and deflections by tables (Czerny, Marcus), and L-shaped rooms split into rectangular panels (B06) | P1 | M | M5 | 🟡 Minimum thickness by span; loads shared by edge length |
 | 117 | Columns at any angle and beams supported on beams (B07) | P2 | M | M5 | ⬜ |
-| 143 | Ground beams (*vigas baldrame*) and wall foundations: a ground beam under every wall, resting on the footings, or a strip footing (*sapata corrida*) where there are no columns; the wall weight carried down to them; interior walls (bathrooms, pantry) included; beams and footings sized with that load | P0 | L | M5 | ⬜ |
+| 143 | Ground beams (*vigas baldrame*) and wall foundations: a ground beam under every wall, resting on the footings, or a strip footing (*sapata corrida*) where there are no columns; the wall weight carried down to them; interior walls (bathrooms, pantry) included; beams and footings sized with that load | P0 | L | M5 | ✅ Ground beams between columns and strip footings elsewhere, wall load to the footings (and to balance beams), sizing with steel, plan drawing, MCP and traffic light; ground beams resting on other ground beams are not modelled |
 | 144 | Boundary foundations: columns and footings on a boundary wall placed flush inside the lot (B23); eccentric boundary footings balanced by a balance beam (*viga alavanca*) to an interior footing, or a strip footing, with the soil and overturning checks of the pair (NBR 6122) | P0 | M | M5 | 🟡 Boundary columns and footings flush inside the lot (B23) and balance beams with lever statics, sizing, top steel, uplift check, plan drawing, MCP and traffic light; the strip-footing alternative comes with #143 |
 | 145 | Wall height per wall and sloped wall tops (gable ends, *oitões*, parapets), with the storey height as the default; sections, elevations, quantities, structure and the limits use each wall's real height | P1 | M | M5 | ⬜ |
 | 146 | Timber structural elements: posts (*mourões*) and beams of timber, with species and strength class (NBR 7190), bending, shear, compression, buckling and deflection checks, durability (treated wood, no soil contact) and post bases (concrete block with a steel anchor) | P1 | L | M5 | ⬜ |
