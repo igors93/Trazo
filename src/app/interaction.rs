@@ -302,7 +302,7 @@ impl FloorPlanApp {
             );
             self.paint_underlay_calibration_overlay(&painter, view, world);
             self.paint_view_aids(&painter, view);
-            self.paint_dependency_review_badges(&painter, view);
+            self.paint_dependency_review_badges(ui, &painter, view);
             self.canvas_navigation(ui, navigation);
             return;
         }
@@ -323,7 +323,7 @@ impl FloorPlanApp {
             );
             canvas::paint_polygon_draft(&painter, view, corners, None, true);
             self.paint_view_aids(&painter, view);
-            self.paint_dependency_review_badges(&painter, view);
+            self.paint_dependency_review_badges(ui, &painter, view);
             if self.show_ergonomics {
                 canvas::paint_ergonomics_overlay(
                     &painter,
@@ -588,7 +588,7 @@ impl FloorPlanApp {
             );
         }
         self.paint_view_aids(&painter, view);
-        self.paint_dependency_review_badges(&painter, view);
+        self.paint_dependency_review_badges(ui, &painter, view);
         if self.show_ergonomics {
             canvas::paint_ergonomics_overlay(
                 &painter,
@@ -1458,10 +1458,19 @@ impl FloorPlanApp {
     }
 
     /// Highlights elements flagged for manual review after cross-discipline
-    /// geometry changes (uses the cached dependency audit).
-    fn paint_dependency_review_badges(&self, painter: &egui::Painter, view: ViewTransform) {
+    /// geometry changes (uses the cached dependency audit) and shows a tooltip
+    /// explaining the finding and suggestion when hovering over the `!` badge.
+    fn paint_dependency_review_badges(
+        &self,
+        ui: &egui::Ui,
+        painter: &egui::Painter,
+        view: ViewTransform,
+    ) {
         use crate::domain::dependencies::ReviewSeverity;
         let audit = self.project.cached_dependency_audit();
+        let hover_pos = ui.ctx().pointer_hover_pos();
+        let mut hovered_item: Option<(egui::Pos2, &crate::domain::dependencies::ReviewItem)> = None;
+
         for item in &audit.review_items {
             if item.severity == ReviewSeverity::Info {
                 continue;
@@ -1477,24 +1486,80 @@ impl FloorPlanApp {
                 continue;
             }
             let badge_center = screen + egui::vec2(10.0, -10.0);
+            let is_hovered = hover_pos.is_some_and(|p| p.distance(badge_center) <= 11.0);
             let fill = match item.severity {
                 ReviewSeverity::Critical => egui::Color32::from_rgb(200, 45, 45),
                 ReviewSeverity::Warning => egui::Color32::from_rgb(217, 130, 18),
                 ReviewSeverity::Info => continue,
             };
-            painter.circle_filled(badge_center, 7.0, fill);
+            let radius = if is_hovered { 8.5 } else { 7.0 };
+            painter.circle_filled(badge_center, radius, fill);
             painter.circle_stroke(
                 badge_center,
-                7.0,
-                egui::Stroke::new(1.2, egui::Color32::WHITE),
+                radius,
+                egui::Stroke::new(1.4, egui::Color32::WHITE),
             );
             painter.text(
                 badge_center,
                 egui::Align2::CENTER_CENTER,
                 "!",
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(if is_hovered { 11.5 } else { 10.0 }),
                 egui::Color32::WHITE,
             );
+            if is_hovered && hovered_item.is_none() {
+                hovered_item = Some((badge_center, item));
+            }
+        }
+
+        if let Some((badge_center, item)) = hovered_item {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Help);
+            let accent = match item.severity {
+                ReviewSeverity::Critical => egui::Color32::from_rgb(200, 45, 45),
+                ReviewSeverity::Warning => egui::Color32::from_rgb(217, 130, 18),
+                ReviewSeverity::Info => egui::Color32::from_rgb(70, 120, 200),
+            };
+            let severity_label = match item.severity {
+                ReviewSeverity::Critical => "Crítico",
+                ReviewSeverity::Warning => "Revisão manual",
+                ReviewSeverity::Info => "Nota",
+            };
+            egui::Area::new(egui::Id::unique("dependency_review_badge_tooltip"))
+                .order(egui::Order::Tooltip)
+                .fixed_pos(badge_center + egui::vec2(14.0, -12.0))
+                .interactable(false)
+                .show(ui.ctx(), |ui| {
+                    egui::Frame::popup(ui.style())
+                        .fill(egui::Color32::WHITE)
+                        .stroke(egui::Stroke::new(1.2, accent))
+                        .corner_radius(6.0)
+                        .inner_margin(egui::Margin::symmetric(10, 8))
+                        .show(ui, |ui| {
+                            ui.set_max_width(300.0);
+                            ui.label(
+                                egui::RichText::new(format!(
+                                    "{severity_label} · {}",
+                                    item.discipline.label()
+                                ))
+                                .strong()
+                                .color(accent)
+                                .size(12.0),
+                            );
+                            ui.add_space(3.0);
+                            ui.label(
+                                egui::RichText::new(&item.message)
+                                    .color(egui::Color32::from_rgb(30, 38, 48))
+                                    .size(12.0),
+                            );
+                            if !item.suggestion.is_empty() {
+                                ui.add_space(3.0);
+                                ui.label(
+                                    egui::RichText::new(format!("Sugestão: {}", item.suggestion))
+                                        .color(egui::Color32::from_rgb(90, 102, 118))
+                                        .size(11.5),
+                                );
+                            }
+                        });
+                });
         }
     }
 }

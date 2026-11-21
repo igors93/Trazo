@@ -184,9 +184,10 @@ fn fixture_back_and_front(fixture: &Fixture) -> (Point, Point) {
 }
 
 /// Returns whether a fixture kind can attach to a wall face and follow safe
-/// wall movements.
+/// wall movements (wall-mounted electrical devices and plumbing fixtures —
+/// never freestanding furniture such as tables, islands, armchairs or cars).
 fn follows_wall(kind: FixtureKind) -> bool {
-    kind.mounts_on_wall() || kind.is_plumbing()
+    (kind.is_electrical() && kind.mounts_on_wall()) || kind.is_plumbing()
 }
 
 /// Discipline owning a fixture for dependency reporting.
@@ -244,17 +245,35 @@ fn attached_wall_of<'a>(fixture: &Fixture, walls: &'a [Wall]) -> Option<(&'a Wal
     best.map(|(w, s, n, _)| (w, s, n))
 }
 
-/// Checks if a point at distance `s` along `wall` with width `width` overlaps
-/// any opening on that wall.
-fn overlaps_wall_opening(project: &Project, wall: &Wall, s: f64, width: f64) -> Option<u64> {
+/// Checks if a fixture at distance `s` along `wall` actually conflicts with
+/// an opening on that wall.
+///
+/// High-sill windows (`sill >= 0.90 m`) are normal above kitchen sinks,
+/// washbasins, toilets, showers and low outlets; doors, gates and floor-to-top
+/// gaps conflict horizontally with any wall-mounted fixture.
+fn overlaps_wall_opening(project: &Project, wall: &Wall, s: f64, fixture: &Fixture) -> Option<u64> {
+    use super::model::OpeningKind;
     let len = wall.length();
-    let half = (width * 0.5).max(0.05);
+    let half = (fixture.width * 0.5).max(0.05);
     for op in project.openings.iter().filter(|o| o.wall_id == wall.id) {
         let op_center = op.t * len;
         let op_half = op.width() * 0.5 + 0.04;
-        if (s - op_center).abs() < op_half + half {
-            return Some(op.id);
+        if (s - op_center).abs() >= op_half + half {
+            continue;
         }
+        if op.kind == OpeningKind::Window {
+            let sill = op.sill();
+            let top = sill + op.height().unwrap_or(1.20);
+            if fixture.kind.is_plumbing() && sill >= 0.90 {
+                continue;
+            }
+            if let Some(elec) = fixture.electrical
+                && (elec.height_m + 0.12 < sill || elec.height_m > top + 0.10)
+            {
+                continue;
+            }
+        }
+        return Some(op.id);
     }
     None
 }
@@ -420,7 +439,7 @@ impl Project {
                     continue;
                 }
 
-                if let Some(op_id) = overlaps_wall_opening(self, new_wall, new_s, prev_f.width) {
+                if let Some(op_id) = overlaps_wall_opening(self, new_wall, new_s, prev_f) {
                     report.blocked_updates.push(ReviewItem {
                         discipline,
                         severity: ReviewSeverity::Warning,
@@ -610,7 +629,7 @@ impl Project {
                     target_discipline: discipline,
                     relation: "fixado_em".to_owned(),
                 });
-                if let Some(op_id) = overlaps_wall_opening(self, wall, s, fixture.width) {
+                if let Some(op_id) = overlaps_wall_opening(self, wall, s, fixture) {
                     audit.review_items.push(ReviewItem {
                         discipline,
                         severity: ReviewSeverity::Warning,
@@ -628,7 +647,10 @@ impl Project {
                             .to_owned(),
                     });
                 }
-            } else if !self.walls.is_empty() && fixture.kind.mounts_on_wall() {
+            } else if !self.walls.is_empty()
+                && fixture.kind.is_electrical()
+                && fixture.kind.mounts_on_wall()
+            {
                 audit.review_items.push(ReviewItem {
                     discipline,
                     severity: ReviewSeverity::Warning,
@@ -1110,5 +1132,52 @@ mod tests {
         assert!(audit.review_items.iter().any(|r| {
             r.element_id == Some(bad_outlet) && r.kind == ReviewKind::FixtureOpeningCollision
         }));
+    }
+
+    #[test]
+    fn freestanding_furniture_and_shower_under_high_window_do_not_trigger_warnings() {
+        let mut project = Project::default();
+        project.set_terrain(Point::new(-2.0, -2.0), Point::new(15.0, 15.0));
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(5.0, 4.0), "Banheiro")
+            .unwrap();
+        let top_wall = project
+            .walls
+            .iter()
+            .find(|w| (w.start.y - 0.0).abs() < 1e-3 && (w.end.y - 0.0).abs() < 1e-3)
+            .unwrap()
+            .clone();
+        // High bathroom window (default sill >= 1.1 m) right above the shower.
+        project
+            .add_opening_sized(top_wall.id, OpeningKind::Window, 0.25, Some(0.60))
+            .unwrap();
+        let half_t = top_wall.thickness() * 0.5;
+        let (sw, sd) = FixtureKind::Shower.default_size();
+        project
+            .add_fixture(
+                FixtureKind::Shower,
+                Point::new(1.25, half_t + sd * 0.5),
+                sw,
+                sd,
+                0,
+            )
+            .unwrap();
+        // Freestanding table, island counter and car away from walls.
+        project
+            .add_fixture(FixtureKind::Table, Point::new(2.5, 2.5), 2.0, 1.0, 0)
+            .unwrap();
+        project
+            .add_fixture(FixtureKind::Counter, Point::new(3.0, 2.0), 1.5, 0.6, 0)
+            .unwrap();
+        project
+            .add_fixture(FixtureKind::Car, Point::new(8.0, 8.0), 1.85, 4.5, 0)
+            .unwrap();
+
+        let audit = project.audit_dependencies();
+        assert!(
+            audit.review_items.is_empty(),
+            "expected no false positives on furniture or high window over shower, got: {:?}",
+            audit.review_items
+        );
     }
 }

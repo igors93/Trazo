@@ -149,8 +149,41 @@ impl FloorPlanApp {
                     None if self.tool == Tool::Terrain => self.terrain_inspector(ui),
                     None => self.project_inspector(ui),
                 }
+                if let Some(selected) = self.selection {
+                    self.review_notices_section(ui, selected.id());
+                }
                 if let Some(entity) = self.selection.and_then(crate::domain::model::Entity::of) {
                     self.constraints_section(ui, entity);
+                }
+            });
+    }
+
+    fn review_notices_section(&self, ui: &mut Ui, id: u64) {
+        use crate::domain::dependencies::ReviewSeverity;
+        let audit = self.project.cached_dependency_audit();
+        let items: Vec<_> = audit
+            .review_items
+            .iter()
+            .filter(|r| r.element_id == Some(id) && r.severity != ReviewSeverity::Info)
+            .collect();
+        if items.is_empty() {
+            return;
+        }
+        egui::Frame::new()
+            .inner_margin(Margin::symmetric(14, 6))
+            .show(ui, |ui| {
+                for item in items {
+                    let color = match item.severity {
+                        ReviewSeverity::Critical => DANGER,
+                        ReviewSeverity::Warning => egui::Color32::from_rgb(190, 110, 10),
+                        ReviewSeverity::Info => MUTED,
+                    };
+                    hint(
+                        ui,
+                        Icon::Warning,
+                        &format!("{} {}", item.message, item.suggestion),
+                        color,
+                    );
                 }
             });
     }
