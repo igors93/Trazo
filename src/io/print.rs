@@ -102,8 +102,7 @@ pub(crate) fn svg_to_rgba(markup: &str, width: u32, height: u32) -> Result<Vec<u
 }
 
 fn rasterize_svg(markup: &str, width: u32, height: u32) -> Result<tiny_skia::Pixmap, String> {
-    let mut options = usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    let options = crate::io::export::resvg_options();
     let tree = usvg::Tree::from_str(markup, &options)
         .map_err(|error| format!("Não foi possível preparar a prancha: {error}"))?;
     let mut pixmap = tiny_skia::Pixmap::new(width, height)

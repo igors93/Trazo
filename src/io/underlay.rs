@@ -79,8 +79,7 @@ pub fn decode_raster_bytes(bytes: &[u8]) -> Result<DecodedUnderlay, String> {
 }
 
 fn decode_svg_bytes(bytes: &[u8]) -> Result<DecodedUnderlay, String> {
-    let mut options = usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    let options = crate::io::export::resvg_options();
     let tree = usvg::Tree::from_data(bytes, &options)
         .map_err(|error| format!("SVG de fundo inválido: {error}"))?;
     let size = tree.size();

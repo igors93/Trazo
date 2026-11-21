@@ -1,4 +1,9 @@
-use std::{fmt::Write as _, fs, path::Path};
+use std::{
+    fmt::Write as _,
+    fs,
+    path::Path,
+    sync::{Arc, OnceLock},
+};
 
 use crate::domain::{
     annotations::{building_dimensions, centimetres},
@@ -1021,12 +1026,41 @@ fn document(project: &Project) -> SvgDocument {
     }
 }
 
+/// Shared system font database for `resvg` rasterisation, loaded once per
+/// process instead of scanning the OS font directories on every preview.
+pub fn resvg_options() -> resvg::usvg::Options<'static> {
+    static FONTS: OnceLock<Arc<resvg::usvg::fontdb::Database>> = OnceLock::new();
+    let fontdb = Arc::clone(FONTS.get_or_init(|| {
+        let mut db = resvg::usvg::fontdb::Database::new();
+        db.load_system_fonts();
+        Arc::new(db)
+    }));
+    resvg::usvg::Options {
+        fontdb,
+        ..resvg::usvg::Options::default()
+    }
+}
+
+/// Shared system font database for `svg2pdf` PDF export, loaded once per
+/// process.
+pub fn svg2pdf_options() -> svg2pdf::usvg::Options<'static> {
+    static FONTS: OnceLock<Arc<svg2pdf::usvg::fontdb::Database>> = OnceLock::new();
+    let fontdb = Arc::clone(FONTS.get_or_init(|| {
+        let mut db = svg2pdf::usvg::fontdb::Database::new();
+        db.load_system_fonts();
+        Arc::new(db)
+    }));
+    svg2pdf::usvg::Options {
+        fontdb,
+        ..svg2pdf::usvg::Options::default()
+    }
+}
+
 /// Rasterizes the plan, scaled down so that its longer side is at most
 /// `max_side` pixels (never up).
 fn render(project: &Project, max_side: Option<u32>) -> Result<resvg::tiny_skia::Pixmap, String> {
     let document = document(project);
-    let mut options = resvg::usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    let options = resvg_options();
     let tree = resvg::usvg::Tree::from_str(&document.markup, &options)
         .map_err(|error| error.to_string())?;
     let scale = max_side
@@ -1060,8 +1094,7 @@ pub fn png_preview(project: &Project, max_side: u32) -> Result<Vec<u8>, String> 
 
 pub fn pdf(project: &Project, path: &Path) -> Result<(), String> {
     let document = document(project);
-    let mut options = svg2pdf::usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    let options = svg2pdf_options();
     let tree = svg2pdf::usvg::Tree::from_str(&document.markup, &options)
         .map_err(|error| error.to_string())?;
     let pdf = svg2pdf::to_pdf(
@@ -1195,5 +1228,16 @@ mod tests {
             .visible = false;
         let hidden_markup = document(&project).markup;
         assert!(!hidden_markup.contains("data-underlay=\"Levantamento\""));
+    }
+
+    #[test]
+    fn shared_font_databases_are_reused_across_calls() {
+        let a = resvg_options();
+        let b = resvg_options();
+        assert!(Arc::ptr_eq(&a.fontdb, &b.fontdb));
+
+        let c = svg2pdf_options();
+        let d = svg2pdf_options();
+        assert!(Arc::ptr_eq(&c.fontdb, &d.fontdb));
     }
 }

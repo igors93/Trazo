@@ -1332,8 +1332,7 @@ pub fn export_scaled_svg(project: &Project, path: &Path) -> Result<(), String> {
 pub fn export_scaled_pdf(project: &Project, path: &Path) -> Result<(), String> {
     project.sheet.validate()?;
     let markup = scaled_sheet_svg(project);
-    let mut options = svg2pdf::usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    let options = super::svg2pdf_options();
     let tree =
         svg2pdf::usvg::Tree::from_str(&markup, &options).map_err(|error| error.to_string())?;
     let pdf = svg2pdf::to_pdf(
@@ -1468,8 +1467,7 @@ pub fn export_sheet_item_pdf(
 ) -> Result<(), String> {
     item.layout.validate()?;
     let markup = scaled_sheet_item_svg(project, item);
-    let mut options = svg2pdf::usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    let options = super::svg2pdf_options();
     let tree =
         svg2pdf::usvg::Tree::from_str(&markup, &options).map_err(|error| error.to_string())?;
     let pdf = svg2pdf::to_pdf(

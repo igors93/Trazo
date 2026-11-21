@@ -735,8 +735,7 @@ pub fn export_view_svg(markup: &str, path: &Path) -> Result<(), String> {
 }
 
 pub fn export_view_pdf(markup: &str, path: &Path) -> Result<(), String> {
-    let mut options = svg2pdf::usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    let options = crate::io::export::svg2pdf_options();
     let tree = svg2pdf::usvg::Tree::from_str(markup, &options).map_err(|e| e.to_string())?;
     let pdf = svg2pdf::to_pdf(
         &tree,
