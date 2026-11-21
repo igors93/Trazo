@@ -269,8 +269,20 @@ impl FloorPlanApp {
             self.export_png();
             ui.close();
         }
-        if menu_item(ui, Some(Icon::ExportPdf), "Exportar PDF...", "").clicked() {
+        let multi_tab = self.project_tab_count(self.active_project_id) > 1;
+        let pdf_label = if multi_tab {
+            "Exportar PDF (todas as abas)..."
+        } else {
+            "Exportar PDF..."
+        };
+        if menu_item(ui, Some(Icon::ExportPdf), pdf_label, "").clicked() {
             self.export_pdf();
+            ui.close();
+        }
+        if multi_tab
+            && menu_item(ui, Some(Icon::ExportPdf), "Exportar PDF (aba atual)...", "").clicked()
+        {
+            self.export_active_tab_pdf();
             ui.close();
         }
         if menu_item(ui, Some(Icon::Export), "Exportar SVG editável...", "").clicked() {
@@ -599,8 +611,26 @@ impl FloorPlanApp {
             self.export_png();
             ui.close();
         }
-        if menu_item(ui, Some(Icon::ExportPdf), "Documento PDF...", "").clicked() {
+        let multi_tab = self.project_tab_count(self.active_project_id) > 1;
+        let pdf_label = if multi_tab {
+            "Documento PDF (todas as abas)..."
+        } else {
+            "Documento PDF..."
+        };
+        if menu_item(ui, Some(Icon::ExportPdf), pdf_label, "").clicked() {
             self.export_pdf();
+            ui.close();
+        }
+        if multi_tab
+            && menu_item(
+                ui,
+                Some(Icon::ExportPdf),
+                "Documento PDF (aba atual)...",
+                "",
+            )
+            .clicked()
+        {
+            self.export_active_tab_pdf();
             ui.close();
         }
         if menu_item(ui, Some(Icon::Export), "Desenho SVG editável...", "").clicked() {

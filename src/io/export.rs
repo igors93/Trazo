@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     fmt::Write as _,
     fs,
     path::Path,
@@ -7,8 +8,10 @@ use std::{
 
 use crate::domain::{
     annotations::{building_dimensions, centimetres},
-    fixtures::{SymbolShape, Weight},
+    discipline::Discipline,
+    fixtures::{Fixture, FixtureKind, SymbolShape, Weight},
     geometry::{Point, WALL_THICKNESS_METERS, format_meters},
+    layers::LayerCategory,
     model::{OpeningKind, Project},
 };
 
@@ -16,13 +19,80 @@ use crate::domain::{
 pub(crate) const ELECTRICAL_INK: &str = "#c62828";
 pub(crate) const STRUCTURE_INK: &str = "#00695c";
 
+/// Opacity of the white contrast veil placed over the architectural underlay in
+/// specialized discipline exports, matching the on-screen canvas contrast.
+pub(crate) const CONTRAST_VEIL_OPACITY: f64 = 0.72;
+
 mod conduits;
 mod csv;
 mod drawings;
 mod labels;
 pub mod sheet;
 
-pub use sheet::{export_scaled_pdf, export_scaled_svg};
+pub use sheet::{export_scaled_pdf_for_view, export_scaled_pdf_views, export_scaled_svg_for_view};
+
+/// Visual configuration of one open view/tab to export, matching how Trazo
+/// displays synchronized workspace tabs on screen (discipline visibility,
+/// contrast underlay for focused disciplines, floor selection, hidden layers
+/// and title).
+#[derive(Clone, Debug)]
+pub struct ExportView {
+    pub title: String,
+    pub discipline: Discipline,
+    pub floor_id: Option<u64>,
+    pub hidden_layers: Vec<u64>,
+}
+
+impl ExportView {
+    pub fn for_discipline(project: &Project, discipline: Discipline) -> Self {
+        let base = project.name.trim();
+        let title = if base.is_empty() {
+            discipline.label().to_owned()
+        } else if discipline.is_all() {
+            base.to_owned()
+        } else {
+            format!("{base} · {}", discipline.label())
+        };
+        Self {
+            title,
+            discipline,
+            floor_id: project.floors.active_floor_id,
+            hidden_layers: Vec::new(),
+        }
+    }
+}
+
+/// Resolves `project` onto `floor_id` (if specified and different from the
+/// active floor), avoiding cloning when the active floor already matches.
+pub(crate) fn project_on_floor(project: &Project, floor_id: Option<u64>) -> Cow<'_, Project> {
+    if let Some(target_floor) = floor_id
+        && project.floors.active_floor_id != Some(target_floor)
+        && project
+            .floors
+            .levels
+            .iter()
+            .any(|level| level.id == target_floor)
+    {
+        let mut switched = project.clone();
+        let _ = switched.switch_floor(target_floor);
+        return Cow::Owned(switched);
+    }
+    Cow::Borrowed(project)
+}
+
+/// Whether `fixture` belongs to the crisp foreground overlay of a focused
+/// `discipline` tab, matching `canvas::paint_discipline_overlay`.
+pub(crate) fn fixture_in_discipline_overlay(discipline: Discipline, fixture: &Fixture) -> bool {
+    match discipline {
+        Discipline::Structure => fixture.kind.is_structural(),
+        Discipline::Foundations => {
+            matches!(fixture.kind, FixtureKind::Footing | FixtureKind::Column)
+        }
+        Discipline::Electrical => fixture.kind.is_electrical(),
+        Discipline::Plumbing => fixture.kind.is_plumbing(),
+        Discipline::All | Discipline::Architecture => false,
+    }
+}
 
 const PIXELS_PER_METER: f64 = 100.0;
 const MARGIN: f64 = 130.0;
@@ -42,9 +112,183 @@ fn escaped(value: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+fn write_fixture_svg(
+    svg: &mut String,
+    fixture: &Fixture,
+    point: &dyn Fn(Point) -> (f64, f64),
+    pixels_per_meter: f64,
+) {
+    let electrical = fixture.kind.is_electrical();
+    let corner = |x: f64, y: f64| {
+        let (px, py) = point(fixture.to_world(Point::new(x, y)));
+        format!("{px:.1},{py:.1}")
+    };
+    let (hw, hd) = (fixture.width / 2.0, fixture.depth / 2.0);
+    let transparent_backing = electrical
+        || matches!(
+            fixture.kind,
+            FixtureKind::Footing | FixtureKind::WaterTank | FixtureKind::HeavyEquipment
+        );
+    if !transparent_backing {
+        let _ = writeln!(
+            svg,
+            "<polygon points=\"{} {} {} {}\" fill=\"#ffffff\"/>",
+            corner(-hw, -hd),
+            corner(hw, -hd),
+            corner(hw, hd),
+            corner(-hw, hd)
+        );
+    }
+    for shape in fixture.symbol() {
+        let weight = match &shape {
+            SymbolShape::Polyline { weight, .. } | SymbolShape::Circle { weight, .. } => *weight,
+        };
+        let (color, width) = match (weight, electrical) {
+            (Weight::Outline, false) => ("#3b4e63", 2.0),
+            (Weight::Detail, false) => ("#627489", 1.2),
+            (Weight::Outline, true) => (ELECTRICAL_INK, 1.8),
+            (Weight::Detail, true) => (ELECTRICAL_INK, 1.0),
+        };
+        let (color, width) = match (weight, fixture.kind.is_structural()) {
+            (Weight::Outline, true) => (STRUCTURE_INK, 1.8),
+            (Weight::Detail, true) => (STRUCTURE_INK, 0.8),
+            _ => (color, width),
+        };
+        match shape {
+            SymbolShape::Polyline {
+                points,
+                closed,
+                dashed,
+                ..
+            } => {
+                let points = points
+                    .iter()
+                    .map(|local| corner(local.x, local.y))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let element = if closed { "polygon" } else { "polyline" };
+                let dash = if dashed {
+                    " stroke-dasharray=\"6 4\""
+                } else {
+                    ""
+                };
+                let _ = writeln!(
+                    svg,
+                    "<{element} points=\"{points}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{width}\"{dash}/>"
+                );
+            }
+            SymbolShape::Circle { center, radius, .. } => {
+                let (cx, cy) = point(fixture.to_world(center));
+                let _ = writeln!(
+                    svg,
+                    "<circle cx=\"{cx:.1}\" cy=\"{cy:.1}\" r=\"{:.1}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{width}\"/>",
+                    radius * pixels_per_meter
+                );
+            }
+        }
+    }
+}
+
+fn write_discipline_overlay_svg(
+    svg: &mut String,
+    project: &Project,
+    discipline: Discipline,
+    point: &dyn Fn(Point) -> (f64, f64),
+    pixels_per_meter: f64,
+) {
+    let _ = writeln!(
+        svg,
+        "<g id=\"disciplina-foco\" data-discipline=\"{}\">",
+        discipline.key()
+    );
+    for fixture in &project.fixtures {
+        if !fixture_in_discipline_overlay(discipline, fixture) {
+            continue;
+        }
+        if !project.category_visible(Project::fixture_category(fixture)) {
+            continue;
+        }
+        write_fixture_svg(svg, fixture, point, pixels_per_meter);
+    }
+    match discipline {
+        Discipline::Structure | Discipline::Foundations => {
+            if project.category_visible(LayerCategory::Structure) {
+                conduits::write_structure(
+                    svg,
+                    project,
+                    point,
+                    pixels_per_meter,
+                    (1.4, 1.0, (pixels_per_meter * 0.14).clamp(8.0, 16.0)),
+                );
+            }
+        }
+        Discipline::Electrical => {
+            if project.category_visible(LayerCategory::Electrical) {
+                conduits::write_conduits(
+                    svg,
+                    project,
+                    point,
+                    pixels_per_meter,
+                    (1.6, 1.0, (pixels_per_meter * 0.13).clamp(8.0, 15.0)),
+                );
+                for (anchor, text) in project.electrical_tags() {
+                    let (x, y) = point(anchor);
+                    let _ = writeln!(
+                        svg,
+                        "<text x=\"{x:.1}\" y=\"{y:.1}\" text-anchor=\"middle\" dominant-baseline=\"middle\" font-family=\"Arial, sans-serif\" font-size=\"{:.1}\" fill=\"{ELECTRICAL_INK}\" stroke=\"#ffffff\" stroke-width=\"3\" paint-order=\"stroke\">{}</text>",
+                        (pixels_per_meter * 0.14).clamp(9.0, 16.0),
+                        escaped(&text)
+                    );
+                }
+            }
+        }
+        Discipline::Plumbing | Discipline::All | Discipline::Architecture => {}
+    }
+    svg.push_str("</g>\n");
+}
+
+#[cfg(test)]
 fn document(project: &Project) -> SvgDocument {
-    let (min, max) = project
+    document_with_options(project, None, &project.name, None)
+}
+
+fn document_for_view(project: &Project, view: &ExportView) -> SvgDocument {
+    let base = project_on_floor(project, view.floor_id);
+    let title = if view.title.trim().is_empty() {
+        project.name.as_str()
+    } else {
+        view.title.as_str()
+    };
+    let subtitle = if view.discipline.focus().is_some() {
+        Some(view.discipline.sheet_title())
+    } else {
+        None
+    };
+    if view.discipline.focus().is_some() {
+        let underlay = base.for_underlay(view.discipline, &view.hidden_layers);
+        let overlay = base.for_view(view.discipline, &view.hidden_layers);
+        document_with_options(
+            &underlay,
+            Some((&overlay, view.discipline)),
+            title,
+            subtitle,
+        )
+    } else {
+        let shown = base.for_view(view.discipline, &view.hidden_layers);
+        document_with_options(&shown, None, title, subtitle)
+    }
+}
+
+fn document_with_options(
+    project: &Project,
+    focused_overlay: Option<(&Project, Discipline)>,
+    title: &str,
+    subtitle: Option<&str>,
+) -> SvgDocument {
+    let bounds_source = focused_overlay.map_or(project, |(overlay, _)| overlay);
+    let (min, max) = bounds_source
         .bounds()
+        .or_else(|| project.bounds())
         .unwrap_or((Point::new(0.0, 0.0), Point::new(9.0, 6.0)));
     let span_x = (max.x - min.x).max(6.0);
     let span_y = (max.y - min.y).max(4.0);
@@ -578,72 +822,7 @@ fn document(project: &Project) -> SvgDocument {
         if !project.category_visible(Project::fixture_category(fixture)) {
             continue;
         }
-        let electrical = fixture.kind.is_electrical();
-        let corner = |x: f64, y: f64| {
-            let (px, py) = point(fixture.to_world(Point::new(x, y)));
-            format!("{px:.1},{py:.1}")
-        };
-        let (hw, hd) = (fixture.width / 2.0, fixture.depth / 2.0);
-        if !electrical && fixture.kind != crate::domain::fixtures::FixtureKind::Footing {
-            let _ = writeln!(
-                svg,
-                "<polygon points=\"{} {} {} {}\" fill=\"#ffffff\"/>",
-                corner(-hw, -hd),
-                corner(hw, -hd),
-                corner(hw, hd),
-                corner(-hw, hd)
-            );
-        }
-        for shape in fixture.symbol() {
-            let weight = match &shape {
-                SymbolShape::Polyline { weight, .. } | SymbolShape::Circle { weight, .. } => {
-                    *weight
-                }
-            };
-            let (color, width) = match (weight, electrical) {
-                (Weight::Outline, false) => ("#3b4e63", 2.0),
-                (Weight::Detail, false) => ("#627489", 1.2),
-                (Weight::Outline, true) => (ELECTRICAL_INK, 1.8),
-                (Weight::Detail, true) => (ELECTRICAL_INK, 1.0),
-            };
-            let (color, width) = match (weight, fixture.kind.is_structural()) {
-                (Weight::Outline, true) => (STRUCTURE_INK, 1.8),
-                (Weight::Detail, true) => (STRUCTURE_INK, 0.8),
-                _ => (color, width),
-            };
-            match shape {
-                SymbolShape::Polyline {
-                    points,
-                    closed,
-                    dashed,
-                    ..
-                } => {
-                    let points = points
-                        .iter()
-                        .map(|local| corner(local.x, local.y))
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let element = if closed { "polygon" } else { "polyline" };
-                    let dash = if dashed {
-                        " stroke-dasharray=\"6 4\""
-                    } else {
-                        ""
-                    };
-                    let _ = writeln!(
-                        svg,
-                        "<{element} points=\"{points}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{width}\"{dash}/>"
-                    );
-                }
-                SymbolShape::Circle { center, radius, .. } => {
-                    let (cx, cy) = point(fixture.to_world(center));
-                    let _ = writeln!(
-                        svg,
-                        "<circle cx=\"{cx:.1}\" cy=\"{cy:.1}\" r=\"{:.1}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{width}\"/>",
-                        radius * pixels_per_meter
-                    );
-                }
-            }
-        }
+        write_fixture_svg(&mut svg, fixture, &point, pixels_per_meter);
     }
     if project.category_visible(crate::domain::layers::LayerCategory::Electrical) {
         conduits::write_conduits(
@@ -1013,11 +1192,31 @@ fn document(project: &Project) -> SvgDocument {
         wall_width,
         &mut occupied,
     );
+    if let Some((overlay_project, discipline)) = focused_overlay {
+        let _ = writeln!(
+            svg,
+            "<rect width=\"100%\" height=\"100%\" fill=\"#ffffff\" fill-opacity=\"{CONTRAST_VEIL_OPACITY:.2}\" data-contrast-veil=\"true\"/>"
+        );
+        write_discipline_overlay_svg(
+            &mut svg,
+            overlay_project,
+            discipline,
+            &point,
+            pixels_per_meter,
+        );
+    }
     let _ = writeln!(
         svg,
         "<text x=\"{MARGIN:.1}\" y=\"55\" font-family=\"Arial, sans-serif\" font-size=\"23\" font-weight=\"700\" fill=\"#1c2b3c\">{}</text>",
-        escaped(&project.name)
+        escaped(title)
     );
+    if let Some(sub) = subtitle {
+        let _ = writeln!(
+            svg,
+            "<text x=\"{MARGIN:.1}\" y=\"78\" font-family=\"Arial, sans-serif\" font-size=\"14\" fill=\"#5b6b7c\">{}</text>",
+            escaped(sub)
+        );
+    }
     svg.push_str("</svg>");
     SvgDocument {
         markup: svg,
@@ -1056,10 +1255,12 @@ pub fn svg2pdf_options() -> svg2pdf::usvg::Options<'static> {
     }
 }
 
-/// Rasterizes the plan, scaled down so that its longer side is at most
+/// Rasterizes an SVG document, scaled down so that its longer side is at most
 /// `max_side` pixels (never up).
-fn render(project: &Project, max_side: Option<u32>) -> Result<resvg::tiny_skia::Pixmap, String> {
-    let document = document(project);
+fn render_document(
+    document: &SvgDocument,
+    max_side: Option<u32>,
+) -> Result<resvg::tiny_skia::Pixmap, String> {
     let options = resvg_options();
     let tree = resvg::usvg::Tree::from_str(&document.markup, &options)
         .map_err(|error| error.to_string())?;
@@ -1078,25 +1279,45 @@ fn render(project: &Project, max_side: Option<u32>) -> Result<resvg::tiny_skia::
     Ok(pixmap)
 }
 
+#[cfg(test)]
 pub fn png(project: &Project, path: &Path) -> Result<(), String> {
-    render(project, None)?
+    render_document(&document(project), None)?
+        .save_png(path)
+        .map_err(|error| error.to_string())
+}
+
+/// Exports one view/tab as a high-resolution PNG matching its discipline view.
+pub fn png_for_view(project: &Project, view: &ExportView, path: &Path) -> Result<(), String> {
+    render_document(&document_for_view(project, view), None)?
         .save_png(path)
         .map_err(|error| error.to_string())
 }
 
 /// The plan as PNG bytes no larger than `max_side` pixels, for previews such
 /// as the picture an AI assistant asks for.
+#[cfg(test)]
 pub fn png_preview(project: &Project, max_side: u32) -> Result<Vec<u8>, String> {
-    render(project, Some(max_side))?
+    render_document(&document(project), Some(max_side))?
         .encode_png()
         .map_err(|error| error.to_string())
 }
 
-pub fn pdf(project: &Project, path: &Path) -> Result<(), String> {
-    let document = document(project);
+/// Preview PNG bytes rendered for a specific discipline/view (with faded
+/// architectural underlay for specialized tabs).
+pub fn png_preview_for_view(
+    project: &Project,
+    view: &ExportView,
+    max_side: u32,
+) -> Result<Vec<u8>, String> {
+    render_document(&document_for_view(project, view), Some(max_side))?
+        .encode_png()
+        .map_err(|error| error.to_string())
+}
+
+fn write_single_svg_pdf(markup: &str, path: &Path) -> Result<(), String> {
     let options = svg2pdf_options();
-    let tree = svg2pdf::usvg::Tree::from_str(&document.markup, &options)
-        .map_err(|error| error.to_string())?;
+    let tree =
+        svg2pdf::usvg::Tree::from_str(markup, &options).map_err(|error| error.to_string())?;
     let pdf = svg2pdf::to_pdf(
         &tree,
         svg2pdf::ConversionOptions::default(),
@@ -1106,10 +1327,46 @@ pub fn pdf(project: &Project, path: &Path) -> Result<(), String> {
     fs::write(path, pdf).map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
+pub fn pdf(project: &Project, path: &Path) -> Result<(), String> {
+    write_single_svg_pdf(&document(project).markup, path)
+}
+
+/// Exports one view/tab as a vector PDF matching its discipline view on screen.
+pub fn pdf_for_view(project: &Project, view: &ExportView, path: &Path) -> Result<(), String> {
+    write_single_svg_pdf(&document_for_view(project, view).markup, path)
+}
+
+/// Exports multiple open tabs/views of `project` into a single multi-page
+/// vector PDF — one page per tab, preserving each tab's discipline visibility,
+/// faded architectural underlay and floor selection.
+pub fn pdf_views(project: &Project, views: &[ExportView], path: &Path) -> Result<usize, String> {
+    if views.is_empty() {
+        return Err("Nenhuma aba disponível para exportar em PDF.".to_owned());
+    }
+    if views.len() == 1 {
+        pdf_for_view(project, &views[0], path)?;
+        return Ok(1);
+    }
+    let pages: Vec<String> = views
+        .iter()
+        .map(|view| document_for_view(project, view).markup)
+        .collect();
+    let pdf = crate::io::report::pages_to_pdf(&pages)?;
+    fs::write(path, pdf).map_err(|error| error.to_string())?;
+    Ok(pages.len())
+}
+
 /// Grava a planta como SVG vetorial editável, mantendo textos e formas como
 /// elementos independentes para edição em programas gráficos e CAD.
+#[cfg(test)]
 pub fn svg(project: &Project, path: &Path) -> Result<(), String> {
     fs::write(path, document(project).markup).map_err(|error| error.to_string())
+}
+
+/// Exports one view/tab as an editable vector SVG matching its discipline view.
+pub fn svg_for_view(project: &Project, view: &ExportView, path: &Path) -> Result<(), String> {
+    fs::write(path, document_for_view(project, view).markup).map_err(|error| error.to_string())
 }
 
 /// Exporta áreas, esquadrias e quantitativos em CSV UTF-8.
@@ -1239,5 +1496,64 @@ mod tests {
         let c = svg2pdf_options();
         let d = svg2pdf_options();
         assert!(Arc::ptr_eq(&c.fontdb, &d.fontdb));
+    }
+
+    #[test]
+    fn multi_tab_views_render_distinct_disciplines_and_export_multipage_pdf() {
+        let mut project = Project::default();
+        project.name = "Casa Teste".to_owned();
+        project.set_terrain(Point::new(-2.0, -2.0), Point::new(20.0, 20.0));
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Cozinha")
+            .unwrap();
+        // Add furniture (stove) and structure (columns, footings, beams, water tank).
+        project
+            .add_fixture(FixtureKind::Stove, Point::new(1.0, 1.0), 0.6, 0.6, 0)
+            .unwrap();
+        project.generate_structure();
+        project
+            .add_fixture(FixtureKind::WaterTank, Point::new(2.0, 1.5), 1.0, 1.0, 0)
+            .unwrap();
+
+        let general_view = ExportView::for_discipline(&project, Discipline::All);
+        let structure_view = ExportView::for_discipline(&project, Discipline::Structure);
+        let foundations_view = ExportView::for_discipline(&project, Discipline::Foundations);
+
+        let general_svg = document_for_view(&project, &general_view).markup;
+        let structure_svg = document_for_view(&project, &structure_view).markup;
+        let foundations_svg = document_for_view(&project, &foundations_view).markup;
+
+        // General tab: no contrast veil, no structural overlay.
+        assert!(!general_svg.contains("data-contrast-veil=\"true\""));
+        assert!(!general_svg.contains("id=\"estrutura\""));
+
+        // Structure tab: faded contrast veil, crisp structural overlay, no stove.
+        assert!(structure_svg.contains("data-contrast-veil=\"true\""));
+        assert!(structure_svg.contains("data-discipline=\"estrutura\""));
+        assert!(structure_svg.contains("id=\"estrutura\""));
+        assert!(structure_svg.contains("Planta de Forma"));
+
+        // Foundations tab: faded contrast veil, foundations discipline overlay.
+        assert!(foundations_svg.contains("data-contrast-veil=\"true\""));
+        assert!(foundations_svg.contains("data-discipline=\"fundacoes\""));
+        assert!(foundations_svg.contains("Planta de Fundações"));
+
+        // Multi-page PDF has 3 pages (one per tab).
+        let directory = std::env::temp_dir().join(format!("trazo-tabs-pdf-{}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let pdf_path = directory.join("abas.pdf");
+        let pages = pdf_views(
+            &project,
+            &[general_view, structure_view, foundations_view],
+            &pdf_path,
+        )
+        .unwrap();
+        assert_eq!(pages, 3);
+        let bytes = fs::read(&pdf_path).unwrap();
+        assert!(bytes.starts_with(b"%PDF"));
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(text.contains("/Count 3"), "expected 3 PDF pages");
+        let _ = fs::remove_file(pdf_path);
+        let _ = fs::remove_dir(directory);
     }
 }

@@ -323,8 +323,12 @@ impl FloorPlanApp {
                     )?,
                     None => self.discipline,
                 };
-                let shown = self.project.for_discipline(discipline);
-                let png = export::png_preview(&shown, side as u32)?;
+                let view = if discipline == self.discipline {
+                    self.active_export_view()
+                } else {
+                    export::ExportView::for_discipline(&self.project, discipline)
+                };
+                let png = export::png_preview_for_view(&self.project, &view, side as u32)?;
                 Ok(ToolOutput::ok(format!(
                     "Imagem da planta \"{}\" (vista {}) com {} cômodos, {} paredes e {} aberturas.",
                     self.project.name,
@@ -744,13 +748,15 @@ impl FloorPlanApp {
     fn tool_export(&self, args: &Value) -> Result<ToolOutput, String> {
         let format = text(args, "formato")
             .map(|format| format.to_lowercase())
-            .ok_or("Informe 'formato': pdf, png, dxf, svg, prancha_pdf, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, quantitativos_csv, tabela_aco_csv ou csv.")?;
+            .ok_or("Informe 'formato': pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, quantitativos_csv, tabela_aco_csv ou csv.")?;
         let (ext, suffix) = match format.as_str() {
             "pdf" => ("pdf", ""),
+            "pdf_abas" => ("pdf", "-abas"),
             "png" => ("png", ""),
             "dxf" => ("dxf", ""),
             "svg" => ("svg", ""),
             "prancha_pdf" => ("pdf", "-prancha"),
+            "prancha_pdf_abas" => ("pdf", "-pranchas-abas"),
             "prancha_svg" => ("svg", "-prancha"),
             "memorial_pdf" => ("pdf", "-memorial"),
             "unifilar_svg" => ("svg", "-unifilar"),
@@ -761,11 +767,12 @@ impl FloorPlanApp {
             "tabela_aco_csv" => ("csv", "-tabela-aco"),
             "csv" => ("csv", "-quadros"),
             _ => {
-                return Err("Formato inválido. Use: pdf, png, dxf, svg, prancha_pdf, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, quantitativos_csv, tabela_aco_csv ou csv.".to_owned());
+                return Err("Formato inválido. Use: pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, quantitativos_csv, tabela_aco_csv ou csv.".to_owned());
             }
         };
-        let discipline = match text(args, "disciplina") {
-            Some(raw) => crate::domain::discipline::Discipline::from_key(&raw).ok_or(
+        let explicit_discipline = text(args, "disciplina");
+        let discipline = match explicit_discipline.as_deref() {
+            Some(raw) => crate::domain::discipline::Discipline::from_key(raw).ok_or(
                 "'disciplina' deve ser tudo, arquitetura, eletrica, hidraulica, estrutura ou fundacoes.",
             )?,
             None => self.discipline,
@@ -777,15 +784,32 @@ impl FloorPlanApp {
             ),
         };
         ensure_parent(&path)?;
+        let view = if explicit_discipline.is_none() {
+            self.active_export_view()
+        } else {
+            export::ExportView::for_discipline(&self.project, discipline)
+        };
         let shown = self.project.for_discipline(discipline);
         let mut extra_pages: Option<usize> = None;
         match format.as_str() {
-            "pdf" => export::pdf(&shown, &path)?,
-            "png" => export::png(&shown, &path)?,
+            "pdf" => export::pdf_for_view(&self.project, &view, &path)?,
+            "pdf_abas" => {
+                let views = self.project_tab_export_views();
+                extra_pages = Some(export::pdf_views(&self.project, &views, &path)?);
+            }
+            "png" => export::png_for_view(&self.project, &view, &path)?,
             "dxf" => crate::io::dxf::export(&shown, &path)?,
-            "svg" => export::svg(&shown, &path)?,
-            "prancha_pdf" => export::export_scaled_pdf(&shown, &path)?,
-            "prancha_svg" => export::export_scaled_svg(&shown, &path)?,
+            "svg" => export::svg_for_view(&self.project, &view, &path)?,
+            "prancha_pdf" => export::export_scaled_pdf_for_view(&self.project, &view, &path)?,
+            "prancha_pdf_abas" => {
+                let views = self.project_tab_export_views();
+                extra_pages = Some(export::export_scaled_pdf_views(
+                    &self.project,
+                    &views,
+                    &path,
+                )?);
+            }
+            "prancha_svg" => export::export_scaled_svg_for_view(&self.project, &view, &path)?,
             "memorial_pdf" => {
                 let date = crate::io::report::today();
                 let pages =
@@ -820,12 +844,16 @@ impl FloorPlanApp {
             "csv" => export::csv(&shown, &path)?,
             _ => unreachable!(),
         }
-        let msg = match extra_pages {
-            Some(pages) => format!(
+        let msg = match (format.as_str(), extra_pages) {
+            ("memorial_pdf", Some(pages)) => format!(
                 "Memorial técnico ({pages} páginas) exportado em {}",
                 path.display()
             ),
-            None => format!("Exportado ({format}) em {}", path.display()),
+            ("pdf_abas" | "prancha_pdf_abas", Some(pages)) => format!(
+                "PDF com todas as abas ({pages} página(s)) exportado em {}",
+                path.display()
+            ),
+            _ => format!("Exportado ({format}) em {}", path.display()),
         };
         Ok(ToolOutput::ok(msg).with_structured(json!({
             "caminho": path.display().to_string(),

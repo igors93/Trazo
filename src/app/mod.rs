@@ -1008,8 +1008,52 @@ impl FloorPlanApp {
     }
 
     fn export_sheet_pdf(&mut self) {
+        let views = self.project_tab_export_views();
+        let default_name = if views.len() > 1 {
+            format!(
+                "pranchas-{}-{}.pdf",
+                self.project.sheet.size.short_name().to_lowercase(),
+                self.project.sheet.scale.label().replace(':', "-")
+            )
+        } else {
+            format!(
+                "prancha-{}-{}.pdf",
+                self.project.sheet.size.short_name().to_lowercase(),
+                self.project.sheet.scale.label().replace(':', "-")
+            )
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Prancha PDF em escala", &["pdf"])
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            return;
+        };
+        self.message = match export::export_scaled_pdf_views(&self.project, &views, &path) {
+            Ok(pages) if pages > 1 => {
+                let labels: Vec<&str> = views.iter().map(|v| v.discipline.label()).collect();
+                format!(
+                    "Pranchas {} em escala {} exportadas em PDF ({pages} páginas: {}).",
+                    self.project.sheet.size.short_name(),
+                    self.project.sheet.scale.label(),
+                    labels.join(", ")
+                )
+            }
+            Ok(_) => format!(
+                "Prancha {} em escala {} exportada em PDF ({}).",
+                self.project.sheet.size.short_name(),
+                self.project.sheet.scale.label(),
+                self.discipline.label()
+            ),
+            Err(error) => format!("Não foi possível exportar a prancha PDF: {error}"),
+        };
+    }
+
+    fn export_active_tab_sheet_pdf(&mut self) {
+        let view = self.active_export_view();
         let default_name = format!(
-            "prancha-{}-{}.pdf",
+            "prancha-{}-{}-{}.pdf",
+            view.discipline.key(),
             self.project.sheet.size.short_name().to_lowercase(),
             self.project.sheet.scale.label().replace(':', "-")
         );
@@ -1020,17 +1064,19 @@ impl FloorPlanApp {
         else {
             return;
         };
-        self.message = match export::export_scaled_pdf(&self.project, &path) {
+        self.message = match export::export_scaled_pdf_for_view(&self.project, &view, &path) {
             Ok(()) => format!(
-                "Prancha {} em escala {} exportada em PDF.",
+                "Prancha {} em escala {} exportada em PDF ({}).",
                 self.project.sheet.size.short_name(),
-                self.project.sheet.scale.label()
+                self.project.sheet.scale.label(),
+                view.discipline.label()
             ),
             Err(error) => format!("Não foi possível exportar a prancha PDF: {error}"),
         };
     }
 
     fn export_sheet_svg(&mut self) {
+        let view = self.active_export_view();
         let default_name = format!(
             "prancha-{}-{}.svg",
             self.project.sheet.size.short_name().to_lowercase(),
@@ -1043,17 +1089,19 @@ impl FloorPlanApp {
         else {
             return;
         };
-        self.message = match export::export_scaled_svg(&self.project, &path) {
+        self.message = match export::export_scaled_svg_for_view(&self.project, &view, &path) {
             Ok(()) => format!(
-                "Prancha {} em escala {} exportada em SVG.",
+                "Prancha {} em escala {} exportada em SVG ({}).",
                 self.project.sheet.size.short_name(),
-                self.project.sheet.scale.label()
+                self.project.sheet.scale.label(),
+                view.discipline.label()
             ),
             Err(error) => format!("Não foi possível exportar a prancha SVG: {error}"),
         };
     }
 
     fn export_png(&mut self) {
+        let view = self.active_export_view();
         let Some(path) = rfd::FileDialog::new()
             .add_filter("Imagem PNG", &["png"])
             .set_file_name("planta-baixa.png")
@@ -1061,27 +1109,57 @@ impl FloorPlanApp {
         else {
             return;
         };
-        self.message = match export::png(&self.project, &path) {
-            Ok(()) => "Imagem PNG exportada.".to_owned(),
+        self.message = match export::png_for_view(&self.project, &view, &path) {
+            Ok(()) => format!("Imagem PNG exportada ({}).", view.discipline.label()),
             Err(error) => format!("Não foi possível exportar PNG: {error}"),
         };
     }
 
     fn export_pdf(&mut self) {
+        let views = self.project_tab_export_views();
+        let default_name = if views.len() > 1 {
+            "projeto-abas.pdf"
+        } else {
+            "planta-baixa.pdf"
+        };
         let Some(path) = rfd::FileDialog::new()
             .add_filter("Documento PDF", &["pdf"])
-            .set_file_name("planta-baixa.pdf")
+            .set_file_name(default_name)
             .save_file()
         else {
             return;
         };
-        self.message = match export::pdf(&self.project, &path) {
-            Ok(()) => "PDF exportado.".to_owned(),
+        self.message = match export::pdf_views(&self.project, &views, &path) {
+            Ok(pages) if pages > 1 => {
+                let labels: Vec<&str> = views.iter().map(|v| v.discipline.label()).collect();
+                format!(
+                    "PDF exportado com {pages} páginas (1 por aba: {}).",
+                    labels.join(", ")
+                )
+            }
+            Ok(_) => format!("PDF exportado ({}).", views[0].discipline.label()),
+            Err(error) => format!("Não foi possível exportar PDF: {error}"),
+        };
+    }
+
+    fn export_active_tab_pdf(&mut self) {
+        let view = self.active_export_view();
+        let default_name = format!("planta-{}.pdf", view.discipline.key());
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Documento PDF", &["pdf"])
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            return;
+        };
+        self.message = match export::pdf_for_view(&self.project, &view, &path) {
+            Ok(()) => format!("PDF da aba atual exportado ({}).", view.discipline.label()),
             Err(error) => format!("Não foi possível exportar PDF: {error}"),
         };
     }
 
     fn export_svg(&mut self) {
+        let view = self.active_export_view();
         let Some(path) = rfd::FileDialog::new()
             .add_filter("Desenho SVG editável", &["svg"])
             .set_file_name("planta-baixa.svg")
@@ -1089,8 +1167,8 @@ impl FloorPlanApp {
         else {
             return;
         };
-        self.message = match export::svg(&self.project, &path) {
-            Ok(()) => "SVG editável exportado.".to_owned(),
+        self.message = match export::svg_for_view(&self.project, &view, &path) {
+            Ok(()) => format!("SVG editável exportado ({}).", view.discipline.label()),
             Err(error) => format!("Não foi possível exportar SVG: {error}"),
         };
     }

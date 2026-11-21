@@ -6,12 +6,15 @@
 
 use std::{fmt::Write as _, fs, path::Path};
 
-use super::escaped;
+use super::{
+    CONTRAST_VEIL_OPACITY, ExportView, escaped, fixture_in_discipline_overlay, project_on_floor,
+};
 use crate::domain::{
     annotations::building_dimensions,
     dimensions::ResolvedDimension,
+    discipline::Discipline,
     doc_style::DimensionTick,
-    fixtures::{SymbolShape, Weight},
+    fixtures::{Fixture, SymbolShape, Weight},
     geometry::Point,
     hatch::{HatchPattern, hatch_segments_in_polygon},
     layers::LayerCategory,
@@ -68,9 +71,184 @@ fn write_dimension_tick(
     }
 }
 
+fn write_sheet_fixture(
+    svg: &mut String,
+    fixture: &Fixture,
+    pt: &dyn Fn(Point) -> (f64, f64),
+    mm_per_m: f64,
+) {
+    let electrical = fixture.kind.is_electrical();
+    for shape in fixture.symbol() {
+        let (color, stroke_w) = match &shape {
+            SymbolShape::Polyline {
+                weight: Weight::Outline,
+                ..
+            }
+            | SymbolShape::Circle {
+                weight: Weight::Outline,
+                ..
+            } if electrical => (crate::io::export::ELECTRICAL_INK, 0.2),
+            _ if electrical => (crate::io::export::ELECTRICAL_INK, 0.12),
+            SymbolShape::Polyline {
+                weight: Weight::Outline,
+                ..
+            }
+            | SymbolShape::Circle {
+                weight: Weight::Outline,
+                ..
+            } => ("#3b4e63", 0.22),
+            _ => ("#627489", 0.14),
+        };
+        let (color, stroke_w) = match &shape {
+            SymbolShape::Polyline {
+                weight: Weight::Outline,
+                ..
+            }
+            | SymbolShape::Circle {
+                weight: Weight::Outline,
+                ..
+            } if fixture.kind.is_structural() => (crate::io::export::STRUCTURE_INK, 0.25),
+            _ if fixture.kind.is_structural() => (crate::io::export::STRUCTURE_INK, 0.1),
+            _ => (color, stroke_w),
+        };
+        match shape {
+            SymbolShape::Polyline {
+                points,
+                closed,
+                dashed,
+                ..
+            } => {
+                let pts = points
+                    .iter()
+                    .map(|local| {
+                        let (px, py) = pt(fixture.to_world(*local));
+                        format!("{px:.2},{py:.2}")
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let elem = if closed { "polygon" } else { "polyline" };
+                let dash = if dashed {
+                    " stroke-dasharray=\"1.2 0.8\""
+                } else {
+                    ""
+                };
+                let _ = writeln!(
+                    svg,
+                    "<{elem} points=\"{pts}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{stroke_w:.2}\"{dash}/>"
+                );
+            }
+            SymbolShape::Circle { center, radius, .. } => {
+                let (cx, cy) = pt(fixture.to_world(center));
+                let _ = writeln!(
+                    svg,
+                    "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{:.2}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{stroke_w:.2}\"/>",
+                    radius * mm_per_m
+                );
+            }
+        }
+    }
+}
+
+fn write_sheet_discipline_overlay(
+    svg: &mut String,
+    project: &Project,
+    discipline: Discipline,
+    pt: &dyn Fn(Point) -> (f64, f64),
+    mm_per_m: f64,
+) {
+    let _ = writeln!(
+        svg,
+        "<g id=\"disciplina-foco\" data-discipline=\"{}\">",
+        discipline.key()
+    );
+    for fixture in &project.fixtures {
+        if !fixture_in_discipline_overlay(discipline, fixture) {
+            continue;
+        }
+        if !project.category_visible(Project::fixture_category(fixture)) {
+            continue;
+        }
+        write_sheet_fixture(svg, fixture, pt, mm_per_m);
+    }
+    match discipline {
+        Discipline::Structure | Discipline::Foundations => {
+            if project.category_visible(LayerCategory::Structure) {
+                super::conduits::write_structure(
+                    svg,
+                    project,
+                    pt,
+                    mm_per_m,
+                    (0.25, 0.15, (mm_per_m * 0.12).clamp(1.4, 2.4)),
+                );
+            }
+        }
+        Discipline::Electrical => {
+            if project.category_visible(LayerCategory::Electrical) {
+                super::conduits::write_conduits(
+                    svg,
+                    project,
+                    pt,
+                    mm_per_m,
+                    (0.25, 0.15, (mm_per_m * 0.11).clamp(1.3, 2.2)),
+                );
+            }
+        }
+        Discipline::Plumbing | Discipline::All | Discipline::Architecture => {}
+    }
+    svg.push_str("</g>\n");
+}
+
 /// Renders the project onto its configured physical sheet (`A4`–`A0` or custom)
 /// at the exact configured scale (`1:25`–`1:200`), returning physical-mm SVG.
 pub fn scaled_sheet_svg(project: &Project) -> String {
+    scaled_sheet_svg_with_overlay(project, None)
+}
+
+/// Renders one view/tab onto the project's configured physical sheet at exact
+/// scale, matching the tab's discipline (with faded architectural reference
+/// underlay for specialized disciplines), floor, hidden layers and pagination.
+pub fn scaled_sheet_svg_for_view(
+    project: &Project,
+    view: &ExportView,
+    sheet_page: Option<(usize, usize)>,
+) -> String {
+    let base = project_on_floor(project, view.floor_id);
+    let mut themed_base = base.into_owned();
+    let multi_floor = themed_base.floors.levels.len() > 1;
+    let floor_suffix = if multi_floor {
+        themed_base
+            .active_floor()
+            .map(|f| format!(" · {}", f.name))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let default_title = themed_base.sheet.title_block.drawing_title.trim();
+    if view.discipline.focus().is_some()
+        || default_title.is_empty()
+        || default_title.eq_ignore_ascii_case("Planta Baixa")
+        || sheet_page.is_some()
+    {
+        themed_base.sheet.title_block.drawing_title =
+            format!("{}{}", view.discipline.sheet_title(), floor_suffix);
+    }
+    if let Some((index, total)) = sheet_page {
+        themed_base.sheet.title_block.sheet_number = format!("{index:02}/{total:02}");
+    }
+    if view.discipline.focus().is_some() {
+        let underlay = themed_base.for_underlay(view.discipline, &view.hidden_layers);
+        let overlay = themed_base.for_view(view.discipline, &view.hidden_layers);
+        scaled_sheet_svg_with_overlay(&underlay, Some((&overlay, view.discipline)))
+    } else {
+        let shown = themed_base.for_view(view.discipline, &view.hidden_layers);
+        scaled_sheet_svg_with_overlay(&shown, None)
+    }
+}
+
+fn scaled_sheet_svg_with_overlay(
+    project: &Project,
+    focused_overlay: Option<(&Project, Discipline)>,
+) -> String {
     let layout = &project.sheet;
     let doc_style = &project.doc_style;
     let wall_color = doc_style.wall_color();
@@ -82,8 +260,10 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
     let (frame_x, frame_y, frame_w, frame_h) = layout.printable_rect_mm();
     let mm_per_m = layout.scale.mm_per_meter();
 
-    let (min, max) = project
+    let bounds_source = focused_overlay.map_or(project, |(overlay, _)| overlay);
+    let (min, max) = bounds_source
         .bounds()
+        .or_else(|| project.bounds())
         .unwrap_or((Point::new(0.0, 0.0), Point::new(8.0, 6.0)));
     let plan_w_m = (max.x - min.x).max(0.5);
     let plan_h_m = (max.y - min.y).max(0.5);
@@ -539,82 +719,11 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
     }
 
     // Fixtures.
-    {
-        for fixture in &project.fixtures {
-            if !project.category_visible(Project::fixture_category(fixture)) {
-                continue;
-            }
-            let electrical = fixture.kind.is_electrical();
-            for shape in fixture.symbol() {
-                let (color, stroke_w) = match &shape {
-                    SymbolShape::Polyline {
-                        weight: Weight::Outline,
-                        ..
-                    }
-                    | SymbolShape::Circle {
-                        weight: Weight::Outline,
-                        ..
-                    } if electrical => (crate::io::export::ELECTRICAL_INK, 0.2),
-                    _ if electrical => (crate::io::export::ELECTRICAL_INK, 0.12),
-                    SymbolShape::Polyline {
-                        weight: Weight::Outline,
-                        ..
-                    }
-                    | SymbolShape::Circle {
-                        weight: Weight::Outline,
-                        ..
-                    } => ("#3b4e63", 0.22),
-                    _ => ("#627489", 0.14),
-                };
-                let (color, stroke_w) = match &shape {
-                    SymbolShape::Polyline {
-                        weight: Weight::Outline,
-                        ..
-                    }
-                    | SymbolShape::Circle {
-                        weight: Weight::Outline,
-                        ..
-                    } if fixture.kind.is_structural() => (crate::io::export::STRUCTURE_INK, 0.25),
-                    _ if fixture.kind.is_structural() => (crate::io::export::STRUCTURE_INK, 0.1),
-                    _ => (color, stroke_w),
-                };
-                match shape {
-                    SymbolShape::Polyline {
-                        points,
-                        closed,
-                        dashed,
-                        ..
-                    } => {
-                        let pts = points
-                            .iter()
-                            .map(|local| {
-                                let (px, py) = pt(fixture.to_world(*local));
-                                format!("{px:.2},{py:.2}")
-                            })
-                            .collect::<Vec<_>>()
-                            .join(" ");
-                        let elem = if closed { "polygon" } else { "polyline" };
-                        let dash = if dashed {
-                            " stroke-dasharray=\"1.2 0.8\""
-                        } else {
-                            ""
-                        };
-                        let _ = writeln!(
-                            svg,
-                            "<{elem} points=\"{pts}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{stroke_w:.2}\"{dash}/>"
-                        );
-                    }
-                    SymbolShape::Circle { center, radius, .. } => {
-                        let (cx, cy) = pt(fixture.to_world(center));
-                        let _ = writeln!(
-                            svg,
-                            "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{:.2}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{stroke_w:.2}\"/>",
-                            radius * mm_per_m
-                        );
-                    }
-                }
-            }
+    for fixture in &project.fixtures {
+        if !project.category_visible(Project::fixture_category(fixture)) {
+            continue;
         }
+        write_sheet_fixture(&mut svg, fixture, &pt, mm_per_m);
     }
 
     // Beams and labels of the formwork plan.
@@ -930,6 +1039,14 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
         }
     }
 
+    if let Some((overlay_project, discipline)) = focused_overlay {
+        let _ = writeln!(
+            svg,
+            "<rect x=\"{frame_x:.2}\" y=\"{frame_y:.2}\" width=\"{frame_w:.2}\" height=\"{frame_h:.2}\" fill=\"#ffffff\" fill-opacity=\"{CONTRAST_VEIL_OPACITY:.2}\" data-contrast-veil=\"true\"/>"
+        );
+        write_sheet_discipline_overlay(&mut svg, overlay_project, discipline, &pt, mm_per_m);
+    }
+
     svg.push_str("</g>\n");
 
     let tb = &layout.title_block;
@@ -957,10 +1074,11 @@ pub fn scaled_sheet_svg(project: &Project) -> String {
     }
     if tb.show_legend {
         write_legend(&mut svg, frame_x + 4.0, frame_y + frame_h - 32.0);
-        if project.category_visible(LayerCategory::Electrical) {
+        let wire_source = focused_overlay.map_or(project, |(overlay, _)| overlay);
+        if wire_source.category_visible(LayerCategory::Electrical) {
             super::conduits::write_wire_legend(
                 &mut svg,
-                project,
+                wire_source,
                 frame_x + 4.0,
                 frame_y + frame_h - 62.0,
             );
@@ -1354,24 +1472,57 @@ fn write_scale_bar(svg: &mut String, x: f64, y: f64, mm_per_m: f64) {
     );
 }
 
-pub fn export_scaled_svg(project: &Project, path: &Path) -> Result<(), String> {
+pub fn export_scaled_svg_for_view(
+    project: &Project,
+    view: &ExportView,
+    path: &Path,
+) -> Result<(), String> {
     project.sheet.validate()?;
-    fs::write(path, scaled_sheet_svg(project)).map_err(|error| error.to_string())
+    fs::write(path, scaled_sheet_svg_for_view(project, view, None))
+        .map_err(|error| error.to_string())
 }
 
 pub fn export_scaled_pdf(project: &Project, path: &Path) -> Result<(), String> {
     project.sheet.validate()?;
     let markup = scaled_sheet_svg(project);
-    let options = super::svg2pdf_options();
-    let tree =
-        svg2pdf::usvg::Tree::from_str(&markup, &options).map_err(|error| error.to_string())?;
-    let pdf = svg2pdf::to_pdf(
-        &tree,
-        svg2pdf::ConversionOptions::default(),
-        svg2pdf::PageOptions::default(),
-    )
-    .map_err(|error| error.to_string())?;
-    fs::write(path, pdf).map_err(|error| error.to_string())
+    super::write_single_svg_pdf(&markup, path)
+}
+
+pub fn export_scaled_pdf_for_view(
+    project: &Project,
+    view: &ExportView,
+    path: &Path,
+) -> Result<(), String> {
+    project.sheet.validate()?;
+    let markup = scaled_sheet_svg_for_view(project, view, None);
+    super::write_single_svg_pdf(&markup, path)
+}
+
+/// Exports multiple open tabs/views of `project` onto separate scaled ABNT
+/// sheets inside a single multi-page PDF, automatically numbering each sheet
+/// (`01/03`, `02/03`, ...).
+pub fn export_scaled_pdf_views(
+    project: &Project,
+    views: &[ExportView],
+    path: &Path,
+) -> Result<usize, String> {
+    project.sheet.validate()?;
+    if views.is_empty() {
+        return Err("Nenhuma aba disponível para exportar pranchas em PDF.".to_owned());
+    }
+    if views.len() == 1 {
+        export_scaled_pdf_for_view(project, &views[0], path)?;
+        return Ok(1);
+    }
+    let total = views.len();
+    let pages: Vec<String> = views
+        .iter()
+        .enumerate()
+        .map(|(index, view)| scaled_sheet_svg_for_view(project, view, Some((index + 1, total))))
+        .collect();
+    let pdf = crate::io::report::pages_to_pdf(&pages)?;
+    fs::write(path, pdf).map_err(|error| error.to_string())?;
+    Ok(pages.len())
 }
 
 /// Renders a specific sheet from a `SheetSet`, applying its own layout,
@@ -1381,8 +1532,9 @@ pub fn scaled_sheet_item_svg(
     project: &Project,
     item: &crate::domain::sheet_set::SheetItem,
 ) -> String {
-    // Each sheet shows its own discipline (#96).
-    let mut themed = project.for_discipline(item.discipline).into_owned();
+    // Each sheet shows its own discipline (#96) with the same faded reference
+    // underlay used on screen for specialized disciplines.
+    let mut themed = project.clone();
     themed.sheet = item.layout.clone();
     themed.sheet.title_block.sheet_number = item.number.clone();
     themed.sheet.title_block.revision = item.latest_revision_code().to_owned();
@@ -1394,7 +1546,14 @@ pub fn scaled_sheet_item_svg(
             item.status.label()
         );
     }
-    let mut svg = scaled_sheet_svg(&themed);
+    let mut svg = if item.discipline.focus().is_some() {
+        let underlay = themed.for_underlay(item.discipline, &[]);
+        let overlay = themed.for_view(item.discipline, &[]);
+        scaled_sheet_svg_with_overlay(&underlay, Some((&overlay, item.discipline)))
+    } else {
+        let shown = themed.for_view(item.discipline, &[]);
+        scaled_sheet_svg_with_overlay(&shown, None)
+    };
     if !item.revisions.is_empty()
         && let Some(end_idx) = svg.rfind("</svg>")
     {
@@ -1608,5 +1767,47 @@ mod tests {
         project.sheet.scale = DrawingScale::S1_100;
         let fitting = scaled_sheet_svg(&project);
         assert!(!fitting.contains("id=\"aviso-recorte\""));
+    }
+
+    #[test]
+    fn scaled_pdf_views_paginates_each_discipline_tab_separately() {
+        let mut project = Project::default();
+        project.name = "Residência".to_owned();
+        project.set_terrain(Point::new(-2.0, -2.0), Point::new(20.0, 20.0));
+        project.sheet = SheetLayout::standard(PaperSize::A3, Orientation::Landscape);
+        project.sheet.scale = DrawingScale::S1_100;
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(5.0, 4.0), "Sala")
+            .unwrap();
+        project.generate_structure();
+
+        let views = vec![
+            ExportView::for_discipline(&project, Discipline::All),
+            ExportView::for_discipline(&project, Discipline::Structure),
+            ExportView::for_discipline(&project, Discipline::Foundations),
+        ];
+        let s1 = scaled_sheet_svg_for_view(&project, &views[0], Some((1, 3)));
+        let s2 = scaled_sheet_svg_for_view(&project, &views[1], Some((2, 3)));
+        let s3 = scaled_sheet_svg_for_view(&project, &views[2], Some((3, 3)));
+        assert!(s1.contains("01/03"));
+        assert!(s1.contains("Planta Baixa"));
+        assert!(!s1.contains("data-contrast-veil=\"true\""));
+        assert!(s2.contains("02/03"));
+        assert!(s2.contains("Planta de Forma"));
+        assert!(s2.contains("data-contrast-veil=\"true\""));
+        assert!(s3.contains("03/03"));
+        assert!(s3.contains("Planta de Fundações"));
+        assert!(s3.contains("data-contrast-veil=\"true\""));
+
+        let dir = std::env::temp_dir().join(format!("trazo-sheets-pdf-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let pdf_path = dir.join("pranchas-abas.pdf");
+        let pages = export_scaled_pdf_views(&project, &views, &pdf_path).unwrap();
+        assert_eq!(pages, 3);
+        let bytes = fs::read(&pdf_path).unwrap();
+        assert!(bytes.starts_with(b"%PDF"));
+        assert!(String::from_utf8_lossy(&bytes).contains("/Count 3"));
+        let _ = fs::remove_file(pdf_path);
+        let _ = fs::remove_dir(dir);
     }
 }

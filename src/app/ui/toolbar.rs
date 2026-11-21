@@ -714,13 +714,28 @@ impl FloorPlanApp {
             {
                 self.export_png();
             }
+            let multi_tab = self.project_tab_count(self.active_project_id) > 1;
+            let pdf_tip = if multi_tab {
+                "Exportar todas as abas abertas deste projeto em um único PDF (1 página por aba, igual à visualização na tela)"
+            } else {
+                "Exportar a planta da aba atual como PDF vetorial"
+            };
             if tip(
                 ribbon_button(ui, Icon::ExportPdf, "Documento PDF", false, false),
-                "Exportar a planta como PDF vetorial",
+                pdf_tip,
             )
             .clicked()
             {
                 self.export_pdf();
+            }
+            if multi_tab
+                && tip(
+                    ribbon_button(ui, Icon::ExportPdf, "PDF aba atual", false, false),
+                    "Exportar somente a aba ativa como PDF vetorial",
+                )
+                .clicked()
+            {
+                self.export_active_tab_pdf();
             }
             if tip(
                 ribbon_button(ui, Icon::Export, "SVG editável", false, false),

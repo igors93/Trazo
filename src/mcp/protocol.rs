@@ -1182,9 +1182,9 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "exportar_planta",
             title: "Exportar planta e documentação",
-            description: "Exporta a planta ou a documentação técnica do projeto: pdf, png, dxf, svg, prancha_pdf/prancha_svg (prancha ABNT em escala com carimbo), memorial_pdf (memorial técnico completo de pré-dimensionamento e desenhos), unifilar_svg/unifilar_pdf (diagrama unifilar elétrico), esforcos_svg/esforcos_pdf (diagramas de momento e cortante das vigas), quantitativos_csv, tabela_aco_csv ou csv (quadro de áreas e esquadrias). Sem caminho: salva em Documentos\\Trazo.",
+            description: "Exporta a planta ou a documentação técnica do projeto: pdf, pdf_abas (PDF multipágina com 1 página por aba aberta, igual à tela), png, dxf, svg, prancha_pdf/prancha_pdf_abas/prancha_svg (prancha ABNT em escala com carimbo, uma ou todas as abas), memorial_pdf (memorial técnico completo de pré-dimensionamento e desenhos), unifilar_svg/unifilar_pdf (diagrama unifilar elétrico), esforcos_svg/esforcos_pdf (diagramas de momento e cortante das vigas), quantitativos_csv, tabela_aco_csv ou csv (quadro de áreas e esquadrias). Sem caminho: salva em Documentos\\Trazo.",
             properties: json!({
-                "formato": { "type": "string", "enum": ["pdf", "png", "dxf", "svg", "prancha_pdf", "prancha_svg", "memorial_pdf", "unifilar_svg", "unifilar_pdf", "esforcos_svg", "esforcos_pdf", "quantitativos_csv", "tabela_aco_csv", "csv"], "description": "Formato de exportação." },
+                "formato": { "type": "string", "enum": ["pdf", "pdf_abas", "png", "dxf", "svg", "prancha_pdf", "prancha_pdf_abas", "prancha_svg", "memorial_pdf", "unifilar_svg", "unifilar_pdf", "esforcos_svg", "esforcos_pdf", "quantitativos_csv", "tabela_aco_csv", "csv"], "description": "Formato de exportação." },
                 "caminho": string("Opcional: caminho do arquivo (relativo a Documentos\\Trazo)."),
                 "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Opcional: disciplina a exportar (padrão: disciplina da aba ativa)." },
             }),

@@ -1067,16 +1067,20 @@ pub fn drawing_pages(project: &Project) -> Vec<String> {
     let mut out = Vec::new();
     let has_structure = project.structural_columns().next().is_some();
     if has_structure && limits::structural_refusal(project).is_none() {
-        out.push(super::export::sheet::scaled_sheet_svg(
-            &project.for_discipline(Discipline::Structure),
+        out.push(super::export::sheet::scaled_sheet_svg_for_view(
+            project,
+            &super::export::ExportView::for_discipline(project, Discipline::Structure),
+            None,
         ));
         if !project.structure.beams.is_empty() {
             out.push(beam_diagrams_svg(project));
         }
     }
     if !project.load_schedule().circuits.is_empty() {
-        out.push(super::export::sheet::scaled_sheet_svg(
-            &project.for_discipline(Discipline::Electrical),
+        out.push(super::export::sheet::scaled_sheet_svg_for_view(
+            project,
+            &super::export::ExportView::for_discipline(project, Discipline::Electrical),
+            None,
         ));
         out.push(single_line_svg(project));
     }

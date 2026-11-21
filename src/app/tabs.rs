@@ -509,6 +509,73 @@ impl FloorPlanApp {
             .collect()
     }
 
+    /// Export view matching the currently active tab (discipline, floor,
+    /// per-tab hidden layers and display title).
+    pub(crate) fn active_export_view(&self) -> crate::io::export::ExportView {
+        let linked = self.project_tab_count(self.active_project_id) > 1;
+        let mut title = format_tab_title(
+            &self.project,
+            self.file_path.as_deref(),
+            self.active_tab_title.as_deref(),
+            self.discipline,
+            linked,
+        );
+        if self.project.floors.levels.len() > 1 {
+            let floor = floor_name_for(&self.project, self.active_tab_floor_id);
+            if !title.contains(&floor) {
+                title.push_str(&format!(" · {floor}"));
+            }
+        }
+        crate::io::export::ExportView {
+            title,
+            discipline: self.discipline,
+            floor_id: self
+                .active_tab_floor_id
+                .or(self.project.floors.active_floor_id),
+            hidden_layers: self.active_hidden_layers.clone(),
+        }
+    }
+
+    /// Ordered export views for every open tab belonging to the active project,
+    /// preserving the exact tab-strip order so multi-page PDF exports emit one
+    /// page per tab exactly as seen on screen.
+    pub(crate) fn project_tab_export_views(&self) -> Vec<crate::io::export::ExportView> {
+        let linked = self.project_tab_count(self.active_project_id) > 1;
+        let multi_floor = self.project.floors.levels.len() > 1;
+        let mut views = Vec::new();
+        for slot in &self.tabs {
+            match slot {
+                Some(view) if view.project_id == self.active_project_id => {
+                    let mut title = format_tab_title(
+                        &self.project,
+                        self.file_path.as_deref(),
+                        view.title_override.as_deref(),
+                        view.discipline,
+                        linked,
+                    );
+                    if multi_floor {
+                        let floor = floor_name_for(&self.project, view.floor_id);
+                        if !title.contains(&floor) {
+                            title.push_str(&format!(" · {floor}"));
+                        }
+                    }
+                    views.push(crate::io::export::ExportView {
+                        title,
+                        discipline: view.discipline,
+                        floor_id: view.floor_id.or(self.project.floors.active_floor_id),
+                        hidden_layers: view.hidden_layers.clone(),
+                    });
+                }
+                Some(_) => {}
+                None => views.push(self.active_export_view()),
+            }
+        }
+        if views.is_empty() {
+            views.push(self.active_export_view());
+        }
+        views
+    }
+
     /// Live renderable view of an inactive companion tab in split view.
     ///
     /// When the companion tab shares the active project, it borrows

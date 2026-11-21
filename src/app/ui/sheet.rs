@@ -442,8 +442,17 @@ impl FloorPlanApp {
                     if primary_button(ui, "Imprimir em escala...").clicked() {
                         self.open_print_dialog();
                     }
-                    if secondary_button(ui, "Exportar PDF (escala exata)").clicked() {
+                    let multi_tab = self.project_tab_count(self.active_project_id) > 1;
+                    let pdf_sheet_label = if multi_tab {
+                        "Exportar PDF (todas as abas)"
+                    } else {
+                        "Exportar PDF (escala exata)"
+                    };
+                    if secondary_button(ui, pdf_sheet_label).clicked() {
                         self.export_sheet_pdf();
+                    }
+                    if multi_tab && secondary_button(ui, "PDF (aba atual)").clicked() {
+                        self.export_active_tab_sheet_pdf();
                     }
                     if secondary_button(ui, "Exportar SVG").clicked() {
                         self.export_sheet_svg();
