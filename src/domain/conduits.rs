@@ -167,8 +167,12 @@ impl ConduitWiring {
 /// The conduits as a tree from the board.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ConduitTree {
-    /// The board the tree starts from.
+    /// The main board the tree starts from.
     pub panel: Option<u64>,
+    /// Secondary boards (QDC) present in the plan, in placement order.
+    pub sub_panels: Vec<u64>,
+    /// Serving board (main or sub-board) for each reached device.
+    pub board_of: HashMap<u64, u64>,
     /// Each reached device with its parent (towards the board) and the
     /// conduit to it.
     pub parent: HashMap<u64, (u64, u64)>,
@@ -404,6 +408,29 @@ impl Project {
             .find(|fixture| fixture.kind == FixtureKind::Panel)
     }
 
+    /// All distribution boards in the plan: the first is the main board (QDG)
+    /// and any subsequent ones are sub-boards (QDC1, QDC2…).
+    pub fn panels(&self) -> Vec<&Fixture> {
+        self.fixtures
+            .iter()
+            .filter(|fixture| fixture.kind == FixtureKind::Panel)
+            .collect()
+    }
+
+    /// Label of a distribution board (`QD` when there is only one; `QDG` and
+    /// `QDC1`, `QDC2`, … when sub-boards exist).
+    pub fn panel_label(&self, panel_id: u64) -> Option<String> {
+        let panels = self.panels();
+        let index = panels.iter().position(|p| p.id == panel_id)?;
+        if panels.len() == 1 {
+            Some("QD".to_owned())
+        } else if index == 0 {
+            Some("QDG".to_owned())
+        } else {
+            Some(format!("QDC{index}"))
+        }
+    }
+
     /// Joins two devices with a conduit. Returns its id.
     pub fn add_conduit(&mut self, from: u64, to: u64, run: ConduitRun) -> Result<u64, String> {
         if from == to {
@@ -451,10 +478,15 @@ impl Project {
             .collect()
     }
 
-    /// Walks the conduits from the board.
+    /// Walks the conduits from the main board, tracking sub-boards (QDC) so
+    /// each device knows which board serves it.
     pub fn conduit_tree(&self) -> ConduitTree {
+        let panels = self.panels();
+        let main_id = panels.first().map(|panel| panel.id);
+        let sub_panels: Vec<u64> = panels.iter().skip(1).map(|panel| panel.id).collect();
         let mut tree = ConduitTree {
-            panel: self.main_panel().map(|panel| panel.id),
+            panel: main_id,
+            sub_panels,
             ..ConduitTree::default()
         };
         let mut links: HashMap<u64, Vec<(u64, u64)>> = HashMap::new();
@@ -471,10 +503,19 @@ impl Project {
         let mut used: HashSet<u64> = HashSet::new();
         if let Some(panel) = tree.panel {
             tree.distance.insert(panel, 0.0);
+            tree.board_of.insert(panel, panel);
             let mut queue = VecDeque::from([panel]);
             while let Some(node) = queue.pop_front() {
                 let here = self.device(node).map(|d| d.center);
                 let base = tree.distance[&node];
+                let child_board = if self
+                    .device(node)
+                    .is_some_and(|d| d.kind == FixtureKind::Panel)
+                {
+                    node
+                } else {
+                    tree.board_of.get(&node).copied().unwrap_or(panel)
+                };
                 for (next, conduit) in links.get(&node).cloned().unwrap_or_default() {
                     if used.contains(&conduit) {
                         continue;
@@ -490,6 +531,7 @@ impl Project {
                     };
                     tree.distance.insert(next, base + step);
                     tree.parent.insert(next, (node, conduit));
+                    tree.board_of.insert(next, child_board);
                     queue.push_back(next);
                 }
             }
@@ -499,7 +541,7 @@ impl Project {
             .iter()
             .filter(|fixture| {
                 is_power_device(fixture)
-                    && fixture.kind != FixtureKind::Panel
+                    && Some(fixture.id) != main_id
                     && !tree.distance.contains_key(&fixture.id)
             })
             .map(|fixture| fixture.id)
@@ -507,12 +549,37 @@ impl Project {
         tree
     }
 
-    /// Cable length from the board to a device, in metres: along the
-    /// conduits (or square to the axes when it has none), plus the drops
-    /// from the ceiling to the board and to the device. `None` without a
-    /// board.
+    /// Serving board id for `device`: its upstream board in `tree`, or the
+    /// closest board in the plan when no conduits reach it yet.
+    pub fn serving_board(&self, tree: &ConduitTree, device: &Fixture) -> Option<u64> {
+        if device.kind == FixtureKind::Panel {
+            return Some(device.id);
+        }
+        if let Some(&board) = tree.board_of.get(&device.id) {
+            return Some(board);
+        }
+        self.panels()
+            .into_iter()
+            .min_by(|a, b| {
+                a.center
+                    .distance(device.center)
+                    .total_cmp(&b.center.distance(device.center))
+            })
+            .map(|panel| panel.id)
+    }
+
+    /// Cable length from the serving board (main or sub-board) to a device,
+    /// in metres: along the conduits (or square to the axes when it has none),
+    /// plus the drops from the ceiling to the board and to the device. `None`
+    /// without a board.
     pub fn cable_length(&self, tree: &ConduitTree, device: &Fixture) -> Option<f64> {
-        let panel = self.device(tree.panel?)?;
+        let board_id = if device.kind == FixtureKind::Panel {
+            // Feeder length to a sub-board comes from its upstream board.
+            tree.board_of.get(&device.id).copied().or(tree.panel)?
+        } else {
+            self.serving_board(tree, device)?
+        };
+        let panel = self.device(board_id)?;
         let drop = |fixture: &Fixture| {
             if fixture.kind.mounts_on_wall() {
                 let height = fixture.electrical.map_or(0.0, |data| data.height_m);
@@ -521,9 +588,12 @@ impl Project {
                 0.0
             }
         };
-        let horizontal = tree.distance.get(&device.id).copied().unwrap_or_else(|| {
-            (device.center.x - panel.center.x).abs() + (device.center.y - panel.center.y).abs()
-        });
+        let horizontal = match (tree.distance.get(&device.id), tree.distance.get(&board_id)) {
+            (Some(&dev_d), Some(&board_d)) => (dev_d - board_d).max(0.0),
+            _ => {
+                (device.center.x - panel.center.x).abs() + (device.center.y - panel.center.y).abs()
+            }
+        };
         Some(horizontal + drop(panel) + drop(device))
     }
 
@@ -843,9 +913,9 @@ impl Project {
         };
         let is_hub = |project: &Project, id: u64| {
             id == panel
-                || project
-                    .device(id)
-                    .is_some_and(|d| d.kind == FixtureKind::CeilingLight)
+                || project.device(id).is_some_and(|d| {
+                    matches!(d.kind, FixtureKind::CeilingLight | FixtureKind::Panel)
+                })
         };
         let mut added = 0;
         // Hubs: board and ceiling lights, joined by a tree that grows from

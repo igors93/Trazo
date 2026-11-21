@@ -489,6 +489,8 @@ pub struct CircuitRow {
     pub drop_percent: Option<f64>,
     /// Whether the wire was raised above the breaker's to limit the drop.
     pub wire_by_drop: bool,
+    /// Serving board label when the project has sub-boards (`QDG`, `QDC1`, …).
+    pub board: Option<String>,
 }
 
 /// The circuits, their totals and what needs attention.
@@ -506,6 +508,8 @@ pub struct LoadSchedule {
     pub phase_va: [f64; 3],
     /// Main breaker, feeder and conduit of the utility connection.
     pub entrance: Option<super::distribution::ServiceEntrance>,
+    /// Secondary distribution boards (QDC) fed from the main board.
+    pub sub_boards: Vec<super::distribution::SubBoardSummary>,
 }
 
 /// Breaker and wire for a circuit drawing `current_a`: the smallest standard
@@ -817,6 +821,7 @@ impl Project {
                 length_m: None,
                 drop_percent: None,
                 wire_by_drop: false,
+                board: None,
             });
         }
         self.complete_schedule(&mut schedule);

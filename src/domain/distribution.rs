@@ -157,6 +157,28 @@ pub struct ServiceEntrance {
     pub conduit_mm: Option<u32>,
 }
 
+/// NBR 5410: keep sub-board feeder voltage drop at or below 2 % so feeder plus
+/// terminal circuits remain within the overall drop budget.
+pub const MAX_FEEDER_DROP_PERCENT: f64 = 2.0;
+
+/// Summary and feeder sizing for a secondary distribution board (QDC).
+#[derive(Clone, Debug, PartialEq)]
+pub struct SubBoardSummary {
+    pub panel_id: u64,
+    pub label: String,
+    pub room: Option<String>,
+    pub circuits: Vec<u32>,
+    pub installed_va: f64,
+    pub demand_va: f64,
+    pub current_a: f64,
+    pub feeder_length_m: Option<f64>,
+    pub feeder_drop_percent: Option<f64>,
+    pub breaker_a: Option<f64>,
+    pub wire_mm2: Option<f64>,
+    pub earth_mm2: Option<f64>,
+    pub conduit_mm: Option<u32>,
+}
+
 fn decimal(value: f64, places: usize) -> String {
     format!("{value:.places$}").replace('.', ",")
 }
@@ -196,10 +218,15 @@ impl Project {
             };
         }
 
-        // Voltage drop along the conduits (or square to the axes).
+        // Voltage drop along the conduits (or square to the axes), measured
+        // from each circuit's serving board (QDG or sub-board QDC).
         let tree = self.conduit_tree();
+        let has_sub_boards = !tree.sub_panels.is_empty();
+        let mut circuit_board: std::collections::HashMap<u32, u64> =
+            std::collections::HashMap::new();
         if tree.panel.is_some() {
             for row in &mut schedule.circuits {
+                let mut boards_seen: Vec<u64> = Vec::new();
                 let loads: Vec<(f64, f64)> = self
                     .electrical_devices()
                     .filter(|device| device.electrical.and_then(|d| d.circuit) == Some(row.number))
@@ -214,11 +241,28 @@ impl Project {
                         )
                     })
                     .filter_map(|device| {
+                        if let Some(board_id) = self.serving_board(&tree, device)
+                            && !boards_seen.contains(&board_id)
+                        {
+                            boards_seen.push(board_id);
+                        }
                         let length = self.cable_length(&tree, device)?;
                         let power = device.electrical.map_or(0.0, |d| d.power_va);
                         Some((length, power / row.voltage_v.max(1.0)))
                     })
                     .collect();
+                if let Some(&board_id) = boards_seen.first() {
+                    circuit_board.insert(row.number, board_id);
+                    if has_sub_boards {
+                        row.board = self.panel_label(board_id);
+                    }
+                }
+                if boards_seen.len() > 1 {
+                    schedule.warnings.push(format!(
+                        "Circuito {}: pontos atendidos por quadros diferentes; mantenha cada circuito em um único quadro.",
+                        row.number
+                    ));
+                }
                 if loads.is_empty() {
                     continue;
                 }
@@ -394,6 +438,102 @@ impl Project {
             earth_mm2,
             conduit_mm,
         });
+
+        // Sub-boards (QDC): demand and feeder sizing from the main board.
+        for &sub_id in &tree.sub_panels {
+            let Some(panel_fixture) = self.fixtures.iter().find(|f| f.id == sub_id) else {
+                continue;
+            };
+            let label = self
+                .panel_label(sub_id)
+                .unwrap_or_else(|| format!("QDC{sub_id}"));
+            let room = self
+                .room_for_fixture(panel_fixture)
+                .map(|r| r.display_name().to_owned());
+            let mut circuits: Vec<u32> = Vec::new();
+            let mut gen_va = 0.0;
+            let mut spec_va = 0.0;
+            let mut spec_count = 0usize;
+            let mut sub_phases = 1usize;
+            for row in &schedule.circuits {
+                if circuit_board.get(&row.number).copied() == Some(sub_id) {
+                    circuits.push(row.number);
+                    if row.kind == CircuitKind::SpecificOutlet {
+                        spec_va += row.power_va;
+                        spec_count += 1;
+                    } else {
+                        gen_va += row.power_va;
+                    }
+                    sub_phases = sub_phases.max(usize::from(row.poles));
+                }
+            }
+            let installed_va = gen_va + spec_va;
+            let sub_demand_va = gen_va * general_demand_factor(gen_va / 1000.0)
+                + spec_va * specific_demand_factor(spec_count);
+            let feeder_phases = sub_phases.min(used).max(1);
+            let sub_current = sub_demand_va / (general_v * feeder_phases as f64).max(1.0);
+            let feeder_length = self.cable_length(&tree, panel_fixture);
+            let sub_breaker = if installed_va > 0.0 {
+                BREAKERS
+                    .iter()
+                    .copied()
+                    .find(|rating| *rating + 1e-9 >= sub_current.max(16.0))
+            } else {
+                None
+            };
+            let mut sub_wire = sub_breaker.and_then(|rating| {
+                WIRE_CAPACITY
+                    .iter()
+                    .find(|(section, capacity)| *section >= 4.0 && *capacity + 1e-9 >= rating)
+                    .map(|(section, _)| *section)
+            });
+            let mut feeder_drop = None;
+            if let (Some(length), Some(mut wire)) = (feeder_length, sub_wire) {
+                let loads = [(length, sub_current)];
+                let v_ref = if feeder_phases >= 2 && general_v < 170.0 {
+                    220.0
+                } else {
+                    general_v
+                };
+                if drop_percent(&loads, wire, v_ref) > MAX_FEEDER_DROP_PERCENT {
+                    if let Some(larger) = WIRE_CAPACITY
+                        .iter()
+                        .map(|(s, _)| *s)
+                        .filter(|s| *s > wire)
+                        .find(|s| drop_percent(&loads, *s, v_ref) <= MAX_FEEDER_DROP_PERCENT)
+                    {
+                        wire = larger;
+                    } else {
+                        schedule.warnings.push(format!(
+                            "{label}: queda de tensão no alimentador acima de {MAX_FEEDER_DROP_PERCENT:.0} %; aproxime o subquadro ou divida a carga."
+                        ));
+                    }
+                }
+                sub_wire = Some(wire);
+                feeder_drop = Some(drop_percent(&loads, wire, v_ref));
+            }
+            let sub_earth = sub_wire.map(earth_section);
+            let sub_conduit = sub_wire.and_then(|section| {
+                let mut sections = vec![section; feeder_phases + 1];
+                sections.push(earth_section(section));
+                conduit_size(&sections)
+            });
+            schedule.sub_boards.push(SubBoardSummary {
+                panel_id: sub_id,
+                label,
+                room,
+                circuits,
+                installed_va,
+                demand_va: sub_demand_va,
+                current_a: sub_current,
+                feeder_length_m: feeder_length,
+                feeder_drop_percent: feeder_drop,
+                breaker_a: sub_breaker,
+                wire_mm2: sub_wire,
+                earth_mm2: sub_earth,
+                conduit_mm: sub_conduit,
+            });
+        }
     }
 }
 
@@ -706,7 +846,17 @@ pub fn single_line_svg(project: &Project) -> String {
         } else {
             format!(" · {}", row.rooms.join(", "))
         };
-        let mut description = format!("{}{} · {:.0} VA", row.kind.label(), rooms, row.power_va);
+        let board_tag = row
+            .board
+            .as_deref()
+            .filter(|b| *b != "QDG")
+            .map_or(String::new(), |b| format!("[{b}] "));
+        let mut description = format!(
+            "{board_tag}{}{} · {:.0} VA",
+            row.kind.label(),
+            rooms,
+            row.power_va
+        );
         if description.chars().count() > 46 {
             description = description.chars().take(45).collect::<String>() + "…";
         }
@@ -731,6 +881,40 @@ pub fn single_line_svg(project: &Project) -> String {
         "start",
         "Barramentos de neutro e de terra (PE) no quadro; PE ligado ao aterramento.",
     );
+    if !schedule.sub_boards.is_empty() {
+        let mut sy = bars_y + 7.0;
+        text(
+            &mut svg,
+            bus_x,
+            sy,
+            2.6,
+            true,
+            "start",
+            "Quadros secundários (QDC):",
+        );
+        for sub in &schedule.sub_boards {
+            sy += 4.5;
+            let circs = if sub.circuits.is_empty() {
+                "sem circuitos".to_owned()
+            } else {
+                sub.circuits
+                    .iter()
+                    .map(|c| format!("C{c}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let feeder = format!(
+                "{} ({}) · demanda {} kVA · disj. {} · alim. {} mm²",
+                sub.label,
+                circs,
+                decimal(sub.demand_va / 1000.0, 2),
+                sub.breaker_a
+                    .map_or("—".to_owned(), |b| format!("{b:.0} A")),
+                sub.wire_mm2.map_or("—".to_owned(), section_label),
+            );
+            text(&mut svg, bus_x + 2.0, sy, 2.3, false, "start", &feeder);
+        }
+    }
 
     // Panel schedule.
     let tx = 222.0;
@@ -1025,5 +1209,74 @@ mod tests {
         assert_eq!(table.rows.len(), project.load_schedule().circuits.len());
         // An empty project still draws a page.
         assert!(single_line_svg(&Project::default()).contains("Nenhum circuito"));
+    }
+
+    #[test]
+    fn sub_boards_are_modelled_with_dedicated_feeders_and_shortened_terminal_runs() {
+        use super::super::conduits::ConduitRun;
+
+        let mut project = Project::default();
+        project.set_terrain(Point::new(-1.0, -1.0), Point::new(50.0, 20.0));
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Sala")
+            .unwrap();
+        project
+            .add_room(Point::new(30.0, 0.0), Point::new(35.0, 3.0), "Edícula")
+            .unwrap();
+        let (pw, pd) = FixtureKind::Panel.default_size();
+        let main = project
+            .add_fixture(FixtureKind::Panel, Point::new(0.4, 0.4), pw, pd, 0)
+            .unwrap();
+        let sub = project
+            .add_fixture(FixtureKind::Panel, Point::new(30.4, 0.4), pw, pd, 0)
+            .unwrap();
+        let (ow, od) = FixtureKind::OutletSpecific.default_size();
+        let near_main = project
+            .add_fixture(FixtureKind::OutletSpecific, Point::new(2.0, 1.5), ow, od, 0)
+            .unwrap();
+        let near_sub = project
+            .add_fixture(
+                FixtureKind::OutletSpecific,
+                Point::new(32.0, 1.5),
+                ow,
+                od,
+                0,
+            )
+            .unwrap();
+        project
+            .update_electrical(near_main, Some(Some(1)), Some(2200.0), None)
+            .unwrap();
+        project
+            .update_electrical(near_sub, Some(Some(2)), Some(2200.0), None)
+            .unwrap();
+
+        project
+            .add_conduit(main, near_main, ConduitRun::Ceiling)
+            .unwrap();
+        project.add_conduit(main, sub, ConduitRun::Floor).unwrap();
+        project
+            .add_conduit(sub, near_sub, ConduitRun::Ceiling)
+            .unwrap();
+
+        let schedule = project.load_schedule();
+        assert_eq!(schedule.sub_boards.len(), 1);
+        let qdc = &schedule.sub_boards[0];
+        assert_eq!(qdc.panel_id, sub);
+        assert_eq!(qdc.label, "QDC1");
+        assert_eq!(qdc.circuits, vec![2]);
+        assert!(qdc.feeder_length_m.unwrap() >= 30.0);
+        assert!(qdc.breaker_a.is_some());
+        assert!(qdc.wire_mm2.is_some());
+
+        let c1 = schedule.circuits.iter().find(|c| c.number == 1).unwrap();
+        let c2 = schedule.circuits.iter().find(|c| c.number == 2).unwrap();
+        assert_eq!(c1.board.as_deref(), Some("QDG"));
+        assert_eq!(c2.board.as_deref(), Some("QDC1"));
+        // Terminal run for C2 starts at QDC1 (~2 m away), not QDG (~32 m away).
+        assert!(c2.length_m.unwrap() < 10.0);
+
+        let svg = single_line_svg(&project);
+        assert!(svg.contains("QDC1"));
+        assert!(svg2pdf::usvg::Tree::from_str(&svg, &svg2pdf::usvg::Options::default()).is_ok());
     }
 }
