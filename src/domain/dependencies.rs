@@ -38,8 +38,16 @@ use super::verdict::{Light, electrical_verdicts, structure_verdicts};
 const WALL_ATTACH_TOLERANCE: f64 = 0.14;
 
 /// Maximum distance (metres) between a footing centre and a column centre for
-/// them to count as coupled.
+/// them to count as coupled when the column sits outside the footing footprint.
 const FOOTING_COLUMN_TOLERANCE: f64 = 0.18;
+
+/// Returns whether `footing` structurally supports a column at `column_center`:
+/// either centred within [`FOOTING_COLUMN_TOLERANCE`] or as an eccentric /
+/// boundary footing (*sapata de divisa*) whose footprint encloses the column.
+fn footing_supports_column(footing: &Fixture, column_center: Point) -> bool {
+    footing.contains(column_center)
+        || footing.center.distance(column_center) <= FOOTING_COLUMN_TOLERANCE
+}
 
 /// Maximum distance (metres) between a column centre and a wall axis before it
 /// is flagged as off-axis when architectural walls exist.
@@ -524,7 +532,7 @@ impl Project {
                 let Some(&prev_ft) = prev_fixtures.get(&fid) else {
                     continue;
                 };
-                if prev_ft.center.distance(*old_center) > FOOTING_COLUMN_TOLERANCE {
+                if !footing_supports_column(prev_ft, *old_center) {
                     continue;
                 }
                 let Some(idx) = self.fixtures.iter().position(|f| f.id == fid) else {
@@ -745,7 +753,12 @@ impl Project {
             if !footings.is_empty() {
                 let coupled = footings
                     .iter()
-                    .find(|ft| ft.center.distance(col.center) <= FOOTING_COLUMN_TOLERANCE);
+                    .filter(|ft| footing_supports_column(ft, col.center))
+                    .min_by(|a, b| {
+                        a.center
+                            .distance(col.center)
+                            .total_cmp(&b.center.distance(col.center))
+                    });
                 if let Some(ft) = coupled {
                     audit.links.push(DependencyLink {
                         source_kind: "pilar".to_owned(),
@@ -764,7 +777,7 @@ impl Project {
                         related_ids: Vec::new(),
                         position: Some(col.center),
                         message: format!(
-                            "Pilar #{} está sem sapata alinhada sob seu eixo.",
+                            "Pilar #{} está sem sapata sob seu eixo.",
                             col.id
                         ),
                         suggestion: "Insira ou alinhe uma sapata sob este pilar.".to_owned(),
@@ -773,11 +786,11 @@ impl Project {
             }
         }
 
-        // Footings without a column centered on them.
+        // Footings without a column resting on their footprint.
         for ft in &footings {
             let has_col = columns
                 .iter()
-                .any(|c| c.center.distance(ft.center) <= FOOTING_COLUMN_TOLERANCE);
+                .any(|c| footing_supports_column(ft, c.center));
             if !has_col {
                 audit.review_items.push(ReviewItem {
                     discipline: Discipline::Foundations,
@@ -787,7 +800,7 @@ impl Project {
                     related_ids: Vec::new(),
                     position: Some(ft.center),
                     message: format!(
-                        "Sapata #{} não possui pilar alinhado sobre seu centro.",
+                        "Sapata #{} não possui pilar apoiado sobre sua base.",
                         ft.id
                     ),
                     suggestion: "Mova a sapata para sob o pilar correspondente ou remova-a."
@@ -1179,5 +1192,57 @@ mod tests {
             "expected no false positives on furniture or high window over shower, got: {:?}",
             audit.review_items
         );
+    }
+
+    #[test]
+    fn boundary_eccentric_footing_is_coupled_without_false_warning() {
+        let mut project = Project::default();
+        project.set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 10.0));
+        // Boundary wall along x = 0.10 (20 cm thick wall flush with x = 0.0).
+        project
+            .add_wall(Point::new(0.10, 0.0), Point::new(0.10, 6.0))
+            .unwrap();
+        // Boundary column centred at x = 0.10, resting on a 60×130 cm boundary
+        // footing centred at x = 0.30 (eccentricity 0.20 m > 0.18 m, flush with x = 0.0).
+        let col_id = project
+            .add_fixture(FixtureKind::Column, Point::new(0.10, 2.0), 0.20, 0.30, 0)
+            .unwrap();
+        let ft_id = project
+            .add_fixture(FixtureKind::Footing, Point::new(0.30, 2.0), 0.60, 1.30, 0)
+            .unwrap();
+
+        let audit = project.audit_dependencies();
+        assert!(
+            audit.links.iter().any(|l| {
+                l.source_id == col_id && l.target_id == ft_id && l.relation == "apoia"
+            }),
+            "expected pillar->footing link for boundary footing: {:?}",
+            audit.links
+        );
+        assert!(
+            !audit.review_items.iter().any(|r| matches!(
+                r.kind,
+                ReviewKind::ColumnMissingFooting | ReviewKind::FootingMisalignedFromColumn
+            )),
+            "boundary footing enclosing its column must not trigger misalignment warning: {:?}",
+            audit.review_items
+        );
+
+        // Moving the boundary column along the wall drags the eccentric footing with it.
+        let prev = project.clone();
+        project.move_fixture(col_id, Point::new(0.0, 0.5));
+        let report = project.propagate_dependencies(&prev);
+        assert!(report.auto_updated.iter().any(|u| u.element_id == ft_id));
+        let ft = project.fixtures.iter().find(|f| f.id == ft_id).unwrap();
+        assert!(ft.center.near(Point::new(0.30, 2.5), 1e-4));
+
+        // Truly detached footing far from the column must still trigger both warnings.
+        let orphan_ft = project
+            .add_fixture(FixtureKind::Footing, Point::new(5.0, 5.0), 0.60, 0.60, 0)
+            .unwrap();
+        let audit2 = project.audit_dependencies();
+        assert!(audit2.review_items.iter().any(|r| {
+            r.element_id == Some(orphan_ft) && r.kind == ReviewKind::FootingMisalignedFromColumn
+        }));
     }
 }
