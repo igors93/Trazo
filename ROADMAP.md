@@ -118,6 +118,7 @@ Reviewed on 2026-11-21. Sources:
 | B20 | Medium | Quantities | The materials schedule counts blocks with a fixed 19 cm block height instead of the masonry's own height, so walls of shorter bricks get too few blocks. | Pendente — encontrado durante implementação (see [B20](#b20-materials-schedule-ignores-the-block-height)) |
 | B21 | Medium | Data | The regional utility profiles carry utility names and standards but thresholds and demand multipliers that are not traced to those standards. | Pendente — encontrado durante implementação (see [B21](#b21-regional-utility-profiles-are-not-traced-to-their-standards)) |
 | B22 | Low | Sheets | The sheet panel checks whether the plan fits (and computes *Melhor escala*) using `ph - 16 mm`, ignoring the 50 mm title-block reservation used during export. | Pendente — encontrado durante implementação (see [B22](#b22-sheet-panel-fit-check-ignores-title-block-height)) |
+| B23 | High | Structure | Columns and footings cannot stand on a boundary wall: they snap to the wall's centre line, which lies on the lot line, and are refused for leaving the lot; *Gerar estrutura* silently leaves those walls without columns. | Pendente — encontrado durante implementação (see [B23](#b23-columns-on-boundary-walls-are-refused-or-silently-skipped)) |
 
 ### New bugs found during implementation
 
@@ -155,6 +156,19 @@ Recorded while working through the [implementation log](#implementation-log), an
 - **Steps to reproduce:** Create a plan whose height at 1:50 on A4 landscape (`frame_h = 190 mm`) is between `140 mm` (`7.0 m`) and `174 mm` (`8.7 m`) with the title block enabled; open the Sheet panel (shows green "cabe na folha") and export the sheet (shows the crop warning banner).
 - **Affected:** `src/app/ui/sheet.rs` (lines 183 and 198) and `src/io/export/sheet.rs` (`scaled_sheet_svg`).
 - **Impact:** Inconsistent fit status between screen and exported sheet, breaking the *screen equals paper* principle.
+
+#### B23: Columns on boundary walls are refused or silently skipped
+
+- **Status:** Pendente — encontrado durante implementação (found while laying out the structure of a real project, the gourmet area of *Casa com área de lazer*, through MCP).
+- **Severity:** High. In Brazilian lots houses are commonly built against the boundary, and those walls are the ones that most need columns and special footings.
+- **Description:** `Project::structural_placement` snaps a column or footing to the nearest wall junction or centre line within 0.5 m. A wall drawn on the lot line has its centre line on the boundary, so the column extends half its section past the lot, and `add_fixture` refuses it ("o ponto precisa ficar dentro do terreno"). `generate_structure` calls `add_fixture` the same way and ignores the refusal, so it leaves boundary walls without columns without saying so.
+- **Expected:** columns on a boundary wall stand flush inside the lot (offset by half their section), with boundary footings (#144). *Gerar estrutura* reports any column it could not place.
+- **Observed:**
+  - `projeto_estrutural` › `inserir_pilar` at (0, 25.75), on a wall along x = 0 on the lot line, fails; so does (0.07, 29.83), which snaps back onto the line.
+  - The workaround was `inserir_objeto` with `tipo: pilar`, which places it exactly.
+- **Steps to reproduce:** a 10 × 50 m lot, a room against the left boundary, *Estrutura* › *Pilar* on that wall (or *Gerar estrutura*).
+- **Affected:** `src/domain/structure.rs` (`structural_placement`, `generate_structure`), `src/app/interaction.rs` (`fixture_placement`), `src/app/mcp_tools/structure.rs` (`inserir_pilar`, `inserir_sapata`).
+- **Impact:** missing columns on the walls that need them most, with no warning to a newcomer.
 
 ## Implementation log
 
@@ -299,6 +313,32 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
 - **Tests:** exact load conservation through column reactions, increased beam demand, local slab/punching result, unsupported warning and direct-on-beam path.
 - **Limitations:** nearest-edge distribution is preliminary and dynamic equipment effects remain input/professional responsibilities.
 
+### What a real project still needs: the gourmet area — ⬜ Recorded
+
+Laying out the structure of a real project through MCP (the gourmet area of *Casa com área de lazer*, 2026-11-21) showed what Trazo cannot yet compute. The design:
+
+- a 5.00 × 14.75 m pavilion with a bathroom and pantry block;
+- the left wall on the lot line, raised to about 4.30 m;
+- the side facing the pool open, on timber posts (*mourões*) joined by a timber beam;
+- no slab, but an exposed mono-pitch roof (*meia-água*) with visible tiles and battens, draining towards the pool.
+
+What the model holds today:
+
+- concrete columns about every 3 m on the left wall, with a 14 cm beam on top, the bathroom block columns and the footings;
+- the posts, the timber beam and the roof slope as plain drawings, without any calculation.
+
+| Gap | Why it matters here | Item |
+| --- | --- | --- |
+| Ground beams (*vigas baldrame*) and wall foundations | The left wall between footings and the bathroom and pantry walls have nothing carrying them to the footings | #143 |
+| Boundary columns and footings | Columns on the lot line are refused (B23); a footing flush with the boundary is 23 cm off its column and fails overturning (FS 1.30 < 1.5) without a balance beam | #144 |
+| Wall height per wall, sloped wall tops | The left wall is about 1.5 m taller than the storey height to give the roof its slope | #145 |
+| Roof structure and its loads | The roof weight, live load and wind are missing, so the columns show only their own weight (4–10 kN) | #114, #71 |
+| Timber posts and beams | The posts and the timber beam are not sized at all | #146 |
+| Wind on a tall, open-sided wall | A 4.3 m, 12 cm wall on the boundary with one side open needs a stability and wind check, column spacing and an intermediate bond beam | #147 |
+| Boundary and neighbour rules | Openings in a boundary wall are limited (Código Civil art. 1.301); the roof must not drain onto the neighbour (art. 1.300) | #148 |
+| Gutter towards the pool | Roof water would fall into the pool | #122 |
+| The whole case as a reference | So that the result can be checked again whenever any of the above changes | #150 |
+
 ## Next up
 
 The first ten items on the path, in order. The other items of each milestone fit in around them.
@@ -358,11 +398,12 @@ One analysis engine for every structural simulation, with results you can see an
 
 Everything a small house needs, from the soil to the tiles.
 
-- **Items:** #110, #111, #112, #113, #114, #115, #116, #117
+- **Items:** #110, #111, #112, #113, #114, #115, #116, #117, #143, #144, #145, #146, #147, #150
 - **Done when:**
   - from the sample house and a given soil survey, Trazo produces a formwork plan, a bar schedule, footings, lintels and a roof structure, each with its traffic light;
   - a water tank placed on a slab is checked;
-  - reinforcement matches hand calculations of published examples within 5 %.
+  - reinforcement matches hand calculations of published examples within 5 %;
+  - the gourmet reference project (#150) is computed end to end: ground beams, boundary footings with balance beams, the raised boundary wall under wind, the timber posts and beam, and the mono-pitch roof with its gutter.
 
 ### M6: Water, sewage and rain
 
@@ -408,7 +449,7 @@ Materials detected from the model, costs, the work plan and the safety of the si
 
 Assistants that can do everything, explain problems and leave the person in control.
 
-- **Items:** #74, #75, #46, #51, #49, #73, #48, #76, #50, #52, #142
+- **Items:** #74, #75, #46, #51, #49, #73, #148, #48, #76, #50, #52, #142
 - **Done when:**
   - an assistant draws a two-storey house with stairs, finishes, installations, structure and a sheet set **using MCP only**;
   - the person approves each proposed change, can compare and revert any AI action, and gets every warning and simulation explained in plain language with a suggested fix.
@@ -457,7 +498,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 55 | Setting-out plan (*locação*): cumulative dimensions from an origin on the lot, for marking out the building | P1 | M | M2 | ⬜ |
 | 56 | Construction quantities: blocks with waste, half blocks and U-blocks, lintels per opening, laying mortar, plaster, flooring and wall finishes per room | P0 | M | M2 | ✅ |
 | 57 | One-click construction set: A3 at 1:50 with dimensions, openings, schedules, first course, setting-out and legend | P0 | M | M2 | 🟡 Sheets, scales, templates and title blocks exist |
-| 71 | Roof plan (*planta de cobertura*): roof planes, slopes, ridges, gutters and downpipes | P1 | L | M2 | ⬜ |
+| 71 | Roof plan (*planta de cobertura*): roof planes (mono-pitch, gable, hip), slopes with the tile's minimum, ridges, gutters and downpipes | P1 | L | M2 | ⬜ |
 
 ### B. Engineering safety and trust
 
@@ -489,10 +530,16 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 111 | Lintels and sills (*vergas e contravergas*) for every opening, and masonry checks for infill and load-bearing walls (NBR 16868) | P1 | M | M5 | ⬜ |
 | 112 | Foundations: soil from a survey (SPT) or a soil-type table; footing, raft (*radier*) and bored-pile (*broca*) options; eccentricity, punching and overturning checks (B11) | P1 | L | M5 | 🟡 Square and rectangular footings sized by soil pressure |
 | 113 | Point loads on the structure: water tank (*caixa d'água*) and heavy equipment, checked on the slab or beam below | P0 | S | M5 | ✅ |
-| 114 | Roof structure pre-sizing: timber trusses and rafters, tile weights and wind uplift, from the roof plan (#71) | P1 | L | M5 | ⬜ |
+| 114 | Roof structure: mono-pitch (*meia-água*), gable and hip roofs in timber, with rafters (*caibros*), purlins (*terças*), battens (*ripas*), wall plates (*frechais*) and trusses, an exposed-ceiling option, the minimum slope of each tile, tile weights, live load and wind uplift (NBR 7190, NBR 6120, NBR 6123), and the roof loads delivered to the walls, beams, posts and footings, from the roof plan (#71) | P1 | XL | M5 | ⬜ |
 | 115 | Stairs, balconies and cantilevers: slab and beam checks with the extra care cantilevers need | P1 | M | M5 | ⬜ |
 | 116 | Two-way slab moments and deflections by tables (Czerny, Marcus), and L-shaped rooms split into rectangular panels (B06) | P1 | M | M5 | 🟡 Minimum thickness by span; loads shared by edge length |
 | 117 | Columns at any angle and beams supported on beams (B07) | P2 | M | M5 | ⬜ |
+| 143 | Ground beams (*vigas baldrame*) and wall foundations: a ground beam under every wall, resting on the footings, or a strip footing (*sapata corrida*) where there are no columns; the wall weight carried down to them; interior walls (bathrooms, pantry) included; beams and footings sized with that load | P0 | L | M5 | ⬜ |
+| 144 | Boundary foundations: columns and footings on a boundary wall placed flush inside the lot (B23); eccentric boundary footings balanced by a balance beam (*viga alavanca*) to an interior footing, or a strip footing, with the soil and overturning checks of the pair (NBR 6122) | P0 | M | M5 | ⬜ |
+| 145 | Wall height per wall and sloped wall tops (gable ends, *oitões*, parapets), with the storey height as the default; sections, elevations, quantities, structure and the limits use each wall's real height | P1 | M | M5 | ⬜ |
+| 146 | Timber structural elements: posts (*mourões*) and beams of timber, with species and strength class (NBR 7190), bending, shear, compression, buckling and deflection checks, durability (treated wood, no soil contact) and post bases (concrete block with a steel anchor) | P1 | L | M5 | ⬜ |
+| 147 | Tall and free-standing walls under wind: wind pressure on walls and open-sided buildings (NBR 6123: basic speed by region, terrain, openings), masonry panel slenderness and the bracing it asks for (column spacing, intermediate bond beam, thickness), for boundary walls and walls raised under a roof | P1 | M | M5 | ⬜ |
+| 150 | Reference project: the semi-open gourmet area (5 × 14.75 m, boundary wall raised under a mono-pitch roof, timber posts, exposed roof draining to the pool) in `examples/`, computed end to end and checked in CI once #114 and #143–#148 ship | P1 | S | M5 | ⬜ |
 
 ### E. Water, sewage and rain
 
@@ -504,7 +551,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 119 | Hot water: electric, gas and solar heater sizing | P2 | M | M6 | ⬜ |
 | 120 | Sewage (NBR 8160): fixture units, pipe diameters and slopes, inspection boxes and vents | P1 | L | M6 | ⬜ |
 | 121 | Septic tank, filter and soakaway (NBR 7229, NBR 13969), with the distances to wells and boundaries | P1 | M | M6 | ⬜ |
-| 122 | Rainwater (NBR 10844): gutters and downpipes from the roof area and local rainfall, and a cistern for reuse | P1 | M | M6 | ⬜ |
+| 122 | Rainwater (NBR 10844): gutters and downpipes from the roof area and local rainfall, and a cistern for reuse; a warning when a roof drains into a pool or onto a neighbour | P1 | M | M6 | ⬜ |
 | 123 | Plumbing isometric and riser diagrams generated from the model | P2 | M | M6 | ⬜ |
 
 ### F. Electrical, beyond the basics
@@ -549,6 +596,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 51 | AI history with a diff per action, comparison and selective revert | P1 | M | M10 | 🟡 Live highlight, action log, revisions and version comparison (#45) exist |
 | 49 | Plan validation with explanations and one-click fixes: unclosed rooms, overlaps, rooms without doors, unreachable spaces | P1 | M | M10 | 🟡 The circulation check (#25) covers clearances and door swings |
 | 73 | Building-code checks: minimum room areas and widths, lighting and ventilation ratios, door widths; rule sets configurable per municipality | P1 | L | M10 | ⬜ |
+| 148 | Boundary and neighbour rules: openings in walls less than 1.5 m from the boundary (Código Civil art. 1.301; only ventilation openings up to 10 × 20 cm above 2 m), roofs that drain onto a neighbour (art. 1.300) and municipal limits on boundary wall height, as traffic-light checks | P1 | M | M10 | ⬜ |
 | 48 | Built-in assistant panel: natural-language commands inside Trazo, using the user's own AI provider | P1 | L | M10 | 🟡 Works today through external assistants over MCP |
 | 76 | MCP prompts (for example "draw a house from this brief") and richer resources: sheet images, schedules | P2 | S | M10 | ⬜ |
 | 50 | Room layout proposals from a brief (rooms, areas, adjacencies), shown as alternatives | P2 | L | M10 | ⬜ |
