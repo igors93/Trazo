@@ -97,7 +97,7 @@ Reviewed on 2026-11-21. Sources:
 | --- | --- | --- | --- | --- |
 | B01 | High | Floors | Switching floors left conduits, beams and slabs behind, and the pruning on the next edit deleted those of the other floor. | ✅ Fixed in this update: they travel with their floor; regression test `each_floor_keeps_its_beams_slabs_and_conduits`. |
 | B02 | High | CI | CI runs only on Linux, so code behind `cfg(windows)` or `cfg(macos)` is only checked by the release workflow. Windows-only print helpers already broke the Linux clippy run once. | ✅ Fixed: CI workflow runs format, Clippy and tests across `ubuntu-latest`, `windows-latest` and `macos-latest` (#97). |
-| B03 | High | Structure | Each floor's structure is sized on its own, and the load of the floors above comes from a *floors* multiplier, not from the real upper floors. Columns that do not line up between floors are not detected. | Open → #99 |
+| B03 | High | Structure | Each floor's structure is sized on its own, and the load of the floors above comes from a *floors* multiplier, not from the real upper floors. Columns that do not line up between floors are not detected. | ✅ Fixed: `structure_report` propagates real column loads top-down across floors, routes misaligned columns onto transfer beams as point loads and flags unsupported drops (#99); regression test `upper_floor_loads_flow_down_to_aligned_columns_and_flag_misaligned_transfers`. |
 | B04 | Medium | Performance | Conduit marks, structure marks, the load schedule and device tags are recomputed on every frame. The cost grows with the square of the device and beam count, so large plans will stutter. | Open → #108, #62 |
 | B05 | Medium | Drawings | Conduit, beam, column and footing labels ignore the label layout, so they overlap at crowded wall junctions (seen on the sample house). | Open → #106 |
 | B06 | Medium | Structure | Slab spans come from the room's bounding box, which is wrong for L-shaped rooms. Slab loads are shared by edge length, a rough stand-in for the yield-line method. | ✅ Fixed: `decompose_slab_panels` splits irregular/L-shaped rooms into rectangular panels for true short spans and `yield_line_shares` distributes slab loads by 45° yield lines (NBR 6118 14.7.6.1); regression test `l_shaped_slab_uses_panel_spans_and_yield_line_load_distribution`. |
@@ -279,7 +279,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 99 | Load path across floors: columns stacked through the storeys, loads summed from the real floors above, misaligned columns flagged as transfers (B03) | P0 | M | M3 | ⬜ |
+| 99 | Load path across floors: columns stacked through the storeys, loads summed from the real floors above, misaligned columns flagged as transfers (B03) | P0 | M | M3 | ✅ |
 | 100 | Engineering methods guide (`docs/engineering.md`): every calculation with its formula, standard, assumptions and limits, validated in CI against published worked examples (B12) | P0 | M | M3 | 🟡 Methods are described in the user guide; textbook checks exist for beams, demand and voltage drop |
 | 101 | Results as a traffic light: margin to the limit, the assumptions used, and a plain-language explanation of what to change | P0 | M | M3 | 🟡 Warnings exist; no margins or traffic light |
 | 102 | Applicability limits per module (storeys, spans, loads, soils); outside them Trazo refuses to size and asks for a professional | P0 | S | M3 | ⬜ |

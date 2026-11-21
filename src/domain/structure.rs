@@ -496,8 +496,10 @@ pub struct ColumnResult {
     pub width_m: f64,
     pub depth_m: f64,
     pub position: ColumnPosition,
-    /// Characteristic axial load at the foundation, kN.
+    /// Characteristic axial load at the foundation (including real upper floors), kN.
     pub load_kn: f64,
+    /// Axial load arriving from stacked columns on real upper floors above, kN.
+    pub upper_load_kn: f64,
     /// Concrete area needed and drawn, cm².
     pub area_needed_cm2: f64,
     pub area_cm2: f64,
@@ -643,6 +645,18 @@ impl SlabResult {
     }
 }
 
+/// An upper-floor column with no aligned column directly underneath it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MisalignedColumn {
+    pub floor_name: String,
+    pub column_label: String,
+    pub center: Point,
+    pub load_kn: f64,
+    /// Label of the lower-floor beam acting as a transfer girder, or `None`
+    /// if the column drops onto open space / slab without a beam beneath it.
+    pub transfer_beam: Option<String>,
+}
+
 /// The pre-sizing of the whole structure.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StructureReport {
@@ -650,6 +664,7 @@ pub struct StructureReport {
     pub beams: Vec<BeamLineResult>,
     pub columns: Vec<ColumnResult>,
     pub footings: Vec<FootingResult>,
+    pub misaligned_columns: Vec<MisalignedColumn>,
     pub warnings: Vec<String>,
 }
 
@@ -1135,6 +1150,14 @@ pub fn yield_line_shares(
         }
     }
     shares
+}
+
+/// Internal transfer record passed from an upper floor to the floor below.
+struct UpperColumnLoad {
+    floor_name: String,
+    label: String,
+    center: Point,
+    load_kn: f64,
 }
 
 impl Project {
@@ -1783,14 +1806,99 @@ impl Project {
         changed
     }
 
-    /// The load path from the slabs down to the soil, and the pre-sizing
-    /// checks of every element.
+    fn floor_snapshot(&self, level: &super::floors::FloorLevel) -> Project {
+        let mut snap = Project::default();
+        snap.wall_height = level.ceiling_height_m.max(2.0);
+        snap.walls = level.data.walls.clone();
+        snap.rooms = level.data.rooms.clone();
+        snap.openings = level.data.openings.clone();
+        snap.fixtures = level.data.fixtures.clone();
+        snap.structure.settings = self.structure.settings;
+        snap.structure.settings.floors = 1;
+        snap.structure.beams = level.data.beams.clone();
+        snap.structure.slabs = level.data.slabs.clone();
+        snap
+    }
+
+    /// The load path from the slabs (and any real upper floors above) down to
+    /// the soil, and the pre-sizing checks of every element.
     pub fn structure_report(&self) -> StructureReport {
+        // When real upper floors with structural elements exist above the
+        // active floor, propagate their actual column loads top-down instead
+        // of using the scalar `settings.floors` multiplier.
+        let active_id = self.floors.active_floor_id;
+        let active_elev = self
+            .active_floor()
+            .map(|level| level.elevation_m)
+            .unwrap_or(0.0);
+        let mut upper_levels: Vec<&super::floors::FloorLevel> = self
+            .floors
+            .levels
+            .iter()
+            .filter(|level| {
+                Some(level.id) != active_id
+                    && level.elevation_m > active_elev + 1e-4
+                    && (!level.data.beams.is_empty()
+                        || !level.data.slabs.is_empty()
+                        || level
+                            .data
+                            .fixtures
+                            .iter()
+                            .any(|f| f.kind == FixtureKind::Column))
+            })
+            .collect();
+        if upper_levels.is_empty() {
+            return self.structure_report_with_incoming(&[], false, true);
+        }
+        // Top-down: highest storey first down to the storey directly above.
+        upper_levels.sort_by(|a, b| b.elevation_m.total_cmp(&a.elevation_m));
+        let mut incoming: Vec<UpperColumnLoad> = Vec::new();
+        let mut inherited_misaligned: Vec<MisalignedColumn> = Vec::new();
+        let mut inherited_warnings: Vec<String> = Vec::new();
+        for level in upper_levels {
+            let snap = self.floor_snapshot(level);
+            let rep = snap.structure_report_with_incoming(&incoming, true, false);
+            inherited_misaligned.extend(rep.misaligned_columns);
+            for w in rep.warnings {
+                if w.contains("desalinhado") || w.contains("sem prumada") {
+                    inherited_warnings.push(w);
+                }
+            }
+            incoming = rep
+                .columns
+                .iter()
+                .filter_map(|col| {
+                    let fix = snap.column(col.id)?;
+                    Some(UpperColumnLoad {
+                        floor_name: level.name.clone(),
+                        label: col.label.clone(),
+                        center: fix.center,
+                        load_kn: col.load_kn,
+                    })
+                })
+                .collect();
+        }
+        let mut report = self.structure_report_with_incoming(&incoming, false, false);
+        report.misaligned_columns.extend(inherited_misaligned);
+        report.warnings.extend(inherited_warnings);
+        report
+    }
+
+    fn structure_report_with_incoming(
+        &self,
+        incoming_upper: &[UpperColumnLoad],
+        include_own_walls_on_beams: bool,
+        use_multiplier: bool,
+    ) -> StructureReport {
         let settings = self.structure.settings;
         let labels = self.structure_labels();
         let label = |id: u64| labels.get(&id).cloned().unwrap_or_else(|| "?".to_owned());
         let mut report = StructureReport::default();
-        let floors = f64::from(settings.floors.max(1));
+        let floors = if use_multiplier {
+            f64::from(settings.floors.max(1))
+        } else {
+            1.0
+        };
         let beams: Vec<(Beam, Point, Point)> = self
             .valid_beams()
             .filter_map(|beam| {
@@ -1798,6 +1906,73 @@ impl Project {
                 Some((*beam, a, b))
             })
             .collect();
+        // Match upper-floor columns against columns on this floor; misaligned
+        // columns transfer as point loads onto a beam below or warn if unsupported.
+        let mut incoming_column_load: HashMap<u64, f64> = HashMap::new();
+        let mut beam_point_loads: HashMap<u64, Vec<(f64, f64)>> = HashMap::new();
+        for upper in incoming_upper {
+            let aligned = self
+                .structural_columns()
+                .filter(|col| {
+                    col.contains(upper.center) || col.center.distance(upper.center) <= 0.15
+                })
+                .min_by(|a, b| {
+                    a.center
+                        .distance(upper.center)
+                        .total_cmp(&b.center.distance(upper.center))
+                });
+            if let Some(col) = aligned {
+                *incoming_column_load.entry(col.id).or_default() += upper.load_kn;
+            } else {
+                // Check if the misaligned column lands on a beam below (transfer girder).
+                let host_beam = beams
+                    .iter()
+                    .filter_map(|(beam, a, b)| {
+                        let (nearest, t) =
+                            super::geometry::nearest_point_on_segment(upper.center, *a, *b);
+                        let dist = nearest.distance(upper.center);
+                        (dist <= 0.20).then_some((dist, beam.id, t))
+                    })
+                    .min_by(|a, b| a.0.total_cmp(&b.0));
+                if let Some((_, beam_id, t)) = host_beam {
+                    let beam_label = label(beam_id);
+                    if upper.load_kn > 0.0 {
+                        beam_point_loads
+                            .entry(beam_id)
+                            .or_default()
+                            .push((t.clamp(0.02, 0.98), upper.load_kn));
+                    }
+                    report.misaligned_columns.push(MisalignedColumn {
+                        floor_name: upper.floor_name.clone(),
+                        column_label: upper.label.clone(),
+                        center: upper.center,
+                        load_kn: upper.load_kn,
+                        transfer_beam: Some(beam_label.clone()),
+                    });
+                    report.warnings.push(format!(
+                        "Pilar {} ({}) desalinhado: nasce sobre {} (viga de transição com {} kN); confira o detalhamento.",
+                        upper.label,
+                        upper.floor_name,
+                        beam_label,
+                        decimal(upper.load_kn, 1)
+                    ));
+                } else {
+                    report.misaligned_columns.push(MisalignedColumn {
+                        floor_name: upper.floor_name.clone(),
+                        column_label: upper.label.clone(),
+                        center: upper.center,
+                        load_kn: upper.load_kn,
+                        transfer_beam: None,
+                    });
+                    report.warnings.push(format!(
+                        "Pilar {} ({}) sem prumada abaixo ({} kN): não há pilar nem viga alinhados no pavimento inferior.",
+                        upper.label,
+                        upper.floor_name,
+                        decimal(upper.load_kn, 1)
+                    ));
+                }
+            }
+        }
         // Slab loads shared by the beams along the slab's sides.
         let mut beam_dead: HashMap<u64, f64> = HashMap::new();
         let mut beam_live: HashMap<u64, f64> = HashMap::new();
@@ -1865,7 +2040,6 @@ impl Project {
         // other beams transfer their reactions as point loads onto host girders.
         let modulus = settings.modulus_kn_m2();
         let mut column_load: HashMap<u64, f64> = HashMap::new();
-        let mut beam_point_loads: HashMap<u64, Vec<(f64, f64)>> = HashMap::new();
         let mut incident: HashMap<u64, Vec<Point>> = HashMap::new();
         let mut ordered_lines = self.beam_lines();
         ordered_lines.sort_by(|a, b| {
@@ -1907,8 +2081,17 @@ impl Project {
                         incident.entry(col_id).or_default().push(d);
                     }
                 }
-                // Walls of the floors above stand on the beams.
-                let walls_kn_m: f64 = if floors > 1.0 {
+                // Masonry walls carried by this beam: either this floor's own
+                // walls (on an upper storey) or the floors-1 multiplier when
+                // only one floor is drawn.
+                let wall_factor = if include_own_walls_on_beams {
+                    1.0
+                } else if use_multiplier && floors > 1.0 {
+                    floors - 1.0
+                } else {
+                    0.0
+                };
+                let walls_kn_m: f64 = if wall_factor > 0.0 {
                     self.walls
                         .iter()
                         .filter(|wall| {
@@ -1920,7 +2103,7 @@ impl Project {
                         })
                         .map(|wall| wall.thickness() * self.wall_height * settings.masonry_kn_m3)
                         .fold(0.0, f64::max)
-                        * (floors - 1.0)
+                        * wall_factor
                 } else {
                     0.0
                 };
@@ -2103,7 +2286,12 @@ impl Project {
                 _ => ColumnPosition::Interior,
             };
             let own = CONCRETE_KN_M3 * column.width * column.depth * self.wall_height;
-            let load = (column_load.get(&column.id).copied().unwrap_or(0.0) + own) * floors;
+            let upper_load_kn = incoming_column_load.get(&column.id).copied().unwrap_or(0.0);
+            let load = if use_multiplier {
+                (column_load.get(&column.id).copied().unwrap_or(0.0) + own) * floors
+            } else {
+                column_load.get(&column.id).copied().unwrap_or(0.0) + own + upper_load_kn
+            };
             let needed = 1.4 * position.factor() * load / capacity;
             let result = ColumnResult {
                 id: column.id,
@@ -2112,6 +2300,7 @@ impl Project {
                 depth_m: column.depth,
                 position,
                 load_kn: load,
+                upper_load_kn,
                 area_needed_cm2: needed,
                 area_cm2: column.width * column.depth * 10_000.0,
             };
@@ -3121,5 +3310,75 @@ mod tests {
         // Deleting a column removes its girder AND the secondary beam resting on it.
         let affected = frame.beams_of(&[c1]);
         assert!(affected.contains(&g1) && affected.contains(&sec));
+    }
+
+    #[test]
+    fn upper_floor_loads_flow_down_to_aligned_columns_and_flag_misaligned_transfers() {
+        let mut project = house();
+        project.generate_structure();
+        let single_floor = project.structure_report();
+        let single_total_col_load: f64 = single_floor.columns.iter().map(|c| c.load_kn).sum();
+
+        // Create a real second storey with its own structure aligned over the ground floor.
+        let ground = project.ensure_default_floor();
+        let _upper = project.add_floor("Superior", true, true);
+        project.generate_structure();
+        // Switch back to ground floor and verify upper loads accumulate naturally
+        // even with `settings.floors == 1`.
+        project.switch_floor(ground).unwrap();
+        let two_storey = project.structure_report();
+        assert!(two_storey.misaligned_columns.is_empty());
+        assert!(two_storey.columns.iter().all(|c| c.upper_load_kn > 0.0));
+        let two_storey_total: f64 = two_storey.columns.iter().map(|c| c.load_kn).sum();
+        assert!(
+            two_storey_total > single_total_col_load * 1.8,
+            "expected real upper floor load to add up: {two_storey_total} vs {single_total_col_load}"
+        );
+
+        // Now add a misaligned column on the upper floor sitting at the midpoint
+        // of a ground-floor beam (transfer girder) and another over open space.
+        let upper_id = project
+            .floors
+            .levels
+            .iter()
+            .find(|l| l.id != ground)
+            .unwrap()
+            .id;
+        project.switch_floor(upper_id).unwrap();
+        let on_beam = project
+            .add_fixture(FixtureKind::Column, Point::new(2.0, 0.0), 0.30, 0.14, 0)
+            .unwrap();
+        let floating = project
+            .add_fixture(FixtureKind::Column, Point::new(2.0, 2.0), 0.30, 0.14, 0)
+            .unwrap();
+        let _ = (on_beam, floating);
+        project.switch_floor(ground).unwrap();
+
+        let with_transfers = project.structure_report();
+        assert_eq!(with_transfers.misaligned_columns.len(), 2);
+        assert!(
+            with_transfers
+                .misaligned_columns
+                .iter()
+                .any(|m| m.transfer_beam.is_some())
+        );
+        assert!(
+            with_transfers
+                .misaligned_columns
+                .iter()
+                .any(|m| m.transfer_beam.is_none())
+        );
+        assert!(
+            with_transfers
+                .warnings
+                .iter()
+                .any(|w| w.contains("viga de transição"))
+        );
+        assert!(
+            with_transfers
+                .warnings
+                .iter()
+                .any(|w| w.contains("sem prumada abaixo"))
+        );
     }
 }
