@@ -58,6 +58,7 @@ enum DocDialog {
     Electrical,
     Underlay,
     Xref,
+    Compare,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -203,6 +204,7 @@ pub struct FloorPlanApp {
     print_state: ui::PrintDialogState,
     underlay_state: ui::UnderlayUiState,
     xref_manager: crate::io::xref::XrefManager,
+    compare_state: ui::CompareUiState,
     new_layer_name: String,
     new_note_text: String,
     new_revision_text: String,
@@ -412,6 +414,7 @@ impl FloorPlanApp {
             print_state: ui::PrintDialogState::default(),
             underlay_state: ui::UnderlayUiState::default(),
             xref_manager: crate::io::xref::XrefManager::default(),
+            compare_state: ui::CompareUiState::default(),
             new_layer_name: String::new(),
             new_note_text: String::new(),
             new_revision_text: String::new(),

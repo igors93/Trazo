@@ -595,6 +595,21 @@ impl FloorPlanApp {
             {
                 self.active_doc_dialog = super::super::DocDialog::Xref;
             }
+            if tip(
+                ribbon_button(
+                    ui,
+                    Icon::SplitView,
+                    "Comparar",
+                    self.active_doc_dialog == super::super::DocDialog::Compare
+                        || self.compare_state.overlay_active,
+                    false,
+                ),
+                "Comparar visualmente duas versões do projeto (adições, remoções e alterações)",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = super::super::DocDialog::Compare;
+            }
         });
         vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Janelas", |ui| {

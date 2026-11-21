@@ -2,6 +2,8 @@ use eframe::egui::{self, Margin, Ui};
 
 mod browser;
 mod circulation;
+mod compare;
+pub(in crate::app) use compare::CompareUiState;
 mod connect;
 mod constraints;
 mod dialogs;
@@ -134,5 +136,6 @@ impl FloorPlanApp {
         self.underlay_dialog(&context);
         self.poll_xrefs(&context);
         self.xref_dialog(&context);
+        self.compare_dialog(&context);
     }
 }

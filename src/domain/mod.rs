@@ -2,6 +2,7 @@ pub mod annotations;
 pub mod areas;
 pub mod blocks;
 pub mod circulation;
+pub mod compare;
 pub mod curves;
 pub mod dimensions;
 pub mod doc_style;
