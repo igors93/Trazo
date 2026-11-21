@@ -112,7 +112,7 @@ Reviewed on 2026-11-21. Sources:
 | B15 | Low | Views | In the side-by-side view, the inactive pane ignores its tab's discipline. | Open |
 | B16 | Low | Sheets | A sheet exported at a scale that does not fit crops the plan. The sheet panel warns, but the exported file does not. | Open |
 | B17 | Low | Performance | System fonts are loaded on every SVG rasterisation (print preview, single-line diagram, beam diagrams), causing a hitch after each change. | Open → #108 |
-| B18 | Low | Repository | No `.gitattributes`; with `core.autocrlf` the working tree mixes LF and CRLF, which makes diffs noisy. | Open → #98 |
+| B18 | Low | Repository | No `.gitattributes`; with `core.autocrlf` the working tree mixes LF and CRLF, which makes diffs noisy. | ✅ Fixed: added `.gitattributes` enforcing LF for source/docs and CRLF for Windows scripts (#98). |
 | B19 | Low | Fixtures | The minimum fixture size dropped from 20 to 10 cm for every kind so that 14 cm columns fit; it should be a per-kind minimum. | Open |
 
 ## Next up
@@ -399,7 +399,7 @@ A chosen level must never be a wall. A newcomer can open an advanced tool when n
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
 | 97 | CI on Windows and macOS as well as Linux: format, lint and tests on every platform (B02) | P0 | S | M1 | ✅ |
-| 98 | Line-ending policy (`.gitattributes`) for a clean working tree on every platform (B18) | P2 | S | M1 | ⬜ |
+| 98 | Line-ending policy (`.gitattributes`) for a clean working tree on every platform (B18) | P2 | S | M1 | ✅ |
 | 80 | Documented project file format (JSON Schema) for third-party tools | P1 | M | M1 | ⬜ |
 | 78 | Signed Windows binaries | P2 | S | M1 | ⬜ |
 | 62 | Performance with large plans: spatial index for picking, cached rendering, benchmarks in CI (B04) | P1 | L | M13 | ⬜ |
