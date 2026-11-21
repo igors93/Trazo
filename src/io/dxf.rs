@@ -262,8 +262,15 @@ pub fn to_dxf_string(project: &Project) -> String {
         let layer = layer_for_cat(LayerCategory::Electrical);
         for mark in project.conduit_marks() {
             match mark {
-                PlanMark::Line { points, .. } => {
-                    write_polyline(&mut entities_buf, &layer, &points, false, None);
+                PlanMark::Line { points, dashed, .. } => {
+                    write_polyline_styled(
+                        &mut entities_buf,
+                        &layer,
+                        &points,
+                        false,
+                        None,
+                        dashed.then_some("DASHED"),
+                    );
                     bounds.include_slice(&points);
                 }
                 PlanMark::Circle { center, radius } => {
@@ -280,17 +287,35 @@ pub fn to_dxf_string(project: &Project) -> String {
     if project.category_visible(LayerCategory::Structure) {
         use crate::domain::conduits::PlanMark;
         let layer = layer_for_cat(LayerCategory::Structure);
+        // Scale structure label text height to ~2.2 mm on paper at the sheet's
+        // drawing scale (e.g. 0.11 m at 1:50, 0.22 m at 1:100).
+        let text_height = (2.2 / project.sheet.scale.mm_per_meter()).clamp(0.06, 0.50);
         for mark in project.structure_marks() {
             match mark {
-                PlanMark::Line { points, .. } => {
-                    write_polyline(&mut entities_buf, &layer, &points, false, None);
+                PlanMark::Line { points, dashed, .. } => {
+                    write_polyline_styled(
+                        &mut entities_buf,
+                        &layer,
+                        &points,
+                        false,
+                        None,
+                        dashed.then_some("DASHED"),
+                    );
                     bounds.include_slice(&points);
                 }
                 PlanMark::Circle { center, radius } => {
                     write_circle(&mut entities_buf, &layer, center, radius, None);
                 }
                 PlanMark::Text { anchor, text } => {
-                    write_text(&mut entities_buf, &layer, anchor, 0.12, 0.0, &text, None);
+                    write_text(
+                        &mut entities_buf,
+                        &layer,
+                        anchor,
+                        text_height,
+                        0.0,
+                        &text,
+                        None,
+                    );
                 }
             }
         }
@@ -961,11 +986,25 @@ fn write_line(out: &mut String, layer: &str, a: Point, b: Point, aci: Option<u8>
 }
 
 fn write_polyline(out: &mut String, layer: &str, pts: &[Point], closed: bool, aci: Option<u8>) {
+    write_polyline_styled(out, layer, pts, closed, aci, None);
+}
+
+fn write_polyline_styled(
+    out: &mut String,
+    layer: &str,
+    pts: &[Point],
+    closed: bool,
+    aci: Option<u8>,
+    ltype: Option<&str>,
+) {
     if pts.len() < 2 {
         return;
     }
     write_pair(out, 0, "POLYLINE");
     write_pair(out, 8, layer);
+    if let Some(lt) = ltype {
+        write_pair(out, 6, lt);
+    }
     if let Some(color) = aci {
         write_i32(out, 62, i32::from(color));
     }
@@ -2200,5 +2239,50 @@ EOF
         assert_eq!(aci_to_rgb(1), [255, 0, 0]);
         assert_eq!(rgb_to_aci([0, 0, 255]), 5);
         assert_eq!(aci_to_rgb(-5), [0, 0, 255]);
+    }
+
+    #[test]
+    fn floor_conduits_use_dashed_linetype_and_structure_labels_scale_with_sheet() {
+        use crate::domain::{conduits::ConduitRun, fixtures::FixtureKind, sheet::DrawingScale};
+
+        let mut project = Project::default();
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Sala")
+            .unwrap();
+        let (pw, pd) = FixtureKind::Panel.default_size();
+        let panel = project
+            .add_fixture(FixtureKind::Panel, Point::new(0.4, 0.4), pw, pd, 0)
+            .unwrap();
+        let (ow, od) = FixtureKind::OutletLow.default_size();
+        let outlet = project
+            .add_fixture(FixtureKind::OutletLow, Point::new(3.6, 2.6), ow, od, 0)
+            .unwrap();
+        let _ = project
+            .add_conduit(panel, outlet, ConduitRun::Floor)
+            .unwrap();
+        project.generate_structure();
+
+        project.sheet.scale = DrawingScale::S1_50;
+        let dxf_50 = to_dxf_string(&project);
+        // Floor conduit POLYLINE carries entity-level DASHED linetype (group 6).
+        let entities_50 = dxf_50.split("ENTITIES").nth(1).unwrap();
+        assert!(
+            entities_50.contains("  6\nDASHED\n"),
+            "expected floor conduit to export with DASHED linetype"
+        );
+        // Structure text height at 1:50 is 2.2 / 20.0 = 0.11 m.
+        assert!(entities_50.contains(" 40\n0.110000\n"));
+
+        // Switching to a ceiling conduit removes the DASHED linetype override.
+        project.conduits[0].run = ConduitRun::Ceiling;
+        let dxf_ceiling = to_dxf_string(&project);
+        let entities_ceiling = dxf_ceiling.split("ENTITIES").nth(1).unwrap();
+        assert!(!entities_ceiling.contains("  6\nDASHED\n"));
+
+        // At 1:100 structure text height doubles to 0.22 m.
+        project.sheet.scale = DrawingScale::S1_100;
+        let dxf_100 = to_dxf_string(&project);
+        let entities_100 = dxf_100.split("ENTITIES").nth(1).unwrap();
+        assert!(entities_100.contains(" 40\n0.220000\n"));
     }
 }
