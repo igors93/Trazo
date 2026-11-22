@@ -96,7 +96,8 @@ impl Project {
     /// pressure of the structure, rounded down to 10 kPa. Returns it.
     pub fn apply_survey_to_soil(&mut self) -> Option<f64> {
         let kpa = self.structure.soil_survey.as_ref()?.footing_kpa(1.0)?;
-        let kpa = ((kpa / 10.0).floor() * 10.0).clamp(50.0, 600.0);
+        // Never silently clamp weak soil UP to 50 kPa (preserve real low bearing capacity).
+        let kpa = ((kpa / 10.0).floor() * 10.0).clamp(10.0, 600.0);
         self.structure.settings.soil_kpa = kpa;
         Some(kpa)
     }
@@ -333,11 +334,30 @@ impl Project {
         let mut notes = Vec::new();
         const THICKNESS: f64 = 0.15;
         let pressure = 1.05 * study.total_load_kn / area.max(1e-6) + 25.0 * THICKNESS;
+        // Raft pressure bulb: check BOTH near-surface bearing zone [0.5, 3.0] m
+        // and deep compressible bulb [0.5, 1.5·B_eq] m, taking the weaker (lower N̄)
+        // so neither soft top clay nor soft deep strata are masked by firm layers.
+        let raft_bulb_depth = (1.5 * area.max(4.0).sqrt()).max(3.0);
         let (n_bar, soil_kind, kpa) = match survey {
-            Some(s) => match s.governing_mean_n(0.5, 3.0) {
-                Some((n, kind, _)) => (Some(n), kind, Some((20.0 * n).min(MAX_FOOTING_KPA))),
-                None => (None, SoilKind::Clay, None),
-            },
+            Some(s) => {
+                let shallow = s.governing_mean_n(0.5, 3.0);
+                let to_depth = raft_bulb_depth.min(s.deepest_m().max(3.0));
+                let deep = s.governing_mean_n(0.5, to_depth);
+                let governing = match (shallow, deep) {
+                    (Some(a), Some(b)) => {
+                        if a.0 <= b.0 {
+                            Some(a)
+                        } else {
+                            Some(b)
+                        }
+                    }
+                    (a, b) => a.or(b),
+                };
+                match governing {
+                    Some((n, kind, _)) => (Some(n), kind, Some((20.0 * n).min(MAX_FOOTING_KPA))),
+                    None => (None, SoilKind::Clay, None),
+                }
+            }
             None => (
                 Some(settings.soil_kpa / 20.0),
                 SoilKind::Clay,

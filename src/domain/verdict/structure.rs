@@ -1,186 +1,14 @@
-//! Results as a traffic light (#101): every engineering check expressed as
-//! a utilisation (demand over capacity), a green, yellow or red light, the
-//! margin to the limit, a plain-language sentence on what to change and the
-//! technical detail with its standard, plus the assumptions behind it.
-//!
-//! Green leaves a comfortable margin (utilisation up to 85 %), yellow passes
-//! with a small one (85 to 100 %), red fails. Red is never hidden: the
-//! summary counts it and every view lists it first.
+//! Structural engineering safety verdicts (slabs, beams, columns, footings,
+//! balance beams, wall foundations, masonry, roofs, timber posts and wind).
 
-use super::distribution::MAX_DROP_PERCENT;
-use super::electrical::LoadSchedule;
-use super::model::Project;
-use super::structure::StructureReport;
+use crate::domain::{model::Project, structure::StructureReport};
 
-/// Up to this utilisation the light is green.
-pub const GREEN_LIMIT: f64 = 0.85;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Light {
-    Green,
-    Yellow,
-    Red,
-}
-
-impl Light {
-    pub fn from_utilisation(utilisation: f64) -> Self {
-        if !utilisation.is_finite() || utilisation > 1.0 + 1e-9 {
-            Self::Red
-        } else if utilisation > GREEN_LIMIT {
-            Self::Yellow
-        } else {
-            Self::Green
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Green => "Verde",
-            Self::Yellow => "Amarelo",
-            Self::Red => "Vermelho",
-        }
-    }
-
-    pub fn key(self) -> &'static str {
-        match self {
-            Self::Green => "verde",
-            Self::Yellow => "amarelo",
-            Self::Red => "vermelho",
-        }
-    }
-
-    /// What the light means, in one sentence.
-    pub fn meaning(self) -> &'static str {
-        match self {
-            Self::Green => "Atende com folga.",
-            Self::Yellow => "Atende, mas com pouca folga: revise se puder.",
-            Self::Red => "Não atende: precisa mudar antes de construir.",
-        }
-    }
-}
-
-/// One check of one element.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Check {
-    /// What is checked, such as "Altura" or "Flecha".
-    pub name: String,
-    /// Demand over capacity: 1.0 is exactly at the limit.
-    pub utilisation: f64,
-    pub light: Light,
-    /// What to do, in plain words.
-    pub simple: String,
-    /// The numbers, the formula and the standard.
-    pub detail: String,
-}
-
-impl Check {
-    fn new(name: &str, utilisation: f64, simple: String, detail: String) -> Self {
-        Self {
-            name: name.to_owned(),
-            utilisation,
-            light: Light::from_utilisation(utilisation),
-            simple,
-            detail,
-        }
-    }
-
-    /// A check that fails outright (not a ratio).
-    fn fail(name: &str, simple: String, detail: String) -> Self {
-        Self {
-            name: name.to_owned(),
-            utilisation: f64::INFINITY,
-            light: Light::Red,
-            simple,
-            detail,
-        }
-    }
-
-    /// Margin to the limit, in percent (negative when it fails).
-    pub fn margin_percent(&self) -> f64 {
-        if self.utilisation.is_finite() {
-            (1.0 - self.utilisation) * 100.0
-        } else {
-            -100.0
-        }
-    }
-}
-
-/// What a verdict is about.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Discipline {
-    Structure,
-    Electrical,
-}
-
-impl Discipline {
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Structure => "Estrutura",
-            Self::Electrical => "Elétrica",
-        }
-    }
-}
-
-/// All the checks of one element.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Verdict {
-    pub discipline: Discipline,
-    /// "Viga V1 · vão 2", "Pilar P3", "Circuito C4"…
-    pub element: String,
-    pub checks: Vec<Check>,
-}
-
-impl Verdict {
-    /// The worst light of its checks.
-    pub fn light(&self) -> Light {
-        self.checks
-            .iter()
-            .map(|check| check.light)
-            .max()
-            .unwrap_or(Light::Green)
-    }
-
-    /// The governing check: the highest utilisation.
-    pub fn governing(&self) -> Option<&Check> {
-        self.checks
-            .iter()
-            .max_by(|a, b| a.utilisation.total_cmp(&b.utilisation))
-    }
-}
-
-/// Every verdict of the project, worst first, with the counts and the
-/// assumptions they rest on.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct SafetySummary {
-    pub verdicts: Vec<Verdict>,
-    pub green: usize,
-    pub yellow: usize,
-    pub red: usize,
-    pub assumptions: Vec<String>,
-}
-
-impl SafetySummary {
-    pub fn worst(&self) -> Option<Light> {
-        if self.verdicts.is_empty() {
-            None
-        } else if self.red > 0 {
-            Some(Light::Red)
-        } else if self.yellow > 0 {
-            Some(Light::Yellow)
-        } else {
-            Some(Light::Green)
-        }
-    }
-}
-
-fn decimal(value: f64, places: usize) -> String {
-    format!("{value:.places$}").replace('.', ",")
-}
+use super::{Check, Discipline, Light, Verdict, cm, decimal, limit_detail};
 
 /// Column slenderness (#145): green up to the second-order limit, yellow
 /// while the simplified methods apply, red beyond them.
-fn slenderness_check(column: &super::structure::ColumnResult) -> Check {
-    use super::wall_heights::{
+fn slenderness_check(column: &crate::domain::structure::ColumnResult) -> Check {
+    use crate::domain::wall_heights::{
         MAX_SIMPLE_SLENDERNESS, SECOND_ORDER_SLENDERNESS, side_for_slenderness,
     };
     let lambda = column.slenderness;
@@ -215,16 +43,12 @@ fn slenderness_check(column: &super::structure::ColumnResult) -> Check {
     }
 }
 
-fn cm(metres: f64) -> String {
-    format!("{:.0} cm", metres * 100.0)
-}
-
 /// The structural checks, from the pre-sizing report, with the
 /// applicability limits (#102) applied: a project beyond the limits gets one
 /// red verdict instead of any sizing, and an element beyond them gets a red
 /// "Fora dos limites" with no numbers.
 pub fn structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Verdict> {
-    let project_wide = super::limits::structure_violations(project);
+    let project_wide = crate::domain::limits::structure_violations(project);
     if !project_wide.is_empty() {
         return vec![Verdict {
             discipline: Discipline::Structure,
@@ -238,8 +62,8 @@ pub fn structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Ve
                 .collect(),
         }];
     }
-    let elements = super::limits::element_violations(report);
-    let reinforcement = super::reinforcement::build_reinforcement_report(project, report);
+    let elements = crate::domain::limits::element_violations(report);
+    let reinforcement = crate::domain::reinforcement::build_reinforcement_report(project, report);
     let mut verdicts = sized_structure_verdicts(report, &reinforcement);
     for verdict in &mut verdicts {
         let refused: Vec<Check> = elements
@@ -254,18 +78,10 @@ pub fn structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Ve
     verdicts
 }
 
-fn limit_detail(violation: &super::limits::Violation) -> String {
-    format!(
-        "Valor {} acima do limite de aplicação {} (docs/engineering.md, limites de aplicação).",
-        decimal(violation.value, 2),
-        decimal(violation.limit, 2)
-    )
-}
-
 /// The structural checks of every element, before the limits.
 fn sized_structure_verdicts(
     report: &StructureReport,
-    reinforcement: &super::reinforcement::ReinforcementReport,
+    reinforcement: &crate::domain::reinforcement::ReinforcementReport,
 ) -> Vec<Verdict> {
     let mut verdicts = Vec::new();
     for slab in &report.slabs {
@@ -287,7 +103,7 @@ fn sized_structure_verdicts(
                     cm(slab.thickness_min_m)
                 ),
             ));
-            if slab.kind == super::structure::SlabKind::Solid {
+            if slab.kind == crate::domain::structure::SlabKind::Solid {
                 checks.push(Check::new(
                     "Flecha bidirecional",
                     slab.deflection_mm / slab.deflection_limit_mm.max(1e-9),
@@ -513,31 +329,31 @@ fn sized_structure_verdicts(
         let mut checks = vec![
             Check::new(
                 "Apoio",
-                super::masonry_structure::MIN_LINTEL_BEARING_M / bearing.max(1e-9),
-                if bearing + 1e-9 >= super::masonry_structure::MIN_LINTEL_BEARING_M {
+                crate::domain::masonry_structure::MIN_LINTEL_BEARING_M / bearing.max(1e-9),
+                if bearing + 1e-9 >= crate::domain::masonry_structure::MIN_LINTEL_BEARING_M {
                     format!(
                         "{} apoia pelo menos {} em cada lado do vão.",
                         band.kind.label(),
-                        cm(super::masonry_structure::MIN_LINTEL_BEARING_M)
+                        cm(crate::domain::masonry_structure::MIN_LINTEL_BEARING_M)
                     )
                 } else {
                     format!(
                         "Faltam apoios laterais: mova o vão ou prolongue {} até ter {} de cada lado.",
                         band.kind.label().to_lowercase(),
-                        cm(super::masonry_structure::MIN_LINTEL_BEARING_M)
+                        cm(crate::domain::masonry_structure::MIN_LINTEL_BEARING_M)
                     )
                 },
                 format!(
                     "Apoios esquerdo/direito = {}/{}; mínimo verificado {} e preferido 30 cm (NBR 16868-1, detalhamento de regiões junto a aberturas).",
                     cm(band.bearing_left_m),
                     cm(band.bearing_right_m),
-                    cm(super::masonry_structure::MIN_LINTEL_BEARING_M)
+                    cm(crate::domain::masonry_structure::MIN_LINTEL_BEARING_M)
                 ),
             ),
             Check::new(
                 "Vão",
-                band.clear_span_m / super::masonry_structure::MAX_LINTEL_SPAN_M,
-                if band.clear_span_m <= super::masonry_structure::MAX_LINTEL_SPAN_M {
+                band.clear_span_m / crate::domain::masonry_structure::MAX_LINTEL_SPAN_M,
+                if band.clear_span_m <= crate::domain::masonry_structure::MAX_LINTEL_SPAN_M {
                     format!(
                         "O vão de {} está dentro do método simples.",
                         decimal(band.clear_span_m, 2)
@@ -549,11 +365,11 @@ fn sized_structure_verdicts(
                 format!(
                     "L = {} m; o pré-dimensionamento de vergas do Trazo para em {} m.",
                     decimal(band.clear_span_m, 2),
-                    decimal(super::masonry_structure::MAX_LINTEL_SPAN_M, 1)
+                    decimal(crate::domain::masonry_structure::MAX_LINTEL_SPAN_M, 1)
                 ),
             ),
         ];
-        if band.kind == super::masonry_structure::MasonryBandKind::Lintel {
+        if band.kind == crate::domain::masonry_structure::MasonryBandKind::Lintel {
             checks.push(Check::new(
                 "Flexão",
                 band.flexure_ratio,
@@ -629,7 +445,7 @@ fn sized_structure_verdicts(
                 ),
             ),
         ];
-        if panel.kind == super::masonry_structure::MasonryWallKind::LoadBearing {
+        if panel.kind == crate::domain::masonry_structure::MasonryWallKind::LoadBearing {
             checks.push(Check::new(
                 "Compressão",
                 panel.compression_ratio,
@@ -692,7 +508,7 @@ fn sized_structure_verdicts(
             ),
             slenderness_check(column),
         ];
-        if column.position == super::structure::ColumnPosition::Isolated {
+        if column.position == crate::domain::structure::ColumnPosition::Isolated {
             checks.push(Check::fail(
                 "Vigas",
                 "Nenhuma viga chega a este pilar: ligue-o às vigas ou remova-o.".to_owned(),
@@ -818,7 +634,7 @@ fn sized_structure_verdicts(
                     ),
                 ));
             }
-            let s_limit = super::soil::MAX_FOOTING_SETTLEMENT_MM;
+            let s_limit = crate::domain::soil::MAX_FOOTING_SETTLEMENT_MM;
             checks.push(Check::new(
                 "Recalque",
                 footing.settlement_mm / s_limit,
@@ -1085,7 +901,7 @@ fn sized_structure_verdicts(
                 ),
                 Check::new(
                     "Esbeltez",
-                    post.slenderness / super::timber_posts::MAX_POST_SLENDERNESS,
+                    post.slenderness / crate::domain::timber_posts::MAX_POST_SLENDERNESS,
                     format!("λ = {:.0}, no máximo 140.", post.slenderness),
                     "NBR 7190: peças comprimidas com λ ≤ 140.".to_owned(),
                 ),
@@ -1165,32 +981,34 @@ fn sized_structure_verdicts(
     }
     for foundation in &report.wall_foundations {
         let check = match foundation.kind {
-            super::wall_foundations::WallFoundationKind::GroundBeam => match foundation.height_m {
-                Some(h) => Check::new(
-                    "Seção",
-                    foundation.flexure_ratio.max(foundation.shear_ratio),
-                    format!(
-                        "Baldrame {}×{} cm com {} leva a parede até as sapatas.",
-                        decimal(foundation.width_m * 100.0, 0),
-                        decimal(h * 100.0, 0),
-                        foundation.bars
+            crate::domain::wall_foundations::WallFoundationKind::GroundBeam => {
+                match foundation.height_m {
+                    Some(h) => Check::new(
+                        "Seção",
+                        foundation.flexure_ratio.max(foundation.shear_ratio),
+                        format!(
+                            "Baldrame {}×{} cm com {} leva a parede até as sapatas.",
+                            decimal(foundation.width_m * 100.0, 0),
+                            decimal(h * 100.0, 0),
+                            foundation.bars
+                        ),
+                        format!(
+                            "q = {} kN/m (parede e peso próprio), M = {} kN·m, V = {} kN; viga contínua sobre os pilares, Md = 1,4 M, x/d ≤ 0,45; As = {} cm².",
+                            decimal(foundation.load_kn_m, 1),
+                            decimal(foundation.moment_knm, 1),
+                            decimal(foundation.shear_kn, 1),
+                            decimal(foundation.steel_cm2, 2)
+                        ),
                     ),
-                    format!(
-                        "q = {} kN/m (parede e peso próprio), M = {} kN·m, V = {} kN; viga contínua sobre os pilares, Md = 1,4 M, x/d ≤ 0,45; As = {} cm².",
-                        decimal(foundation.load_kn_m, 1),
-                        decimal(foundation.moment_knm, 1),
-                        decimal(foundation.shear_kn, 1),
-                        decimal(foundation.steel_cm2, 2)
+                    None => Check::fail(
+                        "Seção",
+                        "Nenhum baldrame até 80 cm resiste: acrescente pilares nessa parede."
+                            .to_owned(),
+                        format!("M = {} kN·m.", decimal(foundation.moment_knm, 1)),
                     ),
-                ),
-                None => Check::fail(
-                    "Seção",
-                    "Nenhum baldrame até 80 cm resiste: acrescente pilares nessa parede."
-                        .to_owned(),
-                    format!("M = {} kN·m.", decimal(foundation.moment_knm, 1)),
-                ),
-            },
-            super::wall_foundations::WallFoundationKind::StripFooting => Check::new(
+                }
+            }
+            crate::domain::wall_foundations::WallFoundationKind::StripFooting => Check::new(
                 "Pressão no solo",
                 foundation.pressure_kpa / foundation.soil_kpa.max(1e-6),
                 if foundation.pressure_kpa <= foundation.soil_kpa + 1e-6 {
@@ -1220,7 +1038,7 @@ fn sized_structure_verdicts(
         });
     }
     for beam in &report.balance_beams {
-        let min_fs = super::foundations::PAIR_OVERTURNING_MIN_FS;
+        let min_fs = crate::domain::foundations::PAIR_OVERTURNING_MIN_FS;
         let overturning_util = if beam.pair_overturning_fs.is_infinite() {
             0.0
         } else {
@@ -1351,255 +1169,4 @@ fn sized_structure_verdicts(
         });
     }
     verdicts
-}
-
-/// The electrical checks, from the load schedule.
-pub fn electrical_verdicts(schedule: &LoadSchedule) -> Vec<Verdict> {
-    let mut verdicts: Vec<Verdict> = super::limits::electrical_violations(schedule)
-        .into_iter()
-        .map(|v| Verdict {
-            discipline: Discipline::Electrical,
-            element: v.element.clone(),
-            checks: vec![Check::fail(
-                "Fora dos limites",
-                v.message.clone(),
-                limit_detail(&v),
-            )],
-        })
-        .collect();
-    for row in &schedule.circuits {
-        let mut checks = Vec::new();
-        match (row.breaker_a, row.wire_mm2) {
-            (Some(breaker), Some(wire)) => {
-                checks.push(Check::new(
-                    "Corrente",
-                    row.current_a / breaker,
-                    if row.current_a <= breaker {
-                        format!("O disjuntor de {breaker:.0} A protege os {} A do circuito.", decimal(row.current_a, 1))
-                    } else {
-                        "O circuito passa do disjuntor: divida as cargas.".to_owned()
-                    },
-                    format!(
-                        "I = {} A ≤ In = {breaker:.0} A ≤ Iz do fio de {} mm² (NBR 5410 5.3.4 e tabela 36).",
-                        decimal(row.current_a, 1),
-                        decimal(wire, 1)
-                    ),
-                ));
-            }
-            _ => checks.push(Check::fail(
-                "Corrente",
-                "A corrente é alta demais para um circuito: divida as cargas.".to_owned(),
-                format!(
-                    "{} A não cabe nos disjuntores e fios da tabela.",
-                    decimal(row.current_a, 1)
-                ),
-            )),
-        }
-        if let Some(drop) = row.drop_percent {
-            checks.push(Check::new(
-                "Queda de tensão",
-                drop / MAX_DROP_PERCENT,
-                if drop <= MAX_DROP_PERCENT {
-                    format!("A queda de tensão de {} % está dentro dos 4 %.", decimal(drop, 1))
-                } else {
-                    "A tensão cai demais no fim do circuito: aproxime o quadro ou divida o circuito.".to_owned()
-                },
-                format!(
-                    "ΔV = {} % ≤ 4 % (NBR 5410 6.2.7.1), ρ = 1/56 Ω·mm²/m, {} m até o ponto mais longe.",
-                    decimal(drop, 2),
-                    decimal(row.length_m.unwrap_or(0.0), 1)
-                ),
-            ));
-        }
-        verdicts.push(Verdict {
-            discipline: Discipline::Electrical,
-            element: format!("Circuito C{} ({})", row.number, row.kind.short()),
-            checks,
-        });
-    }
-    verdicts
-}
-
-/// The assumptions every structural and electrical result rests on.
-pub fn assumptions(project: &Project) -> Vec<String> {
-    let s = project.structure.settings;
-    vec![
-        "Pré-dimensionamento, não projeto final: construir exige um profissional habilitado (ART ou RRT) e o alvará da prefeitura.".to_owned(),
-        format!(
-            "Concreto fck {:.0} MPa, aço CA-50, solo com tensão admissível de {:.0} kPa.",
-            s.fck_mpa, s.soil_kpa
-        ),
-        format!(
-            "Cargas: sobrecarga {} kN/m², revestimento {} kN/m², alvenaria {} kN/m³ (NBR 6120).",
-            decimal(s.live_kn_m2, 1),
-            decimal(s.finish_kn_m2, 1),
-            decimal(s.masonry_kn_m3, 0)
-        ),
-        "Vigas contínuas sobre apoios simples (pilares), sem vento nem sismo.".to_owned(),
-        "Caixas-d'água e equipamentos entram como cargas concentradas permanentes; a carga informada de equipamento deve incluir impacto/vibração quando aplicável.".to_owned(),
-        "Pilares por carga axial com fator de posição; sem flambagem nem flexão composta.".to_owned(),
-        "Métodos estruturais documentados para a NBR 6118:2023; a edição 2026 ainda requer auditoria e revisão profissional.".to_owned(),
-        "Fios de cobre com isolação de PVC, método B1, 30 °C; queda de tensão até 4 %.".to_owned(),
-        "Métodos, normas e limites: docs/engineering.md.".to_owned(),
-    ]
-}
-
-/// Every verdict of the project, worst first.
-pub fn safety_summary(project: &Project) -> SafetySummary {
-    let mut verdicts = structure_verdicts(project, &project.structure_report());
-    verdicts.extend(electrical_verdicts(&project.load_schedule()));
-    verdicts.sort_by(|a, b| {
-        b.light()
-            .cmp(&a.light())
-            .then(a.discipline.cmp(&b.discipline))
-    });
-    let count = |light: Light| verdicts.iter().filter(|v| v.light() == light).count();
-    SafetySummary {
-        green: count(Light::Green),
-        yellow: count(Light::Yellow),
-        red: count(Light::Red),
-        verdicts,
-        assumptions: assumptions(project),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::domain::geometry::Point;
-
-    fn house() -> Project {
-        let mut project = Project::default();
-        project.set_terrain(Point::new(-2.0, -2.0), Point::new(30.0, 30.0));
-        project
-            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 4.0), "Sala")
-            .unwrap();
-        project
-            .add_room(Point::new(4.0, 0.0), Point::new(7.0, 4.0), "Cozinha")
-            .unwrap();
-        project.generate_structure();
-        project
-    }
-
-    #[test]
-    fn lights_follow_the_utilisation_thresholds() {
-        assert_eq!(Light::from_utilisation(0.5), Light::Green);
-        assert_eq!(Light::from_utilisation(0.85), Light::Green);
-        assert_eq!(Light::from_utilisation(0.9), Light::Yellow);
-        assert_eq!(Light::from_utilisation(1.0), Light::Yellow);
-        assert_eq!(Light::from_utilisation(1.01), Light::Red);
-        assert_eq!(Light::from_utilisation(f64::NAN), Light::Red);
-        let check = Check::new("x", 0.6, String::new(), String::new());
-        assert!((check.margin_percent() - 40.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn a_generated_house_has_no_red_and_every_element_is_judged() {
-        let project = house();
-        let summary = safety_summary(&project);
-        let report = project.structure_report();
-        let elements = report.slabs.len()
-            + report.beams.iter().map(|l| l.spans.len()).sum::<usize>()
-            + report.columns.len()
-            + report.footings.len()
-            + report.masonry.bands.len()
-            + report.masonry.panels.len();
-        assert_eq!(summary.verdicts.len(), elements);
-        assert_eq!(summary.red, 0, "{:?}", summary.verdicts);
-        assert_eq!(summary.green + summary.yellow, elements);
-        assert!(summary.verdicts.iter().all(|v| !v.checks.is_empty()));
-        assert!(!summary.assumptions.is_empty());
-    }
-
-    #[test]
-    fn a_shallow_beam_turns_red_with_what_to_change_and_comes_first() {
-        let mut project = house();
-        let beam = project.structure.beams[0].id;
-        project.update_beam(beam, None, Some(0.20)).unwrap();
-        let summary = safety_summary(&project);
-        assert!(summary.red >= 1);
-        assert_eq!(summary.worst(), Some(Light::Red));
-        let first = &summary.verdicts[0];
-        assert_eq!(first.light(), Light::Red);
-        let height = first.checks.iter().find(|c| c.name == "Altura").unwrap();
-        assert_eq!(height.light, Light::Red);
-        assert!(height.margin_percent() < 0.0);
-        assert!(
-            height.simple.contains("Aumente a viga"),
-            "{}",
-            height.simple
-        );
-        assert!(height.detail.contains("L/10") || height.detail.contains("L/12"));
-    }
-
-    #[test]
-    fn electrical_circuits_get_current_and_voltage_drop_checks() {
-        let mut project = Project::default();
-        project.set_terrain(Point::new(-1.0, -1.0), Point::new(60.0, 10.0));
-        let (w, d) = crate::domain::fixtures::FixtureKind::Panel.default_size();
-        project
-            .add_fixture(
-                crate::domain::fixtures::FixtureKind::Panel,
-                Point::new(0.0, 0.0),
-                w,
-                d,
-                0,
-            )
-            .unwrap();
-        let (w, d) = crate::domain::fixtures::FixtureKind::OutletSpecific.default_size();
-        let far = project
-            .add_fixture(
-                crate::domain::fixtures::FixtureKind::OutletSpecific,
-                Point::new(50.0, 0.0),
-                w,
-                d,
-                0,
-            )
-            .unwrap();
-        project
-            .update_electrical(far, Some(Some(1)), Some(4400.0), None)
-            .unwrap();
-        let verdicts = electrical_verdicts(&project.load_schedule());
-        assert_eq!(verdicts.len(), 1);
-        let names: Vec<&str> = verdicts[0].checks.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["Corrente", "Queda de tensão"]);
-        // The wire was raised to keep the drop within 4 %: not red.
-        assert!(verdicts[0].light() != Light::Red);
-    }
-
-    #[test]
-    fn reinforcement_and_branson_checks_appear_in_structure_verdicts() {
-        let project = house();
-        let summary = safety_summary(&project);
-
-        let beam = summary
-            .verdicts
-            .iter()
-            .find(|v| v.element.starts_with("Viga "))
-            .expect("beam verdict");
-        let deflection = beam.checks.iter().find(|c| c.name == "Flecha").unwrap();
-        assert!(deflection.detail.contains("Mr ="));
-        assert!(deflection.detail.contains("I_eq/Ic ="));
-        assert!(beam.checks.iter().any(|c| c.name == "Armadura / Domínio"));
-        assert!(beam.checks.iter().any(|c| c.name == "Cortante (biela)"));
-
-        let column = summary
-            .verdicts
-            .iter()
-            .find(|v| v.element.starts_with("Pilar "))
-            .expect("column verdict");
-        let steel_ratio = column
-            .checks
-            .iter()
-            .find(|c| c.name == "Taxa de aço")
-            .unwrap();
-        assert!(steel_ratio.detail.contains("traspasse l0 ="));
-
-        let slab = summary
-            .verdicts
-            .iter()
-            .find(|v| v.element.starts_with("Laje "))
-            .expect("slab verdict");
-        assert!(slab.checks.iter().any(|c| c.name == "Armadura (domínio)"));
-    }
 }

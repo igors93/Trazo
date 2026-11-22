@@ -513,7 +513,8 @@ mod tests {
             .unwrap();
         let wall = project.walls.iter().find(|w| w.id == beam.wall_id).unwrap();
         let wall_q = 13.0 * wall.thickness() * 2.8;
-        assert!((beam.load_kn_m - wall_q - 25.0 * beam.width_m * 0.40).abs() < 1e-9);
+        let h_actual = beam.height_m.unwrap();
+        assert!((beam.load_kn_m - wall_q - 25.0 * beam.width_m * h_actual).abs() < 1e-9);
         // Drawn on the formwork plan.
         let marks = project.structure_marks();
         assert!(

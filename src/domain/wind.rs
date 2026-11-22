@@ -78,23 +78,40 @@ impl WindSettings {
     }
 
     /// S2 at height `z` for a building whose largest dimension is `size`
-    /// (NBR 6123, table 1: b, Fr and p by category and class).
+    /// (NBR 6123, Table 1 & Table 2: b, Fr and p by category I–V and class A/B/C,
+    /// with constant S2 for z ≤ 5 m).
     pub fn s2(&self, z: f64, size: f64) -> f64 {
-        let class_b = size >= 20.0;
-        let (b, p) = match (self.category, class_b) {
-            (1, false) => (1.10, 0.06),
-            (1, true) => (1.10, 0.065),
-            (2, false) => (1.00, 0.085),
-            (2, true) => (1.00, 0.09),
-            (4, false) => (0.86, 0.12),
-            (4, true) => (0.86, 0.125),
-            (5, false) => (0.74, 0.15),
-            (5, true) => (0.74, 0.16),
-            (_, false) => (0.94, 0.10),
-            (_, true) => (0.94, 0.105),
+        let class = if size > 50.0 {
+            2u8 // Class C
+        } else if size > 20.0 {
+            1u8 // Class B
+        } else {
+            0u8 // Class A
         };
-        let fr = if class_b { 0.98 } else { 1.0 };
-        b * fr * (z.max(1.0) / 10.0).powf(p)
+        let (b, p) = match (self.category, class) {
+            (1, 0) => (1.10, 0.06),
+            (1, 1) => (1.11, 0.065),
+            (1, _) => (1.12, 0.07),
+            (2, 0) => (1.00, 0.085),
+            (2, 1) => (1.00, 0.09),
+            (2, _) => (1.00, 0.10),
+            (4, 0) => (0.86, 0.12),
+            (4, 1) => (0.85, 0.125),
+            (4, _) => (0.84, 0.135),
+            (5, 0) => (0.74, 0.15),
+            (5, 1) => (0.73, 0.16),
+            (5, _) => (0.71, 0.175),
+            (_, 0) => (0.94, 0.10),
+            (_, 1) => (0.94, 0.105),
+            (_, _) => (0.93, 0.115),
+        };
+        let fr = match class {
+            0 => 1.00,
+            1 => 0.98,
+            _ => 0.95,
+        };
+        // NBR 6123 Table 2: S2 is constant below z = 5 m.
+        b * fr * (z.max(5.0) / 10.0).powf(p)
     }
 
     /// Dynamic pressure at height `z`, kPa.
@@ -167,7 +184,8 @@ pub struct WindReport {
 fn bending(b: f64, h: f64, md: f64, fck: f64) -> (f64, f64) {
     let fcd = fck.max(10.0) / 1.4 * 1000.0;
     let fyd = 500.0 / 1.15 * 1000.0;
-    let d = (h - 0.04).max(0.05);
+    // Match `size_rectangular_beam` effective depth d = h - 0.05 m.
+    let d = (h - 0.05).max(0.05);
     let mu = md / (0.85 * fcd * b * d * d);
     let xi = ((1.0 - (1.0 - 2.0 * mu.min(0.295)).max(0.0).sqrt()) / 0.8).min(0.45);
     let z = d * (1.0 - 0.4 * xi);
@@ -295,7 +313,8 @@ impl Project {
                     .is_none_or(|s| s.starts_with('M') || s.starts_with("VM"))
             });
             let q = wind.pressure_kpa(roof.high_m, size.max(roof.eaves_m()));
-            let cpi = if open { OPEN_CPI } else { 0.0 };
+            // NBR 6123 §6.2.5: open side Cpi = +0.8; closed building uniform permeability Cpi = +0.2.
+            let cpi = if open { OPEN_CPI } else { 0.2 };
             let uplift = (-ROOF_CPE + cpi) * q;
             let dead = result.dead_kn_m2;
             let net = 1.4 * uplift - 0.9 * dead;

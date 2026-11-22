@@ -204,9 +204,17 @@ pub fn wire_diameter_mm(section_mm2: f64) -> f64 {
 }
 
 /// Nominal sizes of corrugated PVC conduit with their usual internal
-/// diameter, in mm. 20 mm (¾″) is the usual minimum for embedded runs.
-pub const CONDUIT_SIZES: [(u32, f64); 5] =
-    [(20, 15.4), (25, 19.0), (32, 24.6), (40, 31.4), (50, 40.0)];
+/// diameter, in mm. 20 mm (¾″) is the usual minimum for embedded runs;
+/// 63 mm and 75 mm cover 100–125 A 3-phase service entrances.
+pub const CONDUIT_SIZES: [(u32, f64); 7] = [
+    (20, 15.4),
+    (25, 19.0),
+    (32, 24.6),
+    (40, 31.4),
+    (50, 40.0),
+    (63, 51.0),
+    (75, 61.0),
+];
 
 /// The smallest conduit for these wire sections, keeping the NBR 5410
 /// (6.2.11.1.6) fill limits: 53 % for one conductor, 31 % for two, 40 % for
@@ -849,7 +857,9 @@ impl Project {
                 let two_pole = poles.get(circuit).copied().unwrap_or(1) >= 2;
                 wires.push(CircuitWires {
                     circuit: *circuit,
-                    phases: if phase || load_inside {
+                    // Commanded lights downstream of a switch carry Return + Neutral + PE
+                    // (not an extra unswitched Phase wire).
+                    phases: if phase {
                         if two_pole { 2 } else { 1 }
                     } else {
                         0

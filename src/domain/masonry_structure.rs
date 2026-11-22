@@ -484,15 +484,18 @@ mod tests {
         assert_eq!(masonry_structure_marks(&report).len(), 6);
 
         // Hand calculation for the 0.90 m door in the default 9 cm ceramic
-        // masonry: ha = min(0.70, 0.45) m, h = one 15 cm course.
+        // masonry: 45° triangular arch (clear_above 0.70 >= 0.45 m), h = 0.15 m,
+        // effective span Lef = 0.90 + 2·min(0.30/2, 0.15/2) = 1.05 m,
+        // M = q_avg·Lef²/6 (triangular arch) + q_self·Lef²/8 (uniform self-weight).
         let lintel = report
             .bands
             .iter()
             .find(|band| band.opening_id == door && band.kind == MasonryBandKind::Lintel)
             .unwrap();
+        let l_ef = 0.90_f64 + 0.075 + 0.075;
         let q_wall = 0.5 * 0.45 * 0.09 * 13.0;
         let q_self = 25.0 * 0.09 * 0.15;
-        let expected_moment = (q_wall + q_self) * 0.90_f64.powi(2) / 8.0;
+        let expected_moment = q_wall * l_ef.powi(2) / 6.0 + q_self * l_ef.powi(2) / 8.0;
         assert!((lintel.height_m - 0.15).abs() < 1e-9);
         assert!((lintel.moment_knm - expected_moment).abs() < 1e-9);
     }

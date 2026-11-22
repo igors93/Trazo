@@ -93,22 +93,28 @@ fn capacity_in_borehole(
         .sum::<f64>()
         / shaft.len().max(1) as f64;
     let tip_soil = borehole.reading_at(length)?.soil;
-    let (alpha, beta) = match kind {
-        PileKind::BoredBroca => {
-            let beta = shaft.iter().map(|r| r.soil.bored_factors().1).sum::<f64>()
-                / shaft.len().max(1) as f64;
-            (tip_soil.bored_factors().0, beta)
-        }
-        PileKind::DeepCfa => {
-            let beta = shaft.iter().map(|r| r.soil.cfa_factors().1).sum::<f64>()
-                / shaft.len().max(1) as f64;
-            (tip_soil.cfa_factors().0, beta)
-        }
+    let alpha = match kind {
+        PileKind::BoredBroca => tip_soil.bored_factors().0,
+        PileKind::DeepCfa => tip_soil.cfa_factors().0,
     };
     let area = PI * diameter * diameter / 4.0;
     let perimeter = PI * diameter;
     let tip_kn = alpha * tip_soil.tip_c_kpa() * tip_n * area;
-    let shaft_kn = beta * 10.0 * (shaft_n / 3.0 + 1.0) * perimeter * length;
+    // Exact layer-by-layer Décourt–Quaresma shaft integration Σ β_i·10·(N_i/3 + 1)·U·ΔL_i
+    // instead of averaging β and N separately (avoids covariance error on layered soils).
+    let mean_qs_kpa = shaft
+        .iter()
+        .map(|r| {
+            let n_i = f64::from(r.n).clamp(3.0, MAX_N);
+            let beta_i = match kind {
+                PileKind::BoredBroca => r.soil.bored_factors().1,
+                PileKind::DeepCfa => r.soil.cfa_factors().1,
+            };
+            beta_i * 10.0 * (n_i / 3.0 + 1.0)
+        })
+        .sum::<f64>()
+        / shaft.len().max(1) as f64;
+    let shaft_kn = mean_qs_kpa * perimeter * length;
     let mut geotechnical = ((tip_kn + shaft_kn) / 2.0).min(tip_kn / 4.0 + shaft_kn / 1.3);
     if kind == PileKind::BoredBroca {
         // NBR 6122 for hand-dug bored piles: tip takes at most 20% of allowable load.
@@ -194,7 +200,8 @@ pub(crate) fn cap_m3(n: u32, d: f64) -> f64 {
     match n {
         0 => 0.0,
         1 => side * side * 0.40,
-        2 => side * (3.0 * d + 0.30 + side) * 0.45,
+        // 2 piles spaced at 3d centre-to-centre: total length = 3d + side (side = d + 0.30).
+        2 => side * (3.0 * d + side) * 0.45,
         3 => (3.0 * d + 0.60).powi(2) * 0.50,
         _ => (3.0 * d + 0.60).powi(2) * 0.55,
     }
@@ -397,7 +404,8 @@ fn select_best_pile(
     max_length: f64,
     max_per_column: u32,
 ) -> Option<(f64, PileCapacity, u32, String)> {
-    let mut best: Option<(f64, PileCapacity, u32, String)> = None;
+    let mut best_viable: Option<(f64, PileCapacity, u32, String)> = None;
+    let mut best_any: Option<(f64, PileCapacity, u32, String)> = None;
     for &diameter in diameters {
         let mut length = min_length;
         while length <= max_length + 1e-9 {
@@ -427,16 +435,24 @@ fn select_best_pile(
                     count += n;
                     concrete += f64::from(n) * area * length + 0.15 * 0.30 * l;
                 }
-                if fits
-                    && best
+                if fits {
+                    if best_any
                         .as_ref()
                         .is_none_or(|(c, _, _, _)| concrete < *c - 1e-9)
-                {
-                    best = Some((concrete, pile, count, governing));
+                    {
+                        best_any = Some((concrete, pile, count, governing.clone()));
+                    }
+                    if pile.settlement_mm <= MAX_PILE_SETTLEMENT_MM + 1e-6
+                        && best_viable
+                            .as_ref()
+                            .is_none_or(|(c, _, _, _)| concrete < *c - 1e-9)
+                    {
+                        best_viable = Some((concrete, pile, count, governing));
+                    }
                 }
             }
             length += 1.0;
         }
     }
-    best
+    best_viable.or(best_any)
 }

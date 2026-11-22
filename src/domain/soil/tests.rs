@@ -120,7 +120,9 @@ fn elastic_settlement_matches_hand_calculation() {
     // s = 150 * 1.0 * (1 - 0.16) * 0.82 / 25_000 = 0.0041328 m = 4.1328 mm.
     let s = estimate_footing_settlement_mm(150.0, 1.0, 1.0, SoilKind::Clay, 10.0);
     assert!((s - 4.1328).abs() < 1e-3, "got {s}");
-    assert!((differential_settlement_mm(12.0, 4.0) - 6.0).abs() < 1e-9);
+    assert!((differential_settlement_mm(12.0, 4.0) - 8.0).abs() < 1e-9);
+    // Equal-load footings still expect 50% heterogeneity differential settlement (Skempton–MacDonald).
+    assert!((differential_settlement_mm(10.0, 10.0) - 5.0).abs() < 1e-9);
 }
 
 #[test]

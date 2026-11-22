@@ -23,14 +23,14 @@ pub fn soil_modulus_mpa(soil: SoilKind, n_bar: f64) -> f64 {
     (soil.modulus_mpa_per_n() * n_bar.max(1.0)).max(2.0)
 }
 
-/// Rigid shape/influence factor `I_s` as a function of plan aspect ratio `L / B`.
+/// Rigid shape/influence factor `I_s` as a function of plan aspect ratio `L / B`
+/// (Boussinesq / Schleicher rigid footing values: 0.82 square, 1.12 at L/B=2, 1.60 at L/B=5).
 fn rigid_shape_factor(aspect: f64) -> f64 {
     let r = aspect.clamp(1.0, 5.0);
-    // Rigid square = 0.82, L/B = 2 ≈ 1.00, L/B = 5 ≈ 1.25 (Bowles / NBR 6122).
     if r <= 2.0 {
-        0.82 + (r - 1.0) * (1.00 - 0.82)
+        0.82 + (r - 1.0) * (1.12 - 0.82)
     } else {
-        1.00 + (r - 2.0) / 3.0 * (1.25 - 1.00)
+        1.12 + (r - 2.0) / 3.0 * (1.60 - 1.12)
     }
 }
 
@@ -64,8 +64,8 @@ pub fn estimate_raft_settlement_mm(
     let b_eq = area_m2.max(1.0).sqrt();
     let nu = soil.poisson_ratio();
     let es_kpa = soil_modulus_mpa(soil, n_bar) * 1000.0;
-    // Rigid mat rigidity reduction (0.80) × square influence (0.88).
-    let s_m = pressure_kpa.max(0.0) * b_eq * (1.0 - nu * nu) * 0.88 * 0.80 / es_kpa;
+    // Rigid square mat influence factor I_s = 0.82 (avoiding double rigidity discount).
+    let s_m = pressure_kpa.max(0.0) * b_eq * (1.0 - nu * nu) * 0.82 / es_kpa;
     s_m * 1000.0
 }
 
@@ -89,8 +89,9 @@ pub fn estimate_pile_settlement_mm(
     (s_elastic_m + s_tip_m) * 1000.0
 }
 
-/// Preliminary differential settlement estimate between the most and least
-/// loaded footings (75 % of the spread, usual Skempton–MacDonald practice), mm.
+/// Preliminary differential settlement estimate (Skempton–MacDonald: at least
+/// 50% of max total settlement for natural soil heterogeneity, and never less
+/// than the deterministic spread `max_mm - min_mm`), mm.
 pub fn differential_settlement_mm(max_mm: f64, min_mm: f64) -> f64 {
-    0.75 * (max_mm - min_mm).max(0.0)
+    (max_mm - min_mm).max(0.50 * max_mm).max(0.0)
 }

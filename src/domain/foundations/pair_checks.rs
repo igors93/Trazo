@@ -170,6 +170,33 @@ impl Project {
         let fck = self.structure.settings.fck_mpa;
         let soil_kpa = self.structure.settings.soil_kpa;
         let load_of = |id: u64| columns.iter().find(|c| c.id == id);
+        // First pass: accumulate cumulative uplift relief ΣΔP per shared interior
+        // anchor column so two balance beams sharing one interior counterweight
+        // column are checked against the TRUE combined uplift (NBR 6122).
+        let mut cumulative_relief_by_anchor: HashMap<u64, f64> = HashMap::new();
+        for beam in &self.structure.balance_beams {
+            let (Some(column), Some(anchor)) = (
+                self.column_by_id(beam.column),
+                self.column_by_id(beam.anchor),
+            ) else {
+                continue;
+            };
+            let Some(p1) = load_of(beam.column) else {
+                continue;
+            };
+            let p1_load = p1.load_kn + ground.get(&beam.column).copied().unwrap_or(0.0);
+            let footing = self.footing_under(column);
+            let axis = anchor.center.minus(column.center);
+            let span = axis.length().max(0.1);
+            let direction = axis.normalized().unwrap_or(Point::new(1.0, 0.0));
+            let e = footing
+                .map_or(0.0, |f| f.center.minus(column.center).dot(direction))
+                .clamp(0.0, span * 0.9);
+            let reaction = p1_load * span / (span - e);
+            let relief = reaction - p1_load;
+            *cumulative_relief_by_anchor.entry(beam.anchor).or_default() += relief;
+        }
+
         for (index, beam) in self.structure.balance_beams.iter().enumerate() {
             let (Some(column), Some(anchor)) = (
                 self.column_by_id(beam.column),
@@ -193,14 +220,19 @@ impl Project {
                 .clamp(0.0, span * 0.9);
             let reaction = p1_load * span / (span - e);
             let relief = reaction - p1_load;
-            let pair_overturning_fs = if relief <= 1e-6 {
+            let total_anchor_relief = cumulative_relief_by_anchor
+                .get(&beam.anchor)
+                .copied()
+                .unwrap_or(relief)
+                .max(relief);
+            let pair_overturning_fs = if total_anchor_relief <= 1e-6 {
                 f64::INFINITY
             } else {
-                n2_load / relief
+                n2_load / total_anchor_relief
             };
             let boundary_pressure_kpa =
                 footing.map(|f| 1.05 * reaction / (f.width * f.depth).max(1e-6));
-            let anchor_net = (n2_load - relief / 2.0).max(0.0);
+            let anchor_net = (n2_load - total_anchor_relief / 2.0).max(0.0);
             let anchor_pressure_kpa =
                 anchor_footing.map(|f| 1.05 * anchor_net / (f.width * f.depth).max(1e-6));
             let moment = p1_load * e;

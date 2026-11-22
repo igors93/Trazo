@@ -253,25 +253,40 @@ pub struct UtilityOverrides {
 impl UtilityRules {
     pub fn with_overrides(mut self, overrides: Option<UtilityOverrides>) -> Self {
         if let Some(o) = overrides {
-            if let Some(v) = o.single_phase_max_kva {
+            if let Some(v) = o.single_phase_max_kva
+                && v.is_finite()
+            {
                 self.single_phase_max_kva = v.max(1.0);
+                self.two_phase_max_kva = self.two_phase_max_kva.max(self.single_phase_max_kva);
             }
-            if let Some(v) = o.two_phase_max_kva {
+            if let Some(v) = o.two_phase_max_kva
+                && v.is_finite()
+            {
                 self.two_phase_max_kva = v.max(self.single_phase_max_kva);
             }
-            if let Some(v) = o.max_bt_kva {
+            if let Some(v) = o.max_bt_kva
+                && v.is_finite()
+            {
                 self.max_bt_kva = v.max(10.0);
             }
-            if let Some(v) = o.min_breaker_a {
+            if let Some(v) = o.min_breaker_a
+                && v.is_finite()
+            {
                 self.min_breaker_a = v.max(10.0);
             }
-            if let Some(v) = o.min_wire_mm2 {
+            if let Some(v) = o.min_wire_mm2
+                && v.is_finite()
+            {
                 self.min_wire_mm2 = v.max(2.5);
             }
-            if let Some(v) = o.general_demand_scale {
+            if let Some(v) = o.general_demand_scale
+                && v.is_finite()
+            {
                 self.general_demand_scale = v.clamp(0.1, 2.0);
             }
-            if let Some(v) = o.specific_demand_scale {
+            if let Some(v) = o.specific_demand_scale
+                && v.is_finite()
+            {
                 self.specific_demand_scale = v.clamp(0.1, 2.0);
             }
         }
