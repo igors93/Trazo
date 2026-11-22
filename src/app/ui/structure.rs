@@ -1185,6 +1185,17 @@ impl FloorPlanApp {
                             self.message = format!("Tensão do solo: {kpa:.0} kPa, da sondagem.");
                         })
                         .ok_or_else(|| "A sondagem não chega à cota das sapatas.".to_owned()),
+                    StructureEdit::Soil(super::foundations::SoilAction::GenerateBalanceBeams) => {
+                        let (added, alone) = self.project.generate_balance_beams();
+                        self.message = if added > 0 {
+                            format!("{added} viga(s) alavanca lançada(s).")
+                        } else if alone > 0 {
+                            format!("{alone} pilar(es) de divisa sem pilar interno para ancorar.")
+                        } else {
+                            "Nenhuma viga alavanca nova necessária.".to_owned()
+                        };
+                        Ok(())
+                    }
                 };
                 if let Err(e) = result {
                     error = Some(e);

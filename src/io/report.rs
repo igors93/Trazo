@@ -956,6 +956,60 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                 );
             }
         }
+        if !report.balance_beams.is_empty() {
+            pages.subheading("Vigas alavanca (fundações de divisa — NBR 6122)");
+            let rows: Vec<_> = report
+                .balance_beams
+                .iter()
+                .map(|b| {
+                    let name = format!("Viga alavanca {} ({} → {})", b.label, b.column, b.anchor);
+                    let fs = if b.pair_overturning_fs.is_infinite() {
+                        "∞".to_owned()
+                    } else {
+                        decimal(b.pair_overturning_fs, 2)
+                    };
+                    let sec = b.height_m.map_or("insuf.".to_owned(), |h| {
+                        format!("{:.0}×{:.0}", b.width_m * 100.0, h * 100.0)
+                    });
+                    (
+                        light_of.get(&name).copied(),
+                        vec![
+                            b.label.clone(),
+                            format!("{}→{}", b.column, b.anchor),
+                            format!("{} / {:.0}", decimal(b.span_m, 2), b.eccentricity_m * 100.0),
+                            format!("{}/{}", decimal(b.reaction_kn, 1), decimal(b.relief_kn, 1)),
+                            fs,
+                            format!(
+                                "{}/{}",
+                                b.boundary_pressure_kpa
+                                    .map_or("—".to_owned(), |v| format!("{v:.0}")),
+                                b.anchor_pressure_kpa
+                                    .map_or("—".to_owned(), |v| format!("{v:.0}"))
+                            ),
+                            format!("{sec} · {} · {}", b.bars, b.stirrups),
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &[
+                    "Viga",
+                    "Par",
+                    "l(m)/e(cm)",
+                    "R1/ΔP (kN)",
+                    "FS tomb.",
+                    "σ1/σ2 (kPa)",
+                    "Seção / Aço",
+                ],
+                &[0.9, 1.2, 1.4, 1.5, 1.0, 1.4, 3.0],
+                &rows,
+            );
+            for b in &report.balance_beams {
+                if let Some(alt) = &b.strip_alternative {
+                    pages.paragraph(&format!("• {}: {}", b.label, alt.note), 2.7, "#8a5a00");
+                }
+            }
+        }
         if !report.timber_posts.is_empty() {
             pages.subheading("Mourões de madeira (NBR 7190)");
             let rows: Vec<_> = report
@@ -1734,6 +1788,31 @@ mod tests {
         assert!(all.contains("SP-02"));
         assert!(all.contains("Estacas profundas (hélice contínua)"));
         assert!(all.contains("Recalque (mm)"));
+        for page in &pages {
+            assert!(
+                svg2pdf::usvg::Tree::from_str(page, &svg2pdf::usvg::Options::default()).is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn boundary_balance_beams_appear_in_the_review_report() {
+        let mut project = Project::default();
+        project.name = "Divisa Teste".to_owned();
+        project.set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 15.0));
+        project
+            .add_room(Point::new(0.0, 2.0), Point::new(4.0, 6.0), "Gourmet")
+            .unwrap();
+        project.generate_structure();
+        let (added, _) = project.generate_balance_beams();
+        assert_eq!(added, 2);
+
+        let pages = report_pages(&project, "22/11/2026");
+        let all = pages.join("\n");
+        assert!(all.contains("Vigas alavanca (fundações de divisa — NBR 6122)"));
+        assert!(all.contains("VA1"));
+        assert!(all.contains("FS tomb."));
+        assert!(all.contains("σ1/σ2 (kPa)"));
         for page in &pages {
             assert!(
                 svg2pdf::usvg::Tree::from_str(page, &svg2pdf::usvg::Options::default()).is_ok()

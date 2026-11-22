@@ -219,16 +219,18 @@ Every ground-floor wall reaches the soil through a ground beam or a strip footin
 
 Checked by `walls_between_columns_get_ground_beams_and_the_others_strip_footings`, `ground_beam_reactions_reach_the_footings` and `a_taller_wall_weighs_more_on_its_foundation`.
 
-### Balance beams (*vigas alavanca*)
+### Balance beams (*vigas alavanca*) and boundary strip alternative
 
-A boundary footing stands off its column by e. A balance beam to an interior column at distance l turns the pair into a lever (`src/domain/foundations.rs`):
+A boundary footing stands off its column by `e`. A balance beam to an interior column at distance `l` turns the pair into a lever (`src/domain/foundations/`):
 
 | Quantity | Formula |
 | --- | --- |
-| Reaction on the boundary footing, centred | R₁ = P₁ · l / (l − e) |
-| Relief on the interior column | ΔP = R₁ − P₁ = P₁ · e / (l − e); half of it is taken off the interior footing (usual NBR 6122 recommendation) |
-| Uplift check | N₂ − ΔP ≥ 0, otherwise more weight (a concrete block) or a strip footing is needed |
-| Beam moment and shear | M = P₁ · e (hogging, top steel), V = ΔP from the footing to the interior column |
+| Reaction on the boundary footing, centred | `R₁ = P₁ · l / (l − e)` |
+| Relief on the interior column | `ΔP = R₁ − P₁ = P₁ · e / (l − e)`; half of it is taken off the interior footing (usual NBR 6122 recommendation) |
+| Pair overturning safety factor | `FS = N₂ · (l − e) / (P₁ · e) = N₂ / ΔP ≥ 1.5` (NBR 6122:2019); below `1.0` the interior column lifts |
+| Pair soil pressures | `σ₁ = 1.05 · R₁ / A₁ ≤ σadm` on the boundary footing and `σ₂ = 1.05 · (N₂ − ΔP/2) / A₂ ≤ σadm` on the anchor footing |
+| Beam moment, shear & steel | `M = P₁ · e` (hogging, top steel), `V = max(ΔP, P₁)` sized for `Md = 1.4 M` and `Vd = 1.4 V` with top bars and closed stirrups |
+| Strip-footing alternative | When `FS < 1.5` or pair soil pressure exceeds `σadm`, Trazo sizes the equivalent continuous boundary strip footing (`B = 1.05 · q / σadm ≥ 40 cm`) |
 | Section | the lowest height from 40 to 120 cm with μ = Md / (0.85 fcd b d²) ≤ 0.295 (x/d ≤ 0.45) and τwd ≤ τRd2, Md = 1.4 M, Vd = 1.4 V; As = Md / (z fyd), at least 0.15 % b h |
 
 *Vigas alavanca* lays one from every boundary footing more than 5 cm off its column to the nearest column inward (within 30° of the offset, 1.5 to 10 m away). Checked by `the_lever_follows_the_textbook_statics` (P₁ = 100 kN, l = 4 m, e = 0.30 m: R₁ = 108.1 kN, ΔP = 8.1 kN, M = 30 kN·m) and `boundary_footings_are_centred_by_balance_beams_to_interior_columns`. Stirrups and the beam's own weight are not included yet.

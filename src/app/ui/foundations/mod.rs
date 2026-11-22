@@ -2,6 +2,7 @@
 //! (#144), wall foundations (#143), multi-borehole SPT survey and comparative
 //! foundation study (#112).
 
+mod balance_panel;
 mod study_panel;
 mod survey_panel;
 
@@ -66,12 +67,14 @@ impl FloorPlanApp {
     }
 }
 
-/// What the soil tab asks for (#112).
+/// What the soil tab asks for (#112, #144).
 pub(super) enum SoilAction {
     /// Replace or remove the survey.
     Survey(Option<SoilSurvey>),
     /// Take the survey's governing footing pressure as the soil pressure.
     ApplyToSoil,
+    /// Generate balance beams for off-centre boundary footings.
+    GenerateBalanceBeams,
 }
 
 pub(super) fn decimal(value: f64, places: usize) -> String {
@@ -79,9 +82,12 @@ pub(super) fn decimal(value: f64, places: usize) -> String {
 }
 
 /// The "Solo e fundações" tab of the structure window: multi-borehole SPT
-/// survey and comparative foundation study.
+/// survey, comparative foundation study and boundary balance beams.
 pub(super) fn soil_tab(ui: &mut Ui, project: &Project) -> Option<SoilAction> {
-    let action = survey_panel::show(ui, project);
+    let mut action = survey_panel::show(ui, project);
     study_panel::show(ui, project);
+    if let Some(balance_action) = balance_panel::show(ui, project) {
+        action = Some(balance_action);
+    }
     action
 }

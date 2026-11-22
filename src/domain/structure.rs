@@ -3361,6 +3361,22 @@ impl Project {
                     beam.anchor,
                     decimal(beam.anchor_load_kn, 1)
                 ));
+            } else if !beam.overturning_ok() {
+                report.warnings.push(format!(
+                    "{}: fator de segurança ao tombamento do par FS = {} < 1,5 (NBR 6122); aumente o contrapeso em {} ou adote sapata corrida na divisa.",
+                    beam.label,
+                    decimal(beam.pair_overturning_fs, 2),
+                    beam.anchor
+                ));
+            }
+            if !beam.pair_soil_ok() {
+                report.warnings.push(format!(
+                    "{}: tensão no solo do par ({:.0}/{:.0} kPa) excede {:.0} kPa (NBR 6122); use Ajustar sapatas.",
+                    beam.label,
+                    beam.boundary_pressure_kpa.unwrap_or(0.0),
+                    beam.anchor_pressure_kpa.unwrap_or(0.0),
+                    beam.soil_kpa
+                ));
             }
             if beam.height_m.is_none() {
                 report.warnings.push(format!(

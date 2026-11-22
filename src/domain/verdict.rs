@@ -1220,48 +1220,100 @@ fn sized_structure_verdicts(
         });
     }
     for beam in &report.balance_beams {
+        let min_fs = super::foundations::PAIR_OVERTURNING_MIN_FS;
+        let overturning_util = if beam.pair_overturning_fs.is_infinite() {
+            0.0
+        } else {
+            min_fs / beam.pair_overturning_fs.max(1e-6)
+        };
+        let strip_hint = beam
+            .strip_alternative
+            .as_ref()
+            .map_or(String::new(), |alt| format!(" {}", alt.note));
         let mut checks = vec![Check::new(
-            "Alívio no apoio interno",
-            beam.relief_kn / beam.anchor_load_kn.max(1e-6),
+            "Tombamento do par",
+            overturning_util,
             if beam.uplift() {
                 format!(
-                    "O pilar {} é levantado pela viga: ponha mais peso nele (bloco de concreto) ou troque por sapata corrida.",
+                    "O pilar {} é levantado pela viga (FS = {} < 1,5): ponha contrapeso nele ou troque por sapata corrida.{strip_hint}",
+                    beam.anchor,
+                    decimal(beam.pair_overturning_fs, 2)
+                )
+            } else if !beam.overturning_ok() {
+                format!(
+                    "Fator de segurança ao tombamento do par FS = {} abaixo de 1,5 (NBR 6122): aumente o contrapeso em {} ou adote sapata corrida.{strip_hint}",
+                    decimal(beam.pair_overturning_fs, 2),
                     beam.anchor
                 )
             } else {
-                format!("O pilar {} segura a viga sem ser levantado.", beam.anchor)
+                format!(
+                    "O par {} → {} resiste ao tombamento sem levantar o apoio interno.",
+                    beam.column, beam.anchor
+                )
             },
             format!(
-                "R1 = P1·l/(l − e) = {} kN (P1 = {} kN, l = {} m, e = {} cm); ΔP = {} kN ≤ N2 = {} kN; metade de ΔP descontada da sapata interna (NBR 6122).",
+                "R1 = P1·l/(l − e) = {} kN (P1 = {} kN, l = {} m, e = {} cm); ΔP = {} kN, N2 = {} kN; FS = N2/ΔP = {} ≥ 1,5 (NBR 6122).",
                 decimal(beam.reaction_kn, 1),
                 decimal(beam.column_load_kn, 1),
                 decimal(beam.span_m, 2),
                 decimal(beam.eccentricity_m * 100.0, 0),
                 decimal(beam.relief_kn, 1),
-                decimal(beam.anchor_load_kn, 1)
+                decimal(beam.anchor_load_kn, 1),
+                if beam.pair_overturning_fs.is_infinite() {
+                    "∞".to_owned()
+                } else {
+                    decimal(beam.pair_overturning_fs, 2)
+                }
             ),
         )];
+        if beam.boundary_pressure_kpa.is_some() || beam.anchor_pressure_kpa.is_some() {
+            checks.push(Check::new(
+                "Solo do par",
+                beam.pair_soil_ratio(),
+                if beam.pair_soil_ok() {
+                    "As duas sapatas do par ficam dentro da tensão admissível do solo.".to_owned()
+                } else {
+                    format!(
+                        "Tensão no solo do par excede {:.0} kPa: aumente as sapatas (Ajustar sapatas).{strip_hint}",
+                        beam.soil_kpa
+                    )
+                },
+                format!(
+                    "Divisa ({}) σ1 = {} kPa, apoio interno ({}) σ2 = {} kPa ≤ σadm = {:.0} kPa (com metade de ΔP descontada no apoio interno, NBR 6122).",
+                    beam.column,
+                    beam.boundary_pressure_kpa
+                        .map_or("—".to_owned(), |v| format!("{v:.0}")),
+                    beam.anchor,
+                    beam.anchor_pressure_kpa
+                        .map_or("—".to_owned(), |v| format!("{v:.0}")),
+                    beam.soil_kpa
+                ),
+            ));
+        }
         match beam.height_m {
             Some(h) => checks.push(Check::new(
                 "Seção",
                 beam.flexure_ratio.max(beam.shear_ratio),
                 format!(
-                    "Viga {}×{} cm com {} resiste ao momento de {} kN·m.",
+                    "Viga {}×{} cm com {} e estribos {} resiste ao momento de {} kN·m.",
                     decimal(beam.width_m * 100.0, 0),
                     decimal(h * 100.0, 0),
                     beam.bars,
+                    beam.stirrups,
                     decimal(beam.moment_knm, 1)
                 ),
                 format!(
-                    "M = P1·e = {} kN·m, V = {} kN; Md = 1,4 M, x/d ≤ 0,45, τwd ≤ τRd2; As = {} cm² (CA-50).",
+                    "M = P1·e = {} kN·m, V = {} kN; Md = 1,4 M, x/d ≤ 0,45, τwd ≤ τRd2; As = {} cm² (CA-50), estribos {}.",
                     decimal(beam.moment_knm, 1),
                     decimal(beam.shear_kn, 1),
-                    decimal(beam.top_steel_cm2, 2)
+                    decimal(beam.top_steel_cm2, 2),
+                    beam.stirrups
                 ),
             )),
             None => checks.push(Check::fail(
                 "Seção",
-                "Nenhuma seção até 120 cm resiste: aproxime o pilar interno ou alargue a viga.".to_owned(),
+                "Nenhuma seção até 120 cm resiste: aproxime o pilar interno ou alargue a viga."
+                    .to_owned(),
                 format!("M = {} kN·m.", decimal(beam.moment_knm, 1)),
             )),
         }

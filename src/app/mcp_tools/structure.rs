@@ -1280,6 +1280,45 @@ impl FloorPlanApp {
                 })).collect::<Vec<_>>(),
             })
         });
+        let balance_beams: Vec<Value> = report
+            .balance_beams
+            .iter()
+            .map(|b| {
+                let strip = b.strip_alternative.as_ref().map(|alt| {
+                    json!({
+                        "largura_cm": (alt.width_m * 100.0).round(),
+                        "tensao_kpa": round1(alt.pressure_kpa),
+                        "viavel": alt.viable,
+                        "nota": alt.note,
+                    })
+                });
+                json!({
+                    "id": b.id,
+                    "rotulo": b.label,
+                    "pilar_divisa": b.column,
+                    "pilar_interno": b.anchor,
+                    "vao_m": round1(b.span_m * 100.0) / 100.0,
+                    "excentricidade_cm": round1(b.eccentricity_m * 100.0),
+                    "carga_pilar_kn": round1(b.column_load_kn),
+                    "reacao_sapata_kn": round1(b.reaction_kn),
+                    "alivio_kn": round1(b.relief_kn),
+                    "levanta_apoio": b.uplift(),
+                    "fator_tombamento_par": b.pair_overturning_fs.is_finite().then(|| round1(b.pair_overturning_fs)),
+                    "tombamento_ok": b.overturning_ok(),
+                    "tensao_divisa_kpa": b.boundary_pressure_kpa.map(round1),
+                    "tensao_apoio_kpa": b.anchor_pressure_kpa.map(round1),
+                    "solo_par_ok": b.pair_soil_ok(),
+                    "momento_knm": round1(b.moment_knm),
+                    "cortante_kn": round1(b.shear_kn),
+                    "secao_cm": b.height_m.map(|h| section_cm(b.width_m, h)),
+                    "armadura_superior_cm2": (b.top_steel_cm2 * 100.0).round() / 100.0,
+                    "barras": b.bars,
+                    "estribos": b.stirrups,
+                    "atende": b.overturning_ok() && b.pair_soil_ok() && b.height_m.is_some(),
+                    "alternativa_sapata_corrida": strip,
+                })
+            })
+            .collect();
         let foundation_study = (!report.columns.is_empty())
             .then(|| foundation_study_json(&self.project.foundation_study()));
         Ok(ToolOutput::ok(format!(
@@ -1370,23 +1409,7 @@ impl FloorPlanApp {
                 "pressao_solo_kpa": round1(f.pressure_kpa),
                 "largura_necessaria_cm": round1(f.needed_width_m * 100.0),
             })).collect::<Vec<_>>(),
-            "vigas_alavanca": report.balance_beams.iter().map(|b| json!({
-                "id": b.id,
-                "rotulo": b.label,
-                "pilar_divisa": b.column,
-                "pilar_interno": b.anchor,
-                "vao_m": round1(b.span_m * 100.0) / 100.0,
-                "excentricidade_cm": round1(b.eccentricity_m * 100.0),
-                "carga_pilar_kn": round1(b.column_load_kn),
-                "reacao_sapata_kn": round1(b.reaction_kn),
-                "alivio_kn": round1(b.relief_kn),
-                "levanta_apoio": b.uplift(),
-                "momento_knm": round1(b.moment_knm),
-                "cortante_kn": round1(b.shear_kn),
-                "secao_cm": b.height_m.map(|h| section_cm(b.width_m, h)),
-                "armadura_superior_cm2": (b.top_steel_cm2 * 100.0).round() / 100.0,
-                "barras": b.bars,
-            })).collect::<Vec<_>>(),
+            "vigas_alavanca": balance_beams,
             "pilares_desalinhados": misaligned,
             "cargas_concentradas": concentrated_loads,
             "alvenaria": {
