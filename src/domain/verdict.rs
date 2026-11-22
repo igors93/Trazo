@@ -364,6 +364,152 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
             });
         }
     }
+    for band in &report.masonry.bands {
+        let bearing = band.bearing_left_m.min(band.bearing_right_m);
+        let mut checks = vec![
+            Check::new(
+                "Apoio",
+                super::masonry_structure::MIN_LINTEL_BEARING_M / bearing.max(1e-9),
+                if bearing + 1e-9 >= super::masonry_structure::MIN_LINTEL_BEARING_M {
+                    format!(
+                        "{} apoia pelo menos {} em cada lado do vão.",
+                        band.kind.label(),
+                        cm(super::masonry_structure::MIN_LINTEL_BEARING_M)
+                    )
+                } else {
+                    format!(
+                        "Faltam apoios laterais: mova o vão ou prolongue {} até ter {} de cada lado.",
+                        band.kind.label().to_lowercase(),
+                        cm(super::masonry_structure::MIN_LINTEL_BEARING_M)
+                    )
+                },
+                format!(
+                    "Apoios esquerdo/direito = {}/{}; mínimo verificado {} e preferido 30 cm (NBR 16868-1, detalhamento de regiões junto a aberturas).",
+                    cm(band.bearing_left_m),
+                    cm(band.bearing_right_m),
+                    cm(super::masonry_structure::MIN_LINTEL_BEARING_M)
+                ),
+            ),
+            Check::new(
+                "Vão",
+                band.clear_span_m / super::masonry_structure::MAX_LINTEL_SPAN_M,
+                if band.clear_span_m <= super::masonry_structure::MAX_LINTEL_SPAN_M {
+                    format!(
+                        "O vão de {} está dentro do método simples.",
+                        decimal(band.clear_span_m, 2)
+                    )
+                } else {
+                    "Vão grande demais para a verga em canaleta: use uma viga calculada por engenheiro."
+                        .to_owned()
+                },
+                format!(
+                    "L = {} m; o pré-dimensionamento de vergas do Trazo para em {} m.",
+                    decimal(band.clear_span_m, 2),
+                    decimal(super::masonry_structure::MAX_LINTEL_SPAN_M, 1)
+                ),
+            ),
+        ];
+        if band.kind == super::masonry_structure::MasonryBandKind::Lintel {
+            checks.push(Check::new(
+                "Flexão",
+                band.flexure_ratio,
+                if band.flexure_ratio <= 1.0 {
+                    format!(
+                        "A verga {}×{} com {} cobre a flexão preliminar.",
+                        cm(band.width_m),
+                        cm(band.height_m),
+                        band.bars
+                    )
+                } else {
+                    "A verga em canaleta não basta: aumente a altura ou use uma viga independente."
+                        .to_owned()
+                },
+                format!(
+                    "qk = {} kN/m; Mk = qk·L²/8 = {} kN·m; Md = 1,4 Mk, braço z = 0,9d, aço CA-50 {} (pré-dimensionamento conservador; NBR 16868-1 e NBR 6118).",
+                    decimal(band.load_kn_m, 2),
+                    decimal(band.moment_knm, 2),
+                    band.bars
+                ),
+            ));
+        }
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("{} {}", band.kind.label(), band.label),
+            checks,
+        });
+    }
+    for panel in &report.masonry.panels {
+        let mut checks = vec![
+            Check::new(
+                "Esbeltez",
+                panel.slenderness / panel.slenderness_limit,
+                if panel.slenderness <= panel.slenderness_limit {
+                    format!(
+                        "A parede de {} para {} m de altura tem esbeltez aceitável.",
+                        cm(panel.thickness_m),
+                        decimal(panel.height_m, 2)
+                    )
+                } else {
+                    format!(
+                        "Parede esbelta: aumente a espessura para pelo menos {} ou trave-a na altura.",
+                        cm(panel.height_m / panel.slenderness_limit)
+                    )
+                },
+                format!(
+                    "hef/t = {} / {} = {}; limite {} para alvenaria {} (modelo simplificado NBR 16868-1).",
+                    decimal(panel.height_m, 2),
+                    decimal(panel.thickness_m, 2),
+                    decimal(panel.slenderness, 1),
+                    decimal(panel.slenderness_limit, 0),
+                    panel.kind.label().to_lowercase()
+                ),
+            ),
+            Check::new(
+                "Amarração lateral",
+                panel.unbraced_m / panel.unbraced_limit_m,
+                if panel.unbraced_m <= panel.unbraced_limit_m {
+                    format!(
+                        "O maior painel sem travamento tem {} m e está amarrado.",
+                        decimal(panel.unbraced_m, 2)
+                    )
+                } else {
+                    format!(
+                        "Acrescente pilar ou parede de amarração para limitar os painéis a {} m.",
+                        decimal(panel.unbraced_limit_m, 2)
+                    )
+                },
+                format!(
+                    "Trecho sem retorno/pilar = {} m; limite preliminar {} m.",
+                    decimal(panel.unbraced_m, 2),
+                    decimal(panel.unbraced_limit_m, 2)
+                ),
+            ),
+        ];
+        if panel.kind == super::masonry_structure::MasonryWallKind::LoadBearing {
+            checks.push(Check::new(
+                "Compressão",
+                panel.compression_ratio,
+                if panel.compression_ratio <= 1.0 {
+                    "A compressão preliminar fica abaixo da resistência reduzida do prisma."
+                        .to_owned()
+                } else {
+                    "A parede estrutural está sobrecarregada: aumente a espessura/resistência ou redistribua as cargas."
+                        .to_owned()
+                },
+                format!(
+                    "fd,red = {} MPa; σd = {} MPa; uso {} %. Inclui peso próprio e faixa tributária conservadora de 1 m por pavimento (NBR 16868-1).",
+                    decimal(panel.compression_capacity_mpa, 2),
+                    decimal(panel.compression_mpa, 2),
+                    decimal(panel.compression_ratio * 100.0, 0)
+                ),
+            ));
+        }
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Alvenaria {}", panel.label),
+            checks,
+        });
+    }
     for column in &report.columns {
         let needed = column.area_needed_cm2.max(360.0);
         let side = column.width_m.min(column.depth_m);
@@ -1069,7 +1215,9 @@ mod tests {
         let elements = report.slabs.len()
             + report.beams.iter().map(|l| l.spans.len()).sum::<usize>()
             + report.columns.len()
-            + report.footings.len();
+            + report.footings.len()
+            + report.masonry.bands.len()
+            + report.masonry.panels.len();
         assert_eq!(summary.verdicts.len(), elements);
         assert_eq!(summary.red, 0, "{:?}", summary.verdicts);
         assert_eq!(summary.green + summary.yellow, elements);

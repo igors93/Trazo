@@ -668,11 +668,73 @@ impl FloorPlanApp {
                         }
                         ui.end_row();
                     };
-                    if report.slabs.is_empty() && report.beams.is_empty() && report.columns.is_empty() {
+                    if report.slabs.is_empty()
+                        && report.beams.is_empty()
+                        && report.columns.is_empty()
+                        && report.masonry.panels.is_empty()
+                    {
                         ui.label(
                             RichText::new("Nenhum elemento estrutural ainda: use Gerar estrutura, ou insira pilares e ligue-os por vigas.")
                                 .color(MUTED),
                         );
+                    }
+                    if !report.masonry.bands.is_empty() {
+                        heading(ui, "Vergas e contravergas · NBR 16868");
+                        egui::Grid::new("structure_masonry_bands")
+                            .striped(true)
+                            .spacing([12.0, 6.0])
+                            .show(ui, |ui| {
+                                titles(ui, &["Marca", "Tipo", "Vão", "Apoios", "Seção", "Armadura", "Situação"]);
+                                for band in &report.masonry.bands {
+                                    ui.label(RichText::new(&band.label).font(strong(12.5)));
+                                    ui.label(band.kind.label());
+                                    ui.label(format!("{} m", decimal(band.clear_span_m, 2)));
+                                    ui.label(format!(
+                                        "{}/{} cm",
+                                        decimal(band.bearing_left_m * 100.0, 0),
+                                        decimal(band.bearing_right_m * 100.0, 0)
+                                    ));
+                                    ui.label(section_cm(band.width_m, band.height_m));
+                                    ui.label(&band.bars);
+                                    status(ui, band.ok());
+                                    ui.end_row();
+                                }
+                            });
+                    }
+                    if !report.masonry.panels.is_empty() {
+                        heading(ui, "Painéis de alvenaria");
+                        egui::Grid::new("structure_masonry_panels")
+                            .striped(true)
+                            .spacing([12.0, 6.0])
+                            .show(ui, |ui| {
+                                titles(ui, &["Painel", "Uso", "Material", "h/t", "Sem amarração", "Compressão", "Situação"]);
+                                for panel in &report.masonry.panels {
+                                    ui.label(RichText::new(&panel.label).font(strong(12.5)));
+                                    ui.label(panel.kind.label());
+                                    ui.label(&panel.masonry);
+                                    ui.label(format!(
+                                        "{} / {}",
+                                        decimal(panel.slenderness, 1),
+                                        decimal(panel.slenderness_limit, 0)
+                                    ));
+                                    ui.label(format!(
+                                        "{} / {} m",
+                                        decimal(panel.unbraced_m, 2),
+                                        decimal(panel.unbraced_limit_m, 2)
+                                    ));
+                                    ui.label(if panel.compression_capacity_mpa > 0.0 {
+                                        format!(
+                                            "{} / {} MPa",
+                                            decimal(panel.compression_mpa, 2),
+                                            decimal(panel.compression_capacity_mpa, 2)
+                                        )
+                                    } else {
+                                        "— (vedação)".to_owned()
+                                    });
+                                    status(ui, panel.ok());
+                                    ui.end_row();
+                                }
+                            });
                     }
                     if !report.slabs.is_empty() {
                         heading(ui, "Lajes");

@@ -37,12 +37,12 @@ norma em cada cômodo; distribuir_circuitos numera os circuitos; insira o quadro
 e use gerar_eletrodutos para lançar os eletrodutos com a fiação de cada trecho; \
 quadro_de_cargas mostra previsão, circuitos, fases, queda de tensão, fio, disjuntor, \
 demanda, padrão de entrada, eletrodutos e alertas.
-Estrutura (pré-dimensionamento, NBR 6118 / NBR 6122 / NBR 7190): projeto_estrutural com \
+Estrutura (pré-dimensionamento, NBR 6118 / NBR 6122 / NBR 16868 / NBR 7190): projeto_estrutural com \
 acao gerar_estrutura lança pilares, vigas sobre as paredes, lajes nos cômodos e sapatas; \
 também oferece vigas alavanca em divisa, baldrame/sapata corrida sob paredes, sondagem SPT \
 e simulação de fundações (sapatas/radier/brocas), cargas concentradas (caixa-d'água) e \
 telhado meia-água em madeira (definir_telhado / ajustar_paredes_telhado). pre_dimensionamento \
-mostra lajes, vigas contínuas, pilares (com esbeltez), sapatas, telhados, sondagem, estudo \
+mostra lajes, vigas contínuas, pilares (com esbeltez), sapatas, vergas/contravergas e painéis de alvenaria, telhados, sondagem, estudo \
 de fundações, armaduras preliminares, tabela de aço, semáforo e alertas. Ajuste pontos \
 elétricos com inserir_ponto_eletrico e editar_ponto_eletrico. Nomeie os cômodos pelo uso \
 (Cozinha, Banheiro, Quarto...), porque as normas mudam conforme o tipo de cômodo.
@@ -913,7 +913,7 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "pre_dimensionamento",
             title: "Pré-dimensionamento da estrutura",
-            description: "Lajes (painéis, charneiras 45° e cargas concentradas), vigas contínuas (momentos, cortante, flecha com Branson NBR 6118), pilares (com altura e esbeltez), sapatas, vigas alavanca, fundação de paredes, telhados e mourões (NBR 7190), sondagem SPT, estudo comparativo de fundações, armaduras preliminares e tabela de aço, caminho de cargas de caixa-d'água/equipamento, semáforo, limites e alertas.",
+            description: "Lajes (painéis, charneiras 45° e cargas concentradas), vigas contínuas (momentos, cortante, flecha com Branson NBR 6118), pilares (com altura e esbeltez), sapatas, vigas alavanca, fundação de paredes, vergas/contravergas e painéis de alvenaria de vedação/estrutural (NBR 16868), telhados e mourões (NBR 7190), sondagem SPT, estudo comparativo de fundações, armaduras preliminares e tabela de aço, caminho de cargas de caixa-d'água/equipamento, semáforo, limites e alertas.",
             properties: json!({}),
             required: &[],
             read_only: true,

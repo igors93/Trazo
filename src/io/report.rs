@@ -523,10 +523,86 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
             3.0,
             "#cc3f33",
         );
-    } else if report.slabs.is_empty() && report.beams.is_empty() && report.columns.is_empty() {
+    } else if report.slabs.is_empty()
+        && report.beams.is_empty()
+        && report.columns.is_empty()
+        && report.masonry.panels.is_empty()
+    {
         pages.paragraph("Nenhum elemento estrutural no projeto.", 3.0, MUTED);
     } else {
         let refused_names: Vec<&str> = refused.iter().map(|v| v.element.as_str()).collect();
+        if !report.masonry.bands.is_empty() {
+            pages.subheading("Vergas e contravergas");
+            let rows: Vec<_> = report
+                .masonry
+                .bands
+                .iter()
+                .map(|band| {
+                    let name = format!("{} {}", band.kind.label(), band.label);
+                    (
+                        light_of.get(&name).copied(),
+                        vec![
+                            band.label.clone(),
+                            band.kind.label().to_owned(),
+                            decimal(band.clear_span_m, 2),
+                            format!(
+                                "{}/{}",
+                                decimal(band.bearing_left_m * 100.0, 0),
+                                decimal(band.bearing_right_m * 100.0, 0)
+                            ),
+                            section_cm(band.width_m, band.height_m),
+                            band.bars.clone(),
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &["Marca", "Tipo", "Vão (m)", "Apoios (cm)", "b×h (cm)", "Aço"],
+                &[1.2, 1.7, 1.3, 1.8, 1.6, 1.5],
+                &rows,
+            );
+        }
+        if !report.masonry.panels.is_empty() {
+            pages.subheading("Painéis de alvenaria");
+            let rows: Vec<_> = report
+                .masonry
+                .panels
+                .iter()
+                .map(|panel| {
+                    (
+                        light_of.get(&format!("Alvenaria {}", panel.label)).copied(),
+                        vec![
+                            panel.label.clone(),
+                            panel.kind.label().to_owned(),
+                            format!(
+                                "{}/{}",
+                                decimal(panel.slenderness, 1),
+                                decimal(panel.slenderness_limit, 0)
+                            ),
+                            format!(
+                                "{}/{}",
+                                decimal(panel.unbraced_m, 2),
+                                decimal(panel.unbraced_limit_m, 2)
+                            ),
+                            if panel.compression_capacity_mpa > 0.0 {
+                                format!(
+                                    "{}/{}",
+                                    decimal(panel.compression_mpa, 2),
+                                    decimal(panel.compression_capacity_mpa, 2)
+                                )
+                            } else {
+                                "—".to_owned()
+                            },
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &["Painel", "Uso", "h/t", "Sem amarração (m)", "σd/fd (MPa)"],
+                &[1.2, 1.5, 1.4, 2.3, 2.0],
+                &rows,
+            );
+        }
         if !report.slabs.is_empty() {
             pages.subheading("Lajes");
             let rows: Vec<_> = report

@@ -28,6 +28,7 @@ pub mod layers;
 pub mod library;
 pub mod limits;
 pub mod masonry;
+pub mod masonry_structure;
 pub mod model;
 pub mod notes;
 pub mod offset;

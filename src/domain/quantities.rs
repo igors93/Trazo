@@ -195,10 +195,11 @@ impl Project {
                 plaster_m3: plaster_m2 * masonry.plaster,
             });
             for opening in &openings {
-                if !matches!(
-                    opening.kind,
-                    OpeningKind::Door | OpeningKind::Window | OpeningKind::SaloonDoor
-                ) {
+                let top = wall.height_over(storey, opening);
+                let opening_top = opening.sill() + opening_height(opening);
+                // A full-height free opening has no masonry over it. Every
+                // opening with wall above it (including gates) needs a lintel.
+                if opening_top >= top - course_height(&masonry) * 0.5 {
                     continue;
                 }
                 let length = opening.width() + 2.0 * LINTEL_BEARING_M;

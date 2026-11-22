@@ -1038,6 +1038,56 @@ impl FloorPlanApp {
                 })
             })
             .collect();
+        let masonry_bands: Vec<Value> = report
+            .masonry
+            .bands
+            .iter()
+            .map(|band| {
+                json!({
+                    "abertura_id": band.opening_id,
+                    "parede_id": band.wall_id,
+                    "rotulo": band.label,
+                    "tipo": match band.kind {
+                        crate::domain::masonry_structure::MasonryBandKind::Lintel => "verga",
+                        crate::domain::masonry_structure::MasonryBandKind::Sill => "contraverga",
+                    },
+                    "vao_m": (band.clear_span_m * 100.0).round() / 100.0,
+                    "apoio_esquerdo_cm": round1(band.bearing_left_m * 100.0),
+                    "apoio_direito_cm": round1(band.bearing_right_m * 100.0),
+                    "secao_cm": section_cm(band.width_m, band.height_m),
+                    "carga_kn_m": round1(band.load_kn_m),
+                    "momento_knm": round1(band.moment_knm),
+                    "armadura": band.bars,
+                    "atende": band.ok(),
+                })
+            })
+            .collect();
+        let masonry_panels: Vec<Value> = report
+            .masonry
+            .panels
+            .iter()
+            .map(|panel| {
+                json!({
+                    "parede_id": panel.wall_id,
+                    "rotulo": panel.label,
+                    "material": panel.masonry,
+                    "uso": match panel.kind {
+                        crate::domain::masonry_structure::MasonryWallKind::Infill => "vedacao",
+                        crate::domain::masonry_structure::MasonryWallKind::LoadBearing => "estrutural",
+                    },
+                    "comprimento_m": (panel.length_m * 100.0).round() / 100.0,
+                    "altura_m": (panel.height_m * 100.0).round() / 100.0,
+                    "espessura_cm": round1(panel.thickness_m * 100.0),
+                    "esbeltez": round1(panel.slenderness),
+                    "esbeltez_limite": panel.slenderness_limit,
+                    "trecho_sem_amarracao_m": (panel.unbraced_m * 100.0).round() / 100.0,
+                    "limite_sem_amarracao_m": (panel.unbraced_limit_m * 100.0).round() / 100.0,
+                    "compressao_mpa": round1(panel.compression_mpa),
+                    "resistencia_reduzida_mpa": round1(panel.compression_capacity_mpa),
+                    "atende": panel.ok(),
+                })
+            })
+            .collect();
         let reinforcement_beams: Vec<Value> = reinforcement
             .beams
             .iter()
@@ -1139,11 +1189,13 @@ impl FloorPlanApp {
         let foundation_study = (!report.columns.is_empty())
             .then(|| foundation_study_json(&self.project.foundation_study()));
         Ok(ToolOutput::ok(format!(
-            "{} laje(s), {} viga(s), {} pilar(es), {} sapata(s), {} kg de aço preliminar, {} alerta(s).",
+            "{} laje(s), {} viga(s), {} pilar(es), {} sapata(s), {} verga(s)/contraverga(s), {} painel(is) de alvenaria, {} kg de aço preliminar, {} alerta(s).",
             slabs.len(),
             beams.len(),
             columns.len(),
             footings.len(),
+            masonry_bands.len(),
+            masonry_panels.len(),
             round1(reinforcement.total_mass_kg()),
             report.warnings.len()
         ))
@@ -1225,6 +1277,10 @@ impl FloorPlanApp {
             })).collect::<Vec<_>>(),
             "pilares_desalinhados": misaligned,
             "cargas_concentradas": concentrated_loads,
+            "alvenaria": {
+                "vergas_contravergas": masonry_bands,
+                "paineis": masonry_panels,
+            },
             "armaduras": {
                 "carater": "estimativa preliminar para revisão; não é detalhamento executivo",
                 "vigas": reinforcement_beams,
@@ -1271,6 +1327,12 @@ mod tests {
             ] }),
         );
         assert!(!built.is_error, "{}", built.text);
+        let wall = app.project.walls[0].id;
+        let opening = app.run_mcp_tool(
+            "inserir_abertura",
+            &json!({ "parede_id": wall, "tipo": "janela", "posicao": 0.5, "largura": 1.2 }),
+        );
+        assert!(!opening.is_error, "{}", opening.text);
         let report = app
             .run_mcp_tool("pre_dimensionamento", &json!({}))
             .structured
@@ -1285,6 +1347,19 @@ mod tests {
                 .is_empty()
         );
         assert!(report["armaduras"]["massa_total_kg"].as_f64().unwrap() > 0.0);
+        assert!(
+            !report["alvenaria"]["paineis"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            report["alvenaria"]["vergas_contravergas"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
         // Every element gets its traffic light (#101).
         let lights = report["semaforo"].as_array().unwrap();
         assert!(!lights.is_empty());

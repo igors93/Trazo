@@ -60,6 +60,21 @@ fn hash_wall(h: &mut DefaultHasher, wall: &Wall) {
     hash_f64(h, wall.thickness());
     hash_f64(h, wall.height_m.unwrap_or(-1.0));
     hash_f64(h, wall.height_end_m.unwrap_or(-1.0));
+    if let Some(masonry) = &wall.masonry {
+        true.hash(h);
+        masonry.name.hash(h);
+        for value in [
+            masonry.block_width,
+            masonry.block_length,
+            masonry.block_height,
+            masonry.joint,
+            masonry.plaster,
+        ] {
+            hash_f64(h, value);
+        }
+    } else {
+        false.hash(h);
+    }
 }
 
 fn hash_room(h: &mut DefaultHasher, room: &Room) {
@@ -230,9 +245,13 @@ fn structure_fingerprint(project: &Project) -> u64 {
         hash_f64(&mut h, f.width_m.unwrap_or(-1.0));
     }
     for opening in &project.openings {
+        opening.id.hash(&mut h);
         opening.wall_id.hash(&mut h);
+        (opening.kind as u8).hash(&mut h);
+        hash_f64(&mut h, opening.t);
         hash_f64(&mut h, opening.width());
         hash_f64(&mut h, opening.height().unwrap_or(-1.0));
+        hash_f64(&mut h, opening.sill());
     }
     if let Some(survey) = &project.structure.soil_survey {
         survey.readings.len().hash(&mut h);

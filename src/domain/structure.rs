@@ -831,6 +831,8 @@ pub struct StructureReport {
     pub eave_beams: Vec<super::timber_posts::EaveBeamResult>,
     /// Wind on the tall walls and the roofs (#147).
     pub wind: super::wind::WindReport,
+    /// Lintels, sills and masonry wall-panel checks (#111).
+    pub masonry: super::masonry_structure::MasonryStructureReport,
     pub warnings: Vec<String>,
 }
 
@@ -3281,6 +3283,10 @@ impl Project {
             }
         }
         report.wall_foundations = ground.results;
+        report.masonry = self.masonry_structure_report();
+        report
+            .warnings
+            .extend(report.masonry.warnings.iter().cloned());
         report.slabs.sort_by(|a, b| natural(&a.label, &b.label));
         report.beams.sort_by(|a, b| natural(&a.label, &b.label));
         report
@@ -3469,6 +3475,9 @@ impl Project {
         }
         if include_super {
             marks.extend(self.roof_marks(&report.roofs));
+            marks.extend(super::masonry_structure::masonry_structure_marks(
+                &report.masonry,
+            ));
         }
         marks.extend(self.post_marks_filtered(
             &super::timber_posts::PostEffects {

@@ -106,6 +106,25 @@ From the end moments come the shears, the reactions (passed to the columns, or a
 
 **Assumptions:** pinned supports (column stiffness ignored; see #94); no torsion. Reinforcement and shear are estimated as described below, but the analysis still has no frame action or torsion.
 
+## Masonry lintels, sills and panels
+
+`masonry_structure_report` derives these elements from the live architectural model, so moving a wall or opening changes them without a second stored copy. The method is a conservative pre-sizing interpretation of ABNT NBR 16868-1:2020 for small buildings; it does not replace the masonry designer's specification of unit/prism tests, grouting, bond beams and reinforcement details.
+
+**Lintels and sills.** Every opening that leaves masonry above it receives a lintel (`VA`); full-height open spans do not. Every window with a sill receives a sill band (`CV`). Both extend up to the preferred 30 cm into the wall on each side and fail the check below 20 cm. The simplified lintel method stops at a 3.0 m clear span.
+
+- width = the raw masonry width;
+- depth = whole masonry courses, rounded up from `max(10 cm, L/12)`;
+- characteristic line load `qk = 0.5·ha·t·γm + qfloor + 25·b·h`, where `ha = min(masonry above the opening, L/2)` represents the triangular masonry arch. `qfloor` is zero for infill and one conservative metre of slab (`2.5 + finish + live load`, kN/m) for load-bearing masonry;
+- `Mk = qk·L²/8`, `Md = 1.4·Mk`, and `As = Md/(0.9·d·fyd)` with CA-50. Two equal bars are selected from 6.3, 8, 10, 12.5 and 16 mm; sills receive the crack-control minimum `2Ø6.3`.
+
+**Wall panels.** A masonry name containing *estrutural* opts that wall into the load-bearing checks; all other names are treated as infill. Height slenderness is `hef/t`, limited here to 24 for unreinforced load-bearing walls and to the conservative interface limit 35 for infill. Returns, crossing walls and concrete columns divide the unbraced length. Infill is limited to 4.5 m; load-bearing masonry uses `min(max(30t, 2.5 m), 4.5 m)`.
+
+For a load-bearing panel, the preliminary design compression is `σd = 1.4·(γm·t·H + (2.5 + finish + live)·floors)/(t·net_fraction)`. Openings reduce `net_fraction`. Until the material catalogue (#135) stores tested prism results, Trazo deliberately assumes `fpk = 3 MPa` for structural ceramic block, 4 MPa for structural concrete block and 2 MPa for another custom structural name. The displayed resistance is `fd,red = (fpk/2)·max(0.25, 1 − (λ/40)²)`.
+
+**Known limits:** spans over 3 m, concentrated loads directly over an opening, reinforced/grouted masonry, out-of-plane wind and global stability require a masonry engineer. Wind on tall walls is checked separately by #147. All assumed prism strengths must be replaced by the specified unit, mortar, grout and prism tests before construction.
+
+Regression checks: `every_built_opening_gets_a_lintel_and_windows_get_a_sill`, `an_opening_too_close_to_the_wall_end_fails_the_bearing_check`, and `slender_infill_and_loaded_structural_masonry_are_checked_separately`.
+
 ## Preliminary reinforcement
 
 `build_reinforcement_report` turns the characteristic forces from `structure_report` into a reviewable reinforcement proposal and a theoretical bar schedule. It uses CA-50 (`fyk = 500 MPa`), steel density 7,850 kg/m³ and the same structural applicability limits. If the whole project or an element is outside those limits, it refuses to emit reinforcement for it.
