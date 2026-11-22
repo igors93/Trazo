@@ -870,6 +870,8 @@ fn catalogue() -> Vec<Tool> {
                     "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Para vista." },
                 }),
                 json!({
+                    "secao_vigas_cm": { "type": "array", "description": "Para definir_telhado: secao fixa [largura, altura] das vigas principais, em cm; [] volta ao dimensionamento automatico.", "items": { "type": "number" }, "minItems": 0, "maxItems": 2 },
+                    "posicoes_vigas_extras_m": { "type": "array", "description": "Para definir_telhado: vigas principais extras, em metros ao longo do beiral a partir do inicio do telhado.", "items": { "type": "number" } },
                     "leituras": {
                         "type": "array",
                         "description": "Para definir_sondagem (furo único): leituras do SPT, uma por metro.",
@@ -905,7 +907,7 @@ fn catalogue() -> Vec<Tool> {
                     "lado_alto": { "type": "string", "enum": ["oeste", "leste", "norte", "sul"], "description": "Para definir_telhado: lado mais alto da meia-água (a água corre para o oposto)." },
                     "altura_alta_m": number("Para definir_telhado: altura do telhado no lado alto, em metros."),
                     "altura_baixa_m": number("Para definir_telhado: altura do telhado no lado baixo, em metros."),
-                    "telha": { "type": "string", "enum": ["ceramica", "concreto", "fibrocimento", "metalica"], "description": "Para definir_telhado: telha (padrão cerâmica)." },
+                    "telha": { "type": "string", "enum": ["ceramica", "romana", "americana", "concreto", "fibrocimento", "metalica"], "description": "Para definir_telhado: tipo de telha (padrão cerâmica genérica)." },
                     "madeira": { "type": "string", "enum": ["c20", "c30", "c40", "c60", "pinus_elliottii", "eucalipto_citriodora", "itauba", "cumaru", "jatoba"], "description": "Para definir_telhado: classe C20–C60. Para inserir_mourao: classe certificada ou espécie, convertida conservadoramente em classe NBR 7190 (padrão C30)." },
                     "espacamento_vigas_m": number("Para definir_telhado: distância máxima entre as vigas do telhado (padrão 3 m; elas se alinham aos pilares)."),
                     "espacamento_tercas_m": number("Para definir_telhado: espaçamento das terças na projeção (padrão 1,2 m)."),

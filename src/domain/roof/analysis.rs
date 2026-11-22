@@ -12,8 +12,9 @@ impl Project {
     pub fn add_roof(&mut self, mut roof: Roof) -> Result<u64, String> {
         roof.check()?;
         roof.id = self.id();
+        let id = roof.id;
         self.structure.roofs.push(roof);
-        Ok(roof.id)
+        Ok(id)
     }
 
     /// Replaces roof `id` with `roof` (its id kept).
@@ -39,11 +40,12 @@ impl Project {
     /// Gives the walls under roof `id` the roof's height at their ends
     /// (sloped tops for the gables). Returns how many changed.
     pub fn fit_walls_to_roof(&mut self, id: u64) -> Result<usize, String> {
-        let roof = *self
+        let roof = self
             .structure
             .roofs
             .iter()
             .find(|r| r.id == id)
+            .cloned()
             .ok_or("Telhado não encontrado.")?;
         let inside = |p: Point| {
             p.x >= roof.min.x - 0.3
@@ -99,6 +101,7 @@ impl Project {
         let sized = |piece: Piece| {
             let (section, ok, bending, shear, deflection) = size_piece(&piece, roof.timber, cos);
             let total = piece.count as f64 * piece.each_m;
+            let deflection_limit_m = piece.span / if piece.inclined { cos } else { 1.0 } / 200.0;
             RoofElementResult {
                 element: piece.element,
                 section_cm: section,
@@ -108,6 +111,8 @@ impl Project {
                 load_kn_m: piece.g + piece.q,
                 bending_ratio: bending,
                 shear_ratio: shear,
+                deflection_m: deflection * deflection_limit_m,
+                deflection_limit_m,
                 deflection_ratio: deflection,
                 count: piece.count,
                 total_length_m: total,
@@ -134,6 +139,7 @@ impl Project {
                 normal: cos,
                 count: rows,
                 each_m: eaves,
+                section_cm: None,
             }));
             // Rafters: down the slope, span = purlin spacing (ceil ensures spacing <= configured).
             let count = (eaves / roof.rafter_spacing_m).ceil() as usize + 1;
@@ -147,16 +153,18 @@ impl Project {
                 normal: 1.0,
                 count,
                 each_m: slope_length,
+                section_cm: None,
             }));
         }
         // Concrete columns and timber posts (#146) on the edges.
-        let anchors: Vec<f64> = self
+        let mut anchors: Vec<f64> = self
             .fixtures
             .iter()
             .filter(|f| matches!(f.kind, FixtureKind::Column | FixtureKind::TimberPost))
             .filter(|c| roof.on_edge(c.center, 0.35))
             .map(|c| roof.along(c.center))
             .collect();
+        anchors.extend(roof.extra_beam_positions_m.iter().copied());
         let positions = beam_positions(eaves, roof.beam_spacing_m, &anchors);
         let gaps: Vec<f64> = positions.windows(2).map(|p| p[1] - p[0]).collect();
         let widest = gaps.iter().copied().fold(0.0, f64::max);
@@ -172,6 +180,7 @@ impl Project {
             normal: 1.0,
             count: purlin_rows,
             each_m: eaves,
+            section_cm: None,
         });
         let purlin = purlins.section_cm;
         elements.push(purlins);
@@ -195,6 +204,7 @@ impl Project {
             normal: 1.0,
             count: positions.len(),
             each_m: slope_length,
+            section_cm: roof.beam_section_cm,
         });
         let beam = beams.section_cm;
         elements.push(beams);

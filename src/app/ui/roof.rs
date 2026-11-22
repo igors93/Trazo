@@ -8,7 +8,9 @@ use super::super::theme::*;
 use super::widgets::{primary_button, secondary_button};
 use crate::domain::geometry::Point;
 use crate::domain::model::Project;
-use crate::domain::roof::{Roof, RoofResult, RoofSide, TileKind, TimberClass, TimberSpecies};
+use crate::domain::roof::{
+    Roof, RoofElement, RoofResult, RoofSide, TileKind, TimberClass, TimberSpecies,
+};
 use crate::domain::structure::StructureReport;
 
 /// What the roof tab asks for.
@@ -67,7 +69,7 @@ pub(super) fn roof_tab(
         ui.add_space(10.0);
         ui.separator();
         ui.label(RichText::new(format!("{label} · meia-água")).font(strong(13.5)));
-        let mut edited = *roof;
+        let mut edited = roof.clone();
         let mut changed = false;
         egui::Grid::new(("roof_settings", roof.id))
             .spacing([14.0, 6.0])
@@ -157,6 +159,48 @@ pub(super) fn roof_tab(
                     )
                     .changed();
                 ui.end_row();
+                ui.label("Viga principal");
+                let mut fixed = edited.beam_section_cm.is_some();
+                let mut section = edited.beam_section_cm.unwrap_or((10.0, 30.0));
+                if ui.checkbox(&mut fixed, "secao fixa").changed() {
+                    edited.beam_section_cm = fixed.then_some(section);
+                    changed = true;
+                }
+                ui.label("Largura x altura");
+                ui.add_enabled_ui(fixed, |ui| {
+                    let width_changed = ui
+                        .add(
+                            egui::DragValue::new(&mut section.0)
+                                .range(5.0..=30.0)
+                                .suffix(" cm"),
+                        )
+                        .changed();
+                    ui.label("x");
+                    let height_changed = ui
+                        .add(
+                            egui::DragValue::new(&mut section.1)
+                                .range(8.0..=50.0)
+                                .suffix(" cm"),
+                        )
+                        .changed();
+                    if width_changed || height_changed {
+                        edited.beam_section_cm = Some(section);
+                        changed = true;
+                    }
+                });
+                ui.end_row();
+                ui.label("Vigas extras");
+                ui.label(format!("{} posicoes", edited.extra_beam_positions_m.len()));
+                ui.label("Ao longo do beiral");
+                ui.label(
+                    edited
+                        .extra_beam_positions_m
+                        .iter()
+                        .map(|position| format!("{} m", decimal(*position, 2)))
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                );
+                ui.end_row();
                 ui.label("Telhado aparente");
                 changed |= ui.checkbox(&mut edited.exposed, "sem forro").changed();
                 ui.label("Área");
@@ -211,6 +255,7 @@ pub(super) fn roof_tab(
                     "Vão",
                     "Espaçamento",
                     "Quantidade",
+                    "Flecha / limite",
                     "Uso",
                     "Situação",
                 ] {
@@ -231,6 +276,11 @@ pub(super) fn roof_tab(
                         element.count,
                         decimal(element.total_length_m / element.count.max(1) as f64, 2)
                     ));
+                    ui.label(format!(
+                        "{} / {} mm",
+                        decimal(element.deflection_m * 1000.0, 1),
+                        decimal(element.deflection_limit_m * 1000.0, 1)
+                    ));
                     let worst = element
                         .bending_ratio
                         .max(element.shear_ratio)
@@ -244,6 +294,32 @@ pub(super) fn roof_tab(
                     ui.end_row();
                 }
             });
+        if let Some(critical) = result
+            .elements
+            .iter()
+            .find(|element| element.element == RoofElement::Beams)
+            .or_else(|| {
+                result
+                    .elements
+                    .iter()
+                    .max_by(|a, b| a.deflection_ratio.total_cmp(&b.deflection_ratio))
+            })
+        {
+            let ok = critical.deflection_ratio <= 1.0 + 1e-9;
+            ui.label(
+                RichText::new(format!(
+                    "Simula\u{00e7}\u{00e3}o de embarrigamento: {} de v\u{00e3}o {} m, flecha {} mm para limite L/200 = {} mm (uso {:.0} %) - {}.",
+                    critical.element.label(),
+                    decimal(critical.span_m, 2),
+                    decimal(critical.deflection_m * 1000.0, 1),
+                    decimal(critical.deflection_limit_m * 1000.0, 1),
+                    critical.deflection_ratio * 100.0,
+                    if ok { "atende" } else { "risco de embarrigamento" }
+                ))
+                .size(11.5)
+                .color(if ok { SUCCESS } else { WARNING }),
+            );
+        }
         let loose = result.unsupported();
         let carried: Vec<String> = result
             .reactions

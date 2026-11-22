@@ -767,7 +767,19 @@ fn sized_structure_verdicts(
                     Check::new(
                         "Flecha",
                         element.deflection_ratio,
-                        format!("{section}."),
+                        if element.deflection_ratio <= 1.0 + 1e-9 {
+                            format!(
+                                "{section}: flecha de {} mm, dentro de L/200 = {} mm; sem embarrigamento excessivo no modelo.",
+                                decimal(element.deflection_m * 1000.0, 1),
+                                decimal(element.deflection_limit_m * 1000.0, 1)
+                            )
+                        } else {
+                            format!(
+                                "{section}: flecha de {} mm passa de L/200 = {} mm; risco de embarrigamento, aumente a altura ou reduza o v\u{00e3}o.",
+                                decimal(element.deflection_m * 1000.0, 1),
+                                decimal(element.deflection_limit_m * 1000.0, 1)
+                            )
+                        },
                         "u = 5·(g + 0,2 q)·L⁴ / (384·Ec0,ef·I) ≤ L/200, Ec0,ef = kmod·Ec0,m (NBR 7190).".to_owned(),
                     ),
                 ],

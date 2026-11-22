@@ -74,7 +74,7 @@ fn default_exposed() -> bool {
 
 /// A mono-pitch timber roof over a plan rectangle (internal coordinates,
 /// y down: north is the smaller y).
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Roof {
     pub id: u64,
     pub min: Point,
@@ -90,6 +90,13 @@ pub struct Roof {
     /// Largest distance between main beams, metres.
     #[serde(default = "default_beam_spacing")]
     pub beam_spacing_m: f64,
+    /// Fixed width by height of the main roof beams, centimetres. When absent,
+    /// the lightest passing catalogue section is selected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub beam_section_cm: Option<(f64, f64)>,
+    /// Additional main-beam positions measured along the eave from `min`, m.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_beam_positions_m: Vec<f64>,
     /// Purlin spacing on the horizontal projection, metres.
     #[serde(default = "default_purlin_spacing")]
     pub purlin_spacing_m: f64,
@@ -113,6 +120,8 @@ impl Roof {
             tile: TileKind::default(),
             timber: TimberClass::default(),
             beam_spacing_m: default_beam_spacing(),
+            beam_section_cm: None,
+            extra_beam_positions_m: Vec::new(),
             purlin_spacing_m: default_purlin_spacing(),
             rafter_spacing_m: default_rafter_spacing(),
             exposed: true,
@@ -244,6 +253,25 @@ impl Roof {
         }
         if !(1.0..=6.0).contains(&self.beam_spacing_m) {
             return Err("O espaçamento das vigas deve ficar entre 1 e 6 m.".to_owned());
+        }
+        if let Some((width, height)) = self.beam_section_cm
+            && (!(5.0..=30.0).contains(&width) || !(8.0..=50.0).contains(&height) || height < width)
+        {
+            return Err(
+                "A secao fixa das vigas deve ter largura de 5 a 30 cm e altura de 8 a 50 cm."
+                    .to_owned(),
+            );
+        }
+        let mut extra = self.extra_beam_positions_m.clone();
+        extra.sort_by(f64::total_cmp);
+        if extra.iter().any(|position| {
+            !position.is_finite() || *position <= 0.15 || *position >= self.eaves_m() - 0.15
+        }) || extra.windows(2).any(|pair| pair[1] - pair[0] < 0.15)
+        {
+            return Err(
+                "As vigas extras devem ficar dentro do beiral e separadas por pelo menos 15 cm."
+                    .to_owned(),
+            );
         }
         if !(0.5..=3.0).contains(&self.purlin_spacing_m) {
             return Err("O espaçamento das terças deve ficar entre 0,5 e 3 m.".to_owned());

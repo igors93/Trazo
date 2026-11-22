@@ -8,14 +8,18 @@ use serde::{Deserialize, Serialize};
 pub enum TileKind {
     #[default]
     Ceramic,
+    Roman,
+    American,
     Concrete,
     FiberCement,
     Metal,
 }
 
 impl TileKind {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 6] = [
         Self::Ceramic,
+        Self::Roman,
+        Self::American,
         Self::Concrete,
         Self::FiberCement,
         Self::Metal,
@@ -24,6 +28,8 @@ impl TileKind {
     pub fn label(self) -> &'static str {
         match self {
             Self::Ceramic => "Telha cerâmica",
+            Self::Roman => "Telha cer\u{00e2}mica romana",
+            Self::American => "Telha cer\u{00e2}mica americana",
             Self::Concrete => "Telha de concreto",
             Self::FiberCement => "Fibrocimento 6 mm",
             Self::Metal => "Telha metálica",
@@ -33,6 +39,8 @@ impl TileKind {
     pub fn key(self) -> &'static str {
         match self {
             Self::Ceramic => "ceramica",
+            Self::Roman => "romana",
+            Self::American => "americana",
             Self::Concrete => "concreto",
             Self::FiberCement => "fibrocimento",
             Self::Metal => "metalica",
@@ -42,13 +50,21 @@ impl TileKind {
     pub fn parse(raw: &str) -> Option<Self> {
         let raw = raw.trim().to_lowercase();
         let raw = raw.replace('â', "a").replace('é', "e").replace('á', "a");
-        Self::ALL.into_iter().find(|t| t.key() == raw)
+        match raw.as_str() {
+            "ceramica_romana" | "telha_romana" => Some(Self::Roman),
+            "ceramica_americana" | "telha_americana" => Some(Self::American),
+            _ => Self::ALL.into_iter().find(|t| t.key() == raw),
+        }
     }
 
-    /// Saturated weight on the roof surface, kN/m².
+    /// Saturated/conservative weight on the roof surface, kN/m².
+    /// Roman: 16 tiles/m² at about 2.7 kg each; American: manufacturer
+    /// catalogues range from about 26 to 36 kg/m² dry, so 0.40 kN/m² keeps
+    /// moisture and product variation in the preliminary model.
     pub fn weight_kn_m2(self) -> f64 {
         match self {
-            Self::Ceramic | Self::Concrete => 0.50,
+            Self::Ceramic | Self::Roman | Self::Concrete => 0.50,
+            Self::American => 0.40,
             Self::FiberCement => 0.18,
             Self::Metal => 0.10,
         }
@@ -57,7 +73,8 @@ impl TileKind {
     /// Usual minimum slope, percent (confirm with the manufacturer).
     pub fn min_slope_percent(self) -> f64 {
         match self {
-            Self::Ceramic | Self::Concrete => 30.0,
+            Self::Ceramic | Self::American | Self::Concrete => 30.0,
+            Self::Roman => 35.0,
             Self::FiberCement => 15.0,
             Self::Metal => 10.0,
         }
@@ -68,6 +85,8 @@ impl TileKind {
     pub fn gauge_m(self) -> Option<f64> {
         match self {
             Self::Ceramic => Some(0.35),
+            Self::Roman => Some(0.33),
+            Self::American => Some(0.36),
             Self::Concrete => Some(0.32),
             Self::FiberCement | Self::Metal => None,
         }
@@ -78,7 +97,7 @@ impl TileKind {
         match self {
             Self::FiberCement => Some(1.69),
             Self::Metal => Some(2.0),
-            Self::Ceramic | Self::Concrete => None,
+            Self::Ceramic | Self::Roman | Self::American | Self::Concrete => None,
         }
     }
 
@@ -86,6 +105,8 @@ impl TileKind {
     pub fn per_m2(self) -> Option<f64> {
         match self {
             Self::Ceramic => Some(16.0),
+            Self::Roman => Some(16.0),
+            Self::American => Some(12.5),
             Self::Concrete => Some(10.5),
             Self::FiberCement | Self::Metal => None,
         }

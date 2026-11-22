@@ -291,6 +291,14 @@ fn structure_fingerprint(project: &Project) -> u64 {
         ] {
             hash_f64(&mut h, v);
         }
+        if let Some((width, height)) = roof.beam_section_cm {
+            hash_f64(&mut h, width);
+            hash_f64(&mut h, height);
+        }
+        roof.extra_beam_positions_m.len().hash(&mut h);
+        for position in &roof.extra_beam_positions_m {
+            hash_f64(&mut h, *position);
+        }
     }
     project.structure.balance_beams.len().hash(&mut h);
     for beam in &project.structure.balance_beams {

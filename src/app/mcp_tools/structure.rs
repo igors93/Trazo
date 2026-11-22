@@ -147,6 +147,7 @@ fn roof_arg(
     base: Option<crate::domain::roof::Roof>,
 ) -> Result<crate::domain::roof::Roof, String> {
     use crate::domain::roof::{Roof, RoofSide, TileKind, TimberSpecies};
+    let editing = base.is_some();
     let mut roof = match base {
         Some(roof) => roof,
         None => {
@@ -165,7 +166,7 @@ fn roof_arg(
             )
         }
     };
-    if base.is_some() && (args.get("x").is_some() || args.get("largura_m").is_some()) {
+    if editing && (args.get("x").is_some() || args.get("largura_m").is_some()) {
         let x = required_number(args, "x")?;
         let y = required_number(args, "y")?;
         let width = required_number(args, "largura_m")?;
@@ -191,8 +192,9 @@ fn roof_arg(
         roof.low_m = v;
     }
     if let Some(raw) = text(args, "telha") {
-        roof.tile = TileKind::parse(&raw)
-            .ok_or("'telha' deve ser ceramica, concreto, fibrocimento ou metalica.")?;
+        roof.tile = TileKind::parse(&raw).ok_or(
+            "'telha' deve ser ceramica, romana, americana, concreto, fibrocimento ou metalica.",
+        )?;
     }
     if let Some(raw) = text(args, "madeira") {
         roof.timber = TimberSpecies::parse(&raw)
@@ -201,6 +203,37 @@ fn roof_arg(
     }
     if let Some(v) = number(args, "espacamento_vigas_m")? {
         roof.beam_spacing_m = v;
+    }
+    if let Some(value) = args.get("secao_vigas_cm") {
+        let values = value
+            .as_array()
+            .ok_or("'secao_vigas_cm' deve ser [largura, altura] em cm, ou [].")?;
+        roof.beam_section_cm = match values.as_slice() {
+            [] => None,
+            [width, height] => Some((
+                width
+                    .as_f64()
+                    .ok_or("A largura da viga deve ser numerica.")?,
+                height
+                    .as_f64()
+                    .ok_or("A altura da viga deve ser numerica.")?,
+            )),
+            _ => return Err("'secao_vigas_cm' deve ter exatamente dois numeros.".to_owned()),
+        };
+    }
+    if let Some(value) = args.get("posicoes_vigas_extras_m") {
+        let values = value
+            .as_array()
+            .ok_or("'posicoes_vigas_extras_m' deve ser uma lista de distancias em metros.")?;
+        roof.extra_beam_positions_m = values
+            .iter()
+            .map(|value| {
+                value
+                    .as_f64()
+                    .ok_or("Cada posicao de viga extra deve ser numerica.")
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        roof.extra_beam_positions_m.sort_by(f64::total_cmp);
     }
     if let Some(v) = number(args, "espacamento_tercas_m")? {
         roof.purlin_spacing_m = v;
@@ -237,6 +270,9 @@ pub(super) fn roof_json(result: &crate::domain::roof::RoofResult) -> Value {
             "flexao": round2(e.bending_ratio),
             "cisalhamento": round2(e.shear_ratio),
             "flecha": round2(e.deflection_ratio),
+            "flecha_mm": round2(e.deflection_m * 1000.0),
+            "flecha_limite_mm": round2(e.deflection_limit_m * 1000.0),
+            "risco_embarrigamento": e.deflection_ratio > 1.0 + 1e-9,
             "quantidade": e.count,
             "comprimento_total_m": round2(e.total_length_m),
             "volume_m3": round2(e.volume_m3),
@@ -883,12 +919,12 @@ impl FloorPlanApp {
                             .roofs
                             .iter()
                             .find(|r| r.id == id as u64)
-                            .copied()
+                            .cloned()
                             .ok_or_else(|| format!("Telhado {id} não encontrado."))?,
                     ),
                     None => None,
                 };
-                let roof = roof_arg(args, existing)?;
+                let roof = roof_arg(args, existing.clone())?;
                 let fit = args
                     .get("ajustar_paredes")
                     .and_then(Value::as_bool)

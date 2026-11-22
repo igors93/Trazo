@@ -73,6 +73,9 @@ pub struct RoofElementResult {
     pub load_kn_m: f64,
     pub bending_ratio: f64,
     pub shear_ratio: f64,
+    /// Service deflection and its L/200 limit, metres.
+    pub deflection_m: f64,
+    pub deflection_limit_m: f64,
     pub deflection_ratio: f64,
     pub count: usize,
     pub total_length_m: f64,
@@ -143,6 +146,7 @@ pub(super) struct Piece {
     pub(super) normal: f64,
     pub(super) count: usize,
     pub(super) each_m: f64,
+    pub(super) section_cm: Option<(f64, f64)>,
 }
 
 /// The lightest section of the catalog of the piece that passes bending,
@@ -159,13 +163,15 @@ pub(super) fn size_piece(
         span,
         inclined,
         normal,
+        section_cm,
         ..
     } = *piece;
     let (fc0k, fv0k, e0m, density) = timber.properties();
     let fc0d = KMOD * fc0k / 1.4 * 1000.0; // kPa
     let fv0d = KMOD * fv0k / 1.8 * 1000.0;
     let e_ef = KMOD * e0m * 1000.0;
-    let catalog = element.catalog();
+    let catalog: Vec<(f64, f64)> =
+        section_cm.map_or_else(|| element.catalog().to_vec(), |section| vec![section]);
     let mut last = (
         (0.0, 0.0),
         false,
@@ -173,7 +179,7 @@ pub(super) fn size_piece(
         f64::INFINITY,
         f64::INFINITY,
     );
-    for &(b_cm, h_cm) in catalog {
+    for (b_cm, h_cm) in catalog {
         let (b, h) = (b_cm / 100.0, h_cm / 100.0);
         let own = density * 9.81 / 1000.0 * b * h / if inclined { cos } else { 1.0 };
         let gk = g + own;

@@ -15,6 +15,19 @@ fn timber_species_have_stable_keys_and_conservative_classes() {
     assert_eq!(TimberSpecies::ClassC60.class(), TimberClass::C60);
 }
 
+#[test]
+fn roman_and_american_tiles_keep_their_catalogue_assumptions() {
+    assert_eq!(TileKind::parse("telha_romana"), Some(TileKind::Roman));
+    assert_eq!(TileKind::parse("americana"), Some(TileKind::American));
+    assert_eq!(TileKind::Roman.min_slope_percent(), 35.0);
+    assert_eq!(TileKind::Roman.gauge_m(), Some(0.33));
+    assert_eq!(TileKind::Roman.per_m2(), Some(16.0));
+    assert_eq!(TileKind::American.min_slope_percent(), 30.0);
+    assert_eq!(TileKind::American.gauge_m(), Some(0.36));
+    assert_eq!(TileKind::American.per_m2(), Some(12.5));
+    assert!(TileKind::Roman.weight_kn_m2() > TileKind::American.weight_kn_m2());
+}
+
 fn gourmet_roof() -> Roof {
     // 5.00 × 14.75 m, high on the west at 4.30 m, low on the east at 2.60 m.
     Roof::new(
@@ -47,6 +60,32 @@ fn beams_line_up_with_the_columns_and_fill_wide_gaps() {
 }
 
 #[test]
+fn extra_main_beams_and_a_fixed_section_are_honoured() {
+    let mut project = Project::default();
+    for along in [0.07, 3.0, 6.0, 9.0, 12.0, 14.68] {
+        for x in [0.07, 4.93] {
+            project
+                .add_fixture(FixtureKind::Column, Point::new(x, along), 0.14, 0.30, 0)
+                .unwrap();
+        }
+    }
+    let mut roof = gourmet_roof();
+    roof.beam_section_cm = Some((10.0, 30.0));
+    roof.extra_beam_positions_m = vec![1.5, 4.5, 7.5, 10.5];
+    let id = project.add_roof(roof).unwrap();
+    let result = project.analyse_roof(&project.structure.roofs[0]);
+    let beams = result
+        .elements
+        .iter()
+        .find(|element| element.element == RoofElement::Beams)
+        .unwrap();
+    assert_eq!(beams.section_cm, (10.0, 30.0));
+    assert_eq!(beams.count, 10);
+    assert_eq!(result.reactions.len(), 20);
+    assert_eq!(result.id, id);
+}
+
+#[test]
 fn a_beam_matches_the_hand_calculation() {
     // C30, 1.4 (g + q) = 1.4 × 3 kN/m over 4 m horizontal (flat piece).
     let piece = Piece {
@@ -59,6 +98,7 @@ fn a_beam_matches_the_hand_calculation() {
         normal: 1.0,
         count: 1,
         each_m: 4.0,
+        section_cm: None,
     };
     let ((b, h), ok, bending, _, _) = size_piece(&piece, TimberClass::C30, 1.0);
     assert!(ok);
@@ -81,7 +121,7 @@ fn the_gourmet_roof_is_framed_and_bears_on_the_columns() {
         );
     }
     let id = project.add_roof(gourmet_roof()).unwrap();
-    let roof = project.structure.roofs[0];
+    let roof = project.structure.roofs[0].clone();
     let result = project.analyse_roof(&roof);
     assert_eq!(result.label, "T1");
     assert!(result.slope_ok());
@@ -91,6 +131,14 @@ fn the_gourmet_roof_is_framed_and_bears_on_the_columns() {
         "{:#?}",
         result.elements
     );
+    let beam = result
+        .elements
+        .iter()
+        .find(|e| e.element == RoofElement::Beams)
+        .unwrap();
+    assert!(beam.deflection_m > 0.0);
+    assert!(beam.deflection_m < beam.deflection_limit_m);
+    assert!((beam.deflection_m / beam.deflection_limit_m - beam.deflection_ratio).abs() < 1e-9);
     // Six beams (one per column), both ends.
     assert_eq!(result.reactions.len(), 12);
     let total: f64 = result.reactions.iter().map(|r| r.load_kn).sum();
