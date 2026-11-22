@@ -326,7 +326,7 @@ Checked by `the_pressure_follows_nbr_6123`, `a_tall_wall_column_is_propped_by_th
 | Supply and entrance | single/two/three-phase from the demand; main breaker from the demand current on the most loaded phase; feeder from the wire table; earth from NBR 5410 table 58 | Utility standard (see below) |
 | Phase balancing | largest circuit first, each on the least loaded phase (two-pole circuits on the least loaded pair) | — |
 
-The regional utility profiles (`UtilityProfile`: generic, Enel SP, CPFL, CEMIG, COPEL) change the supply thresholds, the minimum main breaker and feeder, and scale the demand. Their values have **not yet been checked against the published utility standards** (bug [B21](../ROADMAP.md#b21-regional-utility-profiles-are-not-traced-to-their-standards)); until they are, treat them as placeholders and check the local standard.
+The regional utility profiles (`src/domain/utility_profiles.rs`: Generic NBR 5410, Enel SP LIG-BT 12ª ed., CPFL GED-13, CEMIG ND 5.1, COPEL NTC 901100) use explicit per-utility residential demand tables and service-entrance thresholds (no hidden scale multipliers) and carry a `UtilityStandardCitation` (standard, edition, tables and local-bulletin verification note) surfaced in the UI, single-line diagram and MCP `quadro_de_cargas` (B21). Because utilities publish periodic technical bulletins (*comunicados técnicos*), designers should still confirm the active local revision before submitting a connection request.
 
 ## Construction quantities
 

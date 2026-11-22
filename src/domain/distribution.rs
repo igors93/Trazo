@@ -14,158 +14,7 @@ use super::conduits::conduit_size;
 use super::electrical::{BREAKERS, CircuitKind, DeviceRole, LoadSchedule, WIRE_CAPACITY};
 use super::model::Project;
 use super::schedules::ScheduleTable;
-
-/// Regional Brazilian utility profile controlling demand factors and service
-/// entrance thresholds (monophasic/biphasic/triphasic cutoffs, minimum main
-/// breaker and entrance wire gauge).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum UtilityProfile {
-    /// Generic Brazilian dwelling tables (NBR 5410 baseline).
-    #[default]
-    Generic,
-    /// Enel SP (LIG-BT): 127/220 V, mono up to 12 kVA, bi up to 25 kVA.
-    EnelSp,
-    /// CPFL (GED-13): 127/220 V, mono up to 12 kVA, bi up to 25 kVA.
-    Cpfl,
-    /// CEMIG (ND 5.1): 127/220 V, mono up to 10 kVA, bi up to 15 kVA.
-    Cemig,
-    /// COPEL / Celesc (NTC 901100, 220/380 V): mono up to 15 kVA, then three-phase.
-    Copel,
-}
-
-impl UtilityProfile {
-    pub const ALL: [UtilityProfile; 5] = [
-        UtilityProfile::Generic,
-        UtilityProfile::EnelSp,
-        UtilityProfile::Cpfl,
-        UtilityProfile::Cemig,
-        UtilityProfile::Copel,
-    ];
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Generic => "Padrão genérico (NBR 5410)",
-            Self::EnelSp => "Enel SP (LIG-BT)",
-            Self::Cpfl => "CPFL (GED-13)",
-            Self::Cemig => "CEMIG (ND 5.1)",
-            Self::Copel => "COPEL / Celesc (NTC 901100)",
-        }
-    }
-
-    pub fn rules(self) -> UtilityRules {
-        match self {
-            Self::Generic => UtilityRules {
-                single_phase_max_kva: 8.0,
-                two_phase_max_kva: 15.0,
-                max_bt_kva: 75.0,
-                min_breaker_a: 32.0,
-                min_wire_mm2: 6.0,
-                general_demand_scale: 1.0,
-                specific_demand_scale: 1.0,
-            },
-            Self::EnelSp => UtilityRules {
-                single_phase_max_kva: 12.0,
-                two_phase_max_kva: 25.0,
-                max_bt_kva: 75.0,
-                min_breaker_a: 40.0,
-                min_wire_mm2: 10.0,
-                general_demand_scale: 1.0,
-                specific_demand_scale: 0.95,
-            },
-            Self::Cpfl => UtilityRules {
-                single_phase_max_kva: 12.0,
-                two_phase_max_kva: 25.0,
-                max_bt_kva: 75.0,
-                min_breaker_a: 40.0,
-                min_wire_mm2: 10.0,
-                general_demand_scale: 0.95,
-                specific_demand_scale: 1.0,
-            },
-            Self::Cemig => UtilityRules {
-                single_phase_max_kva: 10.0,
-                two_phase_max_kva: 15.0,
-                max_bt_kva: 75.0,
-                min_breaker_a: 40.0,
-                min_wire_mm2: 10.0,
-                general_demand_scale: 1.0,
-                specific_demand_scale: 1.0,
-            },
-            Self::Copel => UtilityRules {
-                single_phase_max_kva: 15.0,
-                two_phase_max_kva: 15.0, // 220/380 V jumps directly to three-phase above 15 kVA
-                max_bt_kva: 75.0,
-                min_breaker_a: 40.0,
-                min_wire_mm2: 10.0,
-                general_demand_scale: 0.90,
-                specific_demand_scale: 0.95,
-            },
-        }
-    }
-}
-
-/// Service-entrance limits and demand multipliers for a utility profile.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct UtilityRules {
-    pub single_phase_max_kva: f64,
-    pub two_phase_max_kva: f64,
-    pub max_bt_kva: f64,
-    pub min_breaker_a: f64,
-    pub min_wire_mm2: f64,
-    pub general_demand_scale: f64,
-    pub specific_demand_scale: f64,
-}
-
-/// Optional per-project overrides for regional utility tables not covered by a
-/// built-in [`UtilityProfile`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct UtilityOverrides {
-    pub single_phase_max_kva: Option<f64>,
-    pub two_phase_max_kva: Option<f64>,
-    pub max_bt_kva: Option<f64>,
-    pub min_breaker_a: Option<f64>,
-    pub min_wire_mm2: Option<f64>,
-    pub general_demand_scale: Option<f64>,
-    pub specific_demand_scale: Option<f64>,
-}
-
-impl UtilityRules {
-    pub fn with_overrides(mut self, overrides: Option<UtilityOverrides>) -> Self {
-        if let Some(o) = overrides {
-            if let Some(v) = o.single_phase_max_kva {
-                self.single_phase_max_kva = v.max(1.0);
-            }
-            if let Some(v) = o.two_phase_max_kva {
-                self.two_phase_max_kva = v.max(self.single_phase_max_kva);
-            }
-            if let Some(v) = o.max_bt_kva {
-                self.max_bt_kva = v.max(10.0);
-            }
-            if let Some(v) = o.min_breaker_a {
-                self.min_breaker_a = v.max(10.0);
-            }
-            if let Some(v) = o.min_wire_mm2 {
-                self.min_wire_mm2 = v.max(2.5);
-            }
-            if let Some(v) = o.general_demand_scale {
-                self.general_demand_scale = v.clamp(0.1, 2.0);
-            }
-            if let Some(v) = o.specific_demand_scale {
-                self.specific_demand_scale = v.clamp(0.1, 2.0);
-            }
-        }
-        self
-    }
-
-    pub fn general_demand_factor(&self, kva: f64) -> f64 {
-        (general_demand_factor(kva) * self.general_demand_scale).clamp(0.10, 1.0)
-    }
-
-    pub fn specific_demand_factor(&self, count: usize) -> f64 {
-        (specific_demand_factor(count) * self.specific_demand_scale).clamp(0.10, 1.0)
-    }
-}
+pub use super::utility_profiles::{UtilityOverrides, UtilityProfile};
 
 /// How the building is supplied by the utility.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -818,6 +667,7 @@ pub fn single_line_svg(project: &Project) -> String {
         "start",
         "DIAGRAMA UNIFILAR · QUADRO DE DISTRIBUIÇÃO (QD)",
     );
+    let citation = settings.utility.citation();
     text(
         &mut svg,
         20.0,
@@ -826,7 +676,7 @@ pub fn single_line_svg(project: &Project) -> String {
         false,
         "start",
         &format!(
-            "{} · ligação {} · {:.0}/{:.0} V · {}",
+            "{} · ligação {} · {:.0}/{:.0} V · {} ({})",
             project.name,
             schedule.supply.label().to_lowercase(),
             settings.voltage_v,
@@ -835,7 +685,8 @@ pub fn single_line_svg(project: &Project) -> String {
             } else {
                 380.0
             },
-            settings.utility.label()
+            citation.standard,
+            citation.edition
         ),
     );
     if rows.is_empty() {
@@ -1458,16 +1309,26 @@ mod tests {
         let mut project = house();
         let generic = project.load_schedule();
 
-        // COPEL (220/380 V) has a 15 kVA single-phase limit, 40 A / 10 mm² floor
-        // and lower general demand scaling.
+        // CEMIG (ND 5.1) uses a more conservative residential lighting/TUG demand
+        // table and 40 A / 10 mm² entrance floor, traced to ND 5.1.
+        project.electrical.utility = UtilityProfile::Cemig;
+        project.electrical.voltage_v = 127.0;
+        let cemig = project.load_schedule();
+        assert!(cemig.demand.general_factor >= generic.demand.general_factor);
+        let cemig_ent = cemig.entrance.unwrap();
+        assert!(cemig_ent.breaker_a.unwrap() >= 40.0);
+        assert!(cemig_ent.wire_mm2.unwrap() >= 10.0);
+        assert!(single_line_svg(&project).contains("CEMIG ND 5.1"));
+
+        // COPEL (NTC 901100) uses 9 kVA mono / 15 kVA bi cutoffs, 40 A / 10 mm²
+        // floor and its own TUE table without arbitrary scaling multipliers.
         project.electrical.utility = UtilityProfile::Copel;
         project.electrical.voltage_v = 220.0;
         let copel = project.load_schedule();
-        assert!(copel.demand.general_factor < generic.demand.general_factor);
         let copel_ent = copel.entrance.unwrap();
         assert!(copel_ent.breaker_a.unwrap() >= 40.0);
         assert!(copel_ent.wire_mm2.unwrap() >= 10.0);
-        assert!(single_line_svg(&project).contains("COPEL"));
+        assert!(single_line_svg(&project).contains("COPEL NTC 901100"));
 
         // Custom regional overrides can tailor thresholds for any utility.
         project.electrical.utility = UtilityProfile::Generic;

@@ -369,10 +369,29 @@ impl FloorPlanApp {
             schedule.total_va,
             schedule.warnings.len()
         );
+        let rules = self
+            .project
+            .electrical
+            .utility
+            .rules()
+            .with_overrides(self.project.electrical.custom_rules);
+        let cite = rules.citation;
         Ok(ToolOutput::ok(text).with_structured(json!({
             "projeto_id": self.active_project_id(),
             "tensao_v": self.project.electrical.voltage_v,
             "concessionaria": utility_profile_key(self.project.electrical.utility),
+            "norma_concessionaria": {
+                "norma": cite.standard,
+                "edicao": cite.edition,
+                "tabelas": cite.tables,
+                "sistema_nominal": cite.nominal_system,
+                "limite_monofasico_kva": rules.single_phase_max_kva,
+                "limite_bifasico_kva": rules.two_phase_max_kva,
+                "limite_bt_kva": rules.max_bt_kva,
+                "disjuntor_minimo_a": rules.min_breaker_a,
+                "cabo_minimo_mm2": rules.min_wire_mm2,
+                "observacao": cite.verification_note,
+            },
             "previsao": forecast,
             "circuitos": circuits,
             "quadros_secundarios": sub_boards,

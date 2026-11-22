@@ -495,6 +495,28 @@ impl FloorPlanApp {
                                 export = Some(false);
                             }
                         });
+                        let rules = self
+                            .project
+                            .electrical
+                            .utility
+                            .rules()
+                            .with_overrides(self.project.electrical.custom_rules);
+                        let cite = rules.citation;
+                        ui.label(
+                            RichText::new(format!(
+                                "Referência: {} ({}) — {}. Limites: mono ≤ {:.0} kVA, bi ≤ {:.0} kVA, mín. {:.0} A / {:.0} mm². {}",
+                                cite.standard,
+                                cite.edition,
+                                cite.tables,
+                                rules.single_phase_max_kva,
+                                rules.two_phase_max_kva,
+                                rules.min_breaker_a,
+                                rules.min_wire_mm2,
+                                cite.verification_note
+                            ))
+                            .size(11.0)
+                            .color(MUTED),
+                        );
                         ui.add_space(6.0);
                         let d = schedule.demand;
                         egui::Grid::new("electrical_board")

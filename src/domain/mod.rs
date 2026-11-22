@@ -49,6 +49,7 @@ pub mod templates;
 pub mod timber_posts;
 pub mod transform;
 pub mod underlay;
+pub mod utility_profiles;
 #[cfg(test)]
 mod validation;
 pub mod verdict;
