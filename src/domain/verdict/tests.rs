@@ -95,11 +95,20 @@ fn electrical_circuits_get_current_and_voltage_drop_checks() {
         .update_electrical(far, Some(Some(1)), Some(4400.0), None)
         .unwrap();
     let verdicts = electrical_verdicts(&project.load_schedule());
-    assert_eq!(verdicts.len(), 1);
-    let names: Vec<&str> = verdicts[0].checks.iter().map(|c| c.name.as_str()).collect();
+    let circuit = verdicts
+        .iter()
+        .find(|v| v.element.starts_with("Circuito C1"))
+        .expect("circuit C1 verdict");
+    let names: Vec<&str> = circuit.checks.iter().map(|c| c.name.as_str()).collect();
     assert_eq!(names, ["Corrente", "Queda de tensão"]);
     // The wire was raised to keep the drop within 4 %: not red.
-    assert!(verdicts[0].light() != Light::Red);
+    assert!(circuit.light() != Light::Red);
+    // Service entrance also receives a verdict now.
+    assert!(
+        verdicts
+            .iter()
+            .any(|v| v.element.starts_with("Entrada de energia"))
+    );
 }
 
 #[test]

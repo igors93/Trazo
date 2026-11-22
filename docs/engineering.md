@@ -29,7 +29,7 @@ This guide documents every engineering calculation in Trazo: the formula, the st
 | Moments | Sagging positive: hogging (support) moments are negative |
 | Loads | Characteristic values unless stated; ultimate design uses γf = 1.4 (NBR 8681 normal combination, simplified) |
 | Quasi-permanent load | g + ψ2·q with ψ2 = 0.3 (dwellings, NBR 6118:2023, table 11.2) |
-| Code | `src/domain/structure.rs`, `src/domain/reinforcement.rs`, `src/domain/electrical.rs`, `src/domain/distribution.rs`, `src/domain/conduits.rs` |
+| Code | `src/domain/structure/`, `src/domain/reinforcement/`, `src/domain/roof/`, `src/domain/soil/`, `src/domain/foundations/`, `src/domain/electrical/`, `src/domain/distribution/`, `src/domain/conduits.rs`, `src/domain/verdict/` |
 
 ## Loads
 
@@ -78,7 +78,7 @@ Water tanks and heavy equipment are stored as structural fixtures with a footpri
 
 **Load path.** If the footprint intersects a beam axis, the full load becomes a point load at that position on the beam. Otherwise Trazo finds the containing slab and sends the load to the nearest supported edge beam(s); beams at practically the same distance (within 5 cm) share it equally. The beam stiffness analysis then passes the reactions to columns and footings. A load outside every slab and beam is red and contributes nothing until it is repositioned or given its own support.
 
-**Local slab model.** For a load on a slab, the conservative additional one-metre-strip moment is `Mk,local = P·lx/(4·beff)`, with `beff = min(ly, max(0.50 m, smaller footprint side + 2h))`. That moment is added to the slab flexural reinforcement demand. For a solid slab, punching is checked around the loaded footprint at its face and at the `d/2` contour using the same `τRd2` and simplified `τRd1` expressions documented for footings. For a lattice/ribbed slab, Trazo does not know the joist and filler geometry, so it deliberately leaves punching unverified and asks for a beam, solid strip or manufacturer check.
+**Local slab model.** For a load on a slab, the conservative additional one-metre-strip moment is `Mk,local = P·lx/(4·beff)`, with `beff = min(ly, max(0.50 m, smaller footprint side + 2h))`. That moment is added to the slab flexural reinforcement demand. For a solid slab, punching is checked around the loaded footprint at its face (`u0 = 2(w + d)`, or `πD` for circular water tanks) against `τRd2` and at the NBR 6118:2023 §19.5.2.1 `2d` rounded critical contour (`u1 = 2(w + d) + 4πd`, or `π(D + 4d)` for circular tanks) against `τRd1`. For a lattice/ribbed slab, Trazo does not know the joist and filler geometry, so it deliberately leaves punching unverified and asks for a beam, solid strip or manufacturer check.
 
 **Limitations:** the nearest-edge split is a transparent preliminary load path, not plate finite-element analysis; load dispersion through pedestals, vibration/impact and dynamic equipment forces are not modelled. Equipment input must already include those effects when applicable.
 
@@ -104,7 +104,7 @@ From the end moments come the shears, the reactions (passed to the columns, or a
 
 **Deflection** (`effective_beam_stiffness`, `span_deflection_with_point_loads`):
 
-1. The quasi-permanent load g + 0.3q is applied, with the end moments scaled in the same ratio.
+1. The continuous beam is solved directly under the quasi-permanent load `(g + 0.3q)` and quasi-permanent point loads (`continuous_beam_with_point_loads`), giving exact quasi-permanent support moments without scaling errors when point loads are present.
 2. The equivalent inertia is Branson's formula, NBR 6118:2023, 17.3.2.1.1: I_eq = (Mr/Ma)³·Ic + [1 − (Mr/Ma)³]·I_II ≤ Ic, with:
    - the cracking moment Mr = α·fct·Ic / yt, where α = 1.5 for rectangles and fct = 0.3·fck^(2/3) MPa;
    - I_II, the cracked transformed inertia, with Es = 210 GPa and the tension steel pre-sized for 1.4·Mk (CA-50, fyd = 500/1.15 MPa, never below ρmin from table 17.3).
@@ -123,7 +123,7 @@ Each continuous beam line and its supporting columns are assembled and solved to
 | Column & beam stiffness | Real axial area `A = b·h` and in-plane inertia `I = b·h³/12` aligned with the frame axis, concrete secant modulus `Ecs = 0.85 · 5600 · √fck` | NBR 6118 |
 | Gravity loads | Every span receives its characteristic distributed dead + live load and every retained concentrated load at its actual distance from the left support; this includes tanks/equipment, secondary-beam and roof reactions, and transfer columns | Same load path as the continuous-beam analysis |
 | Rigid & pinned joints | Monolithic rigid beam–column joints (`EndRelease::Rigid`) or exact static condensation for internal hinges (`PinnedStart`, `PinnedEnd`, `PinnedBoth`); column bases fixed (`Fixed`) or pinned (`Pinned`), with automatic sway bracing (`RollerX`) when both joints and bases are pinned | Direct Stiffness Method |
-| Loads | Characteristic uniform gravity loads (`dead + live`) and concentrated loads via exact fixed-end forces, plus service horizontal wind at roof level `H = q · (H/2) · b_trib · 1.2` | NBR 6120, NBR 6123 |
+| Loads | Characteristic uniform gravity loads (`dead + live`) and concentrated loads via exact fixed-end forces, plus frequent service horizontal wind at roof level `H = ψ1 · q · (H/2) · b_trib · 1.2` (`ψ1 = 0.30`, NBR 6118:2023 table 11.2 / 13.3) | NBR 6120, NBR 6123, NBR 6118 |
 | Internal forces & deformed shape | Member axial `N`, shear `V(x)`, bending moment `M(x)` for both beams and columns, support reactions (`Rx, Ry, Mz`), exact Hermite cubic + fixed-fixed particular deflected shape, and global equilibrium check (`ΣFx, ΣFy, ΣM`) | Structural mechanics |
 | Lateral drift | Service lateral sway `Δh` at beam level checked against `H / 850` | NBR 6118:2023, table 13.3 |
 | Solver failure contract | Every eligible line that cannot be solved keeps its frame label and the original diagnostic. It is excluded only from numerical result tables, while an explicit red failure is emitted to warnings, safety verdicts, the UI, PDF memorial, A3 diagram and MCP `falhas_porticos_2d` | Fail-safe reporting contract |

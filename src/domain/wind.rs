@@ -356,9 +356,12 @@ mod tests {
         assert!((wind.s2(10.0, 15.0) - 0.94).abs() < 1e-9);
         let q = wind.pressure_kpa(10.0, 15.0);
         assert!((q - 0.613 * (35.0f64 * 0.94).powi(2) / 1000.0).abs() < 1e-12);
-        // Lower down, less wind; larger buildings (class B), a bit less too.
+        // Lower down, less wind; NBR 6123 Table 2 keeps S2 constant for z <= 5 m.
         assert!(wind.pressure_kpa(4.3, 15.0) < q);
+        assert!((wind.s2(2.6, 15.0) - wind.s2(5.0, 15.0)).abs() < 1e-12);
+        // Larger buildings (class B > 20 m, class C > 50 m) reduce S2 slightly.
         assert!(wind.s2(10.0, 30.0) < wind.s2(10.0, 15.0));
+        assert!(wind.s2(10.0, 60.0) < wind.s2(10.0, 30.0));
         let mut bad = wind;
         bad.v0_ms = 70.0;
         assert!(bad.check().is_err());

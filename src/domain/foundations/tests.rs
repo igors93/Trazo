@@ -221,3 +221,90 @@ fn the_section_grows_with_the_moment() {
     let (none, flexure, ..) = size_balance_beam(0.20, 1.4 * 2000.0, 1.4 * 50.0, 25.0);
     assert!(none.is_none() && flexure > 1.0);
 }
+
+#[test]
+fn shared_anchor_column_checks_cumulative_uplift_across_multiple_balance_beams() {
+    let mut project = Project::default();
+    project.set_terrain(Point::new(0.0, 0.0), Point::new(8.0, 6.0));
+    project
+        .add_room(Point::new(0.0, 0.0), Point::new(8.0, 6.0), "Galpão")
+        .unwrap();
+    // Place two opposite boundary columns at x = 0.07 and x = 7.93, both anchored
+    // to a single interior column at x = 4.0.
+    let c_left = project
+        .add_fixture(FixtureKind::Column, Point::new(0.07, 3.0), 0.14, 0.30, 0)
+        .unwrap();
+    let c_mid = project
+        .add_fixture(FixtureKind::Column, Point::new(4.0, 3.0), 0.14, 0.30, 0)
+        .unwrap();
+    let c_right = project
+        .add_fixture(FixtureKind::Column, Point::new(7.93, 3.0), 0.14, 0.30, 0)
+        .unwrap();
+    project
+        .add_fixture(FixtureKind::Footing, Point::new(0.50, 3.0), 1.0, 1.0, 0)
+        .unwrap();
+    project
+        .add_fixture(FixtureKind::Footing, Point::new(4.0, 3.0), 1.0, 1.0, 0)
+        .unwrap();
+    project
+        .add_fixture(FixtureKind::Footing, Point::new(7.50, 3.0), 1.0, 1.0, 0)
+        .unwrap();
+    project.add_balance_beam(c_left, c_mid).unwrap();
+    project.add_balance_beam(c_right, c_mid).unwrap();
+
+    // Manually synthesize columns so N2 = 60 kN while each boundary column has
+    // large P1 = 300 kN -> relief per beam ≈ 36.2 kN, ΣΔP ≈ 72.4 kN > 60 kN (uplift!).
+    let cols = vec![
+        crate::domain::structure::ColumnResult {
+            id: c_left,
+            label: "P1".into(),
+            width_m: 0.14,
+            depth_m: 0.30,
+            position: crate::domain::structure::ColumnPosition::Edge,
+            load_kn: 300.0,
+            upper_load_kn: 0.0,
+            area_needed_cm2: 400.0,
+            area_cm2: 420.0,
+            height_m: 2.8,
+            slenderness: 69.2,
+        },
+        crate::domain::structure::ColumnResult {
+            id: c_mid,
+            label: "P2".into(),
+            width_m: 0.14,
+            depth_m: 0.30,
+            position: crate::domain::structure::ColumnPosition::Interior,
+            load_kn: 60.0,
+            upper_load_kn: 0.0,
+            area_needed_cm2: 360.0,
+            area_cm2: 420.0,
+            height_m: 2.8,
+            slenderness: 69.2,
+        },
+        crate::domain::structure::ColumnResult {
+            id: c_right,
+            label: "P3".into(),
+            width_m: 0.14,
+            depth_m: 0.30,
+            position: crate::domain::structure::ColumnPosition::Edge,
+            load_kn: 300.0,
+            upper_load_kn: 0.0,
+            area_needed_cm2: 400.0,
+            area_cm2: 420.0,
+            height_m: 2.8,
+            slenderness: 69.2,
+        },
+    ];
+    let effects = project.balance_effects(&cols, &std::collections::HashMap::new());
+    assert_eq!(effects.results.len(), 2);
+    // Individually N2 / relief ≈ 60 / 36.2 = 1.66 >= 1.5, but cumulatively
+    // N2 / (2 * 36.2) = 0.83 < 1.5 -> MUST fail overturning!
+    for res in &effects.results {
+        assert!(
+            res.pair_overturning_fs < 1.0,
+            "cumulative uplift must give FS < 1.0, got {}",
+            res.pair_overturning_fs
+        );
+        assert!(!res.overturning_ok());
+    }
+}

@@ -246,3 +246,57 @@ fn utility_profiles_and_regional_overrides_change_demand_and_entrance() {
     assert!((room_live_load_kn_m2("Garagem", 1.5) - 3.0).abs() < 1e-9);
     assert!((room_live_load_kn_m2("Varanda", 1.5) - 2.5).abs() < 1e-9);
 }
+
+#[test]
+fn entrance_uses_3_loaded_ampacity_and_does_not_dilute_specific_tue_current() {
+    let mut project = Project::default();
+    project.electrical.voltage_v = 220.0;
+    project.electrical.specific_voltage_v = 220.0;
+    project.electrical.supply = Supply::Three;
+    project.electrical.utility = UtilityProfile::Generic;
+
+    let (pw, pd) = FixtureKind::Panel.default_size();
+    project
+        .add_fixture(FixtureKind::Panel, Point::new(0.0, 0.0), pw, pd, 0)
+        .unwrap();
+    let (sw, sd) = FixtureKind::OutletSpecific.default_size();
+    // 7,500 VA TUE shower (34.1 A @ factor 1.00) on Phase A.
+    let shower = project
+        .add_fixture(FixtureKind::OutletSpecific, Point::new(3.0, 0.0), sw, sd, 0)
+        .unwrap();
+    project
+        .update_electrical(shower, Some(Some(1)), Some(7500.0), None)
+        .unwrap();
+    // 10,000 VA of general outlets across 5 circuits (factor 0.27).
+    let (gw, gd) = FixtureKind::OutletLow.default_size();
+    for c in 2..=6 {
+        let out = project
+            .add_fixture(
+                FixtureKind::OutletLow,
+                Point::new(f64::from(c), 2.0),
+                gw,
+                gd,
+                0,
+            )
+            .unwrap();
+        project
+            .update_electrical(out, Some(Some(c)), Some(2000.0), None)
+            .unwrap();
+    }
+
+    let schedule = project.load_schedule();
+    let ent = schedule.entrance.unwrap();
+    // Peak phase carries at least the full 34.1 A shower (NOT diluted to ~19 A by 0.27 general factor).
+    assert!(
+        ent.current_a >= 34.0,
+        "shower current must not be diluted: got {:.1} A",
+        ent.current_a
+    );
+    // Breaker >= 40 A on 3F+N (3 loaded conductors): Table 36 3-loaded requires >= 10 mm² (6 mm² is only 36 A!).
+    assert!(ent.breaker_a.unwrap() >= 40.0);
+    assert!(
+        ent.wire_mm2.unwrap() >= 10.0,
+        "40 A 3F+N entrance requires >= 10 mm² under NBR 5410 Table 36 (3 loaded), got {:?}",
+        ent.wire_mm2
+    );
+}
