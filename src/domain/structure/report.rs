@@ -1393,8 +1393,19 @@ impl Project {
             .extend(report.masonry.warnings.iter().cloned());
         report.slabs.sort_by(|a, b| natural(&a.label, &b.label));
         report.beams.sort_by(|a, b| natural(&a.label, &b.label));
-        report.frames = crate::domain::frame2d::analyze_project_frames(self, &report);
+        let frame_analysis = crate::domain::frame2d::analyze_project_frames(self, &report);
+        report.frames = frame_analysis.frames;
+        report.frame_failures = frame_analysis.failures;
         report.frames.sort_by(|a, b| natural(&a.label, &b.label));
+        report
+            .frame_failures
+            .sort_by(|a, b| natural(&a.label, &b.label));
+        for failure in &report.frame_failures {
+            report.warnings.push(format!(
+                "{}: análise 2D não concluída — {}. Revise apoios, vínculos e geometria.",
+                failure.label, failure.reason
+            ));
+        }
         for frame in &report.frames {
             if !frame.drift_ok() {
                 report.warnings.push(format!(

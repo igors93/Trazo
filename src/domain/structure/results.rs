@@ -264,6 +264,8 @@ pub struct StructureReport {
     pub masonry: crate::domain::masonry_structure::MasonryStructureReport,
     /// 2D plane-frame analysis per continuous beam line (#94).
     pub frames: Vec<crate::domain::frame2d::FrameLineResult>,
+    /// Eligible frame lines that failed to solve; never hidden from outputs.
+    pub frame_failures: Vec<crate::domain::frame2d::FrameAnalysisFailure>,
     pub warnings: Vec<String>,
 }
 

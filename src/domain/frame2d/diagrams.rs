@@ -26,6 +26,7 @@ fn dec(value: f64, places: usize) -> String {
 pub fn frame_diagrams_svg(project: &Project) -> String {
     let report = project.cached_structure_report();
     let frames = &report.frames;
+    let failures = &report.frame_failures;
     let w = 1189.0_f64;
     let h = 841.0_f64;
 
@@ -65,11 +66,30 @@ pub fn frame_diagrams_svg(project: &Project) -> String {
     );
 
     if frames.is_empty() {
-        svg.push_str(
-            r##"<text x="594" y="420" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" fill="#64748b">Nenhum pórtico 2D disponível. Gere a estrutura (pilares e vigas) para visualizar a deformada e os esforços.</text>
+        if failures.is_empty() {
+            svg.push_str(
+                r##"<text x="594" y="420" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" fill="#64748b">Nenhum pórtico 2D disponível. Gere a estrutura (pilares e vigas) para visualizar a deformada e os esforços.</text>
 </svg>
 "##,
-        );
+            );
+        } else {
+            svg.push_str(
+                r##"<text x="594" y="170" text-anchor="middle" font-family="Arial, sans-serif" font-size="17" font-weight="bold" fill="#b91c1c">Nenhum pórtico 2D foi resolvido</text>
+<text x="594" y="194" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" fill="#b91c1c">Resultado ausente não significa segurança. Revise os modelos abaixo.</text>
+"##,
+            );
+            for (index, failure) in failures.iter().take(8).enumerate() {
+                let y = 235.0 + index as f64 * 44.0;
+                let _ = writeln!(
+                    svg,
+                    r##"<text x="90" y="{y:.1}" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#991b1b">{}</text>
+<text x="250" y="{y:.1}" font-family="Arial, sans-serif" font-size="11.5" fill="#7f1d1d">{}</text>"##,
+                    esc(&failure.label),
+                    esc(&failure.reason)
+                );
+            }
+            svg.push_str("</svg>\n");
+        }
         return svg;
     }
 
@@ -86,7 +106,7 @@ pub fn frame_diagrams_svg(project: &Project) -> String {
         draw_frame_row(&mut svg, frame, 40.0, ry, 1109.0, row_h);
     }
 
-    let extra_note = if frames.len() > shown {
+    let mut extra_note = if frames.len() > shown {
         format!(
             "Mostrando os {} primeiros de {} pórticos 2D. ",
             shown,
@@ -95,6 +115,12 @@ pub fn frame_diagrams_svg(project: &Project) -> String {
     } else {
         String::new()
     };
+    if !failures.is_empty() {
+        extra_note.push_str(&format!(
+            "ATENÇÃO: {} pórtico(s) não resolvido(s); consulte o memorial. ",
+            failures.len()
+        ));
+    }
     let max_res = frames
         .iter()
         .map(|f| f.equilibrium_residual_kn)

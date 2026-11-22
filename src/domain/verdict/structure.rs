@@ -84,6 +84,20 @@ fn sized_structure_verdicts(
     reinforcement: &crate::domain::reinforcement::ReinforcementReport,
 ) -> Vec<Verdict> {
     let mut verdicts = Vec::new();
+    for failure in &report.frame_failures {
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: failure.label.clone(),
+            checks: vec![Check::fail(
+                "Análise 2D",
+                "O pórtico não foi resolvido; não use resultados ausentes como aprovação.".to_owned(),
+                format!(
+                    "Solver de rigidez direta: {}. Revise estabilidade, vínculos, apoios e geometria.",
+                    failure.reason
+                ),
+            )],
+        });
+    }
     for slab in &report.slabs {
         let mut checks = Vec::new();
         if slab.supported {

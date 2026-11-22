@@ -830,6 +830,25 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                 &rows,
             );
         }
+        if !report.frame_failures.is_empty() {
+            pages.subheading("Pórticos 2D não resolvidos");
+            let rows: Vec<_> = report
+                .frame_failures
+                .iter()
+                .map(|failure| {
+                    (
+                        Some(Light::Red),
+                        vec![failure.label.clone(), failure.reason.clone()],
+                    )
+                })
+                .collect();
+            pages.table(&["Pórtico", "Motivo da falha"], &[2.2, 8.8], &rows);
+            pages.paragraph(
+                "Um resultado ausente não aprova o pórtico. Revise estabilidade, vínculos, apoios e geometria antes de construir.",
+                2.7,
+                "#cc3f33",
+            );
+        }
         if !report.columns.is_empty() {
             pages.subheading("Pilares");
             let rows: Vec<_> = report

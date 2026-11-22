@@ -12,5 +12,5 @@ pub mod solver;
 #[cfg(test)]
 mod tests;
 
-pub use builder::{FrameLineResult, analyze_project_frames};
+pub use builder::{FrameAnalysisFailure, FrameLineResult, analyze_project_frames};
 pub use diagrams::frame_diagrams_svg;

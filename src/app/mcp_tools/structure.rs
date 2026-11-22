@@ -1392,11 +1392,23 @@ impl FloorPlanApp {
                 })
             })
             .collect();
+        let frame_failures: Vec<Value> = report
+            .frame_failures
+            .iter()
+            .map(|failure| {
+                json!({
+                    "rotulo": failure.label,
+                    "motivo": failure.reason,
+                    "atende": false,
+                })
+            })
+            .collect();
         Ok(ToolOutput::ok(format!(
-            "{} laje(s), {} viga(s), {} pórtico(s) 2D, {} pilar(es), {} sapata(s), {} verga(s)/contraverga(s), {} painel(is) de alvenaria, {} kg de aço preliminar, {} alerta(s).",
+            "{} laje(s), {} viga(s), {} pórtico(s) 2D resolvido(s), {} falha(s) de pórtico, {} pilar(es), {} sapata(s), {} verga(s)/contraverga(s), {} painel(is) de alvenaria, {} kg de aço preliminar, {} alerta(s).",
             slabs.len(),
             beams.len(),
             frames_2d.len(),
+            frame_failures.len(),
             columns.len(),
             footings.len(),
             masonry_bands.len(),
@@ -1420,6 +1432,7 @@ impl FloorPlanApp {
             "lajes": slabs,
             "vigas": beams,
             "porticos_2d": frames_2d,
+            "falhas_porticos_2d": frame_failures,
             "pilares": columns,
             "sapatas": footings,
             "telhados": report.roofs.iter().map(roof_json).collect::<Vec<_>>(),
@@ -2052,5 +2065,31 @@ mod tests {
         let svg = std::fs::read_to_string(&svg_path).unwrap();
         assert!(svg.contains("Análise de pórticos planos 2D"));
         let _ = std::fs::remove_dir_all(&dir);
+
+        // A solver failure remains explicit in the machine-readable contract
+        // and in the same safety traffic light consumed by assistants.
+        app.project.structure.settings.fck_mpa = f64::INFINITY;
+        let failed_output = app.run_mcp_tool("pre_dimensionamento", &json!({}));
+        assert!(!failed_output.is_error, "{}", failed_output.text);
+        assert!(failed_output.text.contains("falha(s) de pórtico"));
+        let failed = failed_output.structured.unwrap();
+        assert!(failed["porticos_2d"].as_array().unwrap().is_empty());
+        let failures = failed["falhas_porticos_2d"].as_array().unwrap();
+        assert_eq!(failures.len(), frames.len());
+        assert!(failures.iter().all(|failure| {
+            failure["rotulo"]
+                .as_str()
+                .is_some_and(|label| !label.is_empty())
+                && failure["motivo"]
+                    .as_str()
+                    .is_some_and(|reason| reason.contains("singular"))
+                && failure["atende"] == false
+        }));
+        let lights = failed["semaforo"].as_array().unwrap();
+        assert!(failures.iter().all(|failure| {
+            lights.iter().any(|light| {
+                light["elemento"] == failure["rotulo"] && light["semaforo"] == "vermelho"
+            })
+        }));
     }
 }

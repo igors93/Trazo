@@ -797,7 +797,13 @@ impl FloorPlanApp {
                     }
                     if tab == 5 {
                         let before = settings;
-                        super::frames::frames_tab(ui, &report.frames, &mut settings, preview.as_ref());
+                        super::frames::frames_tab(
+                            ui,
+                            &report.frames,
+                            &report.frame_failures,
+                            &mut settings,
+                            preview.as_ref(),
+                        );
                         if settings != before {
                             edits.push(StructureEdit::Settings(settings));
                         }

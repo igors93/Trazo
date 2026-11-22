@@ -5,7 +5,10 @@
 use eframe::egui::{self, RichText, Ui};
 
 use super::super::theme::*;
-use crate::domain::{frame2d::FrameLineResult, structure::StructureSettings};
+use crate::domain::{
+    frame2d::{FrameAnalysisFailure, FrameLineResult},
+    structure::StructureSettings,
+};
 
 fn dec(value: f64, places: usize) -> String {
     format!("{value:.places$}").replace('.', ",")
@@ -16,6 +19,7 @@ fn dec(value: f64, places: usize) -> String {
 pub(super) fn frames_tab(
     ui: &mut Ui,
     frames: &[FrameLineResult],
+    failures: &[FrameAnalysisFailure],
     settings: &mut StructureSettings,
     preview: Option<&(egui::TextureHandle, egui::Vec2)>,
 ) {
@@ -31,12 +35,41 @@ pub(super) fn frames_tab(
     });
     ui.add_space(6.0);
 
+    if !failures.is_empty() {
+        ui.label(
+            RichText::new("Pórticos não analisados")
+                .font(strong(13.0))
+                .color(DANGER),
+        );
+        egui::Grid::new("frames_2d_failures")
+            .striped(true)
+            .spacing([12.0, 5.0])
+            .show(ui, |ui| {
+                ui.label(RichText::new("Pórtico").font(strong(12.0)).color(TEXT_2));
+                ui.label(RichText::new("Motivo").font(strong(12.0)).color(TEXT_2));
+                ui.end_row();
+                for failure in failures {
+                    ui.label(RichText::new(&failure.label).font(strong(12.0)));
+                    ui.label(RichText::new(&failure.reason).color(DANGER));
+                    ui.end_row();
+                }
+            });
+        ui.label(
+            RichText::new("Resultado ausente não significa segurança: revise os vínculos, apoios e a geometria antes de usar os demais resultados.")
+                .size(11.0)
+                .color(DANGER),
+        );
+        ui.add_space(8.0);
+    }
+
     if frames.is_empty() {
         ui.label(
-            RichText::new(
-                "Nenhum pórtico 2D disponível. Gere a estrutura (pilares e vigas) para analisar vigas e pilares acoplados.",
-            )
-            .color(MUTED),
+            RichText::new(if failures.is_empty() {
+                "Nenhum pórtico 2D disponível. Gere a estrutura (pilares e vigas) para analisar vigas e pilares acoplados."
+            } else {
+                "Nenhum pórtico 2D foi resolvido; consulte as falhas acima."
+            })
+            .color(if failures.is_empty() { MUTED } else { DANGER }),
         );
         return;
     }

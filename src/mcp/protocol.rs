@@ -43,7 +43,7 @@ também oferece vigas alavanca em divisa, baldrame/sapata corrida sob paredes, s
 e simulação de fundações (sapatas/radier/brocas), cargas concentradas (caixa-d'água) e \
 telhado meia-água em madeira (definir_telhado / ajustar_paredes_telhado). pre_dimensionamento \
 mostra lajes, vigas contínuas, pilares (com esbeltez), sapatas, vergas/contravergas e painéis de alvenaria, telhados, sondagem, estudo \
-de fundações, armaduras preliminares, tabela de aço, semáforo e alertas. Ajuste pontos \
+de fundações, armaduras preliminares, tabela de aço, falhas explícitas de pórticos 2D, semáforo e alertas. Ajuste pontos \
 elétricos com inserir_ponto_eletrico e editar_ponto_eletrico. Nomeie os cômodos pelo uso \
 (Cozinha, Banheiro, Quarto...), porque as normas mudam conforme o tipo de cômodo.
 Documentação, quantitativos e verificações: use quantitativos para levantamento consolidado \
@@ -929,7 +929,7 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "pre_dimensionamento",
             title: "Pré-dimensionamento da estrutura",
-            description: "Lajes (painéis, charneiras 45° e cargas concentradas), vigas contínuas (momentos, cortante, flecha com Branson NBR 6118), pórticos planos 2D acoplando vigas e pilares (rigidez direta, nós rígidos/rotulados, momentos nos pilares, reações e deslocamento lateral), pilares (com altura e esbeltez), sapatas, vigas alavanca, fundação de paredes, vergas/contravergas e painéis de alvenaria de vedação/estrutural (NBR 16868), telhados e mourões com espécie/classe, tratamento, compressão, flambagem e vento lateral (NBR 7190), sondagem SPT, estudo comparativo de fundações, armaduras preliminares e tabela de aço, caminho de cargas de caixa-d'água/equipamento, semáforo, limites e alertas.",
+            description: "Lajes (painéis, charneiras 45° e cargas concentradas), vigas contínuas (momentos, cortante, flecha com Branson NBR 6118), pórticos planos 2D acoplando vigas e pilares (rigidez direta, nós rígidos/rotulados, momentos nos pilares, reações, deslocamento lateral e falhas explícitas com identificação e motivo), pilares (com altura e esbeltez), sapatas, vigas alavanca, fundação de paredes, vergas/contravergas e painéis de alvenaria de vedação/estrutural (NBR 16868), telhados e mourões com espécie/classe, tratamento, compressão, flambagem e vento lateral (NBR 7190), sondagem SPT, estudo comparativo de fundações, armaduras preliminares e tabela de aço, caminho de cargas de caixa-d'água/equipamento, semáforo, limites e alertas.",
             properties: json!({}),
             required: &[],
             read_only: true,

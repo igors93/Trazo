@@ -105,6 +105,22 @@ pub struct FrameLineResult {
     pub members: Vec<DeformedMember>,
 }
 
+/// A portal-frame line that was eligible for analysis but could not be
+/// solved. Keeping the original solver reason is part of the safety contract:
+/// an absent result must never look like an absent model.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FrameAnalysisFailure {
+    pub label: String,
+    pub reason: String,
+}
+
+/// Complete outcome of project frame analysis, including partial success.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ProjectFrameAnalysis {
+    pub frames: Vec<FrameLineResult>,
+    pub failures: Vec<FrameAnalysisFailure>,
+}
+
 impl FrameLineResult {
     pub fn drift_ok(&self) -> bool {
         self.max_lateral_drift_mm <= self.drift_limit_mm + 1e-6
@@ -140,12 +156,12 @@ impl FrameLineResult {
 
 /// Analyzes every continuous beam line of `project` as a coupled 2D portal
 /// frame (beams + columns together) using the Direct Stiffness Method.
-pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Vec<FrameLineResult> {
+pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> ProjectFrameAnalysis {
     let settings = project.structure.settings;
     let e_c = settings.modulus_kn_m2();
     let lines = project.beam_lines();
     if lines.is_empty() || report.beams.is_empty() {
-        return Vec::new();
+        return ProjectFrameAnalysis::default();
     }
 
     let col_results: HashMap<u64, &crate::domain::structure::ColumnResult> =
@@ -190,10 +206,22 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Ve
 
     let rigid_joints = settings.frame_rigid_joints;
     let fixed_bases = settings.frame_fixed_bases;
-    let mut results = Vec::new();
+    let mut analysis = ProjectFrameAnalysis::default();
 
     for line in &lines {
-        if line.spans.is_empty() || line.supports.len() != line.spans.len() + 1 {
+        let frame_label = format!("Pórtico {}", line.label);
+        if line.spans.is_empty() {
+            continue;
+        }
+        if line.supports.len() != line.spans.len() + 1 {
+            analysis.failures.push(FrameAnalysisFailure {
+                label: frame_label,
+                reason: format!(
+                    "topologia inconsistente: {} vão(s) e {} apoio(s)",
+                    line.spans.len(),
+                    line.supports.len()
+                ),
+            });
             continue;
         }
         // Only build a 2D portal frame when at least one column supports the line.
@@ -246,6 +274,10 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Ve
             stations.push(cursor);
         }
         if cursor <= 0.0 {
+            analysis.failures.push(FrameAnalysisFailure {
+                label: frame_label,
+                reason: "contém vão nulo ou menor que 5 cm".to_owned(),
+            });
             continue;
         }
 
@@ -388,8 +420,15 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Ve
             frame.add_nodal_load(top_nodes[0], lateral_wind_kn, 0.0, 0.0);
         }
 
-        let Ok(sol) = solve_frame(&frame) else {
-            continue;
+        let sol = match solve_frame(&frame) {
+            Ok(solution) => solution,
+            Err(reason) => {
+                analysis.failures.push(FrameAnalysisFailure {
+                    label: frame_label,
+                    reason,
+                });
+                continue;
+            }
         };
 
         let reaction_map: HashMap<usize, (f64, f64, f64)> = sol
@@ -477,8 +516,8 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Ve
             })
             .collect();
 
-        results.push(FrameLineResult {
-            label: format!("Pórtico {}", line.label),
+        analysis.frames.push(FrameLineResult {
+            label: frame_label,
             rigid_joints,
             fixed_bases,
             braced_sway,
@@ -500,5 +539,5 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Ve
         });
     }
 
-    results
+    analysis
 }

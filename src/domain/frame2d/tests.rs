@@ -494,6 +494,63 @@ fn project_frame_keeps_a_water_tank_load_on_its_beam() {
     assert!(after_frame.equilibrium_residual_kn < 1e-7);
 }
 
+#[test]
+fn solver_and_project_report_expose_an_unstable_frame() {
+    let mut unstable = Frame2D::default();
+    let a = unstable.add_node("A", 0.0, 0.0, SupportKind::Free);
+    let b = unstable.add_node("B", 4.0, 0.0, SupportKind::Free);
+    unstable.add_member(
+        "V-instável",
+        MemberKind::Beam,
+        a,
+        b,
+        0.14 * 0.40,
+        0.14 * 0.40_f64.powi(3) / 12.0,
+        25_000_000.0,
+        EndRelease::Rigid,
+    );
+    let reason = solve_frame(&unstable).unwrap_err();
+    assert!(reason.contains("hipostático") || reason.contains("singular"));
+
+    // Force a non-finite stiffness through the low-level project model. Public
+    // setters reject it, but the report must still expose any solver error
+    // instead of turning a failed eligible line into an empty result.
+    let mut project = Project::default();
+    project.set_terrain(Point::new(-2.0, -2.0), Point::new(8.0, 5.0));
+    let c1 = project
+        .add_fixture(FixtureKind::Column, Point::new(0.0, 0.0), 0.20, 0.30, 0)
+        .unwrap();
+    let c2 = project
+        .add_fixture(FixtureKind::Column, Point::new(5.0, 0.0), 0.20, 0.30, 0)
+        .unwrap();
+    project.add_beam(c1, c2, 0.14, 0.40).unwrap();
+    project.structure.settings.fck_mpa = f64::INFINITY;
+
+    let report = project.structure_report();
+    assert!(report.frames.is_empty());
+    assert_eq!(
+        report.frame_failures.len(),
+        1,
+        "{:#?}",
+        report.frame_failures
+    );
+    let failure = &report.frame_failures[0];
+    assert!(failure.reason.contains("hipostático") || failure.reason.contains("singular"));
+    assert!(report.warnings.iter().any(|warning| {
+        warning.contains(&failure.label) && warning.contains("análise 2D não concluída")
+    }));
+    let verdict = crate::domain::verdict::structure_verdicts(&project, &report)
+        .into_iter()
+        .find(|verdict| verdict.element == failure.label)
+        .unwrap();
+    assert_eq!(verdict.light(), crate::domain::verdict::Light::Red);
+
+    let svg = super::frame_diagrams_svg(&project);
+    assert!(svg.contains("Nenhum pórtico 2D foi resolvido"));
+    assert!(svg.contains(&failure.label));
+    assert!(svg.contains(&failure.reason));
+}
+
 /// Validation #4 (ROADMAP #94): Global equilibrium, rigid vs pinned joints,
 /// and A3 vector SVG generation on a real generated house project.
 #[test]
