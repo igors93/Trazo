@@ -278,6 +278,13 @@ pub struct StructureSettings {
     pub masonry_kn_m3: f64,
     /// Apply NBR 6120 per-room minimum live loads (e.g. balconies 2.5, garages 3.0 kN/m²).
     pub per_room_live_loads: bool,
+    /// 2D plane-frame analysis (#94): monolithic rigid beam-column joints (`true`)
+    /// or pinned column-top joints (`false`).
+    #[serde(default = "default_true")]
+    pub frame_rigid_joints: bool,
+    /// 2D plane-frame analysis (#94): fixed column bases (`true`) or pinned bases (`false`).
+    #[serde(default = "default_true")]
+    pub frame_fixed_bases: bool,
 }
 
 impl Default for StructureSettings {
@@ -290,6 +297,8 @@ impl Default for StructureSettings {
             finish_kn_m2: 1.0,
             masonry_kn_m3: 13.0,
             per_room_live_loads: false,
+            frame_rigid_joints: true,
+            frame_fixed_bases: true,
         }
     }
 }
@@ -889,6 +898,8 @@ pub struct StructureReport {
     pub wind: super::wind::WindReport,
     /// Lintels, sills and masonry wall-panel checks (#111).
     pub masonry: super::masonry_structure::MasonryStructureReport,
+    /// 2D plane-frame analysis per continuous beam line (#94).
+    pub frames: Vec<super::frame2d::FrameLineResult>,
     pub warnings: Vec<String>,
 }
 
@@ -3470,6 +3481,16 @@ impl Project {
             .extend(report.masonry.warnings.iter().cloned());
         report.slabs.sort_by(|a, b| natural(&a.label, &b.label));
         report.beams.sort_by(|a, b| natural(&a.label, &b.label));
+        report.frames = super::frame2d::analyze_project_frames(self, &report);
+        report.frames.sort_by(|a, b| natural(&a.label, &b.label));
+        for frame in &report.frames {
+            if !frame.drift_ok() {
+                report.warnings.push(format!(
+                    "{}: deslocamento lateral ({:.2} mm) excede H/850 ({:.2} mm); enrijeça os pilares ou adicione contraventamento.",
+                    frame.label, frame.max_lateral_drift_mm, frame.drift_limit_mm
+                ));
+            }
+        }
         report
     }
 

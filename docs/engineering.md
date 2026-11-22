@@ -111,7 +111,22 @@ From the end moments come the shears, the reactions (passed to the columns, or a
 3. The modulus is Ecs = 0.85 · 5600 · √fck MPa. This is the secant modulus of NBR 6118:2003; for fck = 25 MPa and granite aggregate it is within 2 % of the αi·Eci of NBR 6118:2023, 8.2.8.
 4. The curvature M/EI is integrated twice numerically (100 steps). The long-term value multiplies the immediate deflection by 1 + αf = 2.32 (αf = 1.32 for loading at about one month, no compression steel, 17.3.2.1.2).
 
-**Assumptions:** pinned supports (column stiffness ignored; see #94); no torsion. Reinforcement and shear are estimated as described below, but the analysis still has no frame action or torsion.
+**Assumptions:** the continuous-beam pre-sizing table uses pinned supports (no torsion); coupled beam–column frame action is computed in the dedicated 2D frame analysis module (`src/domain/frame2d/`, #94) below.
+
+## 2D plane-frame analysis (#94)
+
+Each continuous beam line and its supporting columns are assembled and solved together as a coupled 2D Euler–Bernoulli plane frame (`src/domain/frame2d/`):
+
+| Feature | Formulation | Reference |
+| --- | --- | --- |
+| Element stiffness | 6×6 local Euler–Bernoulli frame element (`EA/L`, `12EI/L³`, `6EI/L²`, `4EI/L`, `2EI/L`) transformed by `K_g = Tᵀ K_l T` with 3 DOFs/node (`u, v, θ`) | Direct Stiffness Method |
+| Column & beam stiffness | Real axial area `A = b·h` and in-plane inertia `I = b·h³/12` aligned with the frame axis, concrete secant modulus `Ecs = 0.85 · 5600 · √fck` | NBR 6118 |
+| Rigid & pinned joints | Monolithic rigid beam–column joints (`EndRelease::Rigid`) or exact static condensation for internal hinges (`PinnedStart`, `PinnedEnd`, `PinnedBoth`); column bases fixed (`Fixed`) or pinned (`Pinned`), with automatic sway bracing (`RollerX`) when both joints and bases are pinned | Direct Stiffness Method |
+| Loads | Characteristic uniform gravity loads (`dead + live`) and concentrated loads via exact fixed-end forces, plus service horizontal wind at roof level `H = q · (H/2) · b_trib · 1.2` | NBR 6120, NBR 6123 |
+| Internal forces & deformed shape | Member axial `N`, shear `V(x)`, bending moment `M(x)` for both beams and columns, support reactions (`Rx, Ry, Mz`), exact Hermite cubic + fixed-fixed particular deflected shape, and global equilibrium check (`ΣFx, ΣFy, ΣM`) | Structural mechanics |
+| Lateral drift | Service lateral sway `Δh` at beam level checked against `H / 850` | NBR 6118:2023, table 13.3 |
+
+Validated in CI by `cantilever_column_matches_exact_moment_and_tip_deflection`, `frame_reduces_to_continuous_beam_when_column_stiffness_vanishes`, `symmetric_fixed_base_portal_gravity_matches_slope_deflection`, `symmetric_fixed_base_portal_lateral_sway_matches_slope_deflection`, `pinned_end_releases_zero_end_moments_and_match_simply_supported_deflection`, and `project_2d_frames_satisfy_global_equilibrium_and_render_valid_svg`. **Limitations:** linear-elastic 2D planar analysis per frame line (no 3D torsion, P–Δ second-order geometric nonlinearity, or cracked-section stiffness reduction inside the global frame matrix).
 
 ## Masonry lintels, sills and panels
 

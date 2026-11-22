@@ -482,6 +482,31 @@ impl FloorPlanApp {
         };
     }
 
+    fn export_frame_diagrams(&mut self, pdf: bool) {
+        let markup = crate::domain::frame2d::frame_diagrams_svg(&self.project);
+        let (label, ext) = if pdf {
+            ("Documento PDF", "pdf")
+        } else {
+            ("Desenho SVG", "svg")
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(format!("porticos-2d.{ext}"))
+            .save_file()
+        else {
+            return;
+        };
+        let result = if pdf {
+            crate::domain::views::export_view_pdf(&markup, &path)
+        } else {
+            crate::domain::views::export_view_svg(&markup, &path)
+        };
+        self.message = match result {
+            Ok(()) => format!("Pórticos 2D exportados em {}", path.display()),
+            Err(error) => format!("Erro ao exportar os pórticos 2D: {error}"),
+        };
+    }
+
     fn export_beam_diagrams(&mut self, pdf: bool) {
         let markup = beam_diagrams_svg(&self.project);
         let (label, ext) = if pdf {
@@ -559,6 +584,7 @@ impl FloorPlanApp {
         let mut generate = false;
         let mut footings = false;
         let mut export_forces = None;
+        let mut export_frames = None;
         let mut export_steel = false;
         let mut export_detail = None;
         let mut export_memorial = false;
@@ -603,6 +629,12 @@ impl FloorPlanApp {
                 ctx,
                 "trazo_beam_diagrams",
                 &beam_diagrams_svg(&self.project),
+            )
+        } else if tab == 5 {
+            svg_preview(
+                ctx,
+                "trazo_frame_2d_diagrams",
+                &crate::domain::frame2d::frame_diagrams_svg(&self.project),
             )
         } else {
             None
@@ -682,7 +714,17 @@ impl FloorPlanApp {
                 }
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    for (index, title) in ["Pré-dimensionamento", "Esforços nas vigas", "Armaduras", "Solo e fundações", "Telhado"].iter().enumerate() {
+                    for (index, title) in [
+                        "Pré-dimensionamento",
+                        "Esforços nas vigas",
+                        "Armaduras",
+                        "Solo e fundações",
+                        "Telhado",
+                        "Pórticos 2D",
+                    ]
+                    .iter()
+                    .enumerate()
+                    {
                         if ui
                             .selectable_label(tab == index as u8, RichText::new(*title).font(strong(12.5)))
                             .clicked()
@@ -697,6 +739,14 @@ impl FloorPlanApp {
                         }
                         if secondary_button(ui, "Exportar SVG").clicked() {
                             export_forces = Some(false);
+                        }
+                    } else if tab == 5 {
+                        ui.separator();
+                        if secondary_button(ui, "Exportar PDF").clicked() {
+                            export_frames = Some(true);
+                        }
+                        if secondary_button(ui, "Exportar SVG").clicked() {
+                            export_frames = Some(false);
                         }
                     } else if tab == 2 {
                         ui.separator();
@@ -742,6 +792,14 @@ impl FloorPlanApp {
                     if tab == 4 {
                         if let Some(action) = super::roof::roof_tab(ui, &self.project, &report) {
                             edits.push(StructureEdit::Roof(action));
+                        }
+                        return;
+                    }
+                    if tab == 5 {
+                        let before = settings;
+                        super::frames::frames_tab(ui, &report.frames, &mut settings, preview.as_ref());
+                        if settings != before {
+                            edits.push(StructureEdit::Settings(settings));
                         }
                         return;
                     }
@@ -1112,6 +1170,9 @@ impl FloorPlanApp {
         }
         if let Some(pdf) = export_forces {
             self.export_beam_diagrams(pdf);
+        }
+        if let Some(pdf) = export_frames {
+            self.export_frame_diagrams(pdf);
         }
         if export_steel {
             self.export_steel_schedule();

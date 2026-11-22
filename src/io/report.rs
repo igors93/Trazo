@@ -781,6 +781,53 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                 &rows,
             );
         }
+        if !report.frames.is_empty() {
+            pages.subheading("Pórticos planos 2D (vigas + pilares · rigidez direta)");
+            let rows: Vec<_> = report
+                .frames
+                .iter()
+                .map(|f| {
+                    let model = match (f.rigid_joints, f.fixed_bases) {
+                        (true, true) => "Rígido / Engast.",
+                        (true, false) => "Rígido / Rotul.",
+                        (false, true) => "Rotul. / Engast.",
+                        (false, false) => "Rotul. / Contrav.",
+                    };
+                    let light = if f.drift_ok() {
+                        Some(Light::Green)
+                    } else {
+                        Some(Light::Red)
+                    };
+                    (
+                        light,
+                        vec![
+                            f.label.clone(),
+                            model.to_owned(),
+                            format!("{} kN·m", decimal(f.max_beam_moment_knm(), 1)),
+                            format!("{} kN·m", decimal(f.max_column_moment_knm(), 1)),
+                            format!("{} kN", decimal(f.lateral_wind_kn, 1)),
+                            format!(
+                                "{}/{} mm",
+                                decimal(f.max_lateral_drift_mm, 2),
+                                decimal(f.drift_limit_mm, 2)
+                            ),
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &[
+                    "Pórtico",
+                    "Modelo",
+                    "M máx viga",
+                    "M máx pilar",
+                    "Vento H",
+                    "Δh / H/850",
+                ],
+                &[1.8, 2.0, 1.5, 1.5, 1.2, 2.0],
+                &rows,
+            );
+        }
         if !report.columns.is_empty() {
             pages.subheading("Pilares");
             let rows: Vec<_> = report

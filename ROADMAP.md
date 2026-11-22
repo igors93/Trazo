@@ -58,7 +58,7 @@ Engineering features follow these rules. They apply to everything in milestones 
 | Release (#58–#64, #77–#81) | 🟡 CI, licence, property tests, migrations, release binaries, crash reports, Windows installer and samples done; schema, signing and CI on Windows and macOS remain |
 | Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
 | Electrical design (#88–#91) | ✅ Devices, NBR 5410 forecast, circuits, conduits with wiring, phase balancing, voltage drop, demand, service entrance, single-line diagram |
-| Structure (#92–#94) | ✅ Columns, beams, slabs and footings on a formwork plan, pre-sizing with warnings · 🟡 analysis covers continuous beams only |
+| Structure (#92–#94) | ✅ Columns, beams, slabs and footings on a formwork plan, pre-sizing with warnings, continuous beams and 2D plane-frame analysis (beams + columns together, rigid/pinned joints, reactions and deformed shape) |
 | Discipline views (#96) | ✅ Architecture, electrical, structure, foundations and prepared plumbing views on synchronized linked tabs sharing a single live model; hydraulic pipe calculations join with #72 |
 | Plumbing (#72) | ⬜ Not started (sanitary fixture view discipline and dependency tracking prepared) |
 | Simulation, materials and planning | ⬜ Beam analysis is the only simulation so far; no material catalogue, costs or schedule |
@@ -289,14 +289,15 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
 
 - Implemented and committed as `9ce409b` (see its entry above). Not reworked here.
 
-### #94 2D frame analysis — ⬜ Pendente
+### #94 2D frame analysis — ✅ Done
 
-- **Status:** not started in this round; work stopped at the user's request.
-- **Validation plan:**
-  - a cantilever column (M = P·h, Δ = Ph³/3EI);
-  - reduction to the continuous-beam results when the column stiffness goes to zero;
-  - a symmetric fixed-base portal against the slope-deflection closed form;
-  - global equilibrium.
+- **Changes:** added modular 2D Euler–Bernoulli Direct Stiffness Method solver in `src/domain/frame2d/` (`mod.rs`, `model.rs`, `solver.rs`, `builder.rs`, `diagrams.rs`, `tests.rs`): 3 DOF/node (`u, v, θ`) analyzing beams and columns together with real axial and in-plane flexural stiffness (`EA/L`, `EI/L`), static condensation for pinned end releases (`Rigid`, `PinnedStart`, `PinnedEnd`, `PinnedBoth`), fixed/pinned/roller supports, uniform & point member loads + NBR 6123 service lateral wind, exact Hermite + load-particular deformed shape, global equilibrium verification (`ΣFx, ΣFy, ΣM`), inter-storey lateral drift check (`H/850`), A3 vector diagram sheet (`frame_diagrams_svg`), dedicated *Pórticos 2D* UI tab (`src/app/ui/frames.rs`) with joint/base toggles and PDF/SVG export, PDF memorial table (`src/io/report.rs`), and MCP integration (`pre_dimensionamento.porticos_2d`, `projeto_estrutural → configurar` `portico_nos_rigidos`/`portico_bases_engastadas`, `exportar_planta` `porticos_svg`/`porticos_pdf`).
+- **Validation tests:**
+  - `cantilever_column_matches_exact_moment_and_tip_deflection` (`M = P·h`, `Δ = Ph³/3EI`, `θ = Ph²/2EI`);
+  - `frame_reduces_to_continuous_beam_when_column_stiffness_vanishes` (`I_col → 0` matches `M_B = -wL²/8`, `R = 3/8, 10/8, 3/8 wL`);
+  - `symmetric_fixed_base_portal_gravity_matches_slope_deflection` and `symmetric_fixed_base_portal_lateral_sway_matches_slope_deflection` against closed-form slope-deflection equations;
+  - `pinned_end_releases_zero_end_moments_and_match_simply_supported_deflection` (`5wL⁴/384EI`);
+  - `project_2d_frames_satisfy_global_equilibrium_and_render_valid_svg` (`|ΣF| < 1e-6`, `|ΣM| < 1e-5`, rigid vs pinned joint toggle, valid SVG).
 
 ### #110 Reinforcement pre-sizing and steel schedule — ✅ Done
 
@@ -513,7 +514,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 94 | 2D frame analysis: beams and columns together (column stiffness, rigid and pinned joints), internal forces, reactions and the deformed shape | P0 | XL | M4 | 🟡 Continuous beams on pinned supports: moments, shear, reactions and deflection |
+| 94 | 2D frame analysis: beams and columns together (column stiffness, rigid and pinned joints), internal forces, reactions and the deformed shape | P0 | XL | M4 | ✅ |
 | 105 | Load cases and combinations: NBR 6120 loads, NBR 8681 ultimate and service combinations, and wind on the building (NBR 6123) | P1 | L | M4 | ⬜ |
 | 106 | Results on the plan and on paper: diagrams over the beams, deformed shape, utilisation colours and an animated load path from slab to soil, with labels that avoid each other (B05) | P1 | M | M4 | 🟡 Beam diagrams on a separate sheet |
 | 107 | What-if mode: sliders for span, section, load and material, results updating live and the safe range highlighted | P1 | M | M4 | ⬜ |

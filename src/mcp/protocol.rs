@@ -918,6 +918,8 @@ fn catalogue() -> Vec<Tool> {
                 "categoria_terreno": integer("Para configurar_vento: categoria do terreno, 1 (mar aberto) a 5 (centro denso), padrão 3."),
                 "s1": number("Para configurar_vento: fator topográfico S1 (padrão 1)."),
                 "s3": number("Para configurar_vento: fator estatístico S3 (padrão 1)."),
+                "portico_nos_rigidos": boolean("Para configurar: true usa nós rígidos viga-pilar na análise de pórticos 2D (padrão true); false articula os pilares no topo."),
+                "portico_bases_engastadas": boolean("Para configurar: true usa bases engastadas na análise de pórticos 2D (padrão true); false usa bases rotuladas."),
                 }),
             ),
             required: &["acao"],
@@ -927,7 +929,7 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "pre_dimensionamento",
             title: "Pré-dimensionamento da estrutura",
-            description: "Lajes (painéis, charneiras 45° e cargas concentradas), vigas contínuas (momentos, cortante, flecha com Branson NBR 6118), pilares (com altura e esbeltez), sapatas, vigas alavanca, fundação de paredes, vergas/contravergas e painéis de alvenaria de vedação/estrutural (NBR 16868), telhados e mourões com espécie/classe, tratamento, compressão, flambagem e vento lateral (NBR 7190), sondagem SPT, estudo comparativo de fundações, armaduras preliminares e tabela de aço, caminho de cargas de caixa-d'água/equipamento, semáforo, limites e alertas.",
+            description: "Lajes (painéis, charneiras 45° e cargas concentradas), vigas contínuas (momentos, cortante, flecha com Branson NBR 6118), pórticos planos 2D acoplando vigas e pilares (rigidez direta, nós rígidos/rotulados, momentos nos pilares, reações e deslocamento lateral), pilares (com altura e esbeltez), sapatas, vigas alavanca, fundação de paredes, vergas/contravergas e painéis de alvenaria de vedação/estrutural (NBR 16868), telhados e mourões com espécie/classe, tratamento, compressão, flambagem e vento lateral (NBR 7190), sondagem SPT, estudo comparativo de fundações, armaduras preliminares e tabela de aço, caminho de cargas de caixa-d'água/equipamento, semáforo, limites e alertas.",
             properties: json!({}),
             required: &[],
             read_only: true,
@@ -1196,9 +1198,9 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "exportar_planta",
             title: "Exportar planta e documentação",
-            description: "Exporta a planta ou a documentação técnica do projeto: pdf, pdf_abas (PDF multipágina com 1 página por aba aberta, igual à tela), png, dxf, svg, prancha_pdf/prancha_pdf_abas/prancha_svg (prancha ABNT em escala com carimbo, uma ou todas as abas), memorial_pdf (memorial técnico completo de pré-dimensionamento e desenhos), unifilar_svg/unifilar_pdf (diagrama unifilar elétrico), esforcos_svg/esforcos_pdf (diagramas de momento e cortante das vigas), armaduras_svg/armaduras_pdf (prancha esquemática de detalhamento preliminar de armaduras e resumo por bitola CA-50), quantitativos_csv, tabela_aco_csv ou csv (quadro de áreas e esquadrias). Sem caminho: salva em Documentos\\Trazo.",
+            description: "Exporta a planta ou a documentação técnica do projeto: pdf, pdf_abas (PDF multipágina com 1 página por aba aberta, igual à tela), png, dxf, svg, prancha_pdf/prancha_pdf_abas/prancha_svg (prancha ABNT em escala com carimbo, uma ou todas as abas), memorial_pdf (memorial técnico completo de pré-dimensionamento e desenhos), unifilar_svg/unifilar_pdf (diagrama unifilar elétrico), esforcos_svg/esforcos_pdf (diagramas de momento e cortante das vigas), porticos_svg/porticos_pdf (deformada e momentos dos pórticos planos 2D), armaduras_svg/armaduras_pdf (prancha esquemática de detalhamento preliminar de armaduras e resumo por bitola CA-50), quantitativos_csv, tabela_aco_csv ou csv (quadro de áreas e esquadrias). Sem caminho: salva em Documentos\\Trazo.",
             properties: json!({
-                "formato": { "type": "string", "enum": ["pdf", "pdf_abas", "png", "dxf", "svg", "prancha_pdf", "prancha_pdf_abas", "prancha_svg", "memorial_pdf", "unifilar_svg", "unifilar_pdf", "esforcos_svg", "esforcos_pdf", "armaduras_svg", "armaduras_pdf", "quantitativos_csv", "tabela_aco_csv", "csv"], "description": "Formato de exportação." },
+                "formato": { "type": "string", "enum": ["pdf", "pdf_abas", "png", "dxf", "svg", "prancha_pdf", "prancha_pdf_abas", "prancha_svg", "memorial_pdf", "unifilar_svg", "unifilar_pdf", "esforcos_svg", "esforcos_pdf", "porticos_svg", "porticos_pdf", "armaduras_svg", "armaduras_pdf", "quantitativos_csv", "tabela_aco_csv", "csv"], "description": "Formato de exportação." },
                 "caminho": string("Opcional: caminho do arquivo (relativo a Documentos\\Trazo)."),
                 "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Opcional: disciplina a exportar (padrão: disciplina da aba ativa)." },
             }),

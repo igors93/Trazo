@@ -748,7 +748,7 @@ impl FloorPlanApp {
     fn tool_export(&self, args: &Value) -> Result<ToolOutput, String> {
         let format = text(args, "formato")
             .map(|format| format.to_lowercase())
-            .ok_or("Informe 'formato': pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, tabela_aco_csv ou csv.")?;
+            .ok_or("Informe 'formato': pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, tabela_aco_csv ou csv.")?;
         let (ext, suffix) = match format.as_str() {
             "pdf" => ("pdf", ""),
             "pdf_abas" => ("pdf", "-abas"),
@@ -763,13 +763,15 @@ impl FloorPlanApp {
             "unifilar_pdf" => ("pdf", "-unifilar"),
             "esforcos_svg" => ("svg", "-esforcos"),
             "esforcos_pdf" => ("pdf", "-esforcos"),
+            "porticos_svg" => ("svg", "-porticos"),
+            "porticos_pdf" => ("pdf", "-porticos"),
             "armaduras_svg" => ("svg", "-armaduras"),
             "armaduras_pdf" => ("pdf", "-armaduras"),
             "quantitativos_csv" => ("csv", "-quantitativos"),
             "tabela_aco_csv" => ("csv", "-tabela-aco"),
             "csv" => ("csv", "-quadros"),
             _ => {
-                return Err("Formato inválido. Use: pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, tabela_aco_csv ou csv.".to_owned());
+                return Err("Formato inválido. Use: pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, tabela_aco_csv ou csv.".to_owned());
             }
         };
         let explicit_discipline = text(args, "disciplina");
@@ -832,6 +834,14 @@ impl FloorPlanApp {
             }
             "esforcos_pdf" => {
                 let markup = crate::domain::structure::beam_diagrams_svg(&self.project);
+                crate::domain::views::export_view_pdf(&markup, &path)?;
+            }
+            "porticos_svg" => {
+                let markup = crate::domain::frame2d::frame_diagrams_svg(&self.project);
+                crate::domain::views::export_view_svg(&markup, &path)?;
+            }
+            "porticos_pdf" => {
+                let markup = crate::domain::frame2d::frame_diagrams_svg(&self.project);
                 crate::domain::views::export_view_pdf(&markup, &path)?;
             }
             "armaduras_svg" => {

@@ -631,6 +631,12 @@ impl FloorPlanApp {
                 if let Some(v) = args.get("sobrecarga_por_comodo").and_then(Value::as_bool) {
                     settings.per_room_live_loads = v;
                 }
+                if let Some(v) = args.get("portico_nos_rigidos").and_then(Value::as_bool) {
+                    settings.frame_rigid_joints = v;
+                }
+                if let Some(v) = args.get("portico_bases_engastadas").and_then(Value::as_bool) {
+                    settings.frame_fixed_bases = v;
+                }
                 self.apply_change(Some("Nada mudou nos materiais e cargas."), |project| {
                     project.structure.settings = settings;
                     Ok(Change::new("Materiais e cargas atualizados.".to_owned()))
@@ -1321,10 +1327,69 @@ impl FloorPlanApp {
             .collect();
         let foundation_study = (!report.columns.is_empty())
             .then(|| foundation_study_json(&self.project.foundation_study()));
+        let frames_2d: Vec<Value> = report
+            .frames
+            .iter()
+            .map(|f| {
+                let frame_beams: Vec<Value> = f
+                    .beams
+                    .iter()
+                    .map(|b| {
+                        json!({
+                            "id": b.beam_id,
+                            "rotulo": b.label,
+                            "vao_m": (b.length_m * 100.0).round() / 100.0,
+                            "momento_esq_knm": round1(b.moment_left_knm),
+                            "momento_vao_knm": round1(b.moment_span_knm),
+                            "momento_dir_knm": round1(b.moment_right_knm),
+                            "cortante_kn": round1(b.max_shear_kn),
+                            "axial_kn": round1(b.axial_kn),
+                            "flecha_elastica_mm": (b.elastic_deflection_mm * 100.0).round() / 100.0,
+                        })
+                    })
+                    .collect();
+                let frame_cols: Vec<Value> = f
+                    .columns
+                    .iter()
+                    .map(|c| {
+                        json!({
+                            "id": c.column_id,
+                            "rotulo": c.label,
+                            "axial_kn": round1(c.axial_kn),
+                            "cortante_kn": round1(c.shear_kn),
+                            "momento_base_knm": round1(c.moment_base_knm),
+                            "momento_topo_knm": round1(c.moment_top_knm),
+                            "momento_max_knm": round1(c.max_moment_knm),
+                            "reacao_rx_kn": round1(c.reaction_rx_kn),
+                            "reacao_ry_kn": round1(c.reaction_ry_kn),
+                            "reacao_mz_knm": round1(c.reaction_mz_knm),
+                        })
+                    })
+                    .collect();
+                json!({
+                    "rotulo": f.label,
+                    "nos_rigidos": f.rigid_joints,
+                    "bases_engastadas": f.fixed_bases,
+                    "contraventado": f.braced_sway,
+                    "comprimento_total_m": (f.total_length_m * 100.0).round() / 100.0,
+                    "altura_m": (f.story_height_m * 100.0).round() / 100.0,
+                    "vento_lateral_kn": round1(f.lateral_wind_kn),
+                    "momento_max_viga_knm": round1(f.max_beam_moment_knm()),
+                    "momento_max_pilar_knm": round1(f.max_column_moment_knm()),
+                    "deslocamento_lateral_mm": (f.max_lateral_drift_mm * 100.0).round() / 100.0,
+                    "limite_deslocamento_mm": (f.drift_limit_mm * 100.0).round() / 100.0,
+                    "deslocamento_ok": f.drift_ok(),
+                    "residuo_equilibrio_kn": f.equilibrium_residual_kn,
+                    "vigas": frame_beams,
+                    "pilares": frame_cols,
+                })
+            })
+            .collect();
         Ok(ToolOutput::ok(format!(
-            "{} laje(s), {} viga(s), {} pilar(es), {} sapata(s), {} verga(s)/contraverga(s), {} painel(is) de alvenaria, {} kg de aço preliminar, {} alerta(s).",
+            "{} laje(s), {} viga(s), {} pórtico(s) 2D, {} pilar(es), {} sapata(s), {} verga(s)/contraverga(s), {} painel(is) de alvenaria, {} kg de aço preliminar, {} alerta(s).",
             slabs.len(),
             beams.len(),
+            frames_2d.len(),
             columns.len(),
             footings.len(),
             masonry_bands.len(),
@@ -1342,9 +1407,12 @@ impl FloorPlanApp {
                 "revestimento_kn_m2": settings.finish_kn_m2,
                 "peso_alvenaria_kn_m3": settings.masonry_kn_m3,
                 "sobrecarga_por_comodo": settings.per_room_live_loads,
+                "portico_nos_rigidos": settings.frame_rigid_joints,
+                "portico_bases_engastadas": settings.frame_fixed_bases,
             },
             "lajes": slabs,
             "vigas": beams,
+            "porticos_2d": frames_2d,
             "pilares": columns,
             "sapatas": footings,
             "telhados": report.roofs.iter().map(roof_json).collect::<Vec<_>>(),
@@ -1918,6 +1986,64 @@ mod tests {
         let csv = std::fs::read_to_string(&csv_path).unwrap();
         assert!(csv.contains("Resumo por bitola (CA-50)"));
 
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn mcp_reports_2d_frames_and_exports_frame_diagrams() {
+        let context = eframe::egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let built = app.run_mcp_tool(
+            "executar_lote",
+            &json!({
+                "acoes": [
+                    { "ferramenta": "criar_comodo", "argumentos": { "nome": "Sala", "x": 0, "y": 0, "largura": 4.0, "comprimento": 3.5 } },
+                    { "ferramenta": "criar_comodo", "argumentos": { "nome": "Quarto", "x": 4.0, "y": 0, "largura": 3.5, "comprimento": 3.5 } },
+                    { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "gerar_estrutura" } },
+                ]
+            }),
+        );
+        assert!(!built.is_error, "{}", built.text);
+
+        let rigid = app
+            .run_mcp_tool("pre_dimensionamento", &json!({}))
+            .structured
+            .unwrap();
+        let frames = rigid["porticos_2d"].as_array().unwrap();
+        assert!(!frames.is_empty());
+        assert_eq!(frames[0]["nos_rigidos"], true);
+        assert_eq!(frames[0]["bases_engastadas"], true);
+        assert!(frames[0]["residuo_equilibrio_kn"].as_f64().unwrap() < 1e-6);
+
+        // Switch to pinned column-top joints via MCP configurar.
+        let cfg = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({ "acao": "configurar", "portico_nos_rigidos": false, "portico_bases_engastadas": false }),
+        );
+        assert!(!cfg.is_error, "{}", cfg.text);
+        let pinned = app
+            .run_mcp_tool("pre_dimensionamento", &json!({}))
+            .structured
+            .unwrap();
+        let p_frame = &pinned["porticos_2d"][0];
+        assert_eq!(p_frame["nos_rigidos"], false);
+        assert_eq!(p_frame["bases_engastadas"], false);
+        assert_eq!(p_frame["contraventado"], true);
+        for col in p_frame["pilares"].as_array().unwrap() {
+            assert!(col["momento_topo_knm"].as_f64().unwrap().abs() < 1e-3);
+        }
+
+        // Export 2D frame diagram SVG.
+        let dir = std::env::temp_dir().join("trazo_test_porticos_94");
+        let _ = std::fs::create_dir_all(&dir);
+        let svg_path = dir.join("porticos.svg");
+        let svg_res = app.run_mcp_tool(
+            "exportar_planta",
+            &json!({ "formato": "porticos_svg", "caminho": svg_path.to_string_lossy() }),
+        );
+        assert!(!svg_res.is_error, "{}", svg_res.text);
+        let svg = std::fs::read_to_string(&svg_path).unwrap();
+        assert!(svg.contains("Análise de pórticos planos 2D"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
