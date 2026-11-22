@@ -10,7 +10,9 @@ use super::widgets::{primary_button, secondary_button};
 use crate::domain::discipline::Discipline;
 use crate::domain::fixtures::FixtureKind;
 use crate::domain::layers::LayerCategory;
-use crate::domain::reinforcement::{ReinforcementReport, steel_schedule_csv};
+use crate::domain::reinforcement::{
+    ReinforcementReport, reinforcement_detail_svg, steel_schedule_csv,
+};
 use crate::domain::structure::{BeamSupport, SlabKind, beam_diagrams_svg, section_cm};
 
 fn decimal(value: f64, places: usize) -> String {
@@ -107,6 +109,7 @@ fn reinforcement_tab(ui: &mut Ui, report: &ReinforcementReport) {
                         "Sup. esq.",
                         "Sup. dir.",
                         "Estribos",
+                        "lb,nec (inf/sup)",
                         "Aço",
                     ],
                 );
@@ -116,6 +119,11 @@ fn reinforcement_tab(ui: &mut Ui, report: &ReinforcementReport) {
                     ui.label(bars(&beam.top_left));
                     ui.label(bars(&beam.top_right));
                     ui.label(beam.stirrups.notation());
+                    ui.label(format!(
+                        "{:.0} / {:.0} cm",
+                        beam.bottom_anchorage_m * 100.0,
+                        beam.top_anchorage_m * 100.0
+                    ));
                     ui.label(format!("{} kg", decimal(beam.mass_kg, 1)));
                     ui.end_row();
                 }
@@ -127,10 +135,21 @@ fn reinforcement_tab(ui: &mut Ui, report: &ReinforcementReport) {
             .striped(true)
             .spacing([14.0, 6.0])
             .show(ui, |ui| {
-                titles(ui, &["Pilar", "Longitudinal", "Taxa", "Estribos", "Aço"]);
+                titles(
+                    ui,
+                    &[
+                        "Pilar",
+                        "Longitudinal",
+                        "Traspasse l0",
+                        "Taxa",
+                        "Estribos",
+                        "Aço",
+                    ],
+                );
                 for column in &report.columns {
                     ui.label(RichText::new(&column.label).font(strong(12.5)));
                     ui.label(bars(&column.longitudinal));
+                    ui.label(format!("{:.0} cm", column.lap_length_m * 100.0));
                     ui.label(format!("{} %", decimal(column.steel_ratio * 100.0, 2)));
                     ui.label(column.ties.notation());
                     ui.label(format!("{} kg", decimal(column.mass_kg, 1)));
@@ -183,6 +202,7 @@ fn reinforcement_tab(ui: &mut Ui, report: &ReinforcementReport) {
                         "Marca",
                         "Elemento",
                         "Posição",
+                        "Forma",
                         "Ø",
                         "Qtd.",
                         "Unit.",
@@ -194,6 +214,7 @@ fn reinforcement_tab(ui: &mut Ui, report: &ReinforcementReport) {
                     ui.label(RichText::new(&row.mark).font(strong(12.0)));
                     ui.label(&row.element);
                     ui.label(&row.position);
+                    ui.label(&row.shape);
                     ui.label(format!("{} mm", decimal(row.diameter_mm, 1)));
                     ui.label(row.quantity.to_string());
                     ui.label(format!("{} m", decimal(row.unit_length_m, 2)));
@@ -202,10 +223,42 @@ fn reinforcement_tab(ui: &mut Ui, report: &ReinforcementReport) {
                     ui.end_row();
                 }
             });
+        if !report.by_diameter.is_empty() {
+            heading(ui, "Resumo por bitola (CA-50 · barras comerciais de 12 m)");
+            egui::Grid::new("steel_diameter_summary")
+                .striped(true)
+                .spacing([16.0, 5.0])
+                .show(ui, |ui| {
+                    titles(
+                        ui,
+                        &[
+                            "Bitola",
+                            "Comprimento total",
+                            "Barras 12 m (+10%)",
+                            "Massa teórica",
+                            "Com +10% perda",
+                        ],
+                    );
+                    for row in &report.by_diameter {
+                        ui.label(
+                            RichText::new(format!("Ø{} mm", decimal(row.diameter_mm, 1)))
+                                .font(strong(12.0)),
+                        );
+                        ui.label(format!("{} m", decimal(row.total_length_m, 1)));
+                        ui.label(format!("{} un.", row.bars_12m));
+                        ui.label(format!("{} kg", decimal(row.mass_kg, 1)));
+                        ui.label(format!("{} kg", decimal(row.mass_with_waste_kg, 1)));
+                        ui.end_row();
+                    }
+                });
+        }
+        ui.add_space(4.0);
         ui.label(
             RichText::new(format!(
-                "Massa total estimada: {} kg",
-                decimal(report.total_mass_kg(), 1)
+                "Massa teórica total: {} kg  ·  Com +10% de corte/dobra: {} kg ({} barras de 12 m)",
+                decimal(report.total_mass_kg(), 1),
+                decimal(report.total_mass_with_waste_kg(), 1),
+                report.total_bars_12m()
             ))
             .font(strong(13.0))
             .color(ACCENT_TEXT),
@@ -470,6 +523,33 @@ impl FloorPlanApp {
         };
     }
 
+    fn export_reinforcement_detail(&mut self, pdf: bool) {
+        let structure = self.project.cached_structure_report();
+        let report = self.project.cached_reinforcement_report();
+        let markup = reinforcement_detail_svg(&self.project, &structure, &report);
+        let (label, ext) = if pdf {
+            ("Documento PDF", "pdf")
+        } else {
+            ("Desenho SVG", "svg")
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(format!("detalhamento-armaduras.{ext}"))
+            .save_file()
+        else {
+            return;
+        };
+        let result = if pdf {
+            crate::domain::views::export_view_pdf(&markup, &path)
+        } else {
+            crate::domain::views::export_view_svg(&markup, &path)
+        };
+        self.message = match result {
+            Ok(()) => format!("Detalhamento esquemático exportado em {}", path.display()),
+            Err(error) => format!("Erro ao exportar o detalhamento: {error}"),
+        };
+    }
+
     /// The "Estrutura" window: pre-sizing and the forces in the beams.
     pub(super) fn structure_dialog(&mut self, ctx: &egui::Context) {
         if self.active_doc_dialog != DocDialog::Structure {
@@ -480,6 +560,7 @@ impl FloorPlanApp {
         let mut footings = false;
         let mut export_forces = None;
         let mut export_steel = false;
+        let mut export_detail = None;
         let mut export_memorial = false;
         let mut edits: Vec<StructureEdit> = Vec::new();
         let tab_id = egui::Id::unique("trazo_structure_tab");
@@ -621,6 +702,12 @@ impl FloorPlanApp {
                         ui.separator();
                         if secondary_button(ui, "Exportar tabela CSV").clicked() {
                             export_steel = true;
+                        }
+                        if secondary_button(ui, "Detalhamento PDF").clicked() {
+                            export_detail = Some(true);
+                        }
+                        if secondary_button(ui, "Detalhamento SVG").clicked() {
+                            export_detail = Some(false);
                         }
                         if secondary_button(ui, "Exportar memorial PDF").clicked() {
                             export_memorial = true;
@@ -930,7 +1017,20 @@ impl FloorPlanApp {
                                     ui.label(decimal(span.moment_left.min(span.moment_right), 1));
                                     ui.label(decimal(span.moment_span, 1));
                                     ui.label(decimal(span.shear, 1));
-                                    ui.label(format!("{} / {} mm", decimal(span.deflection_mm, 1), decimal(span.limit_mm, 0)));
+                                    let stage_tag = if span.cracked { "II" } else { "I" };
+                                    ui.label(format!(
+                                        "{} / {} mm (E{})",
+                                        decimal(span.deflection_mm, 1),
+                                        decimal(span.limit_mm, 0),
+                                        stage_tag
+                                    ))
+                                    .on_hover_text(format!(
+                                        "Branson B12 — Estádio {} · Mr = {} kN·m · I_eq/Ic = {:.0}% · As = {} cm²",
+                                        stage_tag,
+                                        decimal(span.cracking_moment_knm, 1),
+                                        span.i_eq_ratio * 100.0,
+                                        decimal(span.branson_as_cm2, 2)
+                                    ));
                                     status(
                                         ui,
                                         span.deflection_mm <= span.limit_mm && span.height_m + 1e-6 >= span.height_min_m,
@@ -1014,6 +1114,9 @@ impl FloorPlanApp {
         }
         if export_steel {
             self.export_steel_schedule();
+        }
+        if let Some(pdf) = export_detail {
+            self.export_reinforcement_detail(pdf);
         }
         if export_memorial {
             self.export_presizing_report();

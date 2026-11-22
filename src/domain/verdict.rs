@@ -239,7 +239,8 @@ pub fn structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Ve
         }];
     }
     let elements = super::limits::element_violations(report);
-    let mut verdicts = sized_structure_verdicts(report);
+    let reinforcement = super::reinforcement::build_reinforcement_report(project, report);
+    let mut verdicts = sized_structure_verdicts(report, &reinforcement);
     for verdict in &mut verdicts {
         let refused: Vec<Check> = elements
             .iter()
@@ -262,7 +263,10 @@ fn limit_detail(violation: &super::limits::Violation) -> String {
 }
 
 /// The structural checks of every element, before the limits.
-fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
+fn sized_structure_verdicts(
+    report: &StructureReport,
+    reinforcement: &super::reinforcement::ReinforcementReport,
+) -> Vec<Verdict> {
     let mut verdicts = Vec::new();
     for slab in &report.slabs {
         let mut checks = Vec::new();
@@ -306,6 +310,34 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
                     ),
                 ));
             }
+            if let Some(reinf) = reinforcement.slabs.iter().find(|r| r.slab_id == slab.id) {
+                if reinf.domain_ok {
+                    checks.push(Check::new(
+                        "Armadura (domínio)",
+                        0.5,
+                        format!(
+                            "Armadura preliminar OK: principal {}, distribuição {}.",
+                            reinf.main.notation(),
+                            reinf.distribution.notation()
+                        ),
+                        format!(
+                            "Domínio de armadura simples (x/d ≤ 0,45); principal {} ({} cm²/m), distribuição {} ({} cm²/m); massa {} kg (NBR 6118 §14.6.4.3).",
+                            reinf.main.notation(),
+                            decimal(reinf.main.provided_cm2_m, 2),
+                            reinf.distribution.notation(),
+                            decimal(reinf.distribution.provided_cm2_m, 2),
+                            decimal(reinf.mass_kg, 1)
+                        ),
+                    ));
+                } else {
+                    checks.push(Check::fail(
+                        "Armadura (domínio)",
+                        "Laje fora do domínio de armadura simples: aumente a espessura.".to_owned(),
+                        "Momento de cálculo acima do limite μ_lim = 0,2952 (x/d > 0,45; NBR 6118 §14.6.4.3)."
+                            .to_owned(),
+                    ));
+                }
+            }
         } else {
             checks.push(Check::fail(
                 "Apoio",
@@ -328,7 +360,12 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
             } else {
                 format!("Viga {}", line.label)
             };
-            let checks = vec![
+            let stage = if span.cracked {
+                "Estádio II (fissurada)"
+            } else {
+                "Estádio I (não fissurada)"
+            };
+            let mut checks = vec![
                 Check::new(
                     "Altura",
                     span.height_min_m / span.height_m.max(1e-6),
@@ -364,9 +401,13 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
                         "A viga vai deformar demais: aumente a altura ou diminua o vão.".to_owned()
                     },
                     format!(
-                        "Flecha diferida {} mm ≤ L/250 = {} mm (carga quase permanente, inércia de Branson, 1 + αf = 2,32; NBR 6118 13.3 e 17.3.2.1).",
+                        "Flecha diferida {} mm ≤ L/250 = {} mm (carga quase permanente, {}, Mr = {} kN·m, I_eq/Ic = {:.0}%, As = {} cm², 1 + αf = 2,32; NBR 6118 13.3 e 17.3.2.1).",
                         decimal(span.deflection_mm, 1),
-                        decimal(span.limit_mm, 1)
+                        decimal(span.limit_mm, 1),
+                        stage,
+                        decimal(span.cracking_moment_knm, 1),
+                        span.i_eq_ratio * 100.0,
+                        decimal(span.branson_as_cm2, 2)
                     ),
                 ),
                 Check::new(
@@ -380,6 +421,86 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
                     format!("b = {} ≥ 12 cm (NBR 6118 13.2.2).", cm(span.width_m)),
                 ),
             ];
+            if let Some(reinf) = reinforcement
+                .beams
+                .iter()
+                .find(|r| r.beam_id == span.beam && r.span_index == i + 1)
+            {
+                let all_fit = reinf.bottom.fits_section
+                    && reinf.top_left.fits_section
+                    && reinf.top_right.fits_section;
+                if !reinf.flexural_domain_ok {
+                    checks.push(Check::fail(
+                        "Armadura / Domínio",
+                        "Momento acima do domínio de armadura simples: aumente a altura ou largura da viga."
+                            .to_owned(),
+                        format!(
+                            "Flexão excede μ_lim = 0,2952 (x/d > 0,45); inferior {}, superiores {} / {} (NBR 6118 §14.6.4.3).",
+                            reinf.bottom.notation(),
+                            reinf.top_left.notation(),
+                            reinf.top_right.notation()
+                        ),
+                    ));
+                } else if !all_fit {
+                    checks.push(Check::new(
+                        "Armadura / Domínio",
+                        0.95,
+                        "As barras não cabem em uma camada com cobrimento de 3 cm: aumente a largura ou detalhe em duas camadas."
+                            .to_owned(),
+                        format!(
+                            "Inferior {} ({}), superior esq. {} ({}), superior dir. {} ({}); espaçamento livre mínimo de 2 cm (NBR 6118 §18.3.2.2).",
+                            reinf.bottom.notation(),
+                            if reinf.bottom.fits_section { "cabe" } else { "não cabe" },
+                            reinf.top_left.notation(),
+                            if reinf.top_left.fits_section { "cabe" } else { "não cabe" },
+                            reinf.top_right.notation(),
+                            if reinf.top_right.fits_section { "cabe" } else { "não cabe" }
+                        ),
+                    ));
+                } else {
+                    checks.push(Check::new(
+                        "Armadura / Domínio",
+                        0.5,
+                        format!(
+                            "Armadura preliminar OK: inferior {}, superiores {} / {}.",
+                            reinf.bottom.notation(),
+                            reinf.top_left.notation(),
+                            reinf.top_right.notation()
+                        ),
+                        format!(
+                            "Domínio simples (x/d ≤ 0,45) e arranjo em 1 camada OK; ancoragem lb,nec = {:.0} cm (inf.) / {:.0} cm (sup.); massa {} kg (NBR 6118 §9.4).",
+                            reinf.bottom_anchorage_m * 100.0,
+                            reinf.top_anchorage_m * 100.0,
+                            decimal(reinf.mass_kg, 1)
+                        ),
+                    ));
+                }
+                if reinf.stirrups.shear_capacity_ok {
+                    checks.push(Check::new(
+                        "Cortante (biela)",
+                        0.5,
+                        format!(
+                            "Estribos {} atendem ao cortante preliminar.",
+                            reinf.stirrups.notation()
+                        ),
+                        format!(
+                            "Compressão diagonal VRd2 OK; estribos {} ({} un., compr. unit. {} m; NBR 6118 §17.4).",
+                            reinf.stirrups.notation(),
+                            reinf.stirrups.count,
+                            decimal(reinf.stirrups.length_each_m, 2)
+                        ),
+                    ));
+                } else {
+                    checks.push(Check::fail(
+                        "Cortante (biela)",
+                        "Compressão diagonal excedida (VRd2): aumente a seção da viga.".to_owned(),
+                        format!(
+                            "Cortante de cálculo acima da resistência da biela comprimida VRd2; estribos {} não bastam (NBR 6118 §17.4.2.2).",
+                            reinf.stirrups.notation()
+                        ),
+                    ));
+                }
+            }
             verdicts.push(Verdict {
                 discipline: Discipline::Structure,
                 element: name,
@@ -576,6 +697,39 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
                 "Vigas",
                 "Nenhuma viga chega a este pilar: ligue-o às vigas ou remova-o.".to_owned(),
                 "Pilar sem vigas: a carga calculada é só o peso próprio.".to_owned(),
+            ));
+        }
+        if let Some(reinf) = reinforcement
+            .columns
+            .iter()
+            .find(|r| r.column_id == column.id)
+        {
+            let ratio_pct = reinf.steel_ratio * 100.0;
+            checks.push(Check::new(
+                "Taxa de aço",
+                reinf.steel_ratio / 0.04,
+                if reinf.steel_ratio <= 0.04 + 1e-9 {
+                    format!(
+                        "Taxa longitudinal de {}% ({}, estribos {}) dentro do limite.",
+                        decimal(ratio_pct, 2),
+                        reinf.longitudinal.notation(),
+                        reinf.ties.notation()
+                    )
+                } else {
+                    format!(
+                        "Taxa longitudinal de {}% excede 4,0%: aumente a seção do pilar.",
+                        decimal(ratio_pct, 2)
+                    )
+                },
+                format!(
+                    "ρ = {}% (mínimo 0,4%, limite de pré-detalhamento 4,0%; NBR 6118 §17.3.5.3); longitudinal {} com traspasse l0 = {:.0} cm, estribos {} ({} un., massa {} kg).",
+                    decimal(ratio_pct, 2),
+                    reinf.longitudinal.notation(),
+                    reinf.lap_length_m * 100.0,
+                    reinf.ties.notation(),
+                    reinf.ties.count,
+                    decimal(reinf.mass_kg, 1)
+                ),
             ));
         }
         verdicts.push(Verdict {
@@ -1339,5 +1493,41 @@ mod tests {
         assert_eq!(names, ["Corrente", "Queda de tensão"]);
         // The wire was raised to keep the drop within 4 %: not red.
         assert!(verdicts[0].light() != Light::Red);
+    }
+
+    #[test]
+    fn reinforcement_and_branson_checks_appear_in_structure_verdicts() {
+        let project = house();
+        let summary = safety_summary(&project);
+
+        let beam = summary
+            .verdicts
+            .iter()
+            .find(|v| v.element.starts_with("Viga "))
+            .expect("beam verdict");
+        let deflection = beam.checks.iter().find(|c| c.name == "Flecha").unwrap();
+        assert!(deflection.detail.contains("Mr ="));
+        assert!(deflection.detail.contains("I_eq/Ic ="));
+        assert!(beam.checks.iter().any(|c| c.name == "Armadura / Domínio"));
+        assert!(beam.checks.iter().any(|c| c.name == "Cortante (biela)"));
+
+        let column = summary
+            .verdicts
+            .iter()
+            .find(|v| v.element.starts_with("Pilar "))
+            .expect("column verdict");
+        let steel_ratio = column
+            .checks
+            .iter()
+            .find(|c| c.name == "Taxa de aço")
+            .unwrap();
+        assert!(steel_ratio.detail.contains("traspasse l0 ="));
+
+        let slab = summary
+            .verdicts
+            .iter()
+            .find(|v| v.element.starts_with("Laje "))
+            .expect("slab verdict");
+        assert!(slab.checks.iter().any(|c| c.name == "Armadura (domínio)"));
     }
 }

@@ -601,6 +601,13 @@ pub struct SpanResult {
     /// Long-term deflection and the L/250 limit, mm.
     pub deflection_mm: f64,
     pub limit_mm: f64,
+    /// Cracking moment Mr (kN·m), whether the quasi-permanent service moment
+    /// exceeds Mr (Stage II), Branson equivalent inertia ratio I_eq / I_c and
+    /// tension steel As (cm²) used in the stiffness check (B12, NBR 6118 17.3.2).
+    pub cracking_moment_knm: f64,
+    pub cracked: bool,
+    pub i_eq_ratio: f64,
+    pub branson_as_cm2: f64,
     /// The usual minimum height for this span (L/10 at an end, L/12
     /// inside a continuous beam), metres.
     pub height_min_m: f64,
@@ -3017,6 +3024,10 @@ impl Project {
                     shear: v_left.abs().max(v_right.abs()),
                     deflection_mm: deflection * 1000.0,
                     limit_mm: length / 250.0 * 1000.0,
+                    cracking_moment_knm: stiffness.m_r_knm,
+                    cracked: m_a_qp > stiffness.m_r_knm + 1e-9,
+                    i_eq_ratio: (stiffness.i_eq_m4 / stiffness.ic_m4.max(1e-12)).clamp(0.0, 1.0),
+                    branson_as_cm2: stiffness.as_cm2,
                     height_min_m: round_up(length / divisor, 0.05).max(0.25),
                 });
             }

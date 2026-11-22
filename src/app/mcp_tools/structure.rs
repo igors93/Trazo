@@ -988,6 +988,10 @@ impl FloorPlanApp {
                         "cortante_kn": round1(s.shear),
                         "flecha_mm": round1(s.deflection_mm),
                         "flecha_limite_mm": round1(s.limit_mm),
+                        "momento_fissuracao_knm": round1(s.cracking_moment_knm),
+                        "estadio_ii": s.cracked,
+                        "inercia_equivalente_pct": (s.i_eq_ratio * 100.0).round(),
+                        "as_branson_cm2": (s.branson_as_cm2 * 100.0).round() / 100.0,
                     })).collect::<Vec<_>>(),
                 })
             })
@@ -1127,6 +1131,9 @@ impl FloorPlanApp {
                     "estribos": beam.stirrups.notation(),
                     "as_inferior_necessaria_cm2": round1(beam.bottom.required_cm2),
                     "as_inferior_fornecida_cm2": round1(beam.bottom.provided_cm2),
+                    "ancoragem_inf_cm": (beam.bottom_anchorage_m * 100.0).round(),
+                    "ancoragem_sup_cm": (beam.top_anchorage_m * 100.0).round(),
+                    "dominio_ok": beam.flexural_domain_ok,
                     "barras_cabem_na_secao": beam.bottom.fits_section
                         && beam.top_left.fits_section
                         && beam.top_right.fits_section,
@@ -1146,6 +1153,7 @@ impl FloorPlanApp {
                     "estribos": column.ties.notation(),
                     "as_necessaria_cm2": round1(column.longitudinal.required_cm2),
                     "as_fornecida_cm2": round1(column.longitudinal.provided_cm2),
+                    "traspasse_cm": (column.lap_length_m * 100.0).round(),
                     "taxa_aco_percentual": round1(column.steel_ratio * 100.0),
                     "massa_kg": round1(column.mass_kg),
                 })
@@ -1164,6 +1172,7 @@ impl FloorPlanApp {
                     "distribuicao": slab.distribution.notation(),
                     "as_principal_necessaria_cm2_m": round1(slab.main.required_cm2_m),
                     "as_principal_fornecida_cm2_m": round1(slab.main.provided_cm2_m),
+                    "dominio_ok": slab.domain_ok,
                     "massa_kg": round1(slab.mass_kg),
                 })
             })
@@ -1189,11 +1198,25 @@ impl FloorPlanApp {
                     "marca": row.mark,
                     "elemento": row.element,
                     "posicao": row.position,
+                    "forma": row.shape,
                     "diametro_mm": row.diameter_mm,
                     "quantidade": row.quantity,
                     "comprimento_unitario_m": round1(row.unit_length_m * 10.0) / 10.0,
                     "comprimento_total_m": round1(row.total_length_m * 10.0) / 10.0,
                     "massa_kg": round1(row.mass_kg),
+                })
+            })
+            .collect();
+        let steel_by_diameter: Vec<Value> = reinforcement
+            .by_diameter
+            .iter()
+            .map(|row| {
+                json!({
+                    "bitola_mm": row.diameter_mm,
+                    "comprimento_total_m": round1(row.total_length_m * 10.0) / 10.0,
+                    "barras_12m": row.bars_12m,
+                    "massa_kg": round1(row.mass_kg),
+                    "massa_com_perda_10_kg": round1(row.mass_with_waste_kg),
                 })
             })
             .collect();
@@ -1330,7 +1353,10 @@ impl FloorPlanApp {
                 "lajes": reinforcement_slabs,
                 "sapatas": reinforcement_footings,
                 "tabela_aco": steel_schedule,
+                "resumo_bitolas": steel_by_diameter,
                 "massa_total_kg": round1(reinforcement.total_mass_kg()),
+                "massa_com_perda_10_kg": round1(reinforcement.total_mass_with_waste_kg()),
+                "total_barras_12m": reinforcement.total_bars_12m(),
                 "avisos": reinforcement.warnings,
             },
             "semaforo": verdicts_json(&crate::domain::verdict::structure_verdicts(
@@ -1383,12 +1409,44 @@ mod tests {
         assert_eq!(report["lajes"].as_array().unwrap().len(), 2);
         assert!(!report["armaduras"]["vigas"].as_array().unwrap().is_empty());
         assert!(
+            report["armaduras"]["vigas"][0]["ancoragem_inf_cm"]
+                .as_f64()
+                .unwrap()
+                >= 10.0
+        );
+        assert!(
+            report["armaduras"]["pilares"][0]["traspasse_cm"]
+                .as_f64()
+                .unwrap()
+                >= 40.0
+        );
+        assert!(
             !report["armaduras"]["tabela_aco"]
                 .as_array()
                 .unwrap()
                 .is_empty()
         );
+        assert!(
+            !report["armaduras"]["resumo_bitolas"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
         assert!(report["armaduras"]["massa_total_kg"].as_f64().unwrap() > 0.0);
+        assert!(
+            report["armaduras"]["massa_com_perda_10_kg"]
+                .as_f64()
+                .unwrap()
+                > report["armaduras"]["massa_total_kg"].as_f64().unwrap()
+        );
+        assert!(report["armaduras"]["total_barras_12m"].as_u64().unwrap() > 0);
+        assert!(
+            report["vigas"][0]["vaos"][0]["momento_fissuracao_knm"]
+                .as_f64()
+                .unwrap()
+                > 0.0
+        );
+        assert!(report["vigas"][0]["vaos"][0]["estadio_ii"].is_boolean());
         assert!(
             !report["alvenaria"]["paineis"]
                 .as_array()
@@ -1704,5 +1762,51 @@ mod tests {
             app.run_mcp_tool("projeto_estrutural", &json!({ "acao": "remover_sondagem" }));
         assert!(!removed.is_error, "{}", removed.text);
         assert!(app.project.structure.soil_survey.is_none());
+    }
+
+    #[test]
+    fn exporting_reinforcement_detail_svg_and_pdf_succeeds() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        let built = app.run_mcp_tool(
+            "executar_lote",
+            &json!({ "acoes": [
+                { "ferramenta": "definir_terreno", "argumentos": { "largura": 15, "comprimento": 20 } },
+                { "ferramenta": "criar_comodo", "argumentos": { "nome": "Sala", "x": 1, "y": 1, "largura": 4, "comprimento": 4 } },
+                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "gerar_estrutura" } },
+            ] }),
+        );
+        assert!(!built.is_error, "{}", built.text);
+
+        let dir = std::env::temp_dir().join("trazo_test_armaduras_110");
+        let _ = std::fs::create_dir_all(&dir);
+        let svg_path = dir.join("detalhamento.svg");
+        let pdf_path = dir.join("detalhamento.pdf");
+        let csv_path = dir.join("tabela-aco.csv");
+
+        let svg_res = app.run_mcp_tool(
+            "exportar_planta",
+            &json!({ "formato": "armaduras_svg", "caminho": svg_path.to_string_lossy() }),
+        );
+        assert!(!svg_res.is_error, "{}", svg_res.text);
+        let svg = std::fs::read_to_string(&svg_path).unwrap();
+        assert!(svg.contains("DETALHAMENTO ESQUEMÁTICO DE ARMADURAS"));
+
+        let pdf_res = app.run_mcp_tool(
+            "exportar_planta",
+            &json!({ "formato": "armaduras_pdf", "caminho": pdf_path.to_string_lossy() }),
+        );
+        assert!(!pdf_res.is_error, "{}", pdf_res.text);
+        let pdf = std::fs::read(&pdf_path).unwrap();
+        assert!(pdf.starts_with(b"%PDF"));
+
+        let csv_res = app.run_mcp_tool(
+            "exportar_planta",
+            &json!({ "formato": "tabela_aco_csv", "caminho": csv_path.to_string_lossy() }),
+        );
+        assert!(!csv_res.is_error, "{}", csv_res.text);
+        let csv = std::fs::read_to_string(&csv_path).unwrap();
+        assert!(csv.contains("Resumo por bitola (CA-50)"));
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

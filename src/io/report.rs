@@ -994,23 +994,32 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                         (
                             None,
                             vec![
-                                if beam.span_index == 0 {
-                                    beam.label.clone()
-                                } else {
-                                    format!("{} v{}", beam.label, beam.span_index + 1)
-                                },
+                                beam.label.clone(),
                                 beam.bottom.notation(),
                                 beam.top_left.notation(),
                                 beam.top_right.notation(),
                                 beam.stirrups.notation(),
+                                format!(
+                                    "{:.0}/{:.0}",
+                                    beam.bottom_anchorage_m * 100.0,
+                                    beam.top_anchorage_m * 100.0
+                                ),
                                 decimal(beam.mass_kg, 1),
                             ],
                         )
                     })
                     .collect();
                 pages.table(
-                    &["Viga", "Inferior", "Sup. E", "Sup. D", "Estribos", "kg"],
-                    &[1.4, 1.6, 1.6, 1.6, 2.1, 1.0],
+                    &[
+                        "Viga",
+                        "Inferior",
+                        "Sup. E",
+                        "Sup. D",
+                        "Estribos",
+                        "lb,nec (cm)",
+                        "kg",
+                    ],
+                    &[1.3, 1.5, 1.4, 1.4, 1.9, 1.2, 0.9],
                     &rows,
                 );
             }
@@ -1026,6 +1035,7 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                                 column.label.clone(),
                                 column.longitudinal.notation(),
                                 column.ties.notation(),
+                                format!("{:.0} cm", column.lap_length_m * 100.0),
                                 format!("{}%", decimal(column.steel_ratio * 100.0, 2)),
                                 decimal(column.mass_kg, 1),
                             ],
@@ -1033,8 +1043,15 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                     })
                     .collect();
                 pages.table(
-                    &["Pilar", "Longitudinal", "Estribos", "ρ", "kg"],
-                    &[1.3, 2.0, 2.3, 1.2, 1.0],
+                    &[
+                        "Pilar",
+                        "Longitudinal",
+                        "Estribos",
+                        "Traspasse l0",
+                        "ρ",
+                        "kg",
+                    ],
+                    &[1.2, 1.9, 2.1, 1.4, 1.1, 0.9],
                     &rows,
                 );
             }
@@ -1095,7 +1112,7 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                         None,
                         vec![
                             row.mark.clone(),
-                            format!("{} · {}", row.element, row.position),
+                            format!("{} · {} ({})", row.element, row.position, row.shape),
                             decimal(row.diameter_mm, 1),
                             row.quantity.to_string(),
                             decimal(row.unit_length_m, 2),
@@ -1108,20 +1125,52 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
             pages.table(
                 &[
                     "Marca",
-                    "Elemento · posição",
+                    "Elemento · posição (forma)",
                     "Ø mm",
                     "Qtd.",
                     "Unit. m",
                     "Total m",
                     "kg",
                 ],
-                &[1.0, 3.2, 1.0, 0.9, 1.2, 1.2, 1.0],
+                &[1.1, 3.5, 0.9, 0.8, 1.1, 1.1, 0.9],
                 &rows,
             );
+            if !reinforcement.by_diameter.is_empty() {
+                pages.subheading("Resumo de aço por bitola (CA-50)");
+                let summary_rows: Vec<_> = reinforcement
+                    .by_diameter
+                    .iter()
+                    .map(|row| {
+                        (
+                            None,
+                            vec![
+                                format!("Ø{} mm", decimal(row.diameter_mm, 1)),
+                                decimal(row.total_length_m, 1),
+                                row.bars_12m.to_string(),
+                                decimal(row.mass_kg, 1),
+                                decimal(row.mass_with_waste_kg, 1),
+                            ],
+                        )
+                    })
+                    .collect();
+                pages.table(
+                    &[
+                        "Bitola",
+                        "Comprimento (m)",
+                        "Barras 12 m (+10%)",
+                        "Teórica (kg)",
+                        "+10% perda (kg)",
+                    ],
+                    &[1.5, 2.0, 2.0, 1.8, 1.9],
+                    &summary_rows,
+                );
+            }
             pages.paragraph(
                 &format!(
-                    "Massa teórica total, sem perdas: {} kg.",
-                    decimal(reinforcement.total_mass_kg(), 1)
+                    "Massa teórica total: {} kg · Com +10% de corte e dobra: {} kg ({} barras comerciais de 12 m).",
+                    decimal(reinforcement.total_mass_kg(), 1),
+                    decimal(reinforcement.total_mass_with_waste_kg(), 1),
+                    reinforcement.total_bars_12m()
                 ),
                 3.0,
                 INK,
@@ -1420,6 +1469,8 @@ mod tests {
             "3. Resultados · estrutura",
             "Armaduras preliminares",
             "Tabela preliminar de aço",
+            "Resumo de aço por bitola (CA-50)",
+            "Traspasse l0",
             "4. Resultados · instalação elétrica",
             "5. Verificações (semáforo)",
             "6. Alertas",

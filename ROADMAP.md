@@ -300,12 +300,11 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
   - a symmetric fixed-base portal against the slope-deflection closed form;
   - global equilibrium.
 
-### #110 Reinforcement pre-sizing and steel schedule — 🟡 Partial
+### #110 Reinforcement pre-sizing and steel schedule — ✅ Done
 
-- **Changes:** preliminary longitudinal/transverse reinforcement for beams and columns, meshes for slabs and footings, section-fit and shear warnings, theoretical mass, CSV/PDF schedule, UI and MCP output.
-- **Tests:** bar geometry/mass, agreement with the existing cracked-section steel model, all four element families and refusal outside applicability limits.
-- **Commit:** `a777a93`.
-- **Remaining:** executive anchorage/laps/bar drawings and clause-by-clause audit against NBR 6118:2026.
+- **Changes:** preliminary longitudinal/transverse reinforcement for beams and columns, meshes for slabs and footings, NBR 6118:2023 §9.3–9.5 bond/anchorage (`fbd`, `lb`, hooked `lb,nec` with good/poor bond zones) and column lap splices (`l0`), B12 Branson cracked-section deflection metadata (`Mr`, Stage I/II, `I_eq/Ic`, `As`), reinforcement traffic lights (flexural domain, single-layer bar fit, shear strut `VRd2`, column steel ratio), bar shapes, CA-50 summary by diameter (`12 m` commercial bars and `+10%` cutting/bending waste), A3 schematic detailing sheet (`reinforcement_detail_svg` exported to SVG/PDF in UI and MCP `armaduras_svg`/`armaduras_pdf`), CSV schedule, PDF memorial tables and MCP output.
+- **Tests:** bar geometry/mass, NBR 6118 bond/anchorage/lap hand calculation, agreement with Branson cracked-section steel, diameter-summary & 12 m bar reconciliation, valid A3 schematic detailing SVG, reinforcement traffic lights, MCP JSON/export and refusal outside applicability limits.
+- **Note:** preliminary calculations are traced to ABNT NBR 6118:2023; executive fabrication drawings, openings/joints and any NBR 6118:2026 clause-by-clause audit remain the licensed engineer's responsibility (ART/RRT).
 
 ### #113 Concentrated loads — ✅ Done
 
@@ -527,7 +526,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 110 | Reinforcement pre-sizing for beams, columns, slabs and footings, with a bar schedule (*tabela de aço*), steel weights and cracked-section deflection (B12) | P1 | L | M5 | 🟡 Preliminary bars, stirrups/meshes, fit and shear warnings, steel mass, CSV/PDF schedule and MCP output; executive anchorage/laps/bar drawings and NBR 6118:2026 audit remain |
+| 110 | Reinforcement pre-sizing for beams, columns, slabs and footings, with a bar schedule (*tabela de aço*), steel weights and cracked-section deflection (B12) | P1 | L | M5 | ✅ |
 | 111 | Lintels and sills (*vergas e contravergas*) for every opening, and masonry checks for infill and load-bearing walls (NBR 16868) | P1 | M | M5 | ✅ |
 | 112 | Foundations: soil from a survey (SPT) or a soil-type table; footing, raft (*radier*) and bored-pile (*broca*) options; eccentricity, punching and overturning checks (B11) | P1 | L | M5 | 🟡 SPT survey per site (UI tab and MCP) giving σadm = 20·N̄ for footings, bored piles by Décourt-Quaresma (3–6 m, above the water table), and a study comparing footings, raft and brocas with ground beams for the real loads, recommending the viable one with the least concrete; footing eccentricity, punching and overturning already checked; settlement, several boreholes and deep piles remain |
 | 113 | Point loads on the structure: water tank (*caixa d'água*) and heavy equipment, checked on the slab or beam below | P0 | S | M5 | ✅ |
