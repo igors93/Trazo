@@ -72,6 +72,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 - Columns align to walls at any angle, and the pre-sizing window now creates secondary beams between two chosen primary girders; their end reactions become point loads on the girders, matching the existing MCP workflow (#117).
 - Per-wall straight or sloped tops now appear with their real heights in sections and facade elevations, completing the same height through quantities, structural loads and column checks (#145).
 - Solid slabs now split L-shaped outlines into rectangular panels, envelope the case-1 Czerny and Marcus two-way moments in both directions, check long-term deflection against L/250 and use those moments in the reinforcement proposal; UI, PDF, MCP and traffic lights expose the same panel results (#116).
+- Timber posts and their eave beams now carry a catalogued species or certified strength class, require exterior preservative treatment and no soil contact, and combine compression/buckling with NBR 6123 lateral-wind bending; UI, PDF memorial tables and traffic lights, MCP output and migration of old class-only projects are complete (#146).
 - Discipline views: architecture, electrical and structure shown on their own on screen (the rest faded) and on sheets of their own, with *Planta de Instalações Elétricas* and *Planta de Forma* sheets in the sheet set (#96).
 - Two MCP tools, `projeto_estrutural` and `pre_dimensionamento`.
 - Entrance gates (*Portão*): pedestrian or vehicle, from 0.80 to 8 m, sliding by default, tagged "PT" and available to assistants.

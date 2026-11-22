@@ -1057,8 +1057,12 @@ impl FloorPlanApp {
                     StructureEdit::Roof(super::roof::RoofAction::Wind(wind)) => {
                         self.project.set_wind(wind)
                     }
-                    StructureEdit::Roof(super::roof::RoofAction::PostTimber(class)) => {
-                        self.project.structure.post_timber = class;
+                    StructureEdit::Roof(super::roof::RoofAction::PostSpecies(species)) => {
+                        self.project.structure.post_species = species;
+                        Ok(())
+                    }
+                    StructureEdit::Roof(super::roof::RoofAction::PostTreated(treated)) => {
+                        self.project.structure.post_treated = treated;
                         Ok(())
                     }
                     StructureEdit::Roof(super::roof::RoofAction::Remove(id)) => {

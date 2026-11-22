@@ -404,59 +404,75 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
         pages.table(&["Cômodo", "Área (eixos)"], &[3.0, 1.0], &rooms);
     }
     pages.subheading("Materiais e cargas");
-    pages.table(
-        &["Parâmetro", "Valor"],
-        &[3.0, 2.0],
-        &[
-            (
-                None,
-                vec!["Concreto (fck)".into(), format!("{:.0} MPa", s.fck_mpa)],
-            ),
-            (None, vec!["Aço".into(), "CA-50".into()]),
-            (
-                None,
-                vec![
-                    "Tensão admissível do solo".into(),
-                    format!("{:.0} kPa", s.soil_kpa),
-                ],
-            ),
-            (
-                None,
-                vec![
-                    "Sobrecarga".into(),
-                    format!("{} kN/m²", decimal(s.live_kn_m2, 1)),
-                ],
-            ),
-            (
-                None,
-                vec![
-                    "Revestimento".into(),
-                    format!("{} kN/m²", decimal(s.finish_kn_m2, 1)),
-                ],
-            ),
-            (
-                None,
-                vec![
-                    "Alvenaria".into(),
-                    format!("{} kN/m³", decimal(s.masonry_kn_m3, 0)),
-                ],
-            ),
-            (
-                None,
-                vec![
-                    "Tensão dos circuitos".into(),
-                    format!(
-                        "{:.0} V (uso específico {:.0} V)",
-                        project.electrical.voltage_v, project.electrical.specific_voltage_v
-                    ),
-                ],
-            ),
-            (
-                None,
-                vec!["Ligação em uso".into(), schedule.supply.label().to_owned()],
-            ),
-        ],
-    );
+    let mut material_rows: Vec<(Option<Light>, Vec<String>)> = vec![
+        (
+            None,
+            vec!["Concreto (fck)".into(), format!("{:.0} MPa", s.fck_mpa)],
+        ),
+        (None, vec!["Aço".into(), "CA-50".into()]),
+        (
+            None,
+            vec![
+                "Tensão admissível do solo".into(),
+                format!("{:.0} kPa", s.soil_kpa),
+            ],
+        ),
+        (
+            None,
+            vec![
+                "Sobrecarga".into(),
+                format!("{} kN/m²", decimal(s.live_kn_m2, 1)),
+            ],
+        ),
+        (
+            None,
+            vec![
+                "Revestimento".into(),
+                format!("{} kN/m²", decimal(s.finish_kn_m2, 1)),
+            ],
+        ),
+        (
+            None,
+            vec![
+                "Alvenaria".into(),
+                format!("{} kN/m³", decimal(s.masonry_kn_m3, 0)),
+            ],
+        ),
+        (
+            None,
+            vec![
+                "Tensão dos circuitos".into(),
+                format!(
+                    "{:.0} V (uso específico {:.0} V)",
+                    project.electrical.voltage_v, project.electrical.specific_voltage_v
+                ),
+            ],
+        ),
+        (
+            None,
+            vec!["Ligação em uso".into(), schedule.supply.label().to_owned()],
+        ),
+    ];
+    if !report.timber_posts.is_empty() || !report.eave_beams.is_empty() {
+        let species = project.structure.post_species;
+        material_rows.push((
+            None,
+            vec![
+                "Madeira (mourões/vigas)".into(),
+                format!(
+                    "{} ({}) · {}",
+                    species.label(),
+                    species.class().label(),
+                    if project.structure.post_treated {
+                        "tratada"
+                    } else {
+                        "sem tratamento"
+                    }
+                ),
+            ],
+        ));
+    }
+    pages.table(&["Parâmetro", "Valor"], &[3.0, 2.0], &material_rows);
 
     // 2. Assumptions and limits.
     pages.heading("2. Premissas, métodos e limites");
@@ -841,6 +857,103 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                     "Punção",
                 ],
                 &[1.3, 1.2, 1.6, 1.3, 1.8, 1.2],
+                &rows,
+            );
+        }
+        if !report.timber_posts.is_empty() {
+            pages.subheading("Mourões de madeira (NBR 7190)");
+            let rows: Vec<_> = report
+                .timber_posts
+                .iter()
+                .map(|p| {
+                    let name = format!("Mourão {}", p.label);
+                    (
+                        light_of.get(&name).copied(),
+                        vec![
+                            p.label.clone(),
+                            format!("{} ({})", p.species.label(), p.timber_class.label()),
+                            format!(
+                                "{}{}",
+                                if p.round { "Ø" } else { "□" },
+                                decimal(p.size_m * 100.0, 0)
+                            ),
+                            decimal(p.height_m, 2),
+                            decimal(p.load_kn, 1),
+                            format!(
+                                "{} kN / {} kN·m",
+                                decimal(p.wind_force_kn, 1),
+                                decimal(p.wind_moment_knm, 1)
+                            ),
+                            if p.ratio.is_finite() {
+                                format!("λ {:.0} · {:.0}%", p.slenderness, p.ratio * 100.0)
+                            } else {
+                                format!("λ {:.0} · —", p.slenderness)
+                            },
+                            format!(
+                                "{}×{} cm · Ch {} kN",
+                                decimal(p.base_m * 100.0, 0),
+                                decimal(p.base_depth_m * 100.0, 0),
+                                decimal(p.anchor_kn, 1)
+                            ),
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &[
+                    "Mourão",
+                    "Espécie / Classe",
+                    "Seção",
+                    "H (m)",
+                    "N (kN)",
+                    "Vento",
+                    "λ / Uso",
+                    "Base / Chumb.",
+                ],
+                &[1.1, 2.5, 0.9, 0.9, 0.9, 2.0, 1.7, 2.2],
+                &rows,
+            );
+            pages.paragraph(
+                "Mourões externos exigem madeira com tratamento preservativo compatível com a classe de uso e chumbador metálico mantendo a peça afastada do solo.",
+                2.7,
+                MUTED,
+            );
+        }
+        if !report.eave_beams.is_empty() {
+            pages.subheading("Vigas de madeira (beiral)");
+            let rows: Vec<_> = report
+                .eave_beams
+                .iter()
+                .map(|b| {
+                    let name = format!("Viga {}", b.label);
+                    (
+                        light_of.get(&name).copied(),
+                        vec![
+                            b.label.clone(),
+                            format!("{} ({})", b.species.label(), b.timber_class.label()),
+                            format!("{}–{}", b.from_post, b.to_post),
+                            decimal(b.span_m, 2),
+                            format!("{:.0}×{:.0}", b.section_cm.0, b.section_cm.1),
+                            format!(
+                                "{:.0}% / {:.0}% / {:.0}%",
+                                b.bending_ratio * 100.0,
+                                b.shear_ratio * 100.0,
+                                b.deflection_ratio * 100.0
+                            ),
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &[
+                    "Viga",
+                    "Espécie / Classe",
+                    "Apoios",
+                    "Vão (m)",
+                    "b×h (cm)",
+                    "Flex / Cis / Flecha",
+                ],
+                &[1.2, 2.8, 1.4, 1.1, 1.3, 2.4],
                 &rows,
             );
         }
@@ -1386,5 +1499,51 @@ mod tests {
             drawing_pages(&project).len() == 2,
             "no formwork plan or beam forces"
         );
+    }
+
+    #[test]
+    fn timber_posts_and_eave_beams_are_printed_in_the_review_report() {
+        use crate::domain::fixtures::FixtureKind;
+        use crate::domain::roof::{Roof, RoofSide, TimberSpecies};
+
+        let mut project = Project::default();
+        project.name = "Área Gourmet".to_owned();
+        project.set_terrain(Point::new(-2.0, -2.0), Point::new(20.0, 20.0));
+        project.structure.post_species = TimberSpecies::Itauba;
+        project.structure.post_treated = true;
+        project
+            .add_wall(Point::new(0.0, 0.0), Point::new(0.0, 6.0))
+            .unwrap();
+        for y in [0.0, 3.0, 6.0] {
+            project
+                .add_fixture(FixtureKind::Column, Point::new(0.0, y), 0.20, 0.30, 0)
+                .unwrap();
+            project
+                .add_fixture(FixtureKind::TimberPost, Point::new(4.0, y), 0.16, 0.16, 0)
+                .unwrap();
+        }
+        let roof = Roof::new(
+            Point::new(0.0, 0.0),
+            Point::new(4.0, 6.0),
+            RoofSide::West,
+            3.8,
+            2.6,
+        );
+        project.add_roof(roof).unwrap();
+
+        let pages = report_pages(&project, "22/11/2026");
+        let all = pages.join("\n");
+        assert!(all.contains("Madeira (mourões/vigas)"));
+        assert!(all.contains("Itaúba"));
+        assert!(all.contains("Mourões de madeira (NBR 7190)"));
+        assert!(all.contains("Vigas de madeira (beiral)"));
+        assert!(all.contains("M1"));
+        assert!(all.contains("VM1"));
+        assert!(all.contains("Ch "));
+        for page in &pages {
+            assert!(
+                svg2pdf::usvg::Tree::from_str(page, &svg2pdf::usvg::Options::default()).is_ok()
+            );
+        }
     }
 }

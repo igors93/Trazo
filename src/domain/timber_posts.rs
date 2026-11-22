@@ -18,7 +18,8 @@
 //!   40 cm, in 5 cm steps; the timber stays off the ground on a steel
 //!   anchor.
 //!
-//! Wind on the open side, which bends the posts, comes with #147.
+//! Wind acts as a distributed lateral load on the exposed post. Its design
+//! bending utilisation is added to the axial/buckling utilisation.
 
 use std::collections::HashMap;
 
@@ -26,7 +27,8 @@ use super::conduits::PlanMark;
 use super::fixtures::{Fixture, FixtureKind};
 use super::geometry::Point;
 use super::model::Project;
-use super::roof::{RoofResult, TimberClass, timber_design};
+use super::roof::{RoofResult, TimberClass, TimberSpecies, timber_design};
+use super::wind::WALL_CP;
 
 /// Most slender post NBR 7190 allows.
 pub const MAX_POST_SLENDERNESS: f64 = 140.0;
@@ -43,28 +45,76 @@ pub struct TimberPostResult {
     /// Characteristic load and its permanent part, kN.
     pub load_kn: f64,
     pub dead_kn: f64,
+    pub species: TimberSpecies,
+    pub timber_class: TimberClass,
+    pub treated: bool,
     pub slenderness: f64,
-    /// Compression with buckling, demand over capacity.
+    /// Axial buckling and lateral wind contributions, then their interaction.
+    pub axial_ratio: f64,
+    pub wind_ratio: f64,
+    pub wind_kpa: f64,
+    pub wind_force_kn: f64,
+    pub wind_moment_knm: f64,
     pub ratio: f64,
     /// Smallest size that passes, metres (`None` when even 30 cm fails).
     pub needed_m: Option<f64>,
     /// Side of the concrete base and the pressure under it.
     pub base_m: f64,
+    pub base_depth_m: f64,
     pub base_kpa: f64,
+    /// No-tension/kern check under the wind moment, and design anchor tension.
+    pub base_stability_ratio: f64,
+    pub anchor_kn: f64,
     /// Allowable soil pressure, kPa.
     pub soil_kpa: f64,
 }
 
 impl TimberPostResult {
     pub fn ok(&self) -> bool {
-        self.ratio <= 1.0 + 1e-9 && self.slenderness <= MAX_POST_SLENDERNESS + 1e-9
+        self.treated
+            && self.ratio <= 1.0 + 1e-9
+            && self.slenderness <= MAX_POST_SLENDERNESS + 1e-9
+            && self.base_kpa <= self.soil_kpa + 1e-9
+            && self.base_stability_ratio <= 1.0 + 1e-9
     }
+}
+
+/// Square concrete block kept fully in compression under vertical load and
+/// wind moment. Returns side, depth, maximum soil pressure and kern ratio.
+fn size_post_base(load_kn: f64, moment_knm: f64, soil_kpa: f64) -> (f64, f64, f64, f64) {
+    const CONCRETE_KN_M3: f64 = 24.0;
+    let mut last = (2.0, 2.0, f64::INFINITY, f64::INFINITY);
+    for step in 8..=40 {
+        let side = f64::from(step) * 0.05;
+        let depth = side.max(0.60);
+        let vertical = 1.05 * load_kn + CONCRETE_KN_M3 * side * side * depth;
+        let stability = 6.0 * moment_knm / (vertical * side).max(1e-9);
+        let qmax = vertical / (side * side) * (1.0 + stability);
+        last = (side, depth, qmax, stability);
+        if qmax <= soil_kpa && stability <= 1.0 {
+            return last;
+        }
+    }
+    last
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PostCheck {
+    pub slenderness: f64,
+    pub axial_ratio: f64,
+    pub wind_ratio: f64,
+    pub combined_ratio: f64,
+    pub wind_force_kn: f64,
+    pub wind_moment_knm: f64,
 }
 
 /// A timber beam from post to post along a roof edge.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EaveBeamResult {
     pub label: String,
+    pub species: TimberSpecies,
+    pub timber_class: TimberClass,
+    pub treated: bool,
     pub from: Point,
     pub to: Point,
     pub from_post: String,
@@ -100,7 +150,7 @@ fn post_section(round: bool, size: f64) -> (f64, f64, f64) {
     }
 }
 
-/// Slenderness and utilisation of a post in compression with buckling.
+/// Slenderness and utilisation of a post in compression, buckling and wind.
 pub fn post_check(
     timber: TimberClass,
     round: bool,
@@ -108,37 +158,55 @@ pub fn post_check(
     height: f64,
     dead_kn: f64,
     live_kn: f64,
-) -> (f64, f64) {
+    wind_kpa: f64,
+) -> PostCheck {
     let (fc0d, _, e_ef, _) = timber_design(timber);
     let (area, inertia, modulus) = post_section(round, size);
     let l0 = height.max(0.1);
     let lambda = l0 / (inertia / area).sqrt();
     let nd = 1.4 * (dead_kn + live_kn);
     let sigma_n = nd / area;
-    if lambda > MAX_POST_SLENDERNESS + 1e-9 {
-        return (lambda, f64::INFINITY);
-    }
-    if lambda <= 40.0 {
-        return (lambda, sigma_n / fc0d);
-    }
-    let fe = std::f64::consts::PI.powi(2) * e_ef * inertia / (l0 * l0);
-    if nd >= fe {
-        return (lambda, f64::INFINITY);
-    }
-    let ei = size / 30.0;
-    let ea = l0 / 300.0;
-    let ec = if lambda > 80.0 {
-        let ngq = dead_kn + 0.2 * live_kn;
-        if ngq >= fe {
-            return (lambda, f64::INFINITY);
-        }
-        (ei + ea) * ((0.8 * ngq / (fe - ngq)).exp() - 1.0)
+    let wind_force = wind_kpa.max(0.0) * size * l0;
+    let wind_moment = wind_kpa.max(0.0) * size * l0 * l0 / 2.0;
+    let wind_ratio = 1.4 * wind_moment / modulus / fc0d;
+    let axial_ratio = if lambda > MAX_POST_SLENDERNESS + 1e-9 {
+        f64::INFINITY
+    } else if lambda <= 40.0 {
+        sigma_n / fc0d
     } else {
-        0.0
+        let fe = std::f64::consts::PI.powi(2) * e_ef * inertia / (l0 * l0);
+        if nd >= fe {
+            f64::INFINITY
+        } else {
+            let ei = size / 30.0;
+            let ea = l0 / 300.0;
+            let ec = if lambda > 80.0 {
+                let ngq = dead_kn + 0.2 * live_kn;
+                if ngq >= fe {
+                    f64::INFINITY
+                } else {
+                    (ei + ea) * ((0.8 * ngq / (fe - ngq)).exp() - 1.0)
+                }
+            } else {
+                0.0
+            };
+            if ec.is_infinite() {
+                f64::INFINITY
+            } else {
+                let ed = (ei + ea + ec) * fe / (fe - nd);
+                let moment = nd * ed;
+                sigma_n / fc0d + moment / modulus / fc0d
+            }
+        }
     };
-    let ed = (ei + ea + ec) * fe / (fe - nd);
-    let moment = nd * ed;
-    (lambda, sigma_n / fc0d + moment / modulus / fc0d)
+    PostCheck {
+        slenderness: lambda,
+        axial_ratio,
+        wind_ratio,
+        combined_ratio: axial_ratio + wind_ratio,
+        wind_force_kn: wind_force,
+        wind_moment_knm: wind_moment,
+    }
 }
 
 /// Sizes a simply supported timber beam of span `span` under point loads
@@ -257,7 +325,8 @@ impl Project {
     /// or through a timber beam along the edge, and checks every post.
     pub fn post_effects(&self, roofs: &mut [RoofResult]) -> PostEffects {
         let labels = self.post_labels();
-        let timber = self.structure.post_timber;
+        let species = self.structure.post_species;
+        let timber = species.class();
         let mut loads: HashMap<u64, (f64, f64)> = HashMap::new();
         let mut eave_beams = Vec::new();
         for result in roofs.iter_mut() {
@@ -329,6 +398,9 @@ impl Project {
                     }
                     eave_beams.push(EaveBeamResult {
                         label,
+                        species,
+                        timber_class: timber,
+                        treated: self.structure.post_treated,
                         from: p0.center,
                         to: p1.center,
                         from_post: labels.get(&p0.id).cloned().unwrap_or_default(),
@@ -356,11 +428,27 @@ impl Project {
                 let own = gamma * post_section(round, size).0 * height;
                 let (dead, total) = (dead + own, total + own);
                 let live = total - dead;
-                let (lambda, ratio) = post_check(timber, round, size, height, dead, live);
-                let needed = (12..=30)
-                    .map(|cm| f64::from(cm) / 100.0)
-                    .find(|s| post_check(timber, round, *s, height, dead, live).1 <= 1.0);
-                let base = ((1.05 * total / soil).sqrt().max(0.40) * 20.0 - 1e-9).ceil() / 20.0;
+                let plan_size = self
+                    .structure
+                    .roofs
+                    .iter()
+                    .filter(|roof| {
+                        post.center.x >= roof.min.x - 0.35
+                            && post.center.x <= roof.max.x + 0.35
+                            && post.center.y >= roof.min.y - 0.35
+                            && post.center.y <= roof.max.y + 0.35
+                    })
+                    .map(|roof| roof.eaves_m().max(roof.run_m()))
+                    .fold(10.0_f64, f64::max);
+                let wind_kpa = WALL_CP * self.structure.wind.pressure_kpa(height, plan_size);
+                let check = post_check(timber, round, size, height, dead, live, wind_kpa);
+                let needed = (12..=30).map(|cm| f64::from(cm) / 100.0).find(|s| {
+                    post_check(timber, round, *s, height, dead, live, wind_kpa).combined_ratio
+                        <= 1.0
+                });
+                let (base, base_depth, base_kpa, base_stability) =
+                    size_post_base(total, check.wind_moment_knm, soil);
+                let anchor = 1.4 * check.wind_moment_knm / (0.8 * size).max(0.05);
                 TimberPostResult {
                     id: post.id,
                     label: labels.get(&post.id).cloned().unwrap_or_default(),
@@ -369,11 +457,22 @@ impl Project {
                     height_m: height,
                     load_kn: total,
                     dead_kn: dead,
-                    slenderness: lambda,
-                    ratio,
+                    species,
+                    timber_class: timber,
+                    treated: self.structure.post_treated,
+                    slenderness: check.slenderness,
+                    axial_ratio: check.axial_ratio,
+                    wind_ratio: check.wind_ratio,
+                    wind_kpa,
+                    wind_force_kn: check.wind_force_kn,
+                    wind_moment_knm: check.wind_moment_knm,
+                    ratio: check.combined_ratio,
                     needed_m: needed,
                     base_m: base,
-                    base_kpa: 1.05 * total / (base * base),
+                    base_depth_m: base_depth,
+                    base_kpa,
+                    base_stability_ratio: base_stability,
+                    anchor_kn: anchor,
                     soil_kpa: soil,
                 }
             })
@@ -459,29 +558,65 @@ mod tests {
     use crate::domain::roof::{Roof, RoofSide};
 
     #[test]
+    fn treatment_defaults_true_and_old_class_projects_migrate() {
+        assert!(Project::default().structure.post_treated);
+        let structure: crate::domain::structure::ProjectStructure =
+            serde_json::from_str(r#"{"post_timber":"c40"}"#).unwrap();
+        assert_eq!(structure.post_species, TimberSpecies::ClassC40);
+        assert!(structure.post_treated);
+    }
+
+    #[test]
     fn a_short_post_is_checked_in_plain_compression() {
         // Ø 20 cm, 1.5 m: λ = 1.5 / 0.05 = 30.
-        let (lambda, ratio) = post_check(TimberClass::C30, true, 0.20, 1.5, 20.0, 5.0);
-        assert!((lambda - 30.0).abs() < 1e-9);
+        let check = post_check(TimberClass::C30, true, 0.20, 1.5, 20.0, 5.0, 0.0);
+        assert!((check.slenderness - 30.0).abs() < 1e-9);
         let area = std::f64::consts::PI * 0.04 / 4.0;
         let fc0d = timber_design(TimberClass::C30).0;
-        assert!((ratio - 1.4 * 25.0 / area / fc0d).abs() < 1e-9);
+        assert!((check.combined_ratio - 1.4 * 25.0 / area / fc0d).abs() < 1e-9);
     }
 
     #[test]
     fn a_slender_post_pays_for_buckling_and_creep() {
         // Ø 12 cm, 2.6 m: λ = 2.6 / 0.03 = 86.7, above 80.
-        let (lambda, ratio) = post_check(TimberClass::C30, true, 0.12, 2.6, 6.0, 2.0);
-        assert!(lambda > 80.0 && lambda < 90.0, "{lambda}");
+        let check = post_check(TimberClass::C30, true, 0.12, 2.6, 6.0, 2.0, 0.0);
+        assert!(
+            check.slenderness > 80.0 && check.slenderness < 90.0,
+            "{}",
+            check.slenderness
+        );
         let area = std::f64::consts::PI * 0.0144 / 4.0;
         let plain = 1.4 * 8.0 / area / timber_design(TimberClass::C30).0;
-        assert!(ratio > plain * 1.2, "{ratio} vs {plain}");
+        assert!(
+            check.combined_ratio > plain * 1.2,
+            "{} vs {plain}",
+            check.combined_ratio
+        );
         // Too slender: λ > 140.
         assert!(
-            post_check(TimberClass::C30, true, 0.08, 3.0, 1.0, 0.0)
-                .1
+            post_check(TimberClass::C30, true, 0.08, 3.0, 1.0, 0.0, 0.0)
+                .combined_ratio
                 .is_infinite()
         );
+    }
+
+    #[test]
+    fn lateral_wind_adds_bending_to_the_axial_post_check() {
+        let calm = post_check(TimberClass::C30, false, 0.15, 3.0, 8.0, 2.0, 0.0);
+        let windy = post_check(TimberClass::C30, false, 0.15, 3.0, 8.0, 2.0, 0.80);
+        assert!(windy.wind_force_kn > 0.0 && windy.wind_moment_knm > 0.0);
+        assert!(windy.combined_ratio > calm.combined_ratio);
+        assert!((windy.combined_ratio - windy.axial_ratio - windy.wind_ratio).abs() < 1e-12);
+    }
+
+    #[test]
+    fn the_post_base_resists_soil_pressure_and_wind_overturning() {
+        let (side, depth, pressure, stability) = size_post_base(8.0, 0.8, 150.0);
+        assert!(side >= 0.40 && depth >= 0.60);
+        assert!(pressure <= 150.0, "{pressure}");
+        assert!(stability <= 1.0, "{stability}");
+        let (_, _, _, windier) = size_post_base(8.0, 1.6, 150.0);
+        assert!(windier <= 1.0);
     }
 
     #[test]

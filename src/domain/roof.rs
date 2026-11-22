@@ -119,7 +119,7 @@ impl TileKind {
     }
 }
 
-/// Strength class of hardwood (NBR 7190, dicotyledons).
+/// Timber strength class used by the preliminary NBR 7190 checks.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TimberClass {
@@ -130,15 +130,120 @@ pub enum TimberClass {
     C60,
 }
 
+/// Species/catalogue entry specified for posts and their eave beams.  A
+/// supplier may instead certify a lot directly to an NBR 7190 strength class.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TimberSpecies {
+    #[serde(rename = "c20")]
+    ClassC20,
+    #[default]
+    #[serde(rename = "c30")]
+    ClassC30,
+    #[serde(rename = "c40")]
+    ClassC40,
+    #[serde(rename = "c60")]
+    ClassC60,
+    #[serde(rename = "pinus_elliottii")]
+    PinusElliottii,
+    #[serde(rename = "eucalipto_citriodora")]
+    EucalyptusCitriodora,
+    #[serde(rename = "itauba")]
+    Itauba,
+    #[serde(rename = "cumaru")]
+    Cumaru,
+    #[serde(rename = "jatoba")]
+    Jatoba,
+}
+
+impl TimberSpecies {
+    pub const ALL: [Self; 9] = [
+        Self::ClassC20,
+        Self::ClassC30,
+        Self::ClassC40,
+        Self::ClassC60,
+        Self::PinusElliottii,
+        Self::EucalyptusCitriodora,
+        Self::Itauba,
+        Self::Cumaru,
+        Self::Jatoba,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::ClassC20 => "Lote classificado C20",
+            Self::ClassC30 => "Lote classificado C30",
+            Self::ClassC40 => "Lote classificado C40",
+            Self::ClassC60 => "Lote classificado C60",
+            Self::PinusElliottii => "Pinus elliottii",
+            Self::EucalyptusCitriodora => "Eucalipto-citriodora",
+            Self::Itauba => "Itaúba",
+            Self::Cumaru => "Cumaru",
+            Self::Jatoba => "Jatobá",
+        }
+    }
+
+    pub fn scientific_name(self) -> &'static str {
+        match self {
+            Self::PinusElliottii => "Pinus elliottii",
+            Self::EucalyptusCitriodora => "Corymbia citriodora",
+            Self::Itauba => "Mezilaurus itauba",
+            Self::Cumaru => "Dipteryx odorata",
+            Self::Jatoba => "Hymenaea spp.",
+            Self::ClassC20 | Self::ClassC30 | Self::ClassC40 | Self::ClassC60 => {
+                "lote classificado"
+            }
+        }
+    }
+
+    /// Conservative strength class used for design. Named species still need
+    /// the delivered lot classified; the mapping is a pre-sizing floor.
+    pub fn class(self) -> TimberClass {
+        match self {
+            Self::ClassC20 | Self::PinusElliottii => TimberClass::C20,
+            Self::ClassC30
+            | Self::EucalyptusCitriodora
+            | Self::Itauba
+            | Self::Cumaru
+            | Self::Jatoba => TimberClass::C30,
+            Self::ClassC40 => TimberClass::C40,
+            Self::ClassC60 => TimberClass::C60,
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::ClassC20 => "c20",
+            Self::ClassC30 => "c30",
+            Self::ClassC40 => "c40",
+            Self::ClassC60 => "c60",
+            Self::PinusElliottii => "pinus_elliottii",
+            Self::EucalyptusCitriodora => "eucalipto_citriodora",
+            Self::Itauba => "itauba",
+            Self::Cumaru => "cumaru",
+            Self::Jatoba => "jatoba",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        let key = raw
+            .trim()
+            .to_lowercase()
+            .replace([' ', '-'], "_")
+            .replace(['á', 'ã'], "a")
+            .replace('ú', "u");
+        Self::ALL.into_iter().find(|species| species.key() == key)
+    }
+}
+
 impl TimberClass {
     pub const ALL: [Self; 4] = [Self::C20, Self::C30, Self::C40, Self::C60];
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::C20 => "Folhosa C20",
-            Self::C30 => "Folhosa C30",
-            Self::C40 => "Folhosa C40",
-            Self::C60 => "Folhosa C60",
+            Self::C20 => "Classe C20",
+            Self::C30 => "Classe C30",
+            Self::C40 => "Classe C40",
+            Self::C60 => "Classe C60",
         }
     }
 
@@ -149,11 +254,6 @@ impl TimberClass {
             Self::C40 => "c40",
             Self::C60 => "c60",
         }
-    }
-
-    pub fn parse(raw: &str) -> Option<Self> {
-        let raw = raw.trim().to_lowercase();
-        Self::ALL.into_iter().find(|c| c.key() == raw)
     }
 
     /// fc0,k, fv0,k and Ec0,m in MPa, apparent density in kg/m³
@@ -904,6 +1004,18 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn timber_species_have_stable_keys_and_conservative_classes() {
+        assert_eq!(
+            TimberSpecies::parse("Eucalipto-citriodora"),
+            Some(TimberSpecies::EucalyptusCitriodora)
+        );
+        assert_eq!(TimberSpecies::parse("Itaúba"), Some(TimberSpecies::Itauba));
+        assert_eq!(TimberSpecies::PinusElliottii.class(), TimberClass::C20);
+        assert_eq!(TimberSpecies::Cumaru.class(), TimberClass::C30);
+        assert_eq!(TimberSpecies::ClassC60.class(), TimberClass::C60);
+    }
 
     fn gourmet_roof() -> Roof {
         // 5.00 × 14.75 m, high on the west at 4.30 m, low on the east at 2.60 m.

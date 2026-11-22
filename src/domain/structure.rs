@@ -313,7 +313,7 @@ impl StructureSettings {
 }
 
 /// The structural elements that are not fixtures, and their settings.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProjectStructure {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub beams: Vec<Beam>,
@@ -333,20 +333,52 @@ pub struct ProjectStructure {
     /// Timber roofs over this floor (#114).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub roofs: Vec<super::roof::Roof>,
-    /// Strength class of the timber posts (#146).
-    #[serde(default, skip_serializing_if = "is_default_timber")]
-    pub post_timber: super::roof::TimberClass,
+    /// Species (or certified strength class) of timber posts and eave beams (#146).
+    #[serde(
+        default,
+        alias = "post_timber",
+        skip_serializing_if = "is_default_timber_species"
+    )]
+    pub post_species: super::roof::TimberSpecies,
+    /// Exterior timber must be preservative-treated even when naturally durable.
+    #[serde(default = "default_true", skip_serializing_if = "is_true")]
+    pub post_treated: bool,
     /// The site's wind (#147).
     #[serde(default, skip_serializing_if = "is_default_wind")]
     pub wind: super::wind::WindSettings,
+}
+
+impl Default for ProjectStructure {
+    fn default() -> Self {
+        Self {
+            beams: Vec::new(),
+            slabs: Vec::new(),
+            settings: StructureSettings::default(),
+            balance_beams: Vec::new(),
+            wall_foundations: Vec::new(),
+            soil_survey: None,
+            roofs: Vec::new(),
+            post_species: super::roof::TimberSpecies::default(),
+            post_treated: true,
+            wind: super::wind::WindSettings::default(),
+        }
+    }
 }
 
 fn is_default_wind(wind: &super::wind::WindSettings) -> bool {
     *wind == super::wind::WindSettings::default()
 }
 
-fn is_default_timber(class: &super::roof::TimberClass) -> bool {
-    *class == super::roof::TimberClass::default()
+fn is_default_timber_species(species: &super::roof::TimberSpecies) -> bool {
+    *species == super::roof::TimberSpecies::default()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 impl ProjectStructure {
@@ -358,7 +390,8 @@ impl ProjectStructure {
             && self.wall_foundations.is_empty()
             && self.soil_survey.is_none()
             && self.roofs.is_empty()
-            && is_default_timber(&self.post_timber)
+            && is_default_timber_species(&self.post_species)
+            && self.post_treated
             && is_default_wind(&self.wind)
     }
 }
@@ -2344,21 +2377,39 @@ impl Project {
                 ));
             }
         }
-        for post in posts.posts.iter().filter(|p| !p.ok()) {
-            report.warnings.push(match post.needed_m {
-                Some(size) => format!(
-                    "Mourão {}: {} cm não resiste à compressão com flambagem (λ = {:.0}, uso {:.0} %); use {} cm.",
-                    post.label,
-                    decimal(post.size_m * 100.0, 0),
-                    post.slenderness,
-                    (post.ratio * 100.0).min(999.0),
-                    decimal(size * 100.0, 0)
-                ),
-                None => format!(
-                    "Mourão {}: nem 30 cm resiste; diminua a altura ou a carga.",
+        for post in &posts.posts {
+            if !post.treated {
+                report.warnings.push(format!(
+                    "Mourão {}: madeira externa sem tratamento preservativo; especifique tratamento e mantenha a peça afastada do solo pelo chumbador.",
                     post.label
-                ),
-            });
+                ));
+            }
+            if post.ratio > 1.0 + 1e-9
+                || post.slenderness > super::timber_posts::MAX_POST_SLENDERNESS + 1e-9
+            {
+                report.warnings.push(match post.needed_m {
+                    Some(size) => format!(
+                        "Mourão {}: {} cm não resiste à compressão, flambagem e vento lateral (λ = {:.0}, uso {:.0} %); use {} cm.",
+                        post.label,
+                        decimal(post.size_m * 100.0, 0),
+                        post.slenderness,
+                        (post.ratio * 100.0).min(999.0),
+                        decimal(size * 100.0, 0)
+                    ),
+                    None => format!(
+                        "Mourão {}: nem 30 cm resiste à carga vertical e ao vento; diminua a altura/carga ou projete contraventamento.",
+                        post.label
+                    ),
+                });
+            }
+            if post.base_kpa > post.soil_kpa + 1e-9 || post.base_stability_ratio > 1.0 + 1e-9 {
+                report.warnings.push(format!(
+                    "Mourão {}: o bloco máximo de {}×{} cm não fecha pressão/estabilidade sob o vento; projete uma fundação e ancoragem específicas.",
+                    post.label,
+                    decimal(post.base_m * 100.0, 0),
+                    decimal(post.base_depth_m * 100.0, 0)
+                ));
+            }
         }
         for beam in posts.eave_beams.iter().filter(|b| !b.ok) {
             report.warnings.push(format!(

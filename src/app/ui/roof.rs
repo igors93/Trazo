@@ -8,7 +8,7 @@ use super::super::theme::*;
 use super::widgets::{primary_button, secondary_button};
 use crate::domain::geometry::Point;
 use crate::domain::model::Project;
-use crate::domain::roof::{Roof, RoofResult, RoofSide, TileKind, TimberClass};
+use crate::domain::roof::{Roof, RoofResult, RoofSide, TileKind, TimberClass, TimberSpecies};
 use crate::domain::structure::StructureReport;
 
 /// What the roof tab asks for.
@@ -17,8 +17,9 @@ pub(super) enum RoofAction {
     Update(u64, Roof),
     Remove(u64),
     FitWalls(u64),
-    /// The strength class of every timber post.
-    PostTimber(TimberClass),
+    /// Species/catalogued class and treatment of every timber post.
+    PostSpecies(TimberSpecies),
+    PostTreated(bool),
     /// The site's wind (#147).
     Wind(crate::domain::wind::WindSettings),
 }
@@ -396,20 +397,28 @@ fn posts_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Op
     ui.separator();
     ui.label(RichText::new("Mourões e vigas de madeira").font(strong(13.5)));
     ui.horizontal(|ui| {
-        ui.label("Madeira dos mourões");
-        let mut timber = project.structure.post_timber;
-        egui::ComboBox::from_id_salt("post_timber")
-            .selected_text(timber.label())
+        ui.label("Espécie dos mourões");
+        let mut species = project.structure.post_species;
+        egui::ComboBox::from_id_salt("post_species")
+            .selected_text(format!("{} · {}", species.label(), species.class().label()))
             .show_ui(ui, |ui| {
-                for class in TimberClass::ALL {
+                for option in TimberSpecies::ALL {
                     if ui
-                        .selectable_value(&mut timber, class, class.label())
+                        .selectable_value(
+                            &mut species,
+                            option,
+                            format!("{} · {}", option.label(), option.class().label()),
+                        )
                         .changed()
                     {
-                        action = Some(RoofAction::PostTimber(class));
+                        action = Some(RoofAction::PostSpecies(option));
                     }
                 }
             });
+        let mut treated = project.structure.post_treated;
+        if ui.checkbox(&mut treated, "tratada").changed() {
+            action = Some(RoofAction::PostTreated(treated));
+        }
     });
     if report.timber_posts.is_empty() {
         ui.label(
@@ -427,6 +436,7 @@ fn posts_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Op
                 "Seção",
                 "Altura",
                 "Carga",
+                "Vento",
                 "Esbeltez",
                 "Uso",
                 "Base",
@@ -444,14 +454,30 @@ fn posts_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Op
                 ));
                 ui.label(format!("{} m", decimal(post.height_m, 2)));
                 ui.label(format!("{} kN", decimal(post.load_kn, 1)));
+                ui.label(format!(
+                    "{} kN · {} kN·m",
+                    decimal(post.wind_force_kn, 1),
+                    decimal(post.wind_moment_knm, 1)
+                ));
                 ui.label(format!("λ {:.0}", post.slenderness));
                 ui.label(if post.ratio.is_finite() {
                     format!("{:.0} %", post.ratio * 100.0)
                 } else {
                     "—".to_owned()
                 });
-                ui.label(format!("{} cm", decimal(post.base_m * 100.0, 0)));
-                if post.ok() {
+                ui.label(format!(
+                    "{} × {} cm · Ch {:.1} kN",
+                    decimal(post.base_m * 100.0, 0),
+                    decimal(post.base_depth_m * 100.0, 0),
+                    post.anchor_kn
+                ));
+                if !post.treated {
+                    ui.label(RichText::new("Tratar madeira").color(WARNING));
+                } else if post.base_kpa > post.soil_kpa + 1e-9
+                    || post.base_stability_ratio > 1.0 + 1e-9
+                {
+                    ui.label(RichText::new("Rever base").color(WARNING));
+                } else if post.ok() {
                     ui.label(RichText::new("Atende").color(SUCCESS));
                 } else {
                     ui.label(
@@ -493,7 +519,9 @@ fn posts_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Op
                             .collect::<Vec<_>>()
                             .join(" + ")
                     });
-                    if beam.ok {
+                    if !beam.treated {
+                        ui.label(RichText::new("Tratar madeira").color(WARNING));
+                    } else if beam.ok {
                         ui.label(RichText::new("Atende").color(SUCCESS));
                     } else {
                         ui.label(RichText::new("Revise").color(WARNING));
@@ -503,7 +531,7 @@ fn posts_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Op
             });
     }
     ui.label(
-        RichText::new("Mourões pela NBR 7190 (compressão com flambagem, λ ≤ 140), sobre bloco de concreto com chumbador: a madeira não toca o solo. O vento no lado aberto ainda não entra (#147).")
+        RichText::new("Mourões pela NBR 7190: lote classificado, madeira tratada, compressão com flambagem e flexão pelo vento (interação ≤ 100 %, λ ≤ 140), sobre bloco de concreto com chumbador para a madeira não tocar o solo.")
             .size(11.0)
             .color(MUTED),
     );

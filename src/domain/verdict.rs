@@ -879,13 +879,15 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
             element: format!("Mourão {}", post.label),
             checks: vec![
                 Check::new(
-                    "Compressão e flambagem",
+                    "Flexocompressão com vento",
                     post.ratio,
                     if post.ratio <= 1.0 + 1e-9 {
                         format!(
-                            "{} {} cm com {} m aguenta {} kN.",
+                            "{} {} cm em {} ({}) com {} m aguenta {} kN e o vento.",
                             if post.round { "Ø" } else { "Seção" },
                             decimal(post.size_m * 100.0, 0),
+                            post.species.label(),
+                            post.timber_class.label(),
                             decimal(post.height_m, 2),
                             decimal(post.load_kn, 1)
                         )
@@ -896,8 +898,14 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
                         }
                     },
                     format!(
-                        "NBR 7190: λ = L0/i = {}; até 40 σNd ≤ fc0,d, acima σNd/fc0,d + σMd/fc0,d ≤ 1 com ed = (h/30 + L0/300 + ec)·FE/(FE − Nd); N = {} kN.",
+                        "NBR 7190: uso axial/flambagem = {} e uso por vento = {}, soma = {}; λ = L0/i = {}; q = {} kN/m², Fw = {} kN e Mw = {} kN·m; N = {} kN.",
+                        decimal(post.axial_ratio, 2),
+                        decimal(post.wind_ratio, 2),
+                        decimal(post.ratio, 2),
                         decimal(post.slenderness, 0),
+                        decimal(post.wind_kpa, 2),
+                        decimal(post.wind_force_kn, 1),
+                        decimal(post.wind_moment_knm, 1),
                         decimal(post.load_kn, 1)
                     ),
                 ),
@@ -908,15 +916,30 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
                     "NBR 7190: peças comprimidas com λ ≤ 140.".to_owned(),
                 ),
                 Check::new(
+                    "Durabilidade",
+                    if post.treated { 0.0 } else { 2.0 },
+                    if post.treated {
+                        "Madeira externa tratada e afastada do solo pelo chumbador.".to_owned()
+                    } else {
+                        "Especifique tratamento preservativo antes de construir.".to_owned()
+                    },
+                    "Madeira externa deve receber tratamento compatível com a classe de uso; a espécie não substitui a comprovação do lote nem o tratamento e a peça não toca o solo.".to_owned(),
+                ),
+                Check::new(
                     "Base",
-                    post.base_kpa / post.soil_kpa.max(1e-6),
+                    (post.base_kpa / post.soil_kpa.max(1e-6))
+                        .max(post.base_stability_ratio),
                     format!(
-                        "Bloco de concreto de {} cm com chumbador; a madeira não toca o solo.",
-                        decimal(post.base_m * 100.0, 0)
+                        "Bloco de concreto {}×{} cm; chumbador para {:.1} kN e madeira sem contato com o solo.",
+                        decimal(post.base_m * 100.0, 0),
+                        decimal(post.base_depth_m * 100.0, 0),
+                        post.anchor_kn
                     ),
                     format!(
-                        "B = √(1,05 N / σadm) ≥ 40 cm; σ = {:.0} kPa.",
-                        post.base_kpa
+                        "Bloco + 1,05 N: σmáx = {:.0} kPa ≤ {:.0} kPa e 6 Mw/(Ntotal·B) = {}; chumbador = 1,4 Mw/(0,8 d).",
+                        post.base_kpa,
+                        post.soil_kpa,
+                        decimal(post.base_stability_ratio, 2)
                     ),
                 ),
             ],
@@ -948,6 +971,20 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
                     beam.deflection_ratio,
                     format!("{section}."),
                     "Soma das flechas máximas de cada carga e do peso próprio ≤ L/200, Ec0,ef = kmod·Ec0,m.".to_owned(),
+                ),
+                Check::new(
+                    "Durabilidade",
+                    if beam.treated { 0.0 } else { 2.0 },
+                    if beam.treated {
+                        format!(
+                            "{} ({}) com tratamento preservativo.",
+                            beam.species.label(),
+                            beam.timber_class.label()
+                        )
+                    } else {
+                        "Especifique tratamento preservativo para a viga externa.".to_owned()
+                    },
+                    "A espécie define uma classe preliminar; o lote entregue deve ser classificado e receber tratamento compatível com a classe de uso.".to_owned(),
                 ),
             ],
         });

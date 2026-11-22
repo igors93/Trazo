@@ -111,7 +111,7 @@ fn roof_arg(
     args: &Value,
     base: Option<crate::domain::roof::Roof>,
 ) -> Result<crate::domain::roof::Roof, String> {
-    use crate::domain::roof::{Roof, RoofSide, TileKind, TimberClass};
+    use crate::domain::roof::{Roof, RoofSide, TileKind, TimberSpecies};
     let mut roof = match base {
         Some(roof) => roof,
         None => {
@@ -160,7 +160,9 @@ fn roof_arg(
             .ok_or("'telha' deve ser ceramica, concreto, fibrocimento ou metalica.")?;
     }
     if let Some(raw) = text(args, "madeira") {
-        roof.timber = TimberClass::parse(&raw).ok_or("'madeira' deve ser c20, c30, c40 ou c60.")?;
+        roof.timber = TimberSpecies::parse(&raw)
+            .ok_or("'madeira' deve ser uma classe C20–C60 ou uma espécie cadastrada.")?
+            .class();
     }
     if let Some(v) = number(args, "espacamento_vigas_m")? {
         roof.beam_spacing_m = v;
@@ -806,16 +808,21 @@ impl FloorPlanApp {
                 if !(0.10..=0.40).contains(&size) {
                     return Err("'diametro_cm' deve ficar entre 10 e 40.".to_owned());
                 }
-                let timber = match text(args, "madeira") {
+                let species = match text(args, "madeira") {
                     Some(raw) => Some(
-                        crate::domain::roof::TimberClass::parse(&raw)
-                            .ok_or("'madeira' deve ser c20, c30, c40 ou c60.")?,
+                        crate::domain::roof::TimberSpecies::parse(&raw).ok_or(
+                            "'madeira' deve ser c20, c30, c40, c60, pinus_elliottii, eucalipto_citriodora, itauba, cumaru ou jatoba.",
+                        )?,
                     ),
                     None => None,
                 };
+                let treated = args.get("tratada").and_then(Value::as_bool);
                 self.apply_change(None, |project| {
-                    if let Some(class) = timber {
-                        project.structure.post_timber = class;
+                    if let Some(species) = species {
+                        project.structure.post_species = species;
+                    }
+                    if let Some(treated) = treated {
+                        project.structure.post_treated = treated;
                     }
                     let id = project
                         .add_fixture(FixtureKind::TimberPost, to_model(x, y), size, size, 0)
@@ -1240,20 +1247,38 @@ impl FloorPlanApp {
                 "diametro_cm": round1(p.size_m * 100.0),
                 "altura_m": (p.height_m * 100.0).round() / 100.0,
                 "carga_kn": round1(p.load_kn),
+                "especie": p.species.key(),
+                "nome_cientifico": p.species.scientific_name(),
+                "classe": p.timber_class.key(),
+                "tratada": p.treated,
+                "vento_kpa": round1(p.wind_kpa * 100.0) / 100.0,
+                "forca_vento_kn": round1(p.wind_force_kn),
+                "momento_vento_knm": round1(p.wind_moment_knm),
+                "uso_axial": (p.axial_ratio.min(9.99) * 100.0).round() / 100.0,
+                "uso_vento": (p.wind_ratio.min(9.99) * 100.0).round() / 100.0,
                 "esbeltez": p.slenderness.round(),
                 "uso": (p.ratio.min(9.99) * 100.0).round() / 100.0,
                 "atende": p.ok(),
                 "diametro_necessario_cm": p.needed_m.map(|s| round1(s * 100.0)),
                 "base_cm": round1(p.base_m * 100.0),
+                "profundidade_base_cm": round1(p.base_depth_m * 100.0),
                 "pressao_base_kpa": round1(p.base_kpa),
+                "uso_estabilidade_base": (p.base_stability_ratio.min(9.99) * 100.0).round() / 100.0,
+                "chumbador_kn": round1(p.anchor_kn),
             })).collect::<Vec<_>>(),
             "vigas_madeira": report.eave_beams.iter().map(|b| json!({
                 "rotulo": b.label,
+                "especie": b.species.key(),
+                "classe": b.timber_class.key(),
+                "tratada": b.treated,
                 "de": b.from_post,
                 "para": b.to_post,
                 "vao_m": (b.span_m * 100.0).round() / 100.0,
                 "secao_cm": format!("{}x{}", b.section_cm.0, b.section_cm.1),
-                "atende": b.ok,
+                "uso_flexao": (b.bending_ratio.min(9.99) * 100.0).round() / 100.0,
+                "uso_cisalhamento": (b.shear_ratio.min(9.99) * 100.0).round() / 100.0,
+                "uso_flecha": (b.deflection_ratio.min(9.99) * 100.0).round() / 100.0,
+                "atende": b.ok && b.treated,
                 "cargas_kn": b.loads.iter().map(|(_, p)| round1(*p)).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
             "sondagem": soil_survey,
@@ -1546,7 +1571,7 @@ mod tests {
             &json!({ "acoes": [
                 { "ferramenta": "definir_terreno", "argumentos": { "largura": 10, "comprimento": 50 } },
                 { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "inserir_mourao", "x": 4.92, "y": 25.83, "diametro_cm": 15 } },
-                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "inserir_mourao", "x": 4.92, "y": 33.1, "diametro_cm": 15, "madeira": "c40" } },
+                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "inserir_mourao", "x": 4.92, "y": 33.1, "diametro_cm": 15, "madeira": "itauba", "tratada": false } },
                 { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "inserir_mourao", "x": 4.92, "y": 40.42, "diametro_cm": 15 } },
                 { "ferramenta": "projeto_estrutural", "argumentos": {
                     "acao": "definir_telhado", "x": 0, "y": 25.75, "largura_m": 5, "comprimento_m": 14.75,
@@ -1556,9 +1581,10 @@ mod tests {
         );
         assert!(!built.is_error, "{}", built.text);
         assert_eq!(
-            app.project.structure.post_timber,
-            crate::domain::roof::TimberClass::C40
+            app.project.structure.post_species,
+            crate::domain::roof::TimberSpecies::Itauba
         );
+        assert!(!app.project.structure.post_treated);
         let report = app
             .run_mcp_tool("pre_dimensionamento", &json!({}))
             .structured
@@ -1566,6 +1592,15 @@ mod tests {
         let posts = report["mouroes"].as_array().unwrap();
         assert_eq!(posts.len(), 3, "{report}");
         assert!(posts.iter().all(|p| p["carga_kn"].as_f64().unwrap() > 0.0));
+        assert!(posts.iter().all(|p| p["especie"] == "itauba"));
+        assert!(posts.iter().all(|p| p["classe"] == "c30"));
+        assert!(posts.iter().all(|p| p["tratada"] == false));
+        assert!(
+            posts
+                .iter()
+                .all(|p| p["momento_vento_knm"].as_f64().unwrap() > 0.0)
+        );
+        assert!(posts.iter().all(|p| p["atende"] == false));
         // Two timber beams, post to post, carry the beam ends in between.
         assert_eq!(report["vigas_madeira"].as_array().unwrap().len(), 2);
         let low_loose = report["telhados"][0]["apoios"]
