@@ -355,6 +355,27 @@ impl Project {
         guard.get_or_insert(key, || self.structure_marks())
     }
 
+    /// Cached [`Project::superstructure_marks`] for the **Estrutura** tab
+    /// (`Planta de Forma`: columns, upper beams, slabs, loads, roofs, timber).
+    pub fn cached_superstructure_marks(&self) -> Arc<Vec<PlanMark>> {
+        static CACHE: CacheSlot<Vec<PlanMark>> = OnceLock::new();
+        let key = structure_fingerprint(self);
+        let cache = CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        guard.get_or_insert(key, || self.superstructure_marks())
+    }
+
+    /// Cached [`Project::foundation_marks`] for the **Fundações** tab
+    /// (`Planta de Fundações`: columns, footings, balance beams, baldrames,
+    /// strip footings and timber post bases).
+    pub fn cached_foundation_marks(&self) -> Arc<Vec<PlanMark>> {
+        static CACHE: CacheSlot<Vec<PlanMark>> = OnceLock::new();
+        let key = structure_fingerprint(self);
+        let cache = CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        guard.get_or_insert(key, || self.foundation_marks())
+    }
+
     /// Cached [`Project::structure_report`], reused across frames until
     /// structural inputs change.
     pub fn cached_structure_report(&self) -> Arc<StructureReport> {

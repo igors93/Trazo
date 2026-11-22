@@ -83,15 +83,10 @@ pub(crate) fn project_on_floor(project: &Project, floor_id: Option<u64>) -> Cow<
 /// Whether `fixture` belongs to the crisp foreground overlay of a focused
 /// `discipline` tab, matching `canvas::paint_discipline_overlay`.
 pub(crate) fn fixture_in_discipline_overlay(discipline: Discipline, fixture: &Fixture) -> bool {
-    match discipline {
-        Discipline::Structure => fixture.kind.is_structural(),
-        Discipline::Foundations => {
-            matches!(fixture.kind, FixtureKind::Footing | FixtureKind::Column)
-        }
-        Discipline::Electrical => fixture.kind.is_electrical(),
-        Discipline::Plumbing => fixture.kind.is_plumbing(),
-        Discipline::All | Discipline::Architecture => false,
+    if discipline.focus().is_none() {
+        return false;
     }
+    discipline.allows_fixture(fixture.kind)
 }
 
 const PIXELS_PER_METER: f64 = 100.0;
@@ -211,11 +206,24 @@ fn write_discipline_overlay_svg(
         write_fixture_svg(svg, fixture, point, pixels_per_meter);
     }
     match discipline {
-        Discipline::Structure | Discipline::Foundations => {
+        Discipline::Structure => {
             if project.category_visible(LayerCategory::Structure) {
-                conduits::write_structure(
+                conduits::write_structure_scoped(
                     svg,
                     project,
+                    crate::domain::structure::StructureMarksScope::Superstructure,
+                    point,
+                    pixels_per_meter,
+                    (1.4, 1.0, (pixels_per_meter * 0.14).clamp(8.0, 16.0)),
+                );
+            }
+        }
+        Discipline::Foundations => {
+            if project.category_visible(LayerCategory::Structure) {
+                conduits::write_structure_scoped(
+                    svg,
+                    project,
+                    crate::domain::structure::StructureMarksScope::Foundations,
                     point,
                     pixels_per_meter,
                     (1.4, 1.0, (pixels_per_meter * 0.14).clamp(8.0, 16.0)),
@@ -1511,6 +1519,7 @@ mod tests {
             .add_fixture(FixtureKind::Stove, Point::new(1.0, 1.0), 0.6, 0.6, 0)
             .unwrap();
         project.generate_structure();
+        project.generate_wall_foundations();
         project
             .add_fixture(FixtureKind::WaterTank, Point::new(2.0, 1.5), 1.0, 1.0, 0)
             .unwrap();
@@ -1523,20 +1532,36 @@ mod tests {
         let structure_svg = document_for_view(&project, &structure_view).markup;
         let foundations_svg = document_for_view(&project, &foundations_view).markup;
 
-        // General tab: no contrast veil, no structural overlay.
+        // General tab: no contrast veil, no structural/foundation overlays.
         assert!(!general_svg.contains("data-contrast-veil=\"true\""));
         assert!(!general_svg.contains("id=\"estrutura\""));
+        assert!(!general_svg.contains("id=\"fundacoes\""));
 
-        // Structure tab: faded contrast veil, crisp structural overlay, no stove.
+        // Structure tab (Planta de Forma): columns, upper beams, slabs and water tank,
+        // WITHOUT isolated footings (S#) or baldrames (VB#).
         assert!(structure_svg.contains("data-contrast-veil=\"true\""));
         assert!(structure_svg.contains("data-discipline=\"estrutura\""));
         assert!(structure_svg.contains("id=\"estrutura\""));
         assert!(structure_svg.contains("Planta de Forma"));
+        assert!(structure_svg.contains(">P1 "));
+        assert!(structure_svg.contains(">V1 "));
+        assert!(structure_svg.contains(">L1 "));
+        assert!(structure_svg.contains(">CC1 "));
+        assert!(!structure_svg.contains(">S1 "));
+        assert!(!structure_svg.contains(">VB1 "));
 
-        // Foundations tab: faded contrast veil, foundations discipline overlay.
+        // Foundations tab (Planta de Fundações): columns, isolated footings and baldrames,
+        // WITHOUT upper beams (V#), slabs (L#) or water tank (CC#).
         assert!(foundations_svg.contains("data-contrast-veil=\"true\""));
         assert!(foundations_svg.contains("data-discipline=\"fundacoes\""));
+        assert!(foundations_svg.contains("id=\"fundacoes\""));
         assert!(foundations_svg.contains("Planta de Fundações"));
+        assert!(foundations_svg.contains(">P1 "));
+        assert!(foundations_svg.contains(">S1 "));
+        assert!(foundations_svg.contains(">VB1 "));
+        assert!(!foundations_svg.contains(">V1 "));
+        assert!(!foundations_svg.contains(">L1 "));
+        assert!(!foundations_svg.contains(">CC1 "));
 
         // Multi-page PDF has 3 pages (one per tab).
         let directory = std::env::temp_dir().join(format!("trazo-tabs-pdf-{}", std::process::id()));

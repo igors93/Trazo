@@ -191,14 +191,36 @@ pub(super) fn paint_conduits(painter: &Painter, view: ViewTransform, project: &P
 
 /// Beams and the P, V, L and S labels of the formwork plan.
 pub(super) fn paint_structure(painter: &Painter, view: ViewTransform, project: &Project) {
-    if project.structure.beams.is_empty()
-        && project.structure.slabs.is_empty()
-        && !project.fixtures.iter().any(|f| f.kind.is_structural())
-    {
+    if !has_structure_content(project) {
         return;
     }
     let marks = project.cached_structure_marks();
     paint_marks(painter, view, &marks, theme::STRUCTURE, 35.0);
+}
+
+pub(super) fn paint_superstructure(painter: &Painter, view: ViewTransform, project: &Project) {
+    if !has_structure_content(project) {
+        return;
+    }
+    let marks = project.cached_superstructure_marks();
+    paint_marks(painter, view, &marks, theme::STRUCTURE, 35.0);
+}
+
+pub(super) fn paint_foundations(painter: &Painter, view: ViewTransform, project: &Project) {
+    if !has_structure_content(project) {
+        return;
+    }
+    let marks = project.cached_foundation_marks();
+    paint_marks(painter, view, &marks, theme::STRUCTURE, 35.0);
+}
+
+fn has_structure_content(project: &Project) -> bool {
+    !project.structure.beams.is_empty()
+        || !project.structure.slabs.is_empty()
+        || !project.structure.balance_beams.is_empty()
+        || !project.structure.wall_foundations.is_empty()
+        || !project.structure.roofs.is_empty()
+        || project.fixtures.iter().any(|f| f.kind.is_structural())
 }
 
 /// Plan marks in one colour: heavy lines always, the rest once the plan is

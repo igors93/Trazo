@@ -296,8 +296,9 @@ pub fn paint_electrical_overlay(
     labels::paint_electrical_tags(painter, view, project);
 }
 
-/// Draws only the structure (columns, footings, beams and labels), for
-/// the formwork view that fades everything else.
+/// Draws only the superstructure (`Planta de Forma`: columns, upper beams,
+/// slabs, concentrated loads, roofs and timber posts/beams — no footings,
+/// baldrames or balance beams) on top of the faded architectural underlay.
 pub fn paint_structure_overlay(
     painter: &Painter,
     view: ViewTransform,
@@ -307,7 +308,11 @@ pub fn paint_structure_overlay(
     if !project.category_visible(crate::domain::layers::LayerCategory::Structure) {
         return;
     }
-    for fixture in project.fixtures.iter().filter(|f| f.kind.is_structural()) {
+    for fixture in project
+        .fixtures
+        .iter()
+        .filter(|f| crate::domain::discipline::Discipline::Structure.allows_fixture(f.kind))
+    {
         let tone = if selected(fixture.id) {
             FixtureTone::Selected
         } else {
@@ -315,11 +320,13 @@ pub fn paint_structure_overlay(
         };
         paint_fixture(painter, view, fixture, tone);
     }
-    labels::paint_structure(painter, view, project);
+    labels::paint_superstructure(painter, view, project);
 }
 
-/// Draws only foundations (footings, columns and structural labels), for
-/// the foundations view that fades the architecture behind it.
+/// Draws only the foundations (`Planta de Fundações`: columns, isolated
+/// footings, balance beams, baldrames, strip footings and timber post bases —
+/// no upper beams, slabs, roofs or concentrated loads) on top of the faded
+/// architectural underlay.
 pub fn paint_foundations_overlay(
     painter: &Painter,
     view: ViewTransform,
@@ -329,13 +336,11 @@ pub fn paint_foundations_overlay(
     if !project.category_visible(crate::domain::layers::LayerCategory::Structure) {
         return;
     }
-    for fixture in project.fixtures.iter().filter(|f| {
-        matches!(
-            f.kind,
-            crate::domain::fixtures::FixtureKind::Footing
-                | crate::domain::fixtures::FixtureKind::Column
-        )
-    }) {
+    for fixture in project
+        .fixtures
+        .iter()
+        .filter(|f| crate::domain::discipline::Discipline::Foundations.allows_fixture(f.kind))
+    {
         let tone = if selected(fixture.id) {
             FixtureTone::Selected
         } else {
@@ -343,7 +348,7 @@ pub fn paint_foundations_overlay(
         };
         paint_fixture(painter, view, fixture, tone);
     }
-    labels::paint_structure(painter, view, project);
+    labels::paint_foundations(painter, view, project);
 }
 
 /// Draws only sanitary/plumbing fixtures on top of the faded architecture

@@ -171,11 +171,24 @@ fn write_sheet_discipline_overlay(
         write_sheet_fixture(svg, fixture, pt, mm_per_m);
     }
     match discipline {
-        Discipline::Structure | Discipline::Foundations => {
+        Discipline::Structure => {
             if project.category_visible(LayerCategory::Structure) {
-                super::conduits::write_structure(
+                super::conduits::write_structure_scoped(
                     svg,
                     project,
+                    crate::domain::structure::StructureMarksScope::Superstructure,
+                    pt,
+                    mm_per_m,
+                    (0.25, 0.15, (mm_per_m * 0.12).clamp(1.4, 2.4)),
+                );
+            }
+        }
+        Discipline::Foundations => {
+            if project.category_visible(LayerCategory::Structure) {
+                super::conduits::write_structure_scoped(
+                    svg,
+                    project,
+                    crate::domain::structure::StructureMarksScope::Foundations,
                     pt,
                     mm_per_m,
                     (0.25, 0.15, (mm_per_m * 0.12).clamp(1.4, 2.4)),

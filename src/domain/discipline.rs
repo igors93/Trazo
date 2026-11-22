@@ -111,7 +111,13 @@ impl Discipline {
     pub fn allows_fixture(self, kind: super::fixtures::FixtureKind) -> bool {
         match self {
             Self::All | Self::Architecture => !kind.is_structural() && !kind.is_electrical(),
-            Self::Structure => kind.is_structural(),
+            Self::Structure => matches!(
+                kind,
+                super::fixtures::FixtureKind::Column
+                    | super::fixtures::FixtureKind::WaterTank
+                    | super::fixtures::FixtureKind::HeavyEquipment
+                    | super::fixtures::FixtureKind::TimberPost
+            ),
             Self::Foundations => matches!(
                 kind,
                 super::fixtures::FixtureKind::Footing
@@ -316,9 +322,14 @@ mod tests {
         assert!(Discipline::All.allows_fixture(FixtureKind::Table));
         assert!(!Discipline::Structure.allows_architecture_edit());
         assert!(Discipline::Structure.allows_fixture(FixtureKind::Column));
-        assert!(Discipline::Structure.allows_fixture(FixtureKind::Footing));
+        assert!(!Discipline::Structure.allows_fixture(FixtureKind::Footing));
+        assert!(Discipline::Structure.allows_fixture(FixtureKind::WaterTank));
         assert!(Discipline::Structure.allows_fixture(FixtureKind::TimberPost));
         assert!(!Discipline::Structure.allows_fixture(FixtureKind::Table));
+        assert!(Discipline::Foundations.allows_fixture(FixtureKind::Footing));
+        assert!(Discipline::Foundations.allows_fixture(FixtureKind::Column));
+        assert!(Discipline::Foundations.allows_fixture(FixtureKind::TimberPost));
+        assert!(!Discipline::Foundations.allows_fixture(FixtureKind::WaterTank));
         assert!(!Discipline::Electrical.allows_architecture_edit());
         assert!(Discipline::Electrical.allows_fixture(FixtureKind::OutletLow));
         assert!(!Discipline::Electrical.allows_fixture(FixtureKind::Column));

@@ -386,7 +386,15 @@ impl Project {
     }
 
     /// The posts' bases and the timber beams drawn on the plan.
-    pub fn post_marks(&self, effects: &PostEffects) -> Vec<PlanMark> {
+    /// Timber post marks filtered by view scope:
+    /// - `include_bases`: dashed foundation footing square around each post (`Fundações`).
+    /// - `include_eave_beams`: overhead timber eave beams `VM#` (`Estrutura`).
+    pub fn post_marks_filtered(
+        &self,
+        effects: &PostEffects,
+        include_bases: bool,
+        include_eave_beams: bool,
+    ) -> Vec<PlanMark> {
         let mut marks = Vec::new();
         for result in &effects.posts {
             let Some(post) = self.timber_posts().find(|p| p.id == result.id) else {
@@ -394,19 +402,26 @@ impl Project {
             };
             let h = result.base_m / 2.0;
             let c = post.center;
-            marks.push(PlanMark::Line {
-                points: vec![
-                    Point::new(c.x - h, c.y - h),
-                    Point::new(c.x + h, c.y - h),
-                    Point::new(c.x + h, c.y + h),
-                    Point::new(c.x - h, c.y + h),
-                    Point::new(c.x - h, c.y - h),
-                ],
-                dashed: true,
-                heavy: false,
-            });
+            if include_bases {
+                marks.push(PlanMark::Line {
+                    points: vec![
+                        Point::new(c.x - h, c.y - h),
+                        Point::new(c.x + h, c.y - h),
+                        Point::new(c.x + h, c.y + h),
+                        Point::new(c.x - h, c.y + h),
+                        Point::new(c.x - h, c.y - h),
+                    ],
+                    dashed: true,
+                    heavy: false,
+                });
+            }
+            let label_offset = if include_bases {
+                h + 0.18
+            } else {
+                result.size_m / 2.0 + 0.16
+            };
             marks.push(PlanMark::Text {
-                anchor: Point::new(c.x, c.y + h + 0.18),
+                anchor: Point::new(c.x, c.y + label_offset),
                 text: format!(
                     "{} {}{:.0}",
                     result.label,
@@ -415,22 +430,24 @@ impl Project {
                 ),
             });
         }
-        for beam in &effects.eave_beams {
-            marks.push(PlanMark::Line {
-                points: vec![beam.from, beam.to],
-                dashed: false,
-                heavy: true,
-            });
-            marks.push(PlanMark::Text {
-                anchor: beam
-                    .from
-                    .lerp(beam.to, 0.5)
-                    .translated(Point::new(0.25, 0.0)),
-                text: format!(
-                    "{} {:.0}×{:.0}",
-                    beam.label, beam.section_cm.0, beam.section_cm.1
-                ),
-            });
+        if include_eave_beams {
+            for beam in &effects.eave_beams {
+                marks.push(PlanMark::Line {
+                    points: vec![beam.from, beam.to],
+                    dashed: false,
+                    heavy: true,
+                });
+                marks.push(PlanMark::Text {
+                    anchor: beam
+                        .from
+                        .lerp(beam.to, 0.5)
+                        .translated(Point::new(0.25, 0.0)),
+                    text: format!(
+                        "{} {:.0}×{:.0}",
+                        beam.label, beam.section_cm.0, beam.section_cm.1
+                    ),
+                });
+            }
         }
         marks
     }

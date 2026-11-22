@@ -34,7 +34,41 @@ pub(super) fn write_conduits(
     );
 }
 
-/// Writes the beams and the P, V, L and S labels of the formwork plan.
+/// Writes structural plan marks filtered by `scope` (`All`, `Superstructure`
+/// for `Planta de Forma`, or `Foundations` for `Planta de Fundações`).
+pub(super) fn write_structure_scoped(
+    svg: &mut String,
+    project: &Project,
+    scope: crate::domain::structure::StructureMarksScope,
+    point: &dyn Fn(Point) -> (f64, f64),
+    unit: f64,
+    widths: (f64, f64, f64),
+) {
+    if project.structure.beams.is_empty()
+        && project.structure.slabs.is_empty()
+        && project.structure.balance_beams.is_empty()
+        && project.structure.wall_foundations.is_empty()
+        && project.structure.roofs.is_empty()
+        && !project.fixtures.iter().any(|f| f.kind.is_structural())
+    {
+        return;
+    }
+    let group = match scope {
+        crate::domain::structure::StructureMarksScope::Foundations => "fundacoes",
+        _ => "estrutura",
+    };
+    write_marks(
+        svg,
+        &project.structure_marks_for(scope),
+        point,
+        unit,
+        widths,
+        STRUCTURE_INK,
+        group,
+    );
+}
+
+/// Writes the beams and the P, V, L and S labels of the combined plan.
 pub(super) fn write_structure(
     svg: &mut String,
     project: &Project,
@@ -42,20 +76,13 @@ pub(super) fn write_structure(
     unit: f64,
     widths: (f64, f64, f64),
 ) {
-    if project.structure.beams.is_empty()
-        && project.structure.slabs.is_empty()
-        && !project.fixtures.iter().any(|f| f.kind.is_structural())
-    {
-        return;
-    }
-    write_marks(
+    write_structure_scoped(
         svg,
-        &project.structure_marks(),
+        project,
+        crate::domain::structure::StructureMarksScope::All,
         point,
         unit,
         widths,
-        STRUCTURE_INK,
-        "estrutura",
     );
 }
 
