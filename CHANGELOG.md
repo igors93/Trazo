@@ -90,6 +90,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 ### Fixed
 
 - The area schedule of an empty project showed "-0,00 m²".
+- The materials schedule now uses each wall's real block height via `Masonry::blocks_per_square_metre` and groups mixed per-wall masonries instead of assuming a 19 cm height (B20).
 - The ▾, ↻ and ↺ symbols in ribbon labels appeared as empty boxes on Windows.
 - Switching, adding or removing a floor cleared only the primary selection. A following `Delete` could remove selected elements on another floor.
 - Switching floors left conduits, beams and slabs behind, and the next edit on another floor deleted them. They now travel with their floor.

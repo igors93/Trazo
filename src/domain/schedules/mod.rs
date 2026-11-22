@@ -2,6 +2,8 @@
 //! rooms schedule and masonry/materials schedule, rendered both in the UI
 //! and on exported technical sheets.
 
+mod materials;
+
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -9,6 +11,8 @@ use super::{
     geometry::polygon_perimeter,
     model::Project,
 };
+
+pub use materials::build_materials_schedule;
 
 fn default_true() -> bool {
     true
@@ -65,11 +69,11 @@ pub struct ScheduleTable {
     pub footer: Option<Vec<String>>,
 }
 
-fn fmt_area(m2: f64) -> String {
+pub(crate) fn fmt_area(m2: f64) -> String {
     format!("{m2:.2} m²").replace('.', ",")
 }
 
-fn fmt_len(m: f64) -> String {
+pub(crate) fn fmt_len(m: f64) -> String {
     format!("{m:.2} m").replace('.', ",")
 }
 
@@ -192,61 +196,6 @@ pub fn build_openings_schedule(project: &Project, config: &ScheduleConfig) -> Sc
         headers,
         rows,
         footer: Some(footer),
-    }
-}
-
-pub fn build_materials_schedule(project: &Project, config: &ScheduleConfig) -> ScheduleTable {
-    let waste_factor = 1.0 + config.waste_percent.clamp(0.0, 50.0) / 100.0;
-    let wall_height = project.wall_height.max(0.5);
-    let mut total_wall_len = 0.0;
-    let mut total_net_wall_area = 0.0;
-    let mut total_blocks = 0.0;
-
-    for wall in &project.walls {
-        let len = wall.length();
-        total_wall_len += len;
-        let net = project.wall_net_area(wall);
-        total_net_wall_area += net;
-        let masonry = wall.masonry.as_ref().unwrap_or(&project.masonry);
-        let block_face_area =
-            ((masonry.block_length + masonry.joint) * (0.19 + masonry.joint)).max(0.01);
-        total_blocks += net / block_face_area;
-    }
-
-    let blocks_with_waste = (total_blocks * waste_factor).ceil() as u64;
-    let waste_label = format!("{:.0}%", config.waste_percent.clamp(0.0, 50.0));
-    let rows = vec![
-        vec![
-            "Alvenaria padrão".to_owned(),
-            project.masonry.name.clone(),
-            format!("{:.1} cm", project.masonry.thickness() * 100.0).replace('.', ","),
-        ],
-        vec![
-            "Extensão total de paredes".to_owned(),
-            fmt_len(total_wall_len),
-            format!("Pé-direito {}", fmt_len(wall_height)),
-        ],
-        vec![
-            "Área líquida de alvenaria".to_owned(),
-            fmt_area(total_net_wall_area),
-            "Descontando vãos".to_owned(),
-        ],
-        vec![
-            format!("Blocos estimados (+{waste_label} perda)"),
-            format!("{blocks_with_waste} un."),
-            format!("Base: {} un.", total_blocks.ceil() as u64),
-        ],
-    ];
-
-    ScheduleTable {
-        title: "Quadro de Materiais e Alvenaria".to_owned(),
-        headers: vec![
-            "Especificação".to_owned(),
-            "Quantidade".to_owned(),
-            "Observação".to_owned(),
-        ],
-        rows,
-        footer: None,
     }
 }
 
