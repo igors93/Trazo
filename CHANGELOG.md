@@ -71,6 +71,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 - Derived VA lintels over every opening with masonry above it and CV sills under windows, plus NBR 16868 preliminary checks for infill and load-bearing masonry panels. Marks, sections/bars, traffic lights and warnings are shared by the screen, exports, professional-review PDF and MCP (#111).
 - Columns align to walls at any angle, and the pre-sizing window now creates secondary beams between two chosen primary girders; their end reactions become point loads on the girders, matching the existing MCP workflow (#117).
 - Per-wall straight or sloped tops now appear with their real heights in sections and facade elevations, completing the same height through quantities, structural loads and column checks (#145).
+- Solid slabs now split L-shaped outlines into rectangular panels, envelope the case-1 Czerny and Marcus two-way moments in both directions, check long-term deflection against L/250 and use those moments in the reinforcement proposal; UI, PDF, MCP and traffic lights expose the same panel results (#116).
 - Discipline views: architecture, electrical and structure shown on their own on screen (the rest faded) and on sheets of their own, with *Planta de Instalações Elétricas* and *Planta de Forma* sheets in the sheet set (#96).
 - Two MCP tools, `projeto_estrutural` and `pre_dimensionamento`.
 - Entrance gates (*Portão*): pedestrian or vehicle, from 0.80 to 8 m, sliding by default, tagged "PT" and available to assistants.

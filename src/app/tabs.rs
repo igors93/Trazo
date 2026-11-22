@@ -2074,8 +2074,8 @@ mod synced_tabs_tests {
     #[test]
     fn reordering_tabs_preserves_active_and_split_indices() {
         let (_ctx, mut app) = setup_house_app();
-        app.new_linked_tab(0, Discipline::Structure, None, None);
-        app.new_linked_tab(0, Discipline::Foundations, None, None);
+        app.new_linked_tab(Discipline::Structure);
+        app.new_linked_tab(Discipline::Foundations);
         // Order: [All (0), Structure (1), Foundations (2, active)].
         assert_eq!(app.tab_count(), 3);
         assert_eq!(app.active_tab(), 2);

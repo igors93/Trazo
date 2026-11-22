@@ -772,13 +772,26 @@ pub struct SlabResult {
     pub point_load_kn: f64,
     /// Additional conservative one-metre-strip moment from concentrated loads, kN·m/m.
     pub point_moment_knm_m: f64,
+    /// Governing positive moments per metre in the short and long directions.
+    pub moment_x_knm_m: f64,
+    pub moment_y_knm_m: f64,
+    pub method_x: super::slabs::SlabTableMethod,
+    pub method_y: super::slabs::SlabTableMethod,
+    /// Governing long-term deflection and its L/250 limit, millimetres.
+    pub deflection_mm: f64,
+    pub deflection_limit_mm: f64,
+    /// Rectangular panels used for an irregular or L-shaped room.
+    pub panels: Vec<super::slabs::SlabPanelResult>,
     /// Whether some beam carries it.
     pub supported: bool,
 }
 
 impl SlabResult {
     pub fn ok(&self) -> bool {
-        self.thickness_m + 1e-6 >= self.thickness_min_m && self.supported
+        self.thickness_m + 1e-6 >= self.thickness_min_m
+            && self.supported
+            && (self.kind != SlabKind::Solid
+                || self.deflection_mm <= self.deflection_limit_mm + 1e-9)
     }
 }
 
@@ -2676,6 +2689,45 @@ impl Project {
                     handled_concentrated.insert(fixture.id);
                 }
             }
+            let panel_dims = self
+                .room_outline(room)
+                .map(|outline| decompose_slab_panels(&outline))
+                .filter(|panels| !panels.is_empty())
+                .unwrap_or_else(|| vec![(lx, ly)]);
+            let panels: Vec<_> = panel_dims
+                .into_iter()
+                .enumerate()
+                .map(|(index, (panel_lx, panel_ly))| {
+                    super::slabs::analyse_panel(
+                        index + 1,
+                        panel_lx,
+                        panel_ly,
+                        dead,
+                        live,
+                        slab.thickness_m,
+                        settings.modulus_kn_m2(),
+                    )
+                })
+                .collect();
+            let governing_x = panels
+                .iter()
+                .max_by(|a, b| a.moment_x_knm_m.total_cmp(&b.moment_x_knm_m));
+            let governing_y = panels
+                .iter()
+                .max_by(|a, b| a.moment_y_knm_m.total_cmp(&b.moment_y_knm_m));
+            let governing_deflection = panels.iter().max_by(|a, b| {
+                (a.deflection_mm / a.limit_mm.max(1e-9))
+                    .total_cmp(&(b.deflection_mm / b.limit_mm.max(1e-9)))
+            });
+            let (moment_x, method_x) = governing_x
+                .map(|panel| (panel.moment_x_knm_m, panel.method_x))
+                .unwrap_or((0.0, super::slabs::SlabTableMethod::OneWay));
+            let (moment_y, method_y) = governing_y
+                .map(|panel| (panel.moment_y_knm_m, panel.method_y))
+                .unwrap_or((0.0, super::slabs::SlabTableMethod::OneWay));
+            let (deflection_mm, deflection_limit_mm) = governing_deflection
+                .map(|panel| (panel.deflection_mm, panel.limit_mm))
+                .unwrap_or((0.0, lx / 250.0 * 1000.0));
             report.slabs.push(SlabResult {
                 id: slab.id,
                 label: label(slab.id),
@@ -2688,6 +2740,13 @@ impl Project {
                 load_kn_m2: dead + live,
                 point_load_kn,
                 point_moment_knm_m,
+                moment_x_knm_m: moment_x + point_moment_knm_m,
+                moment_y_knm_m: moment_y + point_moment_knm_m,
+                method_x,
+                method_y,
+                deflection_mm,
+                deflection_limit_mm,
+                panels,
                 supported: total > 0.0,
             });
         }
@@ -3187,6 +3246,16 @@ impl Project {
                     slab.thickness_m * 100.0,
                     decimal(slab.lx_m, 2),
                     slab.thickness_min_m * 100.0
+                ));
+            }
+            if slab.kind == SlabKind::Solid && slab.deflection_mm > slab.deflection_limit_mm + 1e-6
+            {
+                report.warnings.push(format!(
+                    "{} ({}): flecha final de {} mm excede L/250 = {} mm; aumente a espessura ou reduza o vão.",
+                    slab.label,
+                    slab.room,
+                    decimal(slab.deflection_mm, 1),
+                    decimal(slab.deflection_limit_mm, 1)
                 ));
             }
         }

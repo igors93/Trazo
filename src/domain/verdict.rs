@@ -283,6 +283,29 @@ fn sized_structure_verdicts(report: &StructureReport) -> Vec<Verdict> {
                     cm(slab.thickness_min_m)
                 ),
             ));
+            if slab.kind == super::structure::SlabKind::Solid {
+                checks.push(Check::new(
+                    "Flecha bidirecional",
+                    slab.deflection_mm / slab.deflection_limit_mm.max(1e-9),
+                    if slab.deflection_mm <= slab.deflection_limit_mm + 1e-9 {
+                        format!(
+                            "A flecha final de {} mm fica dentro de L/250 = {} mm.",
+                            decimal(slab.deflection_mm, 1),
+                            decimal(slab.deflection_limit_mm, 1)
+                        )
+                    } else {
+                        "A laje deforma demais: aumente a espessura ou reduza o vão.".to_owned()
+                    },
+                    format!(
+                        "{} painel(is); Mx = {} kN·m/m ({}), My = {} kN·m/m ({}). Envelope das tabelas Czerny e Marcus; flecha de Czerny com g + 0,3q e fator diferido 2,32.",
+                        slab.panels.len(),
+                        decimal(slab.moment_x_knm_m, 2),
+                        slab.method_x.label(),
+                        decimal(slab.moment_y_knm_m, 2),
+                        slab.method_y.label()
+                    ),
+                ));
+            }
         } else {
             checks.push(Check::fail(
                 "Apoio",

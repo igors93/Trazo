@@ -41,6 +41,7 @@ pub mod schedules;
 pub mod setbacks;
 pub mod sheet;
 pub mod sheet_set;
+pub mod slabs;
 pub mod snap;
 pub mod soil;
 pub mod structure;

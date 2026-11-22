@@ -739,7 +739,7 @@ impl FloorPlanApp {
                     if !report.slabs.is_empty() {
                         heading(ui, "Lajes");
                         egui::Grid::new("structure_slabs").striped(true).spacing([14.0, 6.0]).show(ui, |ui| {
-                            titles(ui, &["Laje", "Cômodo", "Tipo", "Vãos", "Espessura", "Mínima", "Carga", "Situação"]);
+                            titles(ui, &["Laje", "Cômodo", "Tipo", "Vãos", "Painéis", "Espessura", "Mínima", "Carga", "Mx / My", "Flecha", "Situação"]);
                             for slab in &report.slabs {
                                 ui.label(RichText::new(&slab.label).font(strong(12.5)));
                                 ui.label(&slab.room);
@@ -752,6 +752,7 @@ impl FloorPlanApp {
                                         }
                                     });
                                 ui.label(format!("{} × {} m", decimal(slab.lx_m, 2), decimal(slab.ly_m, 2)));
+                                ui.label(slab.panels.len().to_string());
                                 let mut cm = slab.thickness_m * 100.0;
                                 ui.add(egui::DragValue::new(&mut cm).range(5.0..=60.0).speed(0.0).max_decimals(0).suffix(" cm"));
                                 ui.label(format!("{:.0} cm", slab.thickness_min_m * 100.0));
@@ -764,6 +765,21 @@ impl FloorPlanApp {
                                 } else {
                                     format!("{} kN/m²", decimal(slab.load_kn_m2, 2))
                                 });
+                                if slab.kind == SlabKind::Solid {
+                                    ui.label(format!(
+                                        "{} / {} kN·m/m",
+                                        decimal(slab.moment_x_knm_m, 2),
+                                        decimal(slab.moment_y_knm_m, 2)
+                                    ));
+                                    ui.label(format!(
+                                        "{} / {} mm",
+                                        decimal(slab.deflection_mm, 1),
+                                        decimal(slab.deflection_limit_mm, 1)
+                                    ));
+                                } else {
+                                    ui.label("—");
+                                    ui.label("fabricante");
+                                }
                                 status(ui, slab.ok());
                                 ui.end_row();
                                 if kind != slab.kind {

@@ -617,6 +617,7 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                             format!("{} · {}", slab.label, slab.room),
                             slab.kind.label().to_owned(),
                             format!("{} × {} m", decimal(slab.lx_m, 2), decimal(slab.ly_m, 2)),
+                            slab.panels.len().to_string(),
                             if out {
                                 "fora dos limites".into()
                             } else {
@@ -628,13 +629,41 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                                 format!("{:.0} cm", slab.thickness_min_m * 100.0)
                             },
                             format!("{} kN/m²", decimal(slab.load_kn_m2, 2)),
+                            if slab.kind == crate::domain::structure::SlabKind::Solid {
+                                format!(
+                                    "{}/{}",
+                                    decimal(slab.moment_x_knm_m, 2),
+                                    decimal(slab.moment_y_knm_m, 2)
+                                )
+                            } else {
+                                "—".to_owned()
+                            },
+                            if slab.kind == crate::domain::structure::SlabKind::Solid {
+                                format!(
+                                    "{}/{} mm",
+                                    decimal(slab.deflection_mm, 1),
+                                    decimal(slab.deflection_limit_mm, 1)
+                                )
+                            } else {
+                                "fabricante".to_owned()
+                            },
                         ],
                     )
                 })
                 .collect();
             pages.table(
-                &["Laje", "Tipo", "Vãos", "Espessura", "Mínima", "Carga"],
-                &[3.0, 1.6, 2.0, 1.6, 1.3, 1.6],
+                &[
+                    "Laje",
+                    "Tipo",
+                    "Vãos",
+                    "Painéis",
+                    "Esp.",
+                    "Mín.",
+                    "Carga",
+                    "Mx/My",
+                    "Flecha/lim.",
+                ],
+                &[2.2, 1.2, 1.5, 0.9, 1.0, 1.0, 1.2, 1.3, 1.5],
                 &rows,
             );
         }

@@ -209,7 +209,7 @@ impl FloorPlanApp {
         };
 
         let pane_focused = pane_filter.is_none_or(|pane| pane == self.active_pane());
-        let drag_key = egui::Id::new(("tab_strip_drag_tab_id", pane_filter));
+        let drag_key = ui.make_persistent_id(("tab_strip_drag_tab_id", pane_filter));
         if !ui.input(|input| input.pointer.primary_down()) {
             ui.ctx().data_mut(|data| data.remove_temp::<u64>(drag_key));
         }
@@ -220,7 +220,10 @@ impl FloorPlanApp {
         ui.scope_builder(egui::UiBuilder::new().max_rect(tabs_rect), |ui| {
             egui::ScrollArea::horizontal()
                 .id_salt(("tab_strip_scroll", pane_filter))
-                .drag_to_scroll(false)
+                .scroll_source(egui::scroll_area::ScrollSource {
+                    drag: egui::scroll_area::DragScroll::Never,
+                    ..Default::default()
+                })
                 .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {

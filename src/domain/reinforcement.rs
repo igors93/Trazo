@@ -706,12 +706,20 @@ pub fn build_reinforcement_report(
             ));
             continue;
         }
-        let characteristic_moment =
-            slab.load_kn_m2 * slab.lx_m.powi(2) / 8.0 + slab.point_moment_knm_m;
-        let demand = flexural_demand(1.0, slab.thickness_m, 0.025, characteristic_moment, fck);
+        let characteristic_moment = if slab.kind == SlabKind::Solid {
+            slab.moment_x_knm_m
+        } else {
+            slab.load_kn_m2 * slab.lx_m.powi(2) / 8.0 + slab.point_moment_knm_m
+        };
+        let demand_x = flexural_demand(1.0, slab.thickness_m, 0.025, characteristic_moment, fck);
         let main_length = slab.lx_m + 0.30;
-        let main = choose_mesh(demand.required_cm2, slab.ly_m, main_length);
-        let distribution_required = (0.20 * main.required_cm2_m).max(0.90);
+        let main = choose_mesh(demand_x.required_cm2, slab.ly_m, main_length);
+        let demand_y = flexural_demand(1.0, slab.thickness_m, 0.025, slab.moment_y_knm_m, fck);
+        let distribution_required = if slab.kind == SlabKind::Solid {
+            demand_y.required_cm2.max(0.90)
+        } else {
+            (0.20 * main.required_cm2_m).max(0.90)
+        };
         let distribution = choose_mesh(distribution_required, slab.lx_m, slab.ly_m + 0.30);
         if slab.kind == SlabKind::Ribbed {
             out.warnings.push(format!(
@@ -719,7 +727,7 @@ pub fn build_reinforcement_report(
                 slab.label, slab.room
             ));
         }
-        if !demand.domain_ok {
+        if !demand_x.domain_ok || (slab.kind == SlabKind::Solid && !demand_y.domain_ok) {
             out.warnings.push(format!(
                 "{} ({}): seção insuficiente para armadura simples; aumente a espessura.",
                 slab.label, slab.room
@@ -730,14 +738,18 @@ pub fn build_reinforcement_report(
             &mut out.schedule,
             format!("{}-P", slab.label),
             &slab.label,
-            "principal (menor vão)",
+            "direção x (menor vão)",
             &main,
         );
         schedule_mesh(
             &mut out.schedule,
             format!("{}-D", slab.label),
             &slab.label,
-            "distribuição",
+            if slab.kind == SlabKind::Solid {
+                "direção y (maior vão)"
+            } else {
+                "distribuição"
+            },
             &distribution,
         );
         out.slabs.push(SlabReinforcement {

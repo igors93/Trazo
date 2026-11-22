@@ -63,7 +63,14 @@ Loads are applied as uniform loads per beam span, plus point loads where a beam 
 - other shapes shed each point to the nearest supported edge;
 - edges without a beam carry nothing, and their share goes to the supported ones.
 
-**Assumptions:** slabs simply supported on beams; no two-way moment or deflection check yet (#116).
+**Two-way moments and deflection** (`slabs::analyse_panel`). A solid slab is analysed as the rectangular panels returned by `decompose_slab_panels`; this makes an L-shaped room an explicit set of rectangles instead of using its bounding box. Each panel has four simply supported edges (case 1), `λ = ly/lx` and:
+
+- `Mx = q·lx²/mx` and `My = q·lx²/my`, calculated from both Czerny and Marcus coefficients, linearly interpolated between the tabulated ratios; the larger result governs each direction;
+- for `λ > 2`, the panel is one-way: `Mx = q·lx²/8` and `My = 0` before minimum transverse steel;
+- Czerny deflection `a0 = (g + 0.3q)·lx⁴/(w·Ecs·h³)`, multiplied by the same long-term factor `2.32` used for beams, must be at most `lx/250`;
+- a concentrated load's local strip moment is conservatively added in both directions.
+
+The table ordinates are checked in tests at `λ = 1.00` and `1.50` against the published case-1 examples from [IFRN's Czerny tables](https://docente.ifrn.edu.br/edilbertoborja/construcoes-em-concreto-armado/lajes-macicas/laje-macica) and the [UTFPR Marcus appendix](https://riut.utfpr.edu.br/jspui/bitstream/1/15782/1/lajesmacicasconcretoarmado.pdf). Lattice slabs are not homogeneous plates: Trazo keeps their equivalent preliminary mesh and explicitly leaves final joist, filler and deflection verification to the manufacturer.
 
 ## Concentrated loads
 
@@ -378,7 +385,7 @@ Further checks live next to their modules: `nbr_5410_minimums_for_lighting_and_o
 
 - Beams are analysed on pinned supports; frame action with the columns arrives with #94.
 - Columns are sized for axial load with a position factor; no slenderness or biaxial bending check.
-- Slabs have no moment or deflection check of their own (#116).
+- Solid-slab tables assume four simply supported edges. Edge fixity, openings, torsion reinforcement and compatibility between adjacent panels still require the licensed engineer's model; lattice slabs require manufacturer data.
 - Wind, earthquake and load combinations beyond the simplified ones are not considered (#105).
 - Regional values (utility profiles, soil classes, demand tables) are typical, not site-specific (B21, #140).
 - The applicability limits are conservative choices, not values from a standard; a professional may well design beyond them with other methods.
