@@ -818,6 +818,26 @@ fn sized_structure_verdicts(
                     ),
                 ));
             }
+            let s_limit = super::soil::MAX_FOOTING_SETTLEMENT_MM;
+            checks.push(Check::new(
+                "Recalque",
+                footing.settlement_mm / s_limit,
+                if footing.settlement_mm <= s_limit + 1e-6 {
+                    format!(
+                        "Recalque elástico estimado de {} mm dentro do limite de {:.0} mm.",
+                        decimal(footing.settlement_mm, 1),
+                        s_limit
+                    )
+                } else {
+                    "Recalque acima do limite: aumente a sapata ou mude para radier/estacas."
+                        .to_owned()
+                },
+                format!(
+                    "s = q·B·(1−ν²)·Is/Es = {} mm ≤ {:.0} mm (estimativa elástica imediata, NBR 6122 / B11).",
+                    decimal(footing.settlement_mm, 1),
+                    s_limit
+                ),
+            ));
         }
         verdicts.push(Verdict {
             discipline: Discipline::Structure,

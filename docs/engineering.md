@@ -201,8 +201,9 @@ When real upper floors exist, the *floors* multiplier is not used.
 | Overturning | FS = 1 / (2·(ex/Bx + ey/By)) ≥ 1.5 | NBR 6122:2019 |
 | Punching at the column face | τSd = 1.4·N / (u0·d) ≤ τRd2 = 0.27·αv2·fcd, αv2 = 1 − fck/250 | NBR 6118:2023, 19.5.3.1 |
 | Punching at d/2 | τSd ≤ τRd1 = 0.13·(1 + √(20/d))·(100·ρ·fck)^(1/3), with ρ = 0.2 % | NBR 6118:2023, 19.5.3.2 (simplified) |
+| Elastic settlement | s = q · B · (1 − ν²) · Is / Es ≤ 25 mm (footings, differential δ = 0.75·(smax − smin) ≤ 15 mm); ≤ 40 mm (raft); ≤ 15 mm (piles), with Es correlated to SPT N̄ (Teixeira & Godoy) | NBR 6122:2019 (B11) |
 
-Allowable soil pressures by class (`SoilClass`): soft clay 80 kPa, medium clay 150 kPa, medium sand 200 kPa, dense sand 300 kPa, weathered rock 500 kPa. These are typical values for a first estimate; a soil survey (SPT) and a geotechnical engineer set the real value.
+Allowable soil pressures by class (`SoilClass`): soft clay 80 kPa, medium clay 150 kPa, medium sand 200 kPa, dense sand 300 kPa, weathered rock 500 kPa. When one or more SPT boreholes (`SP-01`, `SP-02`, …, NBR 6484) are entered in `src/domain/soil/`, Trazo builds the **conservative governing envelope** across boreholes (weakest mean `N̄` in the pressure bulb, shallowest water table, common explored depth), computes `σadm = 20·N̄ ≤ 400 kPa` for spread footings, sizes both **hand-dug bored piles** (*brocas*, Ø 20–30 cm, 3–6 m, dry soil only) and **deep mechanized piles** (*hélice contínua* / CFA, Ø 30–50 cm, 6–20 m, allowed below the water table) via Décourt-Quaresma (1978/1996), estimates elastic/differential settlements, and compares **footings, raft (*radier*), brocas and deep CFA piles** for the structure's real loads. These are preliminary review studies; the final foundation design belongs to a geotechnical/structural engineer.
 
 
 ### Wall foundations: ground beams and strip footings

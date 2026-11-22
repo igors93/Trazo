@@ -32,13 +32,8 @@ fn parse_occupancy_class(raw: &str) -> Option<OccupancyClass> {
     }
 }
 
-/// The soil survey from 'leituras' [{profundidade_m, n, solo}], (#112).
-fn survey_arg(args: &Value) -> Result<crate::domain::soil::SoilSurvey, String> {
-    use crate::domain::soil::{SoilKind, SoilSurvey, SptReading};
-    let rows = args
-        .get("leituras")
-        .and_then(Value::as_array)
-        .ok_or("Informe 'leituras': [{profundidade_m, n, solo}], uma por metro.")?;
+fn parse_spt_readings(rows: &[Value]) -> Result<Vec<crate::domain::soil::SptReading>, String> {
+    use crate::domain::soil::{SoilKind, SptReading};
     let mut readings = Vec::with_capacity(rows.len());
     for (i, row) in rows.iter().enumerate() {
         let depth = number(row, "profundidade_m")?
@@ -65,19 +60,66 @@ fn survey_arg(args: &Value) -> Result<crate::domain::soil::SoilSurvey, String> {
             soil,
         });
     }
+    Ok(readings)
+}
+
+/// The soil survey from 'furos' [{nome, nivel_agua_m, leituras}] or a single
+/// borehole via 'leituras' [{profundidade_m, n, solo}], (#112).
+fn survey_arg(args: &Value) -> Result<crate::domain::soil::SoilSurvey, String> {
+    use crate::domain::soil::{Borehole, SoilSurvey};
+    let footing_depth = number(args, "cota_sapata_m")?.unwrap_or(1.0);
+    if let Some(furos) = args.get("furos").and_then(Value::as_array) {
+        if furos.is_empty() {
+            return Err("Informe pelo menos um furo em 'furos'.".to_owned());
+        }
+        let mut boreholes = Vec::with_capacity(furos.len());
+        for (idx, item) in furos.iter().enumerate() {
+            let rows = item
+                .get("leituras")
+                .and_then(Value::as_array)
+                .ok_or_else(|| format!("Furo {}: informe 'leituras'.", idx + 1))?;
+            let readings = parse_spt_readings(rows)?;
+            let name = text(item, "nome").unwrap_or_else(|| format!("SP-{:02}", idx + 1));
+            let water = number(item, "nivel_agua_m")?;
+            boreholes.push(Borehole::new(name, readings, water)?);
+        }
+        return SoilSurvey::from_boreholes(boreholes, footing_depth);
+    }
+    let rows = args
+        .get("leituras")
+        .and_then(Value::as_array)
+        .ok_or("Informe 'leituras': [{profundidade_m, n, solo}] ou 'furos': [{nome, leituras}].")?;
+    let readings = parse_spt_readings(rows)?;
     SoilSurvey::new(
         text(args, "nome").unwrap_or_else(|| "SP-01".to_owned()),
         readings,
         number(args, "nivel_agua_m")?,
-        number(args, "cota_sapata_m")?.unwrap_or(1.0),
+        footing_depth,
     )
 }
 
 /// The foundation study as tool output (#112).
 pub(super) fn foundation_study_json(study: &crate::domain::soil::FoundationStudy) -> Value {
     let round1 = |v: f64| (v * 10.0).round() / 10.0;
+    let pile_json = |p: crate::domain::soil::PileCapacity, count: u32| {
+        json!({
+            "tipo": p.kind.label(),
+            "diametro_cm": (p.diameter_m * 100.0).round(),
+            "comprimento_m": p.length_m,
+            "quantidade": count,
+            "carga_admissivel_kn": round1(p.allowable_kn),
+            "ponta_ruptura_kn": round1(p.tip_kn),
+            "atrito_ruptura_kn": round1(p.shaft_kn),
+            "limite_concreto_kn": round1(p.structural_kn),
+            "n_ponta": round1(p.tip_n),
+            "n_fuste": round1(p.shaft_n),
+            "recalque_mm": round1(p.settlement_mm),
+        })
+    };
     json!({
         "com_sondagem": study.survey,
+        "furos": study.borehole_count,
+        "furo_critico": study.governing_borehole,
         "carga_total_kn": round1(study.total_load_kn),
         "projecao_m2": round1(study.footprint_m2),
         "solo_kpa_sondagem": study.survey_footing_kpa.map(|v| v.round()),
@@ -90,18 +132,11 @@ pub(super) fn foundation_study_json(study: &crate::domain::soil::FoundationStudy
             "observacoes": o.notes,
             "concreto_m3": (o.concrete_m3 * 100.0).round() / 100.0,
             "solo_kpa": o.soil_kpa.map(|v| v.round()),
+            "recalque_mm": o.settlement_mm.map(round1),
+            "recalque_diferencial_mm": o.differential_settlement_mm.map(round1),
         })).collect::<Vec<_>>(),
-        "broca": study.pile.map(|p| json!({
-            "diametro_cm": (p.diameter_m * 100.0).round(),
-            "comprimento_m": p.length_m,
-            "quantidade": study.piles,
-            "carga_admissivel_kn": round1(p.allowable_kn),
-            "ponta_ruptura_kn": round1(p.tip_kn),
-            "atrito_ruptura_kn": round1(p.shaft_kn),
-            "limite_concreto_kn": round1(p.structural_kn),
-            "n_ponta": round1(p.tip_n),
-            "n_fuste": round1(p.shaft_n),
-        })),
+        "broca": study.pile.map(|p| pile_json(p, study.piles)),
+        "estaca_profunda": study.deep_pile.map(|p| pile_json(p, study.deep_piles)),
     })
 }
 
@@ -1031,6 +1066,7 @@ impl FloorPlanApp {
                     "tensao_max_kpa": round1(f.max_pressure_kpa),
                     "puncao_razao": (f.punching_ratio * 100.0).round() / 100.0,
                     "fator_tombamento": f.overturning_fs.is_finite().then(|| round1(f.overturning_fs)),
+                    "recalque_mm": round1(f.settlement_mm),
                     "atende": f.ok(),
                 })
             })
@@ -1223,13 +1259,24 @@ impl FloorPlanApp {
         let soil_survey = self.project.structure.soil_survey.as_ref().map(|survey| {
             json!({
                 "nome": survey.name,
-                "nivel_agua_m": survey.water_table_m,
+                "nivel_agua_m": survey.governing_water_table_m(),
                 "cota_sapata_m": survey.footing_depth_m,
                 "tensao_admissivel_kpa": survey.footing_kpa(1.0).map(|v| v.round()),
+                "furo_critico": survey.governing_footing_bulb(1.0).map(|(_, _, name)| name),
                 "leituras": survey.readings.iter().map(|r| json!({
                     "profundidade_m": r.depth_m,
                     "n": r.n,
                     "solo": r.soil.key(),
+                })).collect::<Vec<_>>(),
+                "furos": survey.boreholes().into_iter().map(|b| json!({
+                    "nome": b.name,
+                    "nivel_agua_m": b.water_table_m,
+                    "profundidade_max_m": b.deepest_m(),
+                    "leituras": b.readings.iter().map(|r| json!({
+                        "profundidade_m": r.depth_m,
+                        "n": r.n,
+                        "solo": r.soil.key(),
+                    })).collect::<Vec<_>>(),
                 })).collect::<Vec<_>>(),
             })
         });
@@ -1749,10 +1796,51 @@ mod tests {
             .structured
             .unwrap();
         let options = study["opcoes"].as_array().unwrap();
-        assert_eq!(options.len(), 3);
+        assert_eq!(options.len(), 4);
         assert!(study["recomendada"].is_string(), "{study}");
         // Brocas stop above the water table at 5.2 m.
         assert!(study["broca"]["comprimento_m"].as_f64().unwrap() <= 5.0);
+        // Deep CFA piles are also evaluated (6 m survey reaches MIN_DEEP_PILE_M).
+        assert!(study["estaca_profunda"].is_object(), "{study}");
+        assert!(options[0]["recalque_mm"].as_f64().unwrap() > 0.0);
+
+        // Multi-borehole SPT uses the weaker borehole envelope.
+        let multi = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({
+                "acao": "definir_sondagem",
+                "cota_sapata_m": 1.0,
+                "furos": [
+                    {
+                        "nome": "SP-01",
+                        "nivel_agua_m": 6.0,
+                        "leituras": [
+                            { "profundidade_m": 1, "n": 12, "solo": "areia" },
+                            { "profundidade_m": 2, "n": 14, "solo": "areia" },
+                            { "profundidade_m": 3, "n": 16, "solo": "areia" },
+                            { "profundidade_m": 6, "n": 20, "solo": "areia" },
+                            { "profundidade_m": 8, "n": 24, "solo": "areia" },
+                        ]
+                    },
+                    {
+                        "nome": "SP-02",
+                        "nivel_agua_m": 2.0,
+                        "leituras": [
+                            { "profundidade_m": 1, "n": 6, "solo": "argila" },
+                            { "profundidade_m": 2, "n": 6, "solo": "argila" },
+                            { "profundidade_m": 3, "n": 6, "solo": "argila" },
+                            { "profundidade_m": 6, "n": 12, "solo": "silte_arenoso" },
+                            { "profundidade_m": 8, "n": 18, "solo": "areia" },
+                        ]
+                    }
+                ]
+            }),
+        );
+        assert!(!multi.is_error, "{}", multi.text);
+        let multi_study = multi.structured.unwrap();
+        assert_eq!(multi_study["furos"].as_u64(), Some(2));
+        assert_eq!(multi_study["furo_critico"].as_str(), Some("SP-02"));
+        assert!((app.project.structure.settings.soil_kpa - 120.0).abs() < 1e-9);
         let bad = app.run_mcp_tool(
             "projeto_estrutural",
             &json!({ "acao": "definir_sondagem", "leituras": [{ "profundidade_m": 1, "n": 5, "solo": "turfa" }] }),

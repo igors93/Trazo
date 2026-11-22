@@ -872,7 +872,7 @@ fn catalogue() -> Vec<Tool> {
                 json!({
                     "leituras": {
                         "type": "array",
-                        "description": "Para definir_sondagem: leituras do SPT, uma por metro.",
+                        "description": "Para definir_sondagem (furo único): leituras do SPT, uma por metro.",
                         "items": {
                             "type": "object",
                             "properties": {
@@ -881,6 +881,19 @@ fn catalogue() -> Vec<Tool> {
                                 "solo": { "type": "string", "enum": ["argila", "silte_argiloso", "silte_arenoso", "areia"], "description": "Solo na profundidade." }
                             },
                             "required": ["profundidade_m", "n"]
+                        }
+                    },
+                    "furos": {
+                        "type": "array",
+                        "description": "Para definir_sondagem com vários furos SPT (SP-01, SP-02, ...): lista de furos com nome, nivel_agua_m opcional e leituras. Usa a envoltória conservadora do furo mais fraco.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "nome": { "type": "string" },
+                                "nivel_agua_m": { "type": "number" },
+                                "leituras": { "type": "array" }
+                            },
+                            "required": ["leituras"]
                         }
                     },
                     "nome": { "type": "string", "description": "Para definir_sondagem: nome do furo (ex: SP-01)." },

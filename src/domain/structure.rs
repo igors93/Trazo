@@ -708,6 +708,8 @@ pub struct FootingResult {
     pub punching_ratio: f64,
     /// Overturning safety factor (NBR 6122): >= 1.5 required (`INFINITY` when concentric).
     pub overturning_fs: f64,
+    /// Estimated immediate elastic settlement under working load (NBR 6122 / B11), mm.
+    pub settlement_mm: f64,
 }
 
 impl FootingResult {
@@ -716,6 +718,7 @@ impl FootingResult {
             && self.max_pressure_kpa <= self.soil_kpa + 1e-3
             && self.punching_ratio <= 1.0 + 1e-6
             && self.overturning_fs >= 1.5 - 1e-6
+            && self.settlement_mm <= super::soil::MAX_FOOTING_SETTLEMENT_MM + 1e-6
     }
 }
 
@@ -3228,6 +3231,25 @@ impl Project {
                 ey,
                 settings.fck_mpa,
             );
+            let settlement_mm = if column.is_some() {
+                let (n_bar, soil_kind) = self
+                    .structure
+                    .soil_survey
+                    .as_ref()
+                    .and_then(|s| s.governing_footing_bulb(footing.width.max(footing.depth)))
+                    .map(|(n, kind, _)| (n, kind))
+                    .unwrap_or((settings.soil_kpa / 20.0, super::soil::SoilKind::Clay));
+                let mean_q = 1.05 * load / (footing.width * footing.depth).max(1e-6);
+                super::soil::estimate_footing_settlement_mm(
+                    mean_q,
+                    footing.width,
+                    footing.depth,
+                    soil_kind,
+                    n_bar,
+                )
+            } else {
+                0.0
+            };
             let result = FootingResult {
                 id: footing.id,
                 label: label(footing.id),
@@ -3243,6 +3265,7 @@ impl Project {
                 soil_kpa: settings.soil_kpa,
                 punching_ratio: check.punching_ratio,
                 overturning_fs: check.overturning_fs,
+                settlement_mm,
             };
             if result.column.is_none() {
                 report
@@ -3289,6 +3312,14 @@ impl Project {
                         result.label,
                         result.punching_ratio * 100.0,
                         result.height_m * 100.0
+                    ));
+                }
+                if result.settlement_mm > super::soil::MAX_FOOTING_SETTLEMENT_MM + 1e-6 {
+                    report.warnings.push(format!(
+                        "{}: recalque elástico estimado de {} mm excede {:.0} mm (NBR 6122); aumente a base ou avalie radier/estacas.",
+                        result.label,
+                        decimal(result.settlement_mm, 1),
+                        super::soil::MAX_FOOTING_SETTLEMENT_MM
                     ));
                 }
             }
@@ -3376,20 +3407,23 @@ impl Project {
                 .iter()
                 .map(|f| f.width_m.max(f.depth_m))
                 .fold(1.0, f64::max);
-            match survey.footing_kpa(widest) {
-                Some(kpa) if kpa + 1e-6 < settings.soil_kpa => report.warnings.push(format!(
-                    "A sondagem {} indica {:.0} kPa na cota das sapatas ({} m), menos que os {:.0} kPa adotados: use a sondagem na tensão do solo.",
-                    survey.name,
-                    kpa,
-                    decimal(survey.footing_depth_m, 2),
-                    settings.soil_kpa
-                )),
+            match survey.governing_footing_bulb(widest) {
+                Some((n_bar, _, gov)) => {
+                    let kpa = (20.0 * n_bar).min(super::soil::MAX_FOOTING_KPA);
+                    if kpa + 1e-6 < settings.soil_kpa {
+                        report.warnings.push(format!(
+                            "A sondagem ({gov}) indica {:.0} kPa na cota das sapatas ({} m), menos que os {:.0} kPa adotados: use a sondagem na tensão do solo.",
+                            kpa,
+                            decimal(survey.footing_depth_m, 2),
+                            settings.soil_kpa
+                        ));
+                    }
+                }
                 None => report.warnings.push(format!(
                     "A sondagem {} não chega à cota das sapatas ({} m).",
                     survey.name,
                     decimal(survey.footing_depth_m, 2)
                 )),
-                _ => {}
             }
         }
         for result in &ground.results {

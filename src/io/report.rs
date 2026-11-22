@@ -833,6 +833,7 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                                 String::new(),
                                 String::new(),
                                 String::new(),
+                                String::new(),
                             ]
                         } else {
                             vec![
@@ -842,6 +843,7 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                                 decimal(f.load_kn, 1),
                                 format!("{:.0}/{:.0}", f.max_pressure_kpa, f.soil_kpa),
                                 decimal(f.punching_ratio, 2),
+                                decimal(f.settlement_mm, 1),
                             ]
                         },
                     )
@@ -855,10 +857,104 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                     "N (kN)",
                     "σ/σadm (kPa)",
                     "Punção",
+                    "Recalque (mm)",
                 ],
-                &[1.3, 1.2, 1.6, 1.3, 1.8, 1.2],
+                &[1.2, 1.1, 1.5, 1.2, 1.7, 1.1, 1.3],
                 &rows,
             );
+        }
+        let foundation_study = project.foundation_study();
+        if project.structure.soil_survey.is_some() || !foundation_study.options.is_empty() {
+            pages.subheading("Sondagem (SPT) e estudo de fundações");
+            if let Some(survey) = &project.structure.soil_survey {
+                let bore_rows: Vec<_> = survey
+                    .boreholes()
+                    .into_iter()
+                    .map(|b| {
+                        let base = survey.footing_depth_m;
+                        let deepest = b.deepest_m();
+                        let n_bulb = b.mean_n(base, base + 2.0);
+                        let kpa =
+                            n_bulb.map(|n| (20.0 * n).min(crate::domain::soil::MAX_FOOTING_KPA));
+                        (
+                            None,
+                            vec![
+                                b.name,
+                                decimal(deepest, 1),
+                                n_bulb.map_or("—".into(), |n| decimal(n, 1)),
+                                b.water_table_m.map_or("Não encontrado".into(), |w| {
+                                    format!("{} m", decimal(w, 2))
+                                }),
+                                kpa.map_or("—".into(), |v| format!("{v:.0}")),
+                            ],
+                        )
+                    })
+                    .collect();
+                pages.table(
+                    &[
+                        "Furo SPT",
+                        "Prof. (m)",
+                        "N̄ bulbo",
+                        "Lençol freático",
+                        "σadm (kPa)",
+                    ],
+                    &[1.5, 1.3, 1.3, 2.2, 1.4],
+                    &bore_rows,
+                );
+            }
+            if !foundation_study.options.is_empty() {
+                let opt_rows: Vec<_> = foundation_study
+                    .options
+                    .iter()
+                    .map(|opt| {
+                        let light =
+                            if foundation_study.recommended == Some(opt.option) || opt.viable {
+                                Some(Light::Green)
+                            } else {
+                                Some(Light::Yellow)
+                            };
+                        let status = if foundation_study.recommended == Some(opt.option) {
+                            "Recomendada"
+                        } else if opt.viable {
+                            "Viável"
+                        } else {
+                            "Não indicada"
+                        };
+                        let settlement = match (opt.settlement_mm, opt.differential_settlement_mm) {
+                            (Some(s), Some(d)) => {
+                                format!("{} (dif. {})", decimal(s, 1), decimal(d, 1))
+                            }
+                            (Some(s), None) => decimal(s, 1),
+                            _ => "—".to_owned(),
+                        };
+                        (
+                            light,
+                            vec![
+                                opt.option.label().to_owned(),
+                                status.to_owned(),
+                                if opt.concrete_m3 > 0.0 {
+                                    decimal(opt.concrete_m3, 2)
+                                } else {
+                                    "—".to_owned()
+                                },
+                                settlement,
+                                opt.summary.clone(),
+                            ],
+                        )
+                    })
+                    .collect();
+                pages.table(
+                    &[
+                        "Opção",
+                        "Situação",
+                        "Concreto (m³)",
+                        "Recalque (mm)",
+                        "Resumo",
+                    ],
+                    &[1.9, 1.4, 1.3, 1.6, 4.0],
+                    &opt_rows,
+                );
+            }
         }
         if !report.timber_posts.is_empty() {
             pages.subheading("Mourões de madeira (NBR 7190)");
@@ -1591,6 +1687,53 @@ mod tests {
         assert!(all.contains("M1"));
         assert!(all.contains("VM1"));
         assert!(all.contains("Ch "));
+        for page in &pages {
+            assert!(
+                svg2pdf::usvg::Tree::from_str(page, &svg2pdf::usvg::Options::default()).is_ok()
+            );
+        }
+    }
+
+    #[test]
+    fn multi_borehole_spt_and_foundation_study_appear_in_the_review_report() {
+        use crate::domain::soil::{Borehole, SoilKind, SoilSurvey, SptReading};
+
+        let mut project = house();
+        let sp1 = Borehole::new(
+            "SP-01".to_owned(),
+            (1..=10)
+                .map(|d| SptReading {
+                    depth_m: f64::from(d),
+                    n: 10,
+                    soil: SoilKind::Sand,
+                })
+                .collect(),
+            Some(5.0),
+        )
+        .unwrap();
+        let sp2 = Borehole::new(
+            "SP-02".to_owned(),
+            (1..=10)
+                .map(|d| SptReading {
+                    depth_m: f64::from(d),
+                    n: 7,
+                    soil: SoilKind::Clay,
+                })
+                .collect(),
+            Some(4.0),
+        )
+        .unwrap();
+        project.set_soil_survey(Some(
+            SoilSurvey::from_boreholes(vec![sp1, sp2], 1.0).unwrap(),
+        ));
+
+        let pages = report_pages(&project, "22/11/2026");
+        let all = pages.join("\n");
+        assert!(all.contains("Sondagem (SPT) e estudo de fundações"));
+        assert!(all.contains("SP-01"));
+        assert!(all.contains("SP-02"));
+        assert!(all.contains("Estacas profundas (hélice contínua)"));
+        assert!(all.contains("Recalque (mm)"));
         for page in &pages {
             assert!(
                 svg2pdf::usvg::Tree::from_str(page, &svg2pdf::usvg::Options::default()).is_ok()

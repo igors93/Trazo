@@ -1066,7 +1066,7 @@ impl FloorPlanApp {
                     if !report.footings.is_empty() {
                         heading(ui, "Sapatas");
                         egui::Grid::new("structure_footings").striped(true).spacing([14.0, 6.0]).show(ui, |ui| {
-                            titles(ui, &["Sapata", "Pilar", "Dimensões", "Carga", "Necessária", "Altura", "Situação"]);
+                            titles(ui, &["Sapata", "Pilar", "Dimensões", "Carga", "Necessária", "Altura", "Recalque", "Situação"]);
                             for footing in &report.footings {
                                 ui.label(RichText::new(&footing.label).font(strong(12.5)));
                                 ui.label(footing.column.clone().unwrap_or_else(|| "—".to_owned()));
@@ -1074,6 +1074,7 @@ impl FloorPlanApp {
                                 ui.label(format!("{} kN", decimal(footing.load_kn, 1)));
                                 ui.label(format!("{} cm", section_cm(footing.needed_width_m, footing.needed_depth_m)));
                                 ui.label(format!("{:.0} cm", footing.height_m * 100.0));
+                                ui.label(format!("{} mm", decimal(footing.settlement_mm, 1)));
                                 status(ui, footing.ok());
                                 ui.end_row();
                             }
