@@ -213,6 +213,18 @@ fn format_tab_title(
     }
 }
 
+fn adjust_reordered_index(idx: usize, from: usize, to: usize) -> usize {
+    if idx == from {
+        to
+    } else if from < to && idx > from && idx <= to {
+        idx - 1
+    } else if to < from && idx >= to && idx < from {
+        idx + 1
+    } else {
+        idx
+    }
+}
+
 fn floor_name_for(project: &Project, floor_id: Option<u64>) -> String {
     if let Some(id) = floor_id
         && let Some(level) = project.floors.levels.iter().find(|l| l.id == id)
@@ -944,6 +956,20 @@ impl FloorPlanApp {
                 }
             }
         }
+    }
+
+    /// Reorders the tab at `from` to index `to`, keeping `active_tab` and
+    /// `split_tab` pointing to the exact same logical tabs.
+    pub(crate) fn reorder_tab(&mut self, from: usize, to: usize) {
+        if from == to || from >= self.tabs.len() || to >= self.tabs.len() {
+            return;
+        }
+        let moved = self.tabs.remove(from);
+        self.tabs.insert(to, moved);
+        self.active_tab = adjust_reordered_index(self.active_tab, from, to);
+        self.split_tab = self
+            .split_tab
+            .map(|idx| adjust_reordered_index(idx, from, to));
     }
 
     /// Asks to save ONLY when closing the last open tab of a project with
@@ -2043,5 +2069,47 @@ mod synced_tabs_tests {
         assert!(reviews.iter().any(|r| {
             r["elemento_id"] == col_id && r["tipo"] == "pilar_fora_do_eixo_da_parede"
         }));
+    }
+
+    #[test]
+    fn reordering_tabs_preserves_active_and_split_indices() {
+        let (_ctx, mut app) = setup_house_app();
+        app.new_linked_tab(0, Discipline::Structure, None, None);
+        app.new_linked_tab(0, Discipline::Foundations, None, None);
+        // Order: [All (0), Structure (1), Foundations (2, active)].
+        assert_eq!(app.tab_count(), 3);
+        assert_eq!(app.active_tab(), 2);
+        app.toggle_side_by_side(Some(0));
+        assert_eq!(app.split_tab, Some(0));
+
+        // Drag Foundations (active, index 2) to the front (index 0).
+        app.reorder_tab(2, 0);
+        let disciplines: Vec<Discipline> =
+            app.tab_infos().into_iter().map(|t| t.discipline).collect();
+        assert_eq!(
+            disciplines,
+            vec![
+                Discipline::Foundations,
+                Discipline::All,
+                Discipline::Structure,
+            ]
+        );
+        assert_eq!(app.active_tab(), 0);
+        assert_eq!(app.split_tab, Some(1));
+
+        // Drag All (split companion, index 1) to the end (index 2).
+        app.reorder_tab(1, 2);
+        let disciplines: Vec<Discipline> =
+            app.tab_infos().into_iter().map(|t| t.discipline).collect();
+        assert_eq!(
+            disciplines,
+            vec![
+                Discipline::Foundations,
+                Discipline::Structure,
+                Discipline::All,
+            ]
+        );
+        assert_eq!(app.active_tab(), 0);
+        assert_eq!(app.split_tab, Some(2));
     }
 }

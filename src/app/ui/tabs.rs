@@ -16,6 +16,7 @@ const STRIP: f32 = 31.0;
 enum TabAction {
     Switch(usize),
     Close(usize),
+    Reorder(usize, usize),
     New(TabPane),
     NewLinked(usize, crate::domain::discipline::Discipline, TabPane),
     SetDiscipline(usize, crate::domain::discipline::Discipline),
@@ -208,17 +209,24 @@ impl FloorPlanApp {
         };
 
         let pane_focused = pane_filter.is_none_or(|pane| pane == self.active_pane());
+        let drag_key = egui::Id::new(("tab_strip_drag_tab_id", pane_filter));
+        if !ui.input(|input| input.pointer.primary_down()) {
+            ui.ctx().data_mut(|data| data.remove_temp::<u64>(drag_key));
+        }
+        let mut active_drag_id: Option<u64> = ui.ctx().data(|data| data.get_temp(drag_key));
+        let mut tab_rects: Vec<(usize, u64, Rect)> = Vec::with_capacity(visible_tabs.len());
 
         // Left side of the strip: tabs + '+' button (horizontally scrollable if narrow).
         ui.scope_builder(egui::UiBuilder::new().max_rect(tabs_rect), |ui| {
             egui::ScrollArea::horizontal()
                 .id_salt(("tab_strip_scroll", pane_filter))
+                .drag_to_scroll(false)
                 .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing = vec2(1.0, 0.0);
                         ui.add_space(6.0);
-                        let max_title_w = if split { 145.0 } else { 200.0 };
+                        let max_title_w = if split { 155.0 } else { 235.0 };
 
                         for (pos, &(index, info)) in visible_tabs.iter().enumerate() {
                             let is_shown = if split { info.shown } else { info.active };
@@ -236,18 +244,66 @@ impl FloorPlanApp {
                             };
                             let label = ui.painter().layout_no_wrap(info.title.clone(), font, ink);
                             let text_width = label.size().x.min(max_title_w);
-                            let (slot, response) = ui.allocate_exact_size(
-                                vec2(text_width + 44.0, STRIP),
-                                Sense::click(),
-                            );
+                            let (slot, response) = ui
+                                .push_id(("tab_item", info.tab_id), |ui| {
+                                    ui.allocate_exact_size(
+                                        vec2(text_width + 44.0, STRIP),
+                                        Sense::click_and_drag(),
+                                    )
+                                })
+                                .inner;
                             let tab = Rect::from_min_max(
                                 Pos2::new(slot.left(), slot.top() + 5.0),
                                 slot.max,
                             );
+                            let y = tab.center().y;
+                            let close = Rect::from_center_size(
+                                Pos2::new(tab.right() - 15.0, y),
+                                vec2(18.0, 18.0),
+                            );
+                            let pointer_on_tab = response
+                                .hover_pos()
+                                .or_else(|| response.interact_pointer_pos());
+                            let over_close =
+                                pointer_on_tab.is_some_and(|position| close.contains(position));
+
+                            if response.drag_started() && !over_close {
+                                active_drag_id = Some(info.tab_id);
+                                ui.ctx()
+                                    .data_mut(|data| data.insert_temp(drag_key, info.tab_id));
+                            }
+                            if response.drag_stopped() && active_drag_id == Some(info.tab_id) {
+                                active_drag_id = None;
+                                ui.ctx().data_mut(|data| data.remove_temp::<u64>(drag_key));
+                            }
+                            let is_dragged =
+                                active_drag_id == Some(info.tab_id) && response.dragged();
+
                             let hovered = response.hovered();
                             let painter = ui.painter();
 
-                            if is_shown {
+                            if is_dragged {
+                                painter.rect(
+                                    tab,
+                                    top_round,
+                                    if is_shown { CANVAS } else { ACCENT_SOFTER },
+                                    Stroke::new(1.4, ACCENT),
+                                    StrokeKind::Inside,
+                                );
+                                painter.line_segment(
+                                    [
+                                        Pos2::new(tab.left() + 6.0, tab.top() + 1.0),
+                                        Pos2::new(tab.right() - 6.0, tab.top() + 1.0),
+                                    ],
+                                    Stroke::new(2.0, ACCENT),
+                                );
+                                if is_shown {
+                                    shown_span = Some((
+                                        tab.left().max(tabs_rect.left()),
+                                        tab.right().min(tabs_rect.right()),
+                                    ));
+                                }
+                            } else if is_shown {
                                 painter.rect(
                                     tab,
                                     top_round,
@@ -280,7 +336,6 @@ impl FloorPlanApp {
                                 painter.rect_filled(tab, top_round, ACCENT_SOFTER);
                             }
 
-                            let y = tab.center().y;
                             let x = tab.left() + 13.0;
                             let clip = Rect::from_min_max(
                                 Pos2::new(x, tab.top()),
@@ -292,13 +347,6 @@ impl FloorPlanApp {
                                 ink,
                             );
 
-                            let close = Rect::from_center_size(
-                                Pos2::new(tab.right() - 15.0, y),
-                                vec2(18.0, 18.0),
-                            );
-                            let over_close = response
-                                .hover_pos()
-                                .is_some_and(|position| close.contains(position));
                             if hovered || (is_shown && !info.dirty) {
                                 if over_close {
                                     painter.circle_filled(close.center(), 9.0, ACCENT_SOFT);
@@ -326,7 +374,7 @@ impl FloorPlanApp {
                             let next_shown = visible_tabs.get(pos + 1).is_some_and(|(_, next)| {
                                 if split { next.shown } else { next.active }
                             });
-                            if !is_shown && !next_shown && !hovered {
+                            if !is_shown && !next_shown && !hovered && !is_dragged {
                                 painter.line_segment(
                                     [
                                         Pos2::new(tab.right() + 0.5, tab.top() + 6.0),
@@ -336,10 +384,17 @@ impl FloorPlanApp {
                                 );
                             }
 
+                            tab_rects.push((index, info.tab_id, tab));
+
+                            let cursor = if is_dragged {
+                                CursorIcon::Grabbing
+                            } else {
+                                CursorIcon::PointingHand
+                            };
                             let response = tip(
-                                response.on_hover_cursor(CursorIcon::PointingHand),
+                                response.on_hover_cursor(cursor),
                                 &format!(
-                                    "{}{}{} · clique direito para disciplinas · Ctrl+W fecha",
+                                    "{}{}{} · arraste para reordenar · clique direito para disciplinas · Ctrl+W fecha",
                                     info.title,
                                     if info.linked {
                                         " [visão sincronizada]"
@@ -447,6 +502,27 @@ impl FloorPlanApp {
                 });
         });
 
+        // Live drag-to-reorder: swap with the left/right neighbor once the
+        // pointer crosses that neighbor's horizontal midpoint.
+        if action.is_none()
+            && let Some(dragged_id) = active_drag_id
+            && let Some(pointer) = ui.ctx().pointer_interact_pos()
+            && let Some(drag_pos) = tab_rects.iter().position(|(_, tid, _)| *tid == dragged_id)
+        {
+            ui.ctx().set_cursor_icon(CursorIcon::Grabbing);
+            if drag_pos + 1 < tab_rects.len() && pointer.x > tab_rects[drag_pos + 1].2.center().x {
+                action = Some(TabAction::Reorder(
+                    tab_rects[drag_pos].0,
+                    tab_rects[drag_pos + 1].0,
+                ));
+            } else if drag_pos > 0 && pointer.x < tab_rects[drag_pos - 1].2.center().x {
+                action = Some(TabAction::Reorder(
+                    tab_rects[drag_pos].0,
+                    tab_rects[drag_pos - 1].0,
+                ));
+            }
+        }
+
         // Right edge of the strip: sleek icon buttons for Duplicate Tab & Split View.
         let source_for_duplicate = visible_tabs
             .iter()
@@ -529,6 +605,7 @@ impl FloorPlanApp {
         match action {
             Some(TabAction::Switch(index)) => self.switch_tab(index),
             Some(TabAction::Close(index)) => self.request_close_tab(index),
+            Some(TabAction::Reorder(from, to)) => self.reorder_tab(from, to),
             Some(TabAction::New(pane)) => self.new_tab_in_pane(pane),
             Some(TabAction::NewLinked(index, discipline, pane)) => {
                 self.new_linked_tab_in_pane(index, discipline, None, None, pane);
