@@ -92,6 +92,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 - The area schedule of an empty project showed "-0,00 m²".
 - The materials schedule now uses each wall's real block height via `Masonry::blocks_per_square_metre` and groups mixed per-wall masonries instead of assuming a 19 cm height (B20).
 - Regional electrical utility profiles (`src/domain/utility_profiles.rs`) now use explicit per-utility demand tables (replacing arbitrary scale multipliers), corrected CEMIG ND 5.1 (`8/16 kVA`) and COPEL NTC 901100 (`9/15 kVA`) supply limits, and standard/edition/table citations shown in the UI, single-line SVG and MCP `quadro_de_cargas` (B21).
+- Sheet panel fit check, *Melhor escala* and MCP `prancha` now share `SheetLayout::drawing_area_mm()` with the SVG/PDF exporter, reserving 50 mm for the title block when enabled and 14 mm when hidden (B22).
 - The ▾, ↻ and ↺ symbols in ribbon labels appeared as empty boxes on Windows.
 - Switching, adding or removing a floor cleared only the primary selection. A following `Delete` could remove selected elements on another floor.
 - Switching floors left conduits, beams and slabs behind, and the next edit on another floor deleted them. They now travel with their floor.

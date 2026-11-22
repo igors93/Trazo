@@ -282,6 +282,23 @@ impl SheetLayout {
         (self.margins.left_mm, self.margins.top_mm, inner_w, inner_h)
     }
 
+    /// Bottom height reserved inside the printable border for the ABNT title
+    /// block (`50 mm` when shown, `14 mm` when hidden), in mm (B22).
+    pub fn title_block_reserve_mm(&self) -> f64 {
+        if self.title_block.show_title_block {
+            50.0
+        } else {
+            14.0
+        }
+    }
+
+    /// Effective drawing-area dimensions `(width_mm, height_mm)` shared by the
+    /// Sheet panel fit check, *Melhor escala* and the SVG/PDF sheet exporter (B22).
+    pub fn drawing_area_mm(&self) -> (f64, f64) {
+        let (_, _, frame_w, frame_h) = self.printable_rect_mm();
+        (frame_w, (frame_h - self.title_block_reserve_mm()).max(20.0))
+    }
+
     pub fn validate(&self) -> Result<(), String> {
         let (w, h) = self.sheet_mm();
         if !w.is_finite() || !h.is_finite() || w < 100.0 || h < 100.0 {
@@ -353,5 +370,46 @@ mod tests {
             DrawingScale::best_fit(30.0, 22.0, 388.0, 283.0),
             DrawingScale::S1_100
         );
+    }
+
+    #[test]
+    fn drawing_area_reserves_title_block_height_and_matches_sheet_export() {
+        use crate::domain::{geometry::Point, model::Project};
+        use crate::io::export::sheet::scaled_sheet_svg;
+
+        // A4 landscape printable border: 265 × 196 mm (margins 25/7/7/7 mm).
+        // With title block (50 mm reserve): draw_area = 265 × 146 mm.
+        // Without title block (14 mm reserve): draw_area = 265 × 182 mm.
+        let mut layout = SheetLayout::standard(PaperSize::A4, Orientation::Landscape);
+        assert_eq!(layout.drawing_area_mm(), (265.0, 146.0));
+
+        // A 10 m × 7.8 m plan at 1:50 needs 200 × 156 mm:
+        // does NOT fit with title block (156 > 146 mm), DOES fit without (156 <= 182 mm).
+        let (dw, dh) = layout.drawing_area_mm();
+        assert!(!DrawingScale::S1_50.fits(10.0, 7.8, dw, dh));
+        assert_eq!(
+            DrawingScale::best_fit(10.0, 7.8, dw, dh),
+            DrawingScale::S1_75
+        );
+
+        layout.title_block.show_title_block = false;
+        let (dw_no_tb, dh_no_tb) = layout.drawing_area_mm();
+        assert_eq!((dw_no_tb, dh_no_tb), (265.0, 182.0));
+        assert!(DrawingScale::S1_50.fits(10.0, 7.8, dw_no_tb, dh_no_tb));
+
+        // End-to-end screen == paper: choosing best_fit over drawing_area_mm()
+        // guarantees the exported SVG emits no crop warning banner (#aviso-recorte).
+        let mut project = Project::default();
+        project.set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 7.8));
+        project.sheet = SheetLayout::standard(PaperSize::A4, Orientation::Landscape);
+        project.sheet.scale = DrawingScale::S1_50;
+        let cropped_svg = scaled_sheet_svg(&project);
+        assert!(cropped_svg.contains("id=\"aviso-recorte\""));
+
+        let (min, max) = project.bounds().unwrap();
+        let (draw_w, draw_h) = project.sheet.drawing_area_mm();
+        project.sheet.scale = DrawingScale::best_fit(max.x - min.x, max.y - min.y, draw_w, draw_h);
+        let fitted_svg = scaled_sheet_svg(&project);
+        assert!(!fitted_svg.contains("id=\"aviso-recorte\""));
     }
 }

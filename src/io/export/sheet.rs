@@ -283,12 +283,7 @@ fn scaled_sheet_svg_with_overlay(
     let plan_w_mm = plan_w_m * mm_per_m;
     let plan_h_mm = plan_h_m * mm_per_m;
 
-    let reserve_bottom = if layout.title_block.show_title_block {
-        50.0
-    } else {
-        14.0
-    };
-    let draw_area_h = (frame_h - reserve_bottom).max(20.0);
+    let (_, draw_area_h) = layout.drawing_area_mm();
     let plan_cropped = !layout.scale.fits(plan_w_m, plan_h_m, frame_w, draw_area_h);
     let origin_x = frame_x + (frame_w - plan_w_mm) * 0.5;
     let origin_y = frame_y + (draw_area_h - plan_h_mm) * 0.5;

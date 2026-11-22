@@ -175,12 +175,12 @@ impl FloorPlanApp {
                                 }
                             }
                             if let Some((min, max)) = self.project.bounds() {
-                                let (_, _, pw, ph) = self.project.sheet.printable_rect_mm();
+                                let (draw_w, draw_h) = self.project.sheet.drawing_area_mm();
                                 let plan_w = (max.x - min.x).max(0.5);
                                 let plan_h = (max.y - min.y).max(0.5);
                                 if secondary_button(ui, "Melhor escala").clicked() {
                                     let best =
-                                        DrawingScale::best_fit(plan_w, plan_h, pw, (ph - 16.0).max(20.0));
+                                        DrawingScale::best_fit(plan_w, plan_h, draw_w, draw_h);
                                     let prev = self.project.clone();
                                     self.project.sheet.scale = best;
                                     self.record_change(prev);
@@ -188,15 +188,10 @@ impl FloorPlanApp {
                             }
                         });
                         if let Some((min, max)) = self.project.bounds() {
-                            let (_, _, pw, ph) = self.project.sheet.printable_rect_mm();
+                            let (draw_w, draw_h) = self.project.sheet.drawing_area_mm();
                             let plan_w = (max.x - min.x).max(0.5);
                             let plan_h = (max.y - min.y).max(0.5);
-                            let fits = self.project.sheet.scale.fits(
-                                plan_w,
-                                plan_h,
-                                pw,
-                                (ph - 16.0).max(20.0),
-                            );
+                            let fits = self.project.sheet.scale.fits(plan_w, plan_h, draw_w, draw_h);
                             ui.add_space(4.0);
                             let (status, color) = if fits {
                                 (

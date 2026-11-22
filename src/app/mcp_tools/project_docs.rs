@@ -1148,13 +1148,13 @@ impl FloorPlanApp {
                         raw.to_lowercase().as_str(),
                         "melhor" | "auto" | "melhor_ajuste"
                     ) {
-                        let (_, _, pw, ph) = next.printable_rect_mm();
+                        let (draw_w, draw_h) = next.drawing_area_mm();
                         let (plan_w, plan_h) = self
                             .project
                             .bounds()
                             .map(|(min, max)| ((max.x - min.x).max(1.0), (max.y - min.y).max(1.0)))
                             .unwrap_or((10.0, 10.0));
-                        next.scale = DrawingScale::best_fit(plan_w, plan_h, pw, ph);
+                        next.scale = DrawingScale::best_fit(plan_w, plan_h, draw_w, draw_h);
                     } else {
                         next.scale = parse_scale(&raw).ok_or(
                             "'escala' deve ser 1:25, 1:50, 1:75, 1:100, 1:200, 1:N ou 'melhor'."
