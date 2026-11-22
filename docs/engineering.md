@@ -85,6 +85,8 @@ Water tanks and heavy equipment are stored as structural fixtures with a footpri
 
 From the end moments come the shears, the reactions (passed to the columns, or as point loads to a supporting beam) and the largest span moment.
 
+**Secondary beams.** Either end may be supported at a parameter `t` along another beam. The secondary beam is solved first; its end reaction becomes a point load at that exact `t` on the primary girder, whose analysis then carries it to its own supports. Cyclic supports, a beam supported on itself and coincident ends are refused instead of producing a result.
+
 **Sizing rules:**
 
 | Check | Rule | Source |

@@ -249,7 +249,8 @@ impl FloorPlanApp {
                 ui.end_row();
                 property_label(ui, "Rotação");
                 ui.horizontal(|ui| {
-                    property_value(ui, &format!("{}°", fixture.quarter_turns as u32 * 90));
+                    let angle = fixture.rotation_rad().to_degrees().rem_euclid(360.0);
+                    property_value(ui, &format!("{angle:.1}°").replace('.', ","));
                     rotate = secondary_button(ui, "Girar 90° (G)").clicked();
                 });
                 ui.end_row();

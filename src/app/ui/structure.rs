@@ -11,7 +11,7 @@ use crate::domain::discipline::Discipline;
 use crate::domain::fixtures::FixtureKind;
 use crate::domain::layers::LayerCategory;
 use crate::domain::reinforcement::{ReinforcementReport, steel_schedule_csv};
-use crate::domain::structure::{SlabKind, beam_diagrams_svg, section_cm};
+use crate::domain::structure::{BeamSupport, SlabKind, beam_diagrams_svg, section_cm};
 
 fn decimal(value: f64, places: usize) -> String {
     format!("{value:.places$}").replace('.', ",")
@@ -32,6 +32,29 @@ enum StructureEdit {
     Settings(crate::domain::structure::StructureSettings),
     Soil(super::foundations::SoilAction),
     Roof(super::roof::RoofAction),
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SecondaryBeamDraft {
+    from_beam: u64,
+    to_beam: u64,
+    from_t: f64,
+    to_t: f64,
+    width_cm: f64,
+    height_cm: f64,
+}
+
+impl SecondaryBeamDraft {
+    fn between(from_beam: u64, to_beam: u64) -> Self {
+        Self {
+            from_beam,
+            to_beam,
+            from_t: 0.5,
+            to_t: 0.5,
+            width_cm: 14.0,
+            height_cm: 35.0,
+        }
+    }
 }
 
 fn reinforcement_tab(ui: &mut Ui, report: &ReinforcementReport) {
@@ -315,6 +338,43 @@ impl FloorPlanApp {
         }
     }
 
+    /// Adds a secondary beam whose ends bear at explicit positions along two
+    /// primary girders. The domain transfers both end reactions into those
+    /// girders as point loads (#117).
+    fn add_secondary_beam(&mut self, draft: SecondaryBeamDraft) {
+        if draft.from_beam == draft.to_beam {
+            self.message = "Escolha duas vigas principais diferentes.".to_owned();
+            return;
+        }
+        let previous = self.project.clone();
+        let result = self.project.add_beam_on_supports(
+            BeamSupport::Beam {
+                beam_id: draft.from_beam,
+                t: draft.from_t,
+            },
+            BeamSupport::Beam {
+                beam_id: draft.to_beam,
+                t: draft.to_t,
+            },
+            draft.width_cm / 100.0,
+            draft.height_cm / 100.0,
+        );
+        match result {
+            Ok(id) => {
+                if self.record_change(previous) {
+                    self.message = format!(
+                        "Viga secundária {id} apoiada nas vigas {} e {}; as reações entram nelas como cargas concentradas.",
+                        draft.from_beam, draft.to_beam
+                    );
+                }
+            }
+            Err(error) => {
+                self.project = previous;
+                self.message = error;
+            }
+        }
+    }
+
     /// Removes the beams of the selected columns (between them, when two or
     /// more are selected).
     pub(crate) fn remove_selected_beams(&mut self) {
@@ -427,6 +487,36 @@ impl FloorPlanApp {
         let report = self.project.cached_structure_report();
         let reinforcement = self.project.cached_reinforcement_report();
         let labels = self.project.structure_labels();
+        let primary_beams: Vec<(u64, String)> = self
+            .project
+            .valid_beams()
+            .filter(|beam| {
+                matches!(beam.start_support(), BeamSupport::Column { .. })
+                    && matches!(beam.end_support(), BeamSupport::Column { .. })
+            })
+            .map(|beam| {
+                (
+                    beam.id,
+                    labels
+                        .get(&beam.id)
+                        .cloned()
+                        .unwrap_or_else(|| format!("Viga {}", beam.id)),
+                )
+            })
+            .collect();
+        let secondary_id = egui::Id::unique("trazo_secondary_beam_draft");
+        let default_hosts = (
+            primary_beams.first().map(|(id, _)| *id).unwrap_or(0),
+            primary_beams.get(1).map(|(id, _)| *id).unwrap_or(0),
+        );
+        let valid_host = |id: u64| primary_beams.iter().any(|(beam, _)| *beam == id);
+        let mut secondary_draft: SecondaryBeamDraft = ctx
+            .data(|data| data.get_temp(secondary_id))
+            .filter(|draft: &SecondaryBeamDraft| {
+                valid_host(draft.from_beam) && valid_host(draft.to_beam)
+            })
+            .unwrap_or_else(|| SecondaryBeamDraft::between(default_hosts.0, default_hosts.1));
+        let mut create_secondary = false;
         let preview = if tab == 1 {
             svg_preview(
                 ctx,
@@ -652,6 +742,95 @@ impl FloorPlanApp {
                                 }
                             });
                     }
+                    if primary_beams.len() >= 2 {
+                        heading(ui, "Viga secundária apoiada em vigas");
+                        egui::Grid::new("secondary_beam_supports")
+                            .num_columns(4)
+                            .spacing([10.0, 6.0])
+                            .show(ui, |ui| {
+                                ui.label("Apoio inicial");
+                                egui::ComboBox::from_id_salt("secondary_from_beam")
+                                    .selected_text(
+                                        primary_beams
+                                            .iter()
+                                            .find(|(id, _)| *id == secondary_draft.from_beam)
+                                            .map(|(_, label)| label.as_str())
+                                            .unwrap_or("Escolha"),
+                                    )
+                                    .show_ui(ui, |ui| {
+                                        for (id, label) in &primary_beams {
+                                            ui.selectable_value(
+                                                &mut secondary_draft.from_beam,
+                                                *id,
+                                                label,
+                                            );
+                                        }
+                                    });
+                                ui.label("Posição");
+                                ui.add(
+                                    egui::DragValue::new(&mut secondary_draft.from_t)
+                                        .range(0.05..=0.95)
+                                        .speed(0.0)
+                                        .max_decimals(2)
+                                        .suffix(" do vão"),
+                                );
+                                ui.end_row();
+
+                                ui.label("Apoio final");
+                                egui::ComboBox::from_id_salt("secondary_to_beam")
+                                    .selected_text(
+                                        primary_beams
+                                            .iter()
+                                            .find(|(id, _)| *id == secondary_draft.to_beam)
+                                            .map(|(_, label)| label.as_str())
+                                            .unwrap_or("Escolha"),
+                                    )
+                                    .show_ui(ui, |ui| {
+                                        for (id, label) in &primary_beams {
+                                            ui.selectable_value(
+                                                &mut secondary_draft.to_beam,
+                                                *id,
+                                                label,
+                                            );
+                                        }
+                                    });
+                                ui.label("Posição");
+                                ui.add(
+                                    egui::DragValue::new(&mut secondary_draft.to_t)
+                                        .range(0.05..=0.95)
+                                        .speed(0.0)
+                                        .max_decimals(2)
+                                        .suffix(" do vão"),
+                                );
+                                ui.end_row();
+
+                                ui.label("Seção");
+                                ui.horizontal(|ui| {
+                                    ui.add(
+                                        egui::DragValue::new(&mut secondary_draft.width_cm)
+                                            .range(8.0..=100.0)
+                                            .speed(0.0)
+                                            .suffix(" cm"),
+                                    );
+                                    ui.label("×");
+                                    ui.add(
+                                        egui::DragValue::new(&mut secondary_draft.height_cm)
+                                            .range(15.0..=200.0)
+                                            .speed(0.0)
+                                            .suffix(" cm"),
+                                    );
+                                });
+                                create_secondary = primary_button(ui, "Criar viga").clicked();
+                                ui.label(
+                                    RichText::new(
+                                        "As reações das pontas são transferidas às vigas principais.",
+                                    )
+                                    .size(11.0)
+                                    .color(MUTED),
+                                );
+                                ui.end_row();
+                            });
+                    }
                     if !report.beams.is_empty() {
                         heading(ui, "Vigas (contínuas, valores característicos)");
                         egui::Grid::new("structure_beams").striped(true).spacing([12.0, 6.0]).show(ui, |ui| {
@@ -742,6 +921,10 @@ impl FloorPlanApp {
                 });
             });
         ctx.data_mut(|data| data.insert_temp(tab_id, tab));
+        ctx.data_mut(|data| data.insert_temp(secondary_id, secondary_draft));
+        if create_secondary {
+            self.add_secondary_beam(secondary_draft);
+        }
         if generate {
             self.generate_structure();
         }
@@ -834,5 +1017,48 @@ impl FloorPlanApp {
         if !open {
             self.active_doc_dialog = DocDialog::None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::geometry::Point;
+
+    #[test]
+    fn the_interface_adds_a_secondary_beam_between_primary_girders() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let column = |app: &mut FloorPlanApp, x, y| {
+            app.project
+                .add_fixture(FixtureKind::Column, Point::new(x, y), 0.20, 0.30, 0)
+                .unwrap()
+        };
+        let c1 = column(&mut app, 0.0, 0.0);
+        let c2 = column(&mut app, 4.0, 0.0);
+        let c3 = column(&mut app, 0.0, 3.0);
+        let c4 = column(&mut app, 4.0, 3.0);
+        let first = app.project.add_beam(c1, c2, 0.14, 0.40).unwrap();
+        let second = app.project.add_beam(c3, c4, 0.14, 0.40).unwrap();
+
+        app.add_secondary_beam(SecondaryBeamDraft::between(first, second));
+
+        assert_eq!(app.project.structure.beams.len(), 3);
+        let beam = app.project.structure.beams.last().unwrap();
+        assert_eq!(
+            beam.start_support(),
+            BeamSupport::Beam {
+                beam_id: first,
+                t: 0.5
+            }
+        );
+        assert_eq!(
+            beam.end_support(),
+            BeamSupport::Beam {
+                beam_id: second,
+                t: 0.5
+            }
+        );
+        assert!(app.message.contains("reações entram nelas"));
     }
 }

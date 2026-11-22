@@ -68,6 +68,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 - Continuous beam analysis: bending moments, shear, reactions and long-term deflection against L/250, drawn as diagrams and exported to PDF and SVG (#94).
 - Preliminary reinforcement for beams, columns, slabs and footings, with section-fit warnings, shear checks, theoretical steel mass, CSV bar schedule and the same tables in the professional-review PDF and MCP output (#110, partial).
 - Editable concentrated loads for water tanks and heavy equipment, carried through slabs or directly into beams and onward to columns and footings; solid slabs receive local bending/punching checks, while lattice slabs explicitly require manufacturer/solid-strip review. Results appear on the plan, in the safety traffic light, PDF and MCP (#113).
+- Columns align to walls at any angle, and the pre-sizing window now creates secondary beams between two chosen primary girders; their end reactions become point loads on the girders, matching the existing MCP workflow (#117).
 - Per-wall straight or sloped tops now appear with their real heights in sections and facade elevations, completing the same height through quantities, structural loads and column checks (#145).
 - Discipline views: architecture, electrical and structure shown on their own on screen (the rest faded) and on sheets of their own, with *Planta de Instalações Elétricas* and *Planta de Forma* sheets in the sheet set (#96).
 - Two MCP tools, `projeto_estrutural` and `pre_dimensionamento`.
