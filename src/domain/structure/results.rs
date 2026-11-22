@@ -27,6 +27,8 @@ pub struct SpanResult {
     /// Characteristic permanent and live load, kN/m.
     pub dead_kn_m: f64,
     pub live_kn_m: f64,
+    /// Characteristic concentrated loads applied along this span.
+    pub point_loads: Vec<SpanPointLoad>,
     /// Bending moments (sagging positive), kN·m: at each end and the
     /// largest along the span.
     pub moment_left: f64,
@@ -47,6 +49,18 @@ pub struct SpanResult {
     /// The usual minimum height for this span (L/10 at an end, L/12
     /// inside a continuous beam), metres.
     pub height_min_m: f64,
+}
+
+/// A concentrated load retained with its position so downstream analyses
+/// (notably the coupled 2D frame) cannot silently turn it into zero.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SpanPointLoad {
+    /// Distance from the span's left support, metres.
+    pub position_m: f64,
+    /// Characteristic downward load, kN.
+    pub load_kn: f64,
+    /// Fraction retained in the quasi-permanent service combination.
+    pub quasi_factor: f64,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -805,6 +805,7 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                             model.to_owned(),
                             format!("{} kN·m", decimal(f.max_beam_moment_knm(), 1)),
                             format!("{} kN·m", decimal(f.max_column_moment_knm(), 1)),
+                            format!("{} kN", decimal(f.total_point_load_kn(), 1)),
                             format!("{} kN", decimal(f.lateral_wind_kn, 1)),
                             format!(
                                 "{}/{} mm",
@@ -821,10 +822,11 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                     "Modelo",
                     "M máx viga",
                     "M máx pilar",
+                    "P conc.",
                     "Vento H",
                     "Δh / H/850",
                 ],
-                &[1.8, 2.0, 1.5, 1.5, 1.2, 2.0],
+                &[1.7, 1.8, 1.4, 1.4, 1.2, 1.1, 1.9],
                 &rows,
             );
         }

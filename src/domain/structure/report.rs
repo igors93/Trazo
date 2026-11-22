@@ -12,8 +12,8 @@ use crate::domain::{
 
 use super::{
     Beam, BeamLine, BeamLineResult, BeamSupport, CONCRETE_KN_M3, ColumnPosition, ColumnResult,
-    ConcentratedLoadResult, FootingResult, MisalignedColumn, SlabKind, SlabResult, SpanResult,
-    StructureReport, check_footing, continuous_beam_with_point_loads, decimal,
+    ConcentratedLoadResult, FootingResult, MisalignedColumn, SlabKind, SlabResult, SpanPointLoad,
+    SpanResult, StructureReport, check_footing, continuous_beam_with_point_loads, decimal,
     decompose_slab_panels, effective_beam_stiffness, natural, reading, room_live_load_kn_m2,
     round_up, section_cm, span_deflection_with_point_loads, yield_line_shares,
 };
@@ -916,6 +916,14 @@ impl Project {
                     height_m: *h,
                     dead_kn_m: *dead,
                     live_kn_m: *live,
+                    point_loads: span_point_records[i]
+                        .iter()
+                        .map(|point| SpanPointLoad {
+                            position_m: point.t,
+                            load_kn: point.load_kn,
+                            quasi_factor: point.quasi_factor,
+                        })
+                        .collect(),
                     moment_left: *left,
                     moment_right: *right,
                     moment_span: span_moment.max(0.0),

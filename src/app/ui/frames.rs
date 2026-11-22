@@ -59,6 +59,7 @@ pub(super) fn frames_tab(
                 "Modelo",
                 "M máx viga",
                 "M máx pilar",
+                "P concentrada",
                 "Vento H",
                 "Desloc. lateral Δh",
                 "Limite H/850",
@@ -78,6 +79,7 @@ pub(super) fn frames_tab(
                 ui.label(model);
                 ui.label(format!("{} kN·m", dec(frame.max_beam_moment_knm(), 1)));
                 ui.label(format!("{} kN·m", dec(frame.max_column_moment_knm(), 1)));
+                ui.label(format!("{} kN", dec(frame.total_point_load_kn(), 1)));
                 ui.label(format!("{} kN", dec(frame.lateral_wind_kn, 1)));
                 ui.label(format!("{} mm", dec(frame.max_lateral_drift_mm, 2)));
                 ui.label(format!("{} mm", dec(frame.drift_limit_mm, 2)));

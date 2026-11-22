@@ -296,7 +296,7 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
   - `cantilever_column_matches_exact_moment_and_tip_deflection` (`M = P·h`, `Δ = Ph³/3EI`, `θ = Ph²/2EI`);
   - `frame_reduces_to_continuous_beam_when_column_stiffness_vanishes` (`I_col → 0` matches `M_B = -wL²/8`, `R = 3/8, 10/8, 3/8 wL`);
   - `symmetric_fixed_base_portal_gravity_matches_slope_deflection` and `symmetric_fixed_base_portal_lateral_sway_matches_slope_deflection` against closed-form slope-deflection equations;
-  - `pinned_end_releases_zero_end_moments_and_match_simply_supported_deflection` (`5wL⁴/384EI`);
+  - `pinned_end_releases_zero_end_moments_and_match_simply_supported_deflection` (`5wL⁴/384EI`), `simply_supported_midspan_point_load_matches_exact_solution` (`PL/4`, `PL³/48EI`) and `project_frame_keeps_a_water_tank_load_on_its_beam` (load/reaction conservation);
   - `project_2d_frames_satisfy_global_equilibrium_and_render_valid_svg` (`|ΣF| < 1e-6`, `|ΣM| < 1e-5`, rigid vs pinned joint toggle, valid SVG).
 
 ### #110 Reinforcement pre-sizing and steel schedule — ✅ Done

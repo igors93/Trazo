@@ -86,7 +86,6 @@ pub enum MemberLoad {
     /// Uniform transverse load `q_perp` (kN/m) over the full member length.
     Uniform { member: usize, q_perp: f64 },
     /// Point transverse load `p_perp` (kN) at distance `a_m` from `start`.
-    #[allow(dead_code)]
     Point {
         member: usize,
         a_m: f64,
@@ -165,7 +164,6 @@ impl Frame2D {
         }
     }
 
-    #[allow(dead_code)]
     pub fn add_point_load(&mut self, member: usize, a_m: f64, p_perp: f64) {
         if p_perp.abs() > 1e-12 {
             self.member_loads.push(MemberLoad::Point {

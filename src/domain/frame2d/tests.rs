@@ -3,7 +3,7 @@ use super::{
     model::{EndRelease, Frame2D, MemberKind, SupportKind},
     solver::solve_frame,
 };
-use crate::domain::{geometry::Point, model::Project};
+use crate::domain::{fixtures::FixtureKind, geometry::Point, model::Project};
 
 /// Validation #1 (ROADMAP #94): Cantilever column under lateral tip load `P`.
 /// Exact Euler–Bernoulli solution:
@@ -413,6 +413,85 @@ fn pinned_end_releases_zero_end_moments_and_match_simply_supported_deflection() 
         expected_delta_mm
     );
     assert!(sol.equilibrium.sum_fy_kn.abs() < 1e-9);
+}
+
+#[test]
+fn simply_supported_midspan_point_load_matches_exact_solution() {
+    let l: f64 = 5.0;
+    let p: f64 = 18.0;
+    let e: f64 = 25_000_000.0;
+    let area: f64 = 0.14 * 0.40;
+    let inertia: f64 = 0.14 * 0.40_f64.powi(3) / 12.0;
+    let mut frame = Frame2D::default();
+    let left = frame.add_node("A", 0.0, 0.0, SupportKind::Fixed);
+    let right = frame.add_node("B", l, 0.0, SupportKind::Fixed);
+    let beam = frame.add_member(
+        "V1",
+        MemberKind::Beam,
+        left,
+        right,
+        area,
+        inertia,
+        e,
+        EndRelease::PinnedBoth,
+    );
+    frame.add_point_load(beam, l / 2.0, -p);
+
+    let solution = solve_frame(&frame).unwrap();
+    let result = &solution.members[beam];
+    let expected_moment = p * l / 4.0;
+    let expected_deflection_mm = p * l.powi(3) / (48.0 * e * inertia) * 1000.0;
+    assert!((result.max_sagging_knm - expected_moment).abs() < 1e-8);
+    assert!((result.max_local_deflection_mm - expected_deflection_mm).abs() < 1e-6);
+    assert!((solution.reactions[0].ry_kn - p / 2.0).abs() < 1e-8);
+    assert!((solution.reactions[1].ry_kn - p / 2.0).abs() < 1e-8);
+    assert!(solution.equilibrium.sum_fy_kn.abs() < 1e-8);
+}
+
+#[test]
+fn project_frame_keeps_a_water_tank_load_on_its_beam() {
+    let mut project = Project::default();
+    project.set_terrain(Point::new(-2.0, -2.0), Point::new(8.0, 5.0));
+    let c1 = project
+        .add_fixture(FixtureKind::Column, Point::new(0.0, 0.0), 0.20, 0.30, 0)
+        .unwrap();
+    let c2 = project
+        .add_fixture(FixtureKind::Column, Point::new(5.0, 0.0), 0.20, 0.30, 0)
+        .unwrap();
+    let beam_id = project.add_beam(c1, c2, 0.14, 0.40).unwrap();
+
+    let before = project.structure_report();
+    let before_frame = before.frames.first().unwrap();
+    let before_reaction: f64 = before_frame.reactions.iter().map(|r| r.ry_kn).sum();
+    let before_moment = before_frame.max_beam_moment_knm();
+    let before_deflection = before_frame.beams[0].elastic_deflection_mm;
+
+    let tank = project
+        .add_fixture(FixtureKind::WaterTank, Point::new(2.5, 0.0), 1.20, 1.20, 0)
+        .unwrap();
+    let tank_load = project
+        .fixtures
+        .iter()
+        .find(|fixture| fixture.id == tank)
+        .and_then(|fixture| fixture.structural_load_kn)
+        .unwrap();
+    let after = project.structure_report();
+    let after_frame = after.frames.first().unwrap();
+    let frame_beam = after_frame
+        .beams
+        .iter()
+        .find(|beam| beam.beam_id == beam_id)
+        .unwrap();
+    let after_reaction: f64 = after_frame.reactions.iter().map(|r| r.ry_kn).sum();
+
+    assert_eq!(frame_beam.point_loads.len(), 1);
+    assert!((frame_beam.point_loads[0].position_m - 2.5).abs() < 1e-9);
+    assert!((frame_beam.point_loads[0].load_kn - tank_load).abs() < 1e-9);
+    assert!((after_frame.total_point_load_kn() - tank_load).abs() < 1e-9);
+    assert!((after_reaction - before_reaction - tank_load).abs() < 1e-7);
+    assert!(after_frame.max_beam_moment_knm() > before_moment);
+    assert!(frame_beam.elastic_deflection_mm > before_deflection);
+    assert!(after_frame.equilibrium_residual_kn < 1e-7);
 }
 
 /// Validation #4 (ROADMAP #94): Global equilibrium, rigid vs pinned joints,

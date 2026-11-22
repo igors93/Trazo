@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::domain::{
     fixtures::FixtureKind,
     model::Project,
-    structure::{BeamSupport, StructureReport},
+    structure::{BeamSupport, SpanPointLoad, StructureReport},
 };
 
 use super::{
@@ -23,6 +23,8 @@ pub struct FrameBeamForces {
     pub label: String,
     pub length_m: f64,
     pub load_kn_m: f64,
+    /// Concentrated loads actually applied to this frame member.
+    pub point_loads: Vec<SpanPointLoad>,
     /// Bending moment at left end, max sagging along span, and right end (kN·m).
     pub moment_left_knm: f64,
     pub moment_span_knm: f64,
@@ -125,6 +127,14 @@ impl FrameLineResult {
                     .max(b.moment_span_knm.abs())
             })
             .fold(0.0_f64, f64::max)
+    }
+
+    pub fn total_point_load_kn(&self) -> f64 {
+        self.beams
+            .iter()
+            .flat_map(|beam| &beam.point_loads)
+            .map(|load| load.load_kn)
+            .sum()
     }
 }
 
@@ -322,7 +332,7 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Ve
         }
 
         // Create beam members and apply gravity uniform loads (dead + live).
-        let mut beam_meta: Vec<(usize, u64, String, f64, f64)> = Vec::new();
+        let mut beam_meta: Vec<(usize, u64, String, f64, f64, Vec<SpanPointLoad>)> = Vec::new();
         for (i, &beam_id) in line.spans.iter().enumerate() {
             let span = span_results.get(&beam_id);
             let b_w = span.map(|s| s.width_m).unwrap_or(0.14).max(0.10);
@@ -349,7 +359,18 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Ve
                 EndRelease::Rigid,
             );
             frame.add_uniform_load(member_id, -load_kn_m);
-            beam_meta.push((member_id, beam_id, span_label, span_lengths[i], load_kn_m));
+            let point_loads = span.map(|s| s.point_loads.clone()).unwrap_or_default();
+            for point in &point_loads {
+                frame.add_point_load(member_id, point.position_m, -point.load_kn);
+            }
+            beam_meta.push((
+                member_id,
+                beam_id,
+                span_label,
+                span_lengths[i],
+                load_kn_m,
+                point_loads,
+            ));
         }
 
         // Service horizontal wind force at beam level (NBR 6123 dynamic pressure
@@ -379,13 +400,14 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Ve
 
         let beams: Vec<FrameBeamForces> = beam_meta
             .iter()
-            .map(|(mid, beam_id, label, len, q)| {
+            .map(|(mid, beam_id, label, len, q, point_loads)| {
                 let m = &sol.members[*mid];
                 FrameBeamForces {
                     beam_id: *beam_id,
                     label: label.clone(),
                     length_m: *len,
                     load_kn_m: *q,
+                    point_loads: point_loads.clone(),
                     moment_left_knm: m.moment_start_knm,
                     moment_span_knm: m.max_sagging_knm,
                     moment_right_knm: m.moment_end_knm,
