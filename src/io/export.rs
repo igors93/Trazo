@@ -1031,10 +1031,26 @@ fn document_with_options(
                             ty - 4.0
                         );
                     }
-                    let (mx, my) = ((dx1 + dx2) * 0.5, (dy1 + dy2) * 0.5 - 5.0);
+                    let (mx, my) = ((dx1 + dx2) * 0.5, (dy1 + dy2) * 0.5);
+                    let angle_deg = (dy2 - dy1).atan2(dx2 - dx1).to_degrees();
+                    let mut text_angle = angle_deg;
+                    if text_angle > 90.0 {
+                        text_angle -= 180.0;
+                    } else if text_angle <= -90.0 {
+                        text_angle += 180.0;
+                    }
+                    let rad = text_angle.to_radians();
+                    // Shift text slightly above the dimension line in its local reading frame.
+                    let tx = mx + 5.0 * rad.sin();
+                    let ty = my - 5.0 * rad.cos();
+                    let transform = if text_angle.abs() > 0.5 {
+                        format!(" transform=\"rotate({text_angle:.1} {tx:.1} {ty:.1})\"")
+                    } else {
+                        String::new()
+                    };
                     let _ = writeln!(
                         svg,
-                        "<text x=\"{mx:.1}\" y=\"{my:.1}\" font-family=\"Arial, sans-serif\" font-size=\"11\" fill=\"#1c2b3c\" text-anchor=\"middle\">{}</text>",
+                        "<text x=\"{tx:.1}\" y=\"{ty:.1}\" font-family=\"Arial, sans-serif\" font-size=\"11\" fill=\"#1c2b3c\" text-anchor=\"middle\"{transform}>{}</text>",
                         escaped(label)
                     );
                 }

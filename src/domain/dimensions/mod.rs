@@ -1,6 +1,12 @@
 //! Persistent associative dimensions: internal room dimensions, external
-//! dimensions, aligned dimensions (any angle) and angular dimensions, each
-//! editable with custom override text and live-linked to walls/rooms/openings.
+//! dimensions, aligned dimensions (any angle), angular dimensions and
+//! automatic opening dimension chains (#53), each editable with custom
+//! override text and live-linked to walls/rooms/openings.
+
+pub mod chains;
+
+#[cfg(test)]
+mod tests;
 
 use std::f64::consts::TAU;
 
@@ -386,88 +392,5 @@ impl Project {
                 })
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn associative_aligned_internal_and_angular_dimensions_follow_wall_changes() {
-        let mut project = Project::default();
-        let room_id = project
-            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Quarto")
-            .unwrap();
-        let wall_id = project.rooms[0].wall_ids[0];
-
-        // Aligned dimension linked to wall endpoints.
-        let aligned_id = project.add_wall_aligned_dimension(wall_id, -0.4).unwrap();
-        let resolved = project
-            .resolve_dimension(
-                project
-                    .dimensions
-                    .iter()
-                    .find(|d| d.id == aligned_id)
-                    .unwrap(),
-            )
-            .unwrap();
-        assert_eq!(resolved.label(), "400");
-
-        // Internal room dimensions discount wall thickness (0.12 m -> 388 cm and 288 cm).
-        assert_eq!(project.generate_room_internal_dimensions(), 2);
-        assert_eq!(project.generate_room_internal_dimensions(), 0); // idempotent
-        let internal_labels: Vec<String> = project
-            .dimensions
-            .iter()
-            .filter(|d| matches!(d.kind, DimensionKind::Internal { .. }))
-            .filter_map(|d| project.resolve_dimension(d))
-            .map(|r| r.label().to_owned())
-            .collect();
-        assert!(internal_labels.contains(&"388".to_owned()));
-        assert!(internal_labels.contains(&"288".to_owned()));
-
-        // Resizing the room automatically updates BOTH aligned and internal dimensions!
-        project.resize_room_dimensions(room_id, 5.0, 3.5).unwrap();
-        let updated = project
-            .resolve_dimension(
-                project
-                    .dimensions
-                    .iter()
-                    .find(|d| d.id == aligned_id)
-                    .unwrap(),
-            )
-            .unwrap();
-        assert_eq!(updated.label(), "500");
-
-        // Editable text override.
-        project
-            .update_dimension_override(aligned_id, Some("500 (conf. obra)".to_owned()))
-            .unwrap();
-        let overridden = project
-            .resolve_dimension(
-                project
-                    .dimensions
-                    .iter()
-                    .find(|d| d.id == aligned_id)
-                    .unwrap(),
-            )
-            .unwrap();
-        assert_eq!(overridden.label(), "500 (conf. obra)");
-
-        // Angular dimension: 90° corner.
-        let ang_id = project
-            .add_dimension(DimensionKind::Angular {
-                vertex: DimensionAnchor::from_point(Point::new(0.0, 0.0)),
-                ray_a: DimensionAnchor::from_point(Point::new(2.0, 0.0)),
-                ray_b: DimensionAnchor::from_point(Point::new(0.0, 2.0)),
-                radius: 0.8,
-            })
-            .unwrap();
-        let ang = project
-            .resolve_dimension(project.dimensions.iter().find(|d| d.id == ang_id).unwrap())
-            .unwrap();
-        assert_eq!(ang.label(), "90°");
-        assert!(project.delete_dimension(ang_id));
     }
 }

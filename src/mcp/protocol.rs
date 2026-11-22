@@ -1045,11 +1045,11 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "cotas",
             title: "Cotas associativas",
-            description: "Lista, gera cotas internas automáticas em todos os cômodos, cria cotas associativas ligadas a paredes ou entre dois pontos, edita texto/deslocamento ou remove cotas.",
+            description: "Lista, gera cotas internas automáticas em todos os cômodos, gera cadeias de cotas associativas para aberturas (portas, janelas, portões e vãos) ao longo das paredes, cria cotas ligadas a paredes ou entre dois pontos, edita texto/deslocamento ou remove cotas.",
             properties: json!({
-                "acao": { "type": "string", "enum": ["listar", "gerar_internas", "adicionar_parede", "adicionar_alinhada", "editar", "remover"], "description": "O que fazer; padrão listar." },
+                "acao": { "type": "string", "enum": ["listar", "gerar_internas", "gerar_aberturas", "gerar_completas", "adicionar_parede", "adicionar_alinhada", "editar", "remover"], "description": "O que fazer; padrão listar." },
                 "id": integer("Id da cota (para editar ou remover)."),
-                "parede_id": integer("Para adicionar_parede: id da parede."),
+                "parede_id": integer("Para adicionar_parede ou gerar_aberturas (opcional): id da parede."),
                 "x1": number("Para adicionar_alinhada: X do 1º ponto."),
                 "y1": number("Para adicionar_alinhada: Y do 1º ponto."),
                 "x2": number("Para adicionar_alinhada: X do 2º ponto."),

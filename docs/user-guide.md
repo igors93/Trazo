@@ -265,7 +265,7 @@ Each tab of the window keeps its own view. Every sheet in a sheet set has a disc
 ### Annotation
 
 - **Dimension chains** (*Cotas*, status bar or *Vista*): every wall thickness and clear span in centimetres along the top and left of the building, plus totals.
-- **Associative dimensions:** internal, external, aligned and angular dimensions that follow the walls, rooms and openings they measure, with editable override text.
+- **Associative dimensions & opening chains:** internal room dimensions, external, aligned and angular dimensions, plus one-click automatic opening dimension chains (*Cadeias de aberturas* / *Cotas completas*) locating every door, window, gate and gap along its wall with outward offset and live updates as openings move or resize, with editable override text.
 - **Door and window tags:** openings of the same kind and size share a code numbered from the smallest (P1, P2… for doors, PV for saloon doors, J for windows, V for open spans), tagged as "P1 80/210" or "J1 120/100" (width/height in cm).
 - **Texts and symbols:** notes, leaders, callouts, north arrow, level marks, slope and entry arrows.
 - **Hatches** by material, with exact clipping on screen and in vector export.

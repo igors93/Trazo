@@ -280,12 +280,10 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
   - The takeoff is not placed on sheets yet, and the old *Quadro de Materiais* still has bug B20.
   - No MCP tool, since the takeoff does not change the model.
 
-### #53 Opening dimension chains — ⬜ Pendente
+### #53 Opening dimension chains — ✅ Done
 
-- **Status:** not started in this round; work stopped at the user's request after #56.
-- **Analysis done:**
-  - `DimensionAnchor` already has `OpeningLeft`/`OpeningRight` and `WallStart`/`WallEnd`.
-  - A chain per wall (start → each jamb in order → end) can be built from `Aligned` dimensions, the way `generate_room_internal_dimensions` builds internal ones.
+- **Changes:** split `src/domain/dimensions/` into `mod.rs`, `chains.rs` and `tests.rs`; added `Project::generate_opening_dimension_chains` (associative `Aligned` chains `WallStart → Opening1.Left → Opening1.Right → … → WallEnd` with smart outward offset away from room interiors, degenerate-segment skip and idempotency) and one-click `Project::generate_site_dimensions` (internal room dimensions + opening chains); added rotated SVG dimension labels for vertical/angled chains (`src/io/export.rs`), UI buttons (*Cadeias de aberturas*, *Cotas completas*, per-wall chain) in `src/app/ui/dimensions.rs`, and MCP `cotas` actions `gerar_aberturas` and `gerar_completas`.
+- **Tests:** multi-opening wall chain summing to exact wall length, outward placement on all 4 room walls, live associative updates on opening move/resize, angled walls, idempotency, and MCP round-trip.
 
 ### #113 Point loads — ✅ Done by another process
 
@@ -493,7 +491,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 53 | Automatic dimension chains locating each door and window along its wall, plus internal room dimensions | P0 | M | M2 | 🟡 Associative dimensions can anchor to openings and internal room dimensions can be generated; no automatic opening chains |
+| 53 | Automatic dimension chains locating each door and window along its wall, plus internal room dimensions | P0 | M | M2 | ✅ |
 | 54 | First-course plan and wall elevations with block paging: whole, half and cut blocks, lintels and sills | P1 | L | M2 | 🟡 Properties show each wall's first course; there is no drawing |
 | 55 | Setting-out plan (*locação*): cumulative dimensions from an origin on the lot, for marking out the building | P1 | M | M2 | ⬜ |
 | 56 | Construction quantities: blocks with waste, half blocks and U-blocks, lintels per opening, laying mortar, plaster, flooring and wall finishes per room | P0 | M | M2 | ✅ |

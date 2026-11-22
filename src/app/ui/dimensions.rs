@@ -25,24 +25,98 @@ impl FloorPlanApp {
                     "Cotas internas, externas, alinhadas e angulares que acompanham a geometria e aceitam texto editável.",
                 );
 
-                ui.horizontal(|ui| {
-                    if primary_button(ui, "Gerar cotas internas dos cômodos").clicked() {
+                ui.horizontal_wrapped(|ui| {
+                    if primary_button(ui, "Cotas internas").clicked() {
                         let prev = self.project.clone();
                         let added = self.project.generate_room_internal_dimensions();
                         if added > 0 {
                             self.record_change(prev);
-                            self.message = format!("{added} cota(s) interna(s) associativa(s) criada(s).");
+                            self.message =
+                                format!("{added} cota(s) interna(s) associativa(s) criada(s).");
                         } else {
-                            self.message = "Todos os cômodos já possuem cotas internas.".to_owned();
+                            self.message =
+                                "Todos os cômodos já possuem cotas internas.".to_owned();
                         }
                     }
-                    if let Some(Selection::Wall(wall_id)) = self.selection
-                        && secondary_button(ui, "Cota alinhada na parede selecionada").clicked()
+                    if primary_button(ui, "Cadeias de aberturas")
+                        .on_hover_text(
+                            "Gera cadeias de cotas associativas localizando cada porta, janela, portão e vão nas paredes.",
+                        )
+                        .clicked()
                     {
                         let prev = self.project.clone();
-                        if self.project.add_wall_aligned_dimension(wall_id, -0.35).is_ok() {
+                        if let Ok(summary) = self.project.generate_opening_dimension_chains(None, 0.45)
+                        {
+                            if summary.dimensions_added > 0 {
+                                self.record_change(prev);
+                                self.message = format!(
+                                    "{} cota(s) de abertura gerada(s) em {} parede(s).",
+                                    summary.dimensions_added, summary.walls_processed
+                                );
+                            } else if summary.walls_processed == 0 {
+                                self.message =
+                                    "Nenhuma parede possui aberturas para cotar.".to_owned();
+                            } else {
+                                self.message =
+                                    "Todas as paredes com aberturas já possuem cadeias de cotas."
+                                        .to_owned();
+                            }
+                        }
+                    }
+                    if secondary_button(ui, "Cotas completas")
+                        .on_hover_text(
+                            "Gera em um clique as cotas internas de todos os cômodos e as cadeias de aberturas.",
+                        )
+                        .clicked()
+                    {
+                        let prev = self.project.clone();
+                        let summary = self.project.generate_site_dimensions(0.45);
+                        if summary.total_added() > 0 {
                             self.record_change(prev);
-                            self.message = "Cota alinhada adicionada à parede.".to_owned();
+                            self.message = format!(
+                                "{} cota(s) gerada(s) ({} interna(s), {} de abertura em {} parede(s)).",
+                                summary.total_added(),
+                                summary.internal_added,
+                                summary.opening_chains.dimensions_added,
+                                summary.opening_chains.walls_processed,
+                            );
+                        } else {
+                            self.message =
+                                "O projeto já possui todas as cotas internas e cadeias de aberturas."
+                                    .to_owned();
+                        }
+                    }
+                    if let Some(Selection::Wall(wall_id)) = self.selection {
+                        if secondary_button(ui, "Cota da parede selecionada").clicked() {
+                            let prev = self.project.clone();
+                            if self
+                                .project
+                                .add_wall_aligned_dimension(wall_id, -0.35)
+                                .is_ok()
+                            {
+                                self.record_change(prev);
+                                self.message = "Cota alinhada adicionada à parede.".to_owned();
+                            }
+                        }
+                        if self.project.openings.iter().any(|o| o.wall_id == wall_id)
+                            && secondary_button(ui, "Cadeia da parede selecionada").clicked()
+                        {
+                            let prev = self.project.clone();
+                            if let Ok(summary) = self
+                                .project
+                                .generate_opening_dimension_chains(Some(wall_id), 0.45)
+                            {
+                                if summary.dimensions_added > 0 {
+                                    self.record_change(prev);
+                                    self.message = format!(
+                                        "{} cota(s) da cadeia adicionada(s) na parede.",
+                                        summary.dimensions_added
+                                    );
+                                } else {
+                                    self.message =
+                                        "Esta parede já possui cadeia de aberturas.".to_owned();
+                                }
+                            }
                         }
                     }
                 });

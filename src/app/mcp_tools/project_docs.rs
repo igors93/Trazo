@@ -605,6 +605,46 @@ impl FloorPlanApp {
                     .data(json!({ "adicionadas": added })))
                 },
             ),
+            "gerar_aberturas" => {
+                let wall_id = optional_count(args, "parede_id")?;
+                let offset = number(args, "deslocamento")?.unwrap_or(0.45);
+                self.apply_change(
+                    Some("As cadeias de cotas de aberturas já existem (ou não há aberturas)."),
+                    |project| {
+                        let summary = project.generate_opening_dimension_chains(wall_id, offset)?;
+                        Ok(Change::new(format!(
+                            "{} cota(s) de abertura gerada(s) em {} parede(s).",
+                            summary.dimensions_added, summary.walls_processed
+                        ))
+                        .data(json!({
+                            "paredes": summary.walls_processed,
+                            "adicionadas": summary.dimensions_added,
+                        })))
+                    },
+                )
+            }
+            "gerar_completas" => {
+                let offset = number(args, "deslocamento")?.unwrap_or(0.45);
+                self.apply_change(
+                    Some("Todas as cotas internas e cadeias de aberturas já existem."),
+                    |project| {
+                        let summary = project.generate_site_dimensions(offset);
+                        Ok(Change::new(format!(
+                            "{} cota(s) gerada(s) ({} interna(s), {} de abertura em {} parede(s)).",
+                            summary.total_added(),
+                            summary.internal_added,
+                            summary.opening_chains.dimensions_added,
+                            summary.opening_chains.walls_processed,
+                        ))
+                        .data(json!({
+                            "internas": summary.internal_added,
+                            "aberturas": summary.opening_chains.dimensions_added,
+                            "paredes": summary.opening_chains.walls_processed,
+                            "adicionadas": summary.total_added(),
+                        })))
+                    },
+                )
+            }
             "adicionar_parede" => {
                 let wall_id = element_id(args, "parede_id")?;
                 let offset = number(args, "deslocamento")?.unwrap_or(0.45);
@@ -661,7 +701,7 @@ impl FloorPlanApp {
                 })
             }
             _ => Err(
-                "Informe 'acao': listar, gerar_internas, adicionar_parede, adicionar_alinhada, editar ou remover."
+                "Informe 'acao': listar, gerar_internas, gerar_aberturas, gerar_completas, adicionar_parede, adicionar_alinhada, editar ou remover."
                     .to_owned(),
             ),
         }
@@ -1474,6 +1514,20 @@ mod tests {
             .structured
             .unwrap();
         assert_eq!(generated["adicionadas"], 2);
+        // Opening dimension chains (#53): add a window on wall_id first.
+        app.project
+            .add_opening(wall_id, crate::domain::model::OpeningKind::Window, 0.5)
+            .unwrap();
+        let chains = ok(
+            &mut app,
+            "cotas",
+            json!({ "acao": "gerar_aberturas", "deslocamento": 0.50 }),
+        )
+        .structured
+        .unwrap();
+        let chain_count = chains["adicionadas"].as_u64().unwrap();
+        assert!(chain_count >= 3, "expected opening chain dimensions");
+        assert!(chains["paredes"].as_u64().unwrap() >= 1);
         let wall_dim = ok(
             &mut app,
             "cotas",
@@ -1491,13 +1545,16 @@ mod tests {
         let dims = ok(&mut app, "cotas", json!({ "acao": "listar" }))
             .structured
             .unwrap();
-        assert_eq!(dims["cotas"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            dims["cotas"].as_array().unwrap().len(),
+            2 + chain_count as usize + 1
+        );
         ok(
             &mut app,
             "cotas",
             json!({ "acao": "remover", "id": wall_dim }),
         );
-        assert_eq!(app.project.dimensions.len(), 2);
+        assert_eq!(app.project.dimensions.len(), 2 + chain_count as usize);
 
         // Circulation.
         let stair = ok(
