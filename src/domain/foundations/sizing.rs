@@ -36,7 +36,19 @@ pub fn size_rectangular_beam(
         let tau = vd / (b * d);
         let xi = ((1.0 - (1.0 - 2.0 * mu.min(MU_LIMIT)).max(0.0).sqrt()) / 0.8).min(0.45);
         let z = d * (1.0 - 0.4 * xi);
-        let steel = (md / (z * fyd) * 10_000.0).max(0.0015 * b * h * 10_000.0);
+        // NBR 6118:2023 Table 17.3 minimum longitudinal steel ratio ρ_min (CA-50).
+        let rho_min = if fck_mpa <= 30.0 {
+            0.00150
+        } else if fck_mpa <= 35.0 {
+            0.00164
+        } else if fck_mpa <= 40.0 {
+            0.00179
+        } else if fck_mpa <= 45.0 {
+            0.00194
+        } else {
+            0.00208
+        };
+        let steel = (md / (z * fyd) * 10_000.0).max(rho_min * b * h * 10_000.0);
         last = (mu / MU_LIMIT, tau / tau_rd2, steel);
         if mu <= MU_LIMIT && tau <= tau_rd2 {
             return (Some(h), last.0, last.1, last.2);
@@ -72,7 +84,14 @@ pub(crate) fn choose_stirrups(b: f64, h: f64, vd: f64, fck_mpa: f64) -> String {
     let vc = 0.60 * fctd_kn_m2 * b * d;
     let min_asw = 0.20 * fctm / 500.0 * b;
     let needed = ((vd.abs() - vc).max(0.0) / (0.9 * d * fyd_kn_m2)).max(min_asw);
-    let s_max = (0.60 * d).min(0.20);
+    let fcd_kn_m2 = fck / 1.4 * 1000.0;
+    let vrd2 = 0.27 * (1.0 - fck / 250.0) * fcd_kn_m2 * b * d;
+    // NBR 6118 §18.3.3.2: tighten max stirrup spacing when V_Sd > 0.67 V_Rd2.
+    let s_max = if vd.abs() > 0.67 * vrd2 {
+        (0.30 * d).min(0.20)
+    } else {
+        (0.60 * d).min(0.20)
+    };
     for dia in [6.3_f64, 8.0, 10.0] {
         let two_legs_m2 = 2.0 * bar_area_cm2(dia) / 10_000.0;
         let s_req = (two_legs_m2 / needed.max(1e-12)).min(s_max);

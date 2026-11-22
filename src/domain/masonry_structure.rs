@@ -249,14 +249,15 @@ impl Project {
             let (compression, capacity, compression_ratio) = if kind == MasonryWallKind::LoadBearing
             {
                 let floors = f64::from(settings.floors.max(1));
-                let wall_kn_m = settings.masonry_kn_m3 * thickness * height;
-                // One metre of tributary slab per side is the declared,
-                // conservative preliminary assumption.
+                // Load-bearing ground-floor walls carry all `floors` storeys of wall dead weight.
+                let wall_kn_m = settings.masonry_kn_m3 * thickness * height * floors;
+                // Conservative 1.0 m tributary slab strip per storey (declared preliminary assumption).
                 let floor_kn_m = (2.5 + settings.finish_kn_m2 + settings.live_kn_m2) * floors;
                 let compression =
                     1.4 * (wall_kn_m + floor_kn_m) / (thickness * 1000.0 * net_fraction);
-                let reduction = (1.0 - (slenderness / 40.0).powi(2)).clamp(0.25, 1.0);
-                let capacity = prism_strength_mpa(masonry) / 2.0 * reduction;
+                // NBR 16868-1:2020 §6.2.2 (fk = 0.70·fpk, γm = 2.0) and §11.2.2 (R = 1 - (λ/40)³).
+                let reduction = (1.0 - (slenderness / 40.0).powi(3)).clamp(0.0, 1.0);
+                let capacity = 0.70 * prism_strength_mpa(masonry) / 2.0 * reduction;
                 (compression, capacity, compression / capacity.max(1e-9))
             } else {
                 (0.0, 0.0, 0.0)
@@ -306,18 +307,32 @@ impl Project {
                 // lintel. Every other opening, including gates, gets one.
                 if clear_above > (masonry.block_height + masonry.joint) * 0.5 {
                     lintel_no += 1;
-                    let depth = next_course((opening.width() / 12.0).max(0.10), masonry);
-                    let wall_load = 0.5
-                        * clear_above.min(opening.width() * 0.5)
-                        * thickness
-                        * settings.masonry_kn_m3;
+                    let l0 = opening.width();
+                    let depth = next_course((l0 / 12.0).max(0.10), masonry);
+                    // NBR 6118 §14.6.2.4 / NBR 16868-1: effective span includes bearing half-widths.
+                    let l_ef = l0
+                        + (bearing_left * 0.5).min(depth * 0.5)
+                        + (bearing_right * 0.5).min(depth * 0.5);
                     let supported_floor = if kind == MasonryWallKind::LoadBearing {
                         2.5 + settings.finish_kn_m2 + settings.live_kn_m2
                     } else {
                         0.0
                     };
-                    let load = wall_load + supported_floor + 25.0 * thickness * depth;
-                    let moment = load * opening.width().powi(2) / 8.0;
+                    let own = 25.0 * thickness * depth;
+                    // NBR 16868-1 §10.4.2: a 45° triangular masonry arch forms only when
+                    // clear_above >= L/2 (triangular moment M = q_avg·Lef²/6); below L/2
+                    // the full rectangular wall strip loads the lintel (M = q·Lef²/8).
+                    let (wall_load, moment) = if clear_above >= l0 * 0.5 {
+                        let q_avg = 0.5 * (l0 * 0.5) * thickness * settings.masonry_kn_m3;
+                        let m_tri = q_avg * l_ef.powi(2) / 6.0;
+                        let m_uni = (supported_floor + own) * l_ef.powi(2) / 8.0;
+                        (q_avg, m_tri + m_uni)
+                    } else {
+                        let q_rect = clear_above * thickness * settings.masonry_kn_m3;
+                        let m_tot = (q_rect + supported_floor + own) * l_ef.powi(2) / 8.0;
+                        (q_rect, m_tot)
+                    };
+                    let load = wall_load + supported_floor + own;
                     let (bars, flexure_ratio) = lintel_bars(moment, depth);
                     let result = MasonryBandResult {
                         opening_id: opening.id,
@@ -372,8 +387,17 @@ impl Project {
                         flexure_ratio: 0.0,
                     };
                     if !result.ok() {
+                        let reason = if opening.width() > MAX_LINTEL_SPAN_M + 1e-9 {
+                            format!(
+                                "vão de {:.2} m excede o limite de {:.1} m do método simplificado",
+                                opening.width(),
+                                MAX_LINTEL_SPAN_M
+                            )
+                        } else {
+                            "não consegue os 20 cm mínimos de apoio".to_owned()
+                        };
                         report.warnings.push(format!(
-                            "{}: contraverga do vão {} não consegue os 20 cm mínimos de apoio.",
+                            "{}: contraverga do vão {} {reason}.",
                             result.label, opening.id
                         ));
                     }

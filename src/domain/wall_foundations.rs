@@ -281,37 +281,62 @@ impl Project {
                     let b = foundation
                         .width_m
                         .unwrap_or_else(|| round_up(wall.thickness().max(0.15), 0.05));
-                    // Own weight with a 40 cm first guess.
-                    let q = wall_q + CONCRETE_KN_M3 * b * 0.40;
-                    let spans: Vec<(f64, f64, f64)> = on
-                        .windows(2)
-                        .map(|p| ((p[1].0 - p[0].0).max(0.1), q, 1.0))
-                        .collect();
-                    let none = vec![Vec::new(); spans.len()];
-                    let ends = continuous_beam_with_point_loads(&spans, &none);
+                    // Iterate self-weight with the sized height h (up to 3 passes) so
+                    // taller ground beams (60–80 cm) carry their true dead load.
+                    let mut h_guess = 0.40_f64;
+                    let mut q = wall_q + CONCRETE_KN_M3 * b * h_guess;
                     let mut reactions = vec![0.0; on.len()];
                     let (mut moment, mut shear) = (0.0_f64, 0.0_f64);
-                    for (i, ((l, w, _), (left, right))) in spans.iter().zip(&ends).enumerate() {
-                        let v_left = w * l / 2.0 + (right - left) / l;
-                        let v_right = v_left - w * l;
-                        reactions[i] += v_left;
-                        reactions[i + 1] -= v_right;
-                        let x = (v_left / w.max(1e-9)).clamp(0.0, *l);
-                        let span = left + v_left * x - w * x * x / 2.0;
-                        moment = moment.max(span.abs()).max(left.abs()).max(right.abs());
-                        shear = shear.max(v_left.abs()).max(v_right.abs());
+                    let (mut h, mut flexure, mut shear_ratio, mut steel) = (None, 0.0, 0.0, 0.0);
+                    for _ in 0..3 {
+                        q = wall_q + CONCRETE_KN_M3 * b * h_guess;
+                        let spans: Vec<(f64, f64, f64)> = on
+                            .windows(2)
+                            .map(|p| ((p[1].0 - p[0].0).max(0.1), q, 1.0))
+                            .collect();
+                        let none = vec![Vec::new(); spans.len()];
+                        let ends = continuous_beam_with_point_loads(&spans, &none);
+                        reactions.fill(0.0);
+                        moment = 0.0;
+                        shear = 0.0;
+                        for (i, ((l, w, _), (left, right))) in spans.iter().zip(&ends).enumerate() {
+                            let v_left = w * l / 2.0 + (right - left) / l;
+                            let v_right = v_left - w * l;
+                            reactions[i] += v_left;
+                            reactions[i + 1] -= v_right;
+                            let x = (v_left / w.max(1e-9)).clamp(0.0, *l);
+                            let span = left + v_left * x - w * x * x / 2.0;
+                            moment = moment.max(span.abs()).max(left.abs()).max(right.abs());
+                            shear = shear.max(v_left.abs()).max(v_right.abs());
+                        }
+                        // Wall beyond the end columns hangs on them as a cantilever.
+                        let before = on[0].0;
+                        let after = (length - on[on.len() - 1].0).max(0.0);
+                        reactions[0] += q * before;
+                        let last = reactions.len() - 1;
+                        reactions[last] += q * after;
+                        moment = moment
+                            .max(q * before * before / 2.0)
+                            .max(q * after * after / 2.0);
+                        shear = shear.max(q * before).max(q * after);
+                        let sized = size_rectangular_beam(
+                            b,
+                            1.4 * moment,
+                            1.4 * shear,
+                            s.fck_mpa,
+                            0.30,
+                            0.80,
+                        );
+                        h = sized.0;
+                        flexure = sized.1;
+                        shear_ratio = sized.2;
+                        steel = sized.3;
+                        let next_h = h.unwrap_or(0.80);
+                        if (next_h - h_guess).abs() < 1e-6 {
+                            break;
+                        }
+                        h_guess = next_h;
                     }
-                    // Wall beyond the end columns hangs on them as a cantilever.
-                    let before = on[0].0;
-                    let after = (length - on[on.len() - 1].0).max(0.0);
-                    reactions[0] += q * before;
-                    let last = reactions.len() - 1;
-                    reactions[last] += q * after;
-                    moment = moment
-                        .max(q * before * before / 2.0)
-                        .max(q * after * after / 2.0);
-                    let (h, flexure, shear_ratio, steel) =
-                        size_rectangular_beam(b, 1.4 * moment, 1.4 * shear, s.fck_mpa, 0.30, 0.80);
                     result.load_kn_m = q;
                     result.moment_knm = moment;
                     result.shear_kn = shear;
@@ -330,18 +355,22 @@ impl Project {
                     strip_no += 1;
                     result.label = format!("SC{strip_no}");
                     result.kind = WallFoundationKind::StripFooting;
-                    // Own weight of a 25 cm-thick strip, then B = 1.05 q / σ.
-                    let mut width = 0.40;
-                    for _ in 0..5 {
-                        let q = wall_q + CONCRETE_KN_M3 * width * 0.25;
-                        width = round_up(1.05 * q / s.soil_kpa.max(10.0), 0.05).max(0.40);
-                    }
+                    // Exact closed-form strip width (25 cm footing thickness):
+                    // σ = (wall_q + 25·B·0.25) / B <= soil_kpa => B >= wall_q / (soil_kpa - 6.25).
+                    let soil = s.soil_kpa.max(10.0);
+                    let strip_self_kpa = CONCRETE_KN_M3 * 0.25;
+                    let width = if soil > strip_self_kpa + 1.0 {
+                        round_up(1.05 * wall_q / (soil - strip_self_kpa), 0.05).max(0.40)
+                    } else {
+                        round_up(1.05 * wall_q / soil, 0.05).max(0.40)
+                    };
                     let used = foundation.width_m.unwrap_or(width);
                     let q = wall_q + CONCRETE_KN_M3 * used * 0.25;
                     result.load_kn_m = q;
                     result.needed_width_m = width;
                     result.width_m = used;
-                    result.pressure_kpa = 1.05 * q / used.max(0.01);
+                    result.pressure_kpa =
+                        (1.05 * wall_q + CONCRETE_KN_M3 * used * 0.25) / used.max(0.01);
                 }
             }
             effects.results.push(result);

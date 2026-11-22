@@ -98,7 +98,16 @@ pub fn structure_violations(project: &Project) -> Vec<Violation> {
         });
     }
     let mut heights: Vec<f64> = vec![project.wall_height];
-    heights.extend(project.floors.levels.iter().map(|l| l.ceiling_height_m));
+    let active_id = project.floors.active_floor_id;
+    for level in &project.floors.levels {
+        if Some(level.id) != active_id {
+            heights.push(level.ceiling_height_m);
+            heights.extend(level.data.walls.iter().map(|w| {
+                let (start, end) = w.heights(level.ceiling_height_m);
+                start.max(end)
+            }));
+        }
+    }
     // Walls with their own, taller top (#145) count too.
     heights.extend(project.walls.iter().map(|w| {
         let (start, end) = w.heights(project.wall_height);
@@ -186,6 +195,22 @@ pub fn element_violations(report: &StructureReport) -> Vec<Violation> {
                 message: format!(
                     "Solo de {:.0} kPa: em solo mole, sapata exige sondagem e estudo geotécnico (fundação profunda, radier). Procure um engenheiro geotécnico.",
                     footing.soil_kpa
+                ),
+            });
+        }
+    }
+    for wf in &report.wall_foundations {
+        if wf.kind == super::wall_foundations::WallFoundationKind::StripFooting
+            && wf.soil_kpa < MIN_SOIL_KPA - 1e-9
+        {
+            out.push(Violation {
+                scope: Scope::Element,
+                element: wf.label.clone(),
+                value: wf.soil_kpa,
+                limit: MIN_SOIL_KPA,
+                message: format!(
+                    "Solo de {:.0} kPa: em solo mole, sapata corrida exige sondagem e estudo geotécnico. Procure um engenheiro geotécnico.",
+                    wf.soil_kpa
                 ),
             });
         }

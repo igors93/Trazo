@@ -254,6 +254,7 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Ve
         let mut top_nodes = Vec::with_capacity(line.supports.len());
         let mut column_meta: Vec<(usize, u64, String, usize, f64, f64, f64)> = Vec::new();
         let braced_sway = !rigid_joints && !fixed_bases;
+        let mut sway_brace_placed = false;
 
         // Create beam-level nodes and columns beneath each column support.
         for (idx, sup) in line.supports.iter().enumerate() {
@@ -264,7 +265,8 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Ve
                         .get(&id)
                         .cloned()
                         .unwrap_or_else(|| format!("P{}", idx + 1));
-                    let top_support = if braced_sway && idx == 0 {
+                    let top_support = if braced_sway && !sway_brace_placed {
+                        sway_brace_placed = true;
                         SupportKind::RollerX
                     } else {
                         SupportKind::Free
@@ -350,13 +352,17 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Ve
             beam_meta.push((member_id, beam_id, span_label, span_lengths[i], load_kn_m));
         }
 
-        // Service horizontal wind force at beam level (NBR 6123: q · (H/2) · b_trib · Ca).
+        // Service horizontal wind force at beam level (NBR 6123 dynamic pressure
+        // with NBR 6118 Table 13.3 frequent combination factor ψ1 = 0.30 for
+        // inter-storey lateral drift H/850).
         let q_wind_kpa = project
             .structure
             .wind
             .pressure_kpa(story_height, cursor.max(story_height));
         let drag_ca = 1.2;
-        let lateral_wind_kn = q_wind_kpa * (story_height * 0.5) * wind_tributary_m * drag_ca;
+        let psi1_wind = 0.30;
+        let lateral_wind_kn =
+            psi1_wind * q_wind_kpa * (story_height * 0.5) * wind_tributary_m * drag_ca;
         if lateral_wind_kn > 1e-6 {
             frame.add_nodal_load(top_nodes[0], lateral_wind_kn, 0.0, 0.0);
         }

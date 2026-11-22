@@ -327,8 +327,11 @@ fn draw_moment_panel(svg: &mut String, frame: &FrameLineResult, x: f64, y: f64, 
         let dx = last.x0 - first.x0;
         let dy = last.y0 - first.y0;
         let len = dx.hypot(dy).max(1e-9);
-        // Outward normal in SVG screen coords (for horizontal beam left->right: downward for positive sagging M!).
-        let nx_svg = -dy / len;
+        // Outward normal in SVG screen coords pointing toward the local -y' tension
+        // fiber (world -y' = (+dy/L, -dx/L) -> SVG (vx, -vy) = (+dy/L, +dx/L)):
+        // horizontal beams plot positive sagging M downward; vertical columns plot
+        // tension-face M on the exact tension side.
+        let nx_svg = dy / len;
         let ny_svg = dx / len;
 
         let mut poly = Vec::with_capacity(m.samples.len() + 2);
