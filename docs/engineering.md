@@ -138,12 +138,13 @@ Validated in CI by `cantilever_column_matches_exact_moment_and_tip_deflection`, 
 
 - width = the raw masonry width;
 - depth = whole masonry courses, rounded up from `max(10 cm, L/12)`;
-- characteristic line load `qk = 0.5·ha·t·γm + qfloor + 25·b·h`, where `ha = min(masonry above the opening, L/2)` represents the triangular masonry arch. `qfloor` is zero for infill and one conservative metre of slab (`2.5 + finish + live load`, kN/m) for load-bearing masonry;
-- `Mk = qk·L²/8`, `Md = 1.4·Mk`, and `As = Md/(0.9·d·fyd)` with CA-50. Two equal bars are selected from 6.3, 8, 10, 12.5 and 16 mm; sills receive the crack-control minimum `2Ø6.3`.
+- effective span `Lef = L0 + min(a1/2, h/2) + min(a2/2, h/2)` (NBR 16868-1);
+- when `masonry above ≥ L0/2`, the triangular masonry arch carries peak load `0.5·L0·t·γm` (`q_avg = 0.25·L0·t·γm`) with triangular bending moment `q_avg·Lef²/6`; when `masonry above < L0/2`, the full rectangular masonry strip `clear_above·t·γm` acts with `/8`. Self-weight `25·b·h` and `qfloor` (`0` for infill, or `2.5 + finish + live` kN/m for load-bearing walls) act uniformly with `Lef²/8`;
+- `Md = 1.4·Mk`, and `As = Md/(0.9·d·fyd)` with CA-50. Two equal bars are selected from 6.3, 8, 10, 12.5 and 16 mm; sills receive the crack-control minimum `2Ø6.3`.
 
 **Wall panels.** A masonry name containing *estrutural* opts that wall into the load-bearing checks; all other names are treated as infill. Height slenderness is `hef/t`, limited here to 24 for unreinforced load-bearing walls and to the conservative interface limit 35 for infill. Returns, crossing walls and concrete columns divide the unbraced length. Infill is limited to 4.5 m; load-bearing masonry uses `min(max(30t, 2.5 m), 4.5 m)`.
 
-For a load-bearing panel, the preliminary design compression is `σd = 1.4·(γm·t·H + (2.5 + finish + live)·floors)/(t·net_fraction)`. Openings reduce `net_fraction`. Until the material catalogue (#135) stores tested prism results, Trazo deliberately assumes `fpk = 3 MPa` for structural ceramic block, 4 MPa for structural concrete block and 2 MPa for another custom structural name. The displayed resistance is `fd,red = (fpk/2)·max(0.25, 1 − (λ/40)²)`.
+For a load-bearing panel, the preliminary design compression is `σd = 1.4·(γm·t·H + (2.5 + finish + live))·floors/(t·net_fraction)`. Openings reduce `net_fraction`. Until the material catalogue (#135) stores tested prism results, Trazo deliberately assumes `fpk = 3 MPa` for structural ceramic block, 4 MPa for structural concrete block and 2 MPa for another custom structural name. Following NBR 16868-1 §6.2.2 and §11.2.2, the design wall resistance applies the 0.70 prism-to-wall factor and cubic slenderness reduction: `fd,red = (0.70·fpk/2.0)·max(0, 1 − (λ/40)³)`.
 
 **Known limits:** spans over 3 m, concentrated loads directly over an opening, reinforced/grouted masonry, out-of-plane wind and global stability require a masonry engineer. Wind on tall walls is checked separately by #147. All assumed prism strengths must be replaced by the specified unit, mortar, grout and prism tests before construction.
 
@@ -155,13 +156,13 @@ Regression checks: `every_built_opening_gets_a_lintel_and_windows_get_a_sill`, `
 
 **Beams.** For the span and support moments, `Md = 1.4·|Mk|`. A singly reinforced rectangular section uses the 0.85 concrete stress block, `fcd = fck/1.4`, `fyd = 500/1.15 MPa`, effective depth `d = h − 4 cm` and lever arm `z = d·(1 − 0.4ξ)`. The required area is `As = Md/(z·fyd)`, never below the minimum ratio already used by the cracked-section calculation. The selector tries 10, 12.5, 16, 20 and 25 mm bars and checks whether one layer fits with cover, stirrup and clear spacing of at least the larger of 20 mm or one diameter.
 
-**Beams (flexure, shear, fit and anchorage).** Longitudinal steel uses `d' = 4 cm` (`d = h − 4 cm`) and single-layer bar fit uses nominal cover `c_nom = 3 cm` (CAA II, NBR 6118:2023 Table 7.2) with minimum clear spacing `max(2 cm, Ø)` (§18.3.2.2). Stirrups compare `Vsd = 1.4·Vk` with `Vc = 0.60·fctd·bw·d`; the remaining shear gives `Asw/s = (Vsd − Vc)/(0.9·d·fyd)`, never below the minimum transverse ratio. Spacing is also capped as a function of effective depth and shear level. If diagonal compression (`VRd2`) is exceeded, the result warns (and turns the traffic light red) that adding stirrups is not a valid fix and asks for a larger section. Hooked anchorage lengths follow NBR 6118:2023 §9.3–9.4: `fbd = η1·η2·fctd` (`η1 = 2.25` for ribbed CA-50, `η2 = 1.0` good bond for bottom bars and shallow beams, `η2 = 0.7` poor bond for top bars when `h ≥ 30 cm`), `lb = (Ø/4)·(fyd/fbd) ≥ 25·Ø`, and `lb,nec = α1·lb·(As,calc/As,ef) ≥ lb,min` with `α1 = 0.7` for 90° hooks.
+**Beams (flexure, shear, fit and anchorage).** Longitudinal steel uses `d' = 4 cm` (`d = h − 4 cm`), NBR 6118:2023 Table 17.3 minimum ratios (`ρmin` from 0.15% at C20 up to 0.208% at C50), and warns if total longitudinal steel exceeds `4%·Ac` (§17.3.5.2.4). Single-layer bar fit uses nominal cover `c_nom = 3 cm` (CAA II, Table 7.2), actual selected stirrup diameter, and minimum clear spacing `max(20 mm, Ø, 1.2·19 mm)` (§18.3.2.2). Stirrups compare `Vsd = 1.4·Vk` with `Vc = 0.60·fctd·bw·d`; the remaining shear gives `Asw/s = (Vsd − Vc)/(0.9·d·fyd)`, never below the minimum transverse ratio. Spacing is capped by `d` and shear level (`0.30·d ≤ 20 cm` when `Vsd > 0.67·VRd2`). If diagonal compression (`VRd2`) is exceeded or no stirrup table entry satisfies `Asw/s`, the check turns red and asks for a larger section. Hooked anchorage lengths follow NBR 6118:2023 §9.3–9.4: `fbd = η1·η2·fctd` (`η1 = 2.25` for ribbed CA-50, `η2 = 1.0` good bond for bottom bars and shallow beams, `η2 = 0.7` poor bond for top bars when `h ≥ 30 cm`), `lb = (Ø/4)·(fyd/fbd) ≥ 25·Ø`, and `lb,nec = α1·lb·(As,calc/As,ef) ≥ lb,min` with `α1 = 0.7` for 90° hooks only when perpendicular cover is at least `3·Ø` (§9.4.2.5), otherwise `α1 = 1.0`.
 
-**Columns.** Longitudinal steel is the larger of 0.4% of the concrete area and the remainder needed after the concrete compression contribution in the existing axial pre-sizing equation. The selector uses an even number of bars, at least four. Starter lap splices follow NBR 6118:2023 §9.5 (`l0 = α0t·lb,nec ≥ max(l0,min, 40 cm)` with `α0t = 1.4` in good bond). Tie spacing is capped by 20 cm, 12 longitudinal diameters and the smaller section dimension. The traffic light checks the steel ratio against the 4.0% pre-detailing limit. This is still an axial estimate: second-order moments and biaxial bending remain for #94.
+**Columns.** Longitudinal steel satisfies NBR 6118:2023 §17.3.5.3.1 `As,min = max(0.15·Nd/fyd, 0.004·Ac)` and the axial compression demand using Domain-5 steel stress `420 MPa` net of displaced concrete (`420 − 0.85·fcd`). The selector uses an even number of bars, at least four. Floor-level starter lap splices assume 100% of bars spliced in the same section (`α0t = 2.0`, Table 9.3, `l0 = α0t·lb,nec ≥ max(l0,min, 40 cm)`). Tie diameter is chosen dynamically `Øt ≥ max(5 mm, Øl/4)` (§18.4.3) and tie spacing is capped by 20 cm, `12·Øl` and the smaller section dimension. The traffic light checks the steel ratio against the 4.0% pre-detailing limit.
 
-**Slabs.** Solid slabs use the governing Czerny/Marcus moments in X and Y; ribbed slabs treat a one-metre strip as simply supported in the smaller direction with `Mk = q·lx²/8`. Principal reinforcement follows the same rectangular flexural calculation; distribution steel is at least 20% of the main requirement and 0.90 cm²/m. For lattice slabs, this is only an equivalent steel estimate and the selected joist/trellis must be confirmed with its manufacturer.
+**Slabs.** Solid slabs use the governing Czerny/Marcus moments in X and Y, deducting the lower-layer diameter `Øx` from the upper Y-layer effective depth (`d'_y = 2.5 cm + Øx`); ribbed slabs treat a one-metre strip as simply supported in the smaller direction with `Mk = q·lx²/8`. Mesh spacing is capped by NBR 6118:2023 §20.1 `s_max = min(2h, 20 cm)`; distribution steel is at least 20% of the main requirement and 0.90 cm²/m. For lattice slabs, this is only an equivalent steel estimate and the selected joist/trellis must be confirmed with its manufacturer.
 
-**Footings.** Each direction is treated as a cantilever from the column face, with `Mk = σmax·a²/2` per metre and 7 cm nominal cover, with 90° upturned bar hooks inside the footing height. It produces the bottom X/Y meshes only after the soil-pressure, overturning and punching checks have been run.
+**Footings.** Each direction envelopes cantilever flexure from the column face (incorporating any boundary-footing eccentricity `ex, ey`) with the NBR 6118:2023 §22.5.3 rigid-footing strut-and-tie tension `Td = 1.1·Nd·(B − b)/(8·d)` at 7 cm nominal cover, warning if the compression zone exceeds the ductile limit (`x/d > 0.45`), with 90° upturned bar hooks inside the footing height. It produces the bottom X/Y meshes only after the soil-pressure, overturning and punching checks have been run.
 
 **Schedule, diameter summary and detailing sheet.** The schedule lists mark, element, position, bar shape, diameter, quantity, unit length, total length and theoretical mass, followed by a CA-50 summary by diameter (`Resumo por bitola`) giving total metres, commercial 12 m bar counts and `+10%` cutting/bending waste mass. An A3 schematic detailing sheet (`reinforcement_detail_svg`, exported to SVG/PDF in UI and MCP) illustrates the governing beam cross-section/elevation (with Branson B12 `Mr`, Stage I/II and `I_eq/Ic`), column section/lap, footing plan/section, slab list and CA-50 summary. Openings, construction joints, bend deductions, detailing congestion and any NBR 6118:2026 audit remain the licensed engineer's responsibility (ART/RRT).
 
@@ -214,11 +215,11 @@ When real upper floors exist, the *floors* multiplier is not used.
 | Plan area | A = 1.05 · N / σadm (5 % for the footing's own weight), the same overhang on every side of the column, at least 60 cm | Usual pre-sizing |
 | Boundary walls | A column or footing on a wall along the lot line is moved flush inside the lot; the footing is then off-centre from its column and checked for eccentric pressure and overturning (a balance beam, #144, relieves it) | Lot line (Código Civil art. 1.299–1.301) |
 | Height | h = 2/3 of the largest overhang, at least 25 cm (rigid footing) | NBR 6118:2023, 22.6.1 (rigidity) |
-| Eccentric pressure | while e ≤ B/6: σmax = N/A · (1 + 6ex/Bx + 6ey/By); beyond, an effective area (Bx − 2ex)(By − 2ey) | Classic soil mechanics (middle-third rule), NBR 6122:2019 |
+| Eccentric pressure | while `ex/Bx + ey/By ≤ 1/6`: `σmax = N/A · (1 + 6ex/Bx + 6ey/By)`; beyond the middle third: monotonic triangular peak `max((4/3)·N / ((Bx − 2ex)(By − 2ey)), 2·N / (Bx·By))` | Classic soil mechanics (middle-third rule), NBR 6122:2019 |
 | Overturning | FS = 1 / (2·(ex/Bx + ey/By)) ≥ 1.5 | NBR 6122:2019 |
-| Punching at the column face | τSd = 1.4·N / (u0·d) ≤ τRd2 = 0.27·αv2·fcd, αv2 = 1 − fck/250 | NBR 6118:2023, 19.5.3.1 |
-| Punching at d/2 | τSd ≤ τRd1 = 0.13·(1 + √(20/d))·(100·ρ·fck)^(1/3), with ρ = 0.2 % | NBR 6118:2023, 19.5.3.2 (simplified) |
-| Elastic settlement | s = q · B · (1 − ν²) · Is / Es ≤ 25 mm (footings, differential δ = 0.75·(smax − smin) ≤ 15 mm); ≤ 40 mm (raft); ≤ 15 mm (piles), with Es correlated to SPT N̄ (Teixeira & Godoy) | NBR 6122:2019 (B11) |
+| Punching at the column face | τSd0 = 1.4·N / (u0·d) ≤ τRd2 = 0.27·αv2·fcd, αv2 = 1 − fck/250 | NBR 6118:2023, 19.5.3.1 & 22.6.2 |
+| Punching at 2d (flexible footings) | for overhangs > 2d: rounded perimeter `u1 = 2(cw + cd) + π(rx + ry)` checked against `τRd1 = 0.13·(1 + √(20/d))·(100·ρ·fck)^(1/3)` (ρ = 0.2%); rigid footings (overhang ≤ 2d) are governed by `τRd2` per §22.6.2 | NBR 6118:2023, 19.5.2.1 & 22.6.2 |
+| Elastic settlement | s = q · B · (1 − ν²) · Is / Es ≤ 25 mm (footings, Skempton–MacDonald differential `δ = max(smax − smin, 0.50·smax)` ≤ 15 mm); ≤ 40 mm (raft); ≤ 15 mm (piles), with Es correlated to SPT N̄ (Teixeira & Godoy) | NBR 6122:2019 (B11) |
 
 Allowable soil pressures by class (`SoilClass`): soft clay 80 kPa, medium clay 150 kPa, medium sand 200 kPa, dense sand 300 kPa, weathered rock 500 kPa. When one or more SPT boreholes (`SP-01`, `SP-02`, …, NBR 6484) are entered in `src/domain/soil/`, Trazo builds the **conservative governing envelope** across boreholes (weakest mean `N̄` in the pressure bulb, shallowest water table, common explored depth), computes `σadm = 20·N̄ ≤ 400 kPa` for spread footings, sizes both **hand-dug bored piles** (*brocas*, Ø 20–30 cm, 3–6 m, dry soil only) and **deep mechanized piles** (*hélice contínua* / CFA, Ø 30–50 cm, 6–20 m, allowed below the water table) via Décourt-Quaresma (1978/1996), estimates elastic/differential settlements, and compares **footings, raft (*radier*), brocas and deep CFA piles** for the structure's real loads. These are preliminary review studies; the final foundation design belongs to a geotechnical/structural engineer.
 
@@ -229,10 +230,10 @@ Every ground-floor wall reaches the soil through a ground beam or a strip footin
 
 | Quantity | Rule |
 | --- | --- |
-| Wall load | q = γ · t · (net wall area) / L, kN/m, with each wall's own (mean) height and the openings discounted, plus the foundation's own weight (ground beam with a 40 cm first guess, strip 25 cm thick) |
+| Wall load | q = γ · t · (net wall area) / L, kN/m, with each wall's own (mean) height and the openings discounted; ground beams iterate self-weight against their actual sized height `h`, and strip footings solve closed-form width for `25 cm` thickness without double-counting the 5% factor |
 | Choice | a ground beam (*viga baldrame*) when a column stands within 30 cm of each end of the wall; a strip footing (*sapata corrida*) otherwise; walls whose openings take 90 % or more of their length are left out |
-| Ground beam | a continuous beam over the columns on the wall's line, the wall beyond the end columns hanging on them; sized from 30 to 80 cm for Md = 1.4 M and Vd = 1.4 V, with its steel; its reactions are added to the footings under those columns (and to P₁ of a balance beam) |
-| Strip footing | B = 1.05 · q / σadm, at least 40 cm, in 5 cm steps; pressure 1.05 · q / B checked against σadm |
+| Ground beam | a continuous beam over the columns on the wall's line, including cantilever moments and shears beyond end columns; sized from 30 to 80 cm for Md = 1.4 M and Vd = 1.4 V, with its steel; its reactions are added to the footings under those columns (and to P₁ of a balance beam) |
+| Strip footing | closed-form `B = q_wall / (σadm/1.05 − 25·0.25)` (at least 40 cm, in 5 cm steps); pressure `(1.05·q_wall + 25·0.25·B) / B` checked against σadm |
 
 Checked by `walls_between_columns_get_ground_beams_and_the_others_strip_footings`, `ground_beam_reactions_reach_the_footings` and `a_taller_wall_weighs_more_on_its_foundation`.
 
@@ -243,49 +244,49 @@ A boundary footing stands off its column by `e`. A balance beam to an interior c
 | Quantity | Formula |
 | --- | --- |
 | Reaction on the boundary footing, centred | `R₁ = P₁ · l / (l − e)` |
-| Relief on the interior column | `ΔP = R₁ − P₁ = P₁ · e / (l − e)`; half of it is taken off the interior footing (usual NBR 6122 recommendation) |
-| Pair overturning safety factor | `FS = N₂ · (l − e) / (P₁ · e) = N₂ / ΔP ≥ 1.5` (NBR 6122:2019); below `1.0` the interior column lifts |
-| Pair soil pressures | `σ₁ = 1.05 · R₁ / A₁ ≤ σadm` on the boundary footing and `σ₂ = 1.05 · (N₂ − ΔP/2) / A₂ ≤ σadm` on the anchor footing |
-| Beam moment, shear & steel | `M = P₁ · e` (hogging, top steel), `V = max(ΔP, P₁)` sized for `Md = 1.4 M` and `Vd = 1.4 V` with top bars and closed stirrups |
+| Relief on the interior column | `ΔP = R₁ − P₁ = P₁ · e / (l − e)`; when multiple balance beams share the same interior anchor column, Trazo accumulates `ΣΔP` before checking anchor uplift (`N₂ − ΣΔP`), overturning (`FS = N₂ / ΣΔP ≥ 1.5`), and anchor footing pressure (`N₂ − ΣΔP/2`, usual NBR 6122 recommendation) |
+| Pair overturning safety factor | `FS = N₂ / ΣΔP ≥ 1.5` (NBR 6122:2019); below `1.0` the interior column lifts |
+| Pair soil pressures | `σ₁ = 1.05 · R₁ / A₁ ≤ σadm` on the boundary footing and `σ₂ = 1.05 · (N₂ − ΣΔP/2) / A₂ ≤ σadm` on the anchor footing |
+| Beam moment, shear & steel | `M = P₁ · e` (hogging, top steel), `V = max(ΔP, P₁)` sized for `Md = 1.4 M` and `Vd = 1.4 V` with top bars and closed stirrups (including §18.3.3.2 `s_max = min(0.30d, 20 cm)` when `Vsd > 0.67·VRd2`) |
 | Strip-footing alternative | When `FS < 1.5` or pair soil pressure exceeds `σadm`, Trazo sizes the equivalent continuous boundary strip footing (`B = 1.05 · q / σadm ≥ 40 cm`) |
-| Section | the lowest height from 40 to 120 cm with μ = Md / (0.85 fcd b d²) ≤ 0.295 (x/d ≤ 0.45) and τwd ≤ τRd2, Md = 1.4 M, Vd = 1.4 V; As = Md / (z fyd), at least 0.15 % b h |
+| Section | the lowest height from 40 to 120 cm with μ = Md / (0.85 fcd b d²) ≤ 0.295 (x/d ≤ 0.45) and τwd ≤ τRd2, Md = 1.4 M, Vd = 1.4 V; As = Md / (z fyd), at least ρmin·b·h (NBR 6118:2023 Table 17.3) |
 
-*Vigas alavanca* lays one from every boundary footing more than 5 cm off its column to the nearest column inward (within 30° of the offset, 1.5 to 10 m away). Checked by `the_lever_follows_the_textbook_statics` (P₁ = 100 kN, l = 4 m, e = 0.30 m: R₁ = 108.1 kN, ΔP = 8.1 kN, M = 30 kN·m) and `boundary_footings_are_centred_by_balance_beams_to_interior_columns`. Stirrups and the beam's own weight are not included yet.
+*Vigas alavanca* lays one from every boundary footing more than 5 cm off its column to the nearest column inward (within 30° of the offset, 1.5 to 10 m away). Checked by `the_lever_follows_the_textbook_statics` (P₁ = 100 kN, l = 4 m, e = 0.30 m: R₁ = 108.1 kN, ΔP = 8.1 kN, M = 30 kN·m), `boundary_footings_are_centred_by_balance_beams_to_interior_columns` and `shared_anchor_column_checks_cumulative_uplift_across_multiple_balance_beams`. The beam's own weight is not yet included in `M` and `V`.
 
 ### Soil from a survey and the foundation study
 
-A standard penetration test (SPT, NBR 6484) gives the blow count N every metre and the soil there. `src/domain/soil.rs` reads it:
+A standard penetration test (SPT, NBR 6484) gives the blow count N every metre and the soil there. `src/domain/soil/` reads one or more boreholes and builds the conservative governing envelope:
 
 | Quantity | Rule | Source |
 | --- | --- | --- |
 | Allowable pressure for footings | σadm = 20 · N̄ kPa (N̄ / 50 MPa), with N̄ the mean blow count from the footing base D to D + 2B (B at least 0.60 m); at most 400 kPa; footings not advised below N̄ = 5 | Usual Brazilian rule (Teixeira and Godoy), valid for 5 ≤ N̄ ≤ 20 |
-| Soil pressure of the structure | *Usar na tensão do solo* (or `definir_sondagem`) takes σadm for 1 m footings, rounded down to 10 kPa; a warning shows when the survey allows less than the pressure adopted | — |
-| Bored pile, tip | Rp = α · C · Np · Ap, Np the mean N from L − 1 to L + 1; C = 120 (clay), 200 (clayey silt), 250 (sandy silt), 400 kPa (sand) | Décourt-Quaresma (1978) |
-| Bored pile, shaft | Rl = β · 10 · (Nl / 3 + 1) · U · L kPa, Nl the mean N along the shaft (3 ≤ N ≤ 50), the tip readings left out | Décourt-Quaresma |
-| Bored-pile factors | α = 0.85 / 0.60 / 0.50 and β = 0.80 / 0.65 / 0.50 for clay / silts / sand | Décourt (1996), bored piles |
+| Soil pressure of the structure | *Usar na tensão do solo* (or `definir_sondagem`) takes σadm for 1 m footings, rounded down to 10 kPa (down to 10 kPa minimum so weak soils are never artificially lifted); a warning shows when the survey allows less than the pressure adopted | — |
+| Pile, tip | Rp = α · C · Np · Ap, Np the mean N from L − 1 to L + 1; C = 120 (clay), 200 (clayey silt), 250 (sandy silt), 400 kPa (sand) | Décourt-Quaresma (1978) |
+| Pile, shaft | Layer-by-layer integration `Rl = Σ β_i · 10 · (N_i / 3 + 1) · U · ΔL_i` (3 ≤ N_i ≤ 50), tip readings left out | Décourt-Quaresma (1978/1996) |
+| Pile factors | α = 0.85 / 0.60 / 0.50 and β = 0.80 / 0.65 / 0.50 (bored) or α = 0.30 / 0.30 / 0.30 and β = 1.00 (CFA) for clay / silts / sand | Décourt (1996) |
 | Allowable load | min((Rp + Rl) / 2, Rp / 4 + Rl / 1.3), the tip taking at most 20 % (≤ 1.25 · Rl / 2), and at most 5 MPa on the concrete | NBR 6122 (bored piles), Décourt-Quaresma |
-| Hand-dug piles (*brocas*) | 20, 25 or 30 cm, 3 to 6 m long, above the water table and within the survey | Usual practice |
+| Piles sized | Hand-dug *brocas* (20, 25 or 30 cm, 3 to 6 m, dry soil only) and deep CFA (*hélice contínua*, 30 to 50 cm, 6 to 20 m, allowed below water table); selector prefers options meeting `s ≤ 15 mm` | Usual practice & NBR 6122 |
 
 The foundation study (`foundation_study`) takes the column loads with the ground beams, and the walls on strip footings, and compares:
 
 - **footings**: isolated footings (A = 1.05 · N / σadm, at least 60 cm, height max(25 cm, (B − 20 cm) / 3)) and strip footings, not advised on soft soil (N̄ < 5) or when they would cover more than half the footprint (the bounding rectangle of walls and columns); a water table above the base + 30 cm is flagged;
-- **raft** (*radier*): a 15 cm slab with edge beams; mean pressure 1.05 · ΣN / A + 3.75 kPa against 20 · N̄ (N̄ from 0.5 to 3 m), not advised below N̄ = 3;
-- **bored piles with ground beams**: the pile that takes the least concrete with at most three per column (with its cap), and piles at most 2.5 m apart under the strip walls.
+- **raft** (*radier*): a 15 cm slab with edge beams; mean pressure 1.05 · ΣN / A + 3.75 kPa against `20 · min(N̄[0.5, 3 m], N̄[0.5, 1.5·Beq])`, catching both shallow and deep soft strata, not advised below N̄ = 3;
+- **bored piles & CFA piles with ground beams**: the pile that takes the least concrete while meeting the 15 mm settlement limit, with at most three per column (cap length `3d + side` for two piles), and piles at most 2.5 m apart under the strip walls.
 
-It recommends the viable option that takes the least concrete. Checked by `the_footing_pressure_follows_the_mean_blow_count_in_the_bulb`, `decourt_quaresma_matches_a_hand_calculation`, `brocas_stay_above_the_water_table_and_within_six_metres`, `good_soil_recommends_footings_and_soft_soil_rules_them_out` and `the_survey_sets_the_soil_pressure_of_the_structure`. One borehole stands for the whole site; settlement is not computed, and deep piles (continuous flight auger, precast) are only named, not sized.
+It recommends the viable option that takes the least concrete. Checked by `the_footing_pressure_follows_the_mean_blow_count_in_the_bulb`, `decourt_quaresma_matches_a_hand_calculation`, `brocas_stay_above_the_water_table_and_within_six_metres`, `good_soil_recommends_footings_and_soft_soil_rules_them_out`, `the_study_picks_footings_on_firm_soil_brocas_on_soft_top_and_deep_piles_under_water`, `elastic_settlement_matches_hand_calculation` and `the_survey_sets_the_soil_pressure_of_the_structure`.
 
 ## Timber roofs
 
-A mono-pitch roof (*meia-água*) over a plan rectangle (`src/domain/roof.rs`): tiles on battens (*ripas*), on rafters (*caibros*), on purlins (*terças*) along the eaves, on main beams (*vigas*) from the high edge to the low edge. Fibre-cement and metal sheets rest on the purlins directly.
+A mono-pitch roof (*meia-água*) over a plan rectangle (`src/domain/roof/`): tiles on battens (*ripas*), on rafters (*caibros*), on purlins (*terças*) along the eaves, on main beams (*vigas*) from the high edge to the low edge. Fibre-cement and metal sheets rest on the purlins directly.
 
 | Quantity | Rule | Source |
 | --- | --- | --- |
 | Tiles | saturated weight 0.50 kN/m² (ceramic, concrete), 0.18 (fibre-cement 6 mm), 0.10 (metal); usual minimum slope 30 / 30 / 15 / 10 %; gauge 35 / 32 cm; sheets span at most 1.69 m (fibre-cement) and 2.0 m (metal) between purlins | Manufacturers' usual values |
-| Dead load | tiles + 0.10 kN/m² (battens and rafters) on the surface, divided by cos θ for the projection; + 0.15 kN/m² of ceiling unless the roof is exposed; + each piece's own weight (apparent density) | NBR 6120 |
+| Dead load | tiles (+ 0.10 kN/m² of battens and rafters only for tile roofs, zero for sheet roofs) on the surface, divided by cos θ for the projection; + 0.15 kN/m² of ceiling unless the roof is exposed; + each piece's own weight (apparent density) | NBR 6120 |
 | Live load | 0.25 kN/m² on the horizontal projection | NBR 6120 (roofs without access) |
-| Timber | hardwood classes C20, C30, C40, C60: fc0,k 20–60 MPa, fv0,k 4–8 MPa, Ec0,m 9,500–24,500 MPa | NBR 7190:1997, table 9 |
-| Design strength | fd = kmod · fk / γw, kmod = 0.70 · 1.0 · 0.80 = 0.56 (long-term, service class 1–2, second grade), γw = 1.4 (bending, compression) and 1.8 (shear) | NBR 7190 |
-| Bending and shear | simply supported under 1.4 (g + q): σ = M / W ≤ fc0,d, τ = 1.5 V / (b h) ≤ fv0,d; battens take the load component normal to the roof | NBR 7190 |
+| Timber | hardwood classes C20–C60 (Table 9: fc0,k 20–60 MPa, fv0,k 4–8 MPa, Ec0,m 9,500–24,500 MPa) and Conifer C20 for *Pinus elliottii* (Table 8: fc0,k 20 MPa, fv0,k 4 MPa, Ec0,m 3,500 MPa, ρ = 500 kg/m³) | NBR 7190:1997, tables 8 & 9 |
+| Design strength | fd = kmod · fk / γw, kmod = 0.70 · 1.0 · 0.80 = 0.56 (long-term, roof service class 1–2, second grade; 0.448 for exterior posts in class 3–4 with kmod2 = 0.80), γw = 1.4 (bending, compression) and 1.8 (shear) | NBR 7190 |
+| Bending and shear | simply supported under 1.4 (g + q): σ = M / W ≤ fc0,d, τ = 1.5 V / (b h) ≤ fv0,d; battens take the normal load component; purlins (*terças*) are checked in **biaxial bending** (`σx/fc0,d + kM·σy/fc0,d ≤ 1` and `kM·σx/fc0,d + σy/fc0,d ≤ 1`, `kM = 0.5`, NBR 7190 §7.3.4) with resultant deflection `√(δx² + δy²)` | NBR 7190 |
 | Deflection | 5 (g + 0.2 q) L⁴ / (384 Ec0,ef I), Ec0,ef = kmod · Ec0,m, within L / 200 (L along the slope for rafters and beams) | NBR 7190 |
 | Sections | the lightest that passes: battens 5 × 1.5 or 5 × 2.5; rafters 5 × 6 to 6 × 12; purlins 6 × 12 to 10 × 25; beams 6 × 16 to 15 × 30 cm | Commercial sizes |
 | Main beams | at the columns found on the high and low edges (within 35 cm), more added so none is farther apart than the spacing set (3 m by default); each carries its tributary width | — |
@@ -303,9 +304,9 @@ A roof beam end with no concrete column or beam under it bears on a timber post 
 | Short post (λ ≤ 40) | σNd = 1.4 (Ngk + Nqk) / A ≤ fc0,d | NBR 7190 |
 | Medium and slender posts | σNd / fc0,d + σMd / fc0,d ≤ 1, Md = Nd · ed, ed = (h/30 + L0/300 + ec) · FE / (FE − Nd), FE = π² Ec0,ef I / L0² | NBR 7190 |
 | Creep (λ > 80) | ec = (h/30 + L0/300) · (exp(φ Ngq / (FE − Ngq)) − 1), φ = 0.8, Ngq = Ngk + 0.2 Nqk | NBR 7190 |
-| Lateral wind | p = 1.3q from the project wind settings acts over the exposed width: Fw = p·b·L0 and Mw,k = p·b·L0²/2; the design bending use 1.4·Mw,k/(W·fc0,d) is added to the axial/buckling use | NBR 6123 + NBR 7190 interaction |
+| Lateral wind | p = 1.3q from the project wind settings acts over the exposed width of the top-braced post: Fw = p·b·L0 and propped moment Mw,k = p·b·L0²/8, amplified by the second-order P–Δ factor `FE/(FE − Nd)` (NBR 7190 §7.5.4/7.5.5) and added to the axial/buckling use; exterior posts use `kmod2 = 0.80` (moisture class 3–4) | NBR 6123 + NBR 7190 interaction |
 | Timber beam | 6 × 12 to 12 × 30 cm: σ = 1.4 M / W ≤ fc0,d, τ = 1.5 · 1.4 V / (b h) ≤ fv0,d, the deflections of each load (P b (L² − b²)^1.5 / (9√3 L E I)) and of the own weight added, within L / 200 | NBR 7190 |
-| Base | square concrete block, B ≥ 40 cm and D ≥ 60 cm in 5 cm steps; its 24 kN/m³ weight enters σmax = Ntotal/B²·(1 + 6Mw/(Ntotal·B)) ≤ σadm and 6Mw/(Ntotal·B) ≤ 1 (no soil tension); design anchor tension = 1.4Mw/(0.8d), while the steel connector keeps the timber off the ground | Preliminary stability + NBR 7190 durability |
+| Base | square concrete block, B ≥ 40 cm and D ≥ 60 cm in 5 cm steps; stabilizing gravity uses `0.9·dead_kn + block_weight` (excluding live load) and overturning includes base shear lever arm `Mbase = Mw + Fw·D`, checking `σmax ≤ σadm` and no soil tension (`6·Mbase/(Nstab·B) ≤ 1`); design anchor tension = `1.4·Mw/(0.8·d)` | Preliminary stability + NBR 7190 durability |
 
 The post/eave-beam catalogue accepts a certified C20/C30/C40/C60 lot or *Pinus elliottii*, eucalipto-citriodora (*Corymbia citriodora*), itaúba (*Mezilaurus itauba*), cumaru (*Dipteryx odorata*) and jatobá (*Hymenaea* spp.). Named species use a deliberately conservative preliminary floor—C20 for pine and C30 for the listed hardwoods—but do not certify the delivered lot: its grading and mechanical class still have to be specified and verified. Brazilian species names/properties are cross-checked against the [Brazilian Forest Service/LPF database](https://lpf.florestal.gov.br/pt-br/bd-madeiras-brasileiras) and the official [LPF timber housing reference](https://www.gov.br/florestal/pt-br/assuntos/laboratorio-de-produtos-florestais/publicacoes/livros/livros-editados-pelo-lpf/habitacao-popular-em-madeira.pdf/@@download/file).
 
@@ -318,11 +319,11 @@ All exterior posts and eave beams must be marked as preservative-treated for the
 | Quantity | Rule | Source |
 | --- | --- | --- |
 | Dynamic pressure | q = 0.613 · Vk² N/m², Vk = V0 · S1 · S2 · S3; V0 from the isopleth map (35 m/s by default), S1 = S3 = 1 by default | NBR 6123, 4.2 and 5 |
-| S2 | b · Fr · (z / 10)^p with b, Fr and p of the terrain category (I to V, III by default) and the building class (A below 20 m, B from 20 to 50 m), z the top of the wall or roof | NBR 6123, table 1 |
+| S2 | b · Fr · (max(z, 5 m) / 10)^p with b, Fr and p of the terrain category (I to V, III by default) and the building class (A ≤ 20 m, B 20–50 m, C > 50 m), z the top of the wall or roof | NBR 6123, tables 1 & 2 |
 | Tall-wall columns | a column standing in a wall taller than the storey (+ 20 cm) takes w = 1.3 · q · (its share of the wall); 1.3 is the net coefficient of a wall of an open-sided building | NBR 6123 (walls, dominant openings) |
 | Top condition | propped by the roof when a roof beam bears on the column (M = w H² / 8, which needs the roof braced down to the gable walls), else a cantilever from its footing (M = w H² / 2) | — |
-| Column check | bending across the wall, Md = 1.4 M, μ = Md / (0.85 fcd b d²) ≤ 0.295 (x/d ≤ 0.45), steel per face Md / (z fyd); the smallest depth across the wall that passes is suggested | NBR 6118 |
-| Roof uplift | (−Cpe + Cpi) · q with Cpe = −1.0 (conservative for one slope) and Cpi = +0.8 when a side is open (a beam end on a post or on nothing), else 0 | NBR 6123, 6.2.5 |
+| Column check | bending across the wall, Md = 1.4 M, `d = h − 5 cm`, μ = Md / (0.85 fcd b d²) ≤ 0.295 (x/d ≤ 0.45), steel per face Md / (z fyd); the smallest depth across the wall that passes is suggested | NBR 6118 |
+| Roof uplift | (−Cpe + Cpi) · q with Cpe = −1.0 (conservative for one slope) and Cpi = +0.8 when a side is open (a beam end on a post or on nothing), else +0.2 for closed buildings | NBR 6123, 6.2.5 |
 | Anchorage | net 1.4 · uplift − 0.9 · g; when positive, each beam end is anchored for it over its share of the roof, and the tiles are tied | NBR 8681 combinations |
 
 Checked by `the_pressure_follows_nbr_6123`, `a_tall_wall_column_is_propped_by_the_roof_or_stands_as_a_cantilever` and `the_wind_checks_the_tall_wall_and_lifts_an_open_roof`. For the gourmet area (4.30 m wall, V0 = 35 m/s, category III) a 14 cm column across the wall does not hold the wall as a cantilever; propped by a braced roof it does. Not covered: the masonry panel between columns (NBR 16868), the global stability of the building, and the bracing of the roof and of the posts themselves.
@@ -335,12 +336,12 @@ Checked by `the_pressure_follows_nbr_6123`, `a_tall_wall_column_is_propped_by_th
 | Outlets per room | 1 per 3.5 m of perimeter in kitchens and service areas, 1 per 5 m elsewhere, at least 1 in bathrooms and balconies | NBR 5410:2004, 9.5.2.2.1 |
 | Outlet power | 600 VA for the first three in wet rooms, 100 VA otherwise | NBR 5410:2004, 9.5.2.2.2 |
 | Breaker | smallest standard rating ≥ circuit current | — |
-| Wire | smallest section whose capacity (copper, PVC 70 °C, method B1, two loaded conductors, 30 °C) ≥ breaker; at least 1.5 mm² for lighting and 2.5 mm² for outlets | NBR 5410:2004, table 36 and 6.2.6.1.1 |
-| Voltage drop | ΔV% = 2 · ρ · Σ(L·I) / (S · V) · 100, ρ = 1/56 Ω·mm²/m; wire raised until ≤ 4 % | NBR 5410:2004, 6.2.7.1 |
-| RCD | 30 mA on circuits of wet and outdoor areas | NBR 5410:2004, 5.1.3.2.2 |
-| Conduit fill | ≤ 53 % for one conductor, 31 % for two, 40 % for three or more | NBR 5410:2004, 6.2.11.1.6 |
-| Demand | lighting and general outlets by the table of their installed kVA (0.86 up to 1 kVA … 0.24 above 10 kVA); specific-use circuits by their count (1.00 for one or two … 0.38 from 24) | Usual utility tables for dwellings |
-| Supply and entrance | single/two/three-phase from the demand; main breaker from the demand current on the most loaded phase; feeder from the wire table; earth from NBR 5410 table 58 | Utility standard (see below) |
+| Wire | smallest section whose capacity (copper, PVC 70 °C, method B1, 30 °C) ≥ breaker — 2 loaded conductors for single-phase branch circuits, 3 loaded conductors for 2F+N / 3F+N service entrances and QDC feeders (table 46); at least 1.5 mm² for lighting and 2.5 mm² for outlets | NBR 5410:2004, tables 36, 46 & 6.2.6.1.1 |
+| Voltage drop | ΔV% = 2 · ρ · Σ(L·I) / (S · V) · 100 (or √3 · ρ · L · I / (S · V_ll) · 100 for 3F+N feeders), ρ = 1/56 Ω·mm²/m; wire raised until ≤ 4 % | NBR 5410:2004, 6.2.7.1 |
+| RCD | 30 mA on circuits of wet areas (including bathroom lighting), garages and outdoor areas | NBR 5410:2004, 5.1.3.2.2 |
+| Conduit fill | ≤ 53 % for one conductor, 31 % for two, 40 % for three or more; standard sizes DN 20 through DN 75 | NBR 5410:2004, 6.2.11.1.6 |
+| Demand | lighting and general outlets by the table of their installed kVA (0.86 up to 1 kVA … 0.24 above 10 kVA); specific-use circuits by their count (1.00 for one or two … 0.38 from 24); per-phase entrance and QDC demand currents apply general and specific demand factors separately so high-current TUEs are never diluted | Usual utility tables for dwellings |
+| Supply and entrance | single/two/three-phase from the demand; main breaker from the demand current on the most loaded phase; feeder from the 2- or 3-loaded-conductor wire table; earth from NBR 5410 table 58 | Utility standard (see below) |
 | Phase balancing | largest circuit first, each on the least loaded phase (two-pole circuits on the least loaded pair) | — |
 
 The regional utility profiles (`src/domain/utility_profiles.rs`: Generic NBR 5410, Enel SP LIG-BT 12ª ed., CPFL GED-13, CEMIG ND 5.1, COPEL NTC 901100) use explicit per-utility residential demand tables and service-entrance thresholds (no hidden scale multipliers) and carry a `UtilityStandardCitation` (standard, edition, tables and local-bulletin verification note) surfaced in the UI, single-line diagram and MCP `quadro_de_cargas` (B21). Because utilities publish periodic technical bulletins (*comunicados técnicos*), designers should still confirm the active local revision before submitting a connection request.
