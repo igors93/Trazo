@@ -251,7 +251,8 @@ fn esc(text: &str) -> String {
 }
 
 /// Generates a 2D architectural section SVG along `section`, slicing through
-/// walls, openings, floor slab and ceiling slab at `project.wall_height`.
+/// walls, openings and floor slabs. Each wall uses its own (possibly sloped)
+/// top; walls without one keep following `project.wall_height` (#145).
 pub fn section_svg(project: &Project, section: &SectionLine) -> String {
     let dir = section.end.minus(section.start);
     let total_len = dir.length().max(1.0);
@@ -262,7 +263,16 @@ pub fn section_svg(project: &Project, section: &SectionLine) -> String {
         Point::new(u.y, -u.x)
     };
 
-    let wall_h = project.wall_height.max(2.0);
+    let storey_h = project.wall_height.max(0.5);
+    let wall_h = project
+        .walls
+        .iter()
+        .flat_map(|wall| {
+            let (start, end) = wall.heights(storey_h);
+            [start, end]
+        })
+        .fold(storey_h, f64::max)
+        .max(2.0);
     let slab_h = 0.15;
     let px_per_m = 90.0;
     let margin = 65.0;
@@ -286,7 +296,7 @@ pub fn section_svg(project: &Project, section: &SectionLine) -> String {
     );
 
     // Collect cut walls and background walls in the viewing half-plane.
-    let mut cut_spans: Vec<(f64, f64)> = Vec::new();
+    let mut cut_spans: Vec<(f64, f64, f64)> = Vec::new();
     let mut min_cut = f64::INFINITY;
     let mut max_cut = f64::NEG_INFINITY;
 
@@ -306,7 +316,11 @@ pub fn section_svg(project: &Project, section: &SectionLine) -> String {
         {
             let pos = t_sec * total_len;
             let half = wall.thickness() * 0.5;
-            cut_spans.push((pos - half, pos + half));
+            cut_spans.push((
+                pos - half,
+                pos + half,
+                wall.height_at(storey_h, wall.start.lerp(wall.end, t_wall)),
+            ));
             min_cut = min_cut.min(pos - half);
             max_cut = max_cut.max(pos + half);
             continue;
@@ -317,12 +331,15 @@ pub fn section_svg(project: &Project, section: &SectionLine) -> String {
             let x0 = sx(a_u.min(b_u).clamp(0.0, total_len));
             let x1 = sx(a_u.max(b_u).clamp(0.0, total_len));
             if x1 - x0 > 2.0 {
-                let top_y = sy(wall_h);
+                let (start_h, end_h) = wall.heights(storey_h);
+                let x_start = sx(a_u.clamp(0.0, total_len));
+                let x_end = sx(b_u.clamp(0.0, total_len));
                 let _ = writeln!(
                     svg,
-                    "<rect x=\"{x0:.1}\" y=\"{top_y:.1}\" width=\"{:.1}\" height=\"{:.1}\" fill=\"#f7fafd\" stroke=\"#94a3b8\" stroke-width=\"1.0\"/>",
-                    x1 - x0,
-                    ground_y - top_y
+                    "<polygon data-wall-id=\"{}\" data-height-start=\"{start_h:.3}\" data-height-end=\"{end_h:.3}\" points=\"{x_start:.1},{:.1} {x_end:.1},{:.1} {x_end:.1},{ground_y:.1} {x_start:.1},{ground_y:.1}\" fill=\"#f7fafd\" stroke=\"#94a3b8\" stroke-width=\"1.0\"/>",
+                    wall.id,
+                    sy(start_h),
+                    sy(end_h),
                 );
                 // Project openings on this background wall.
                 for op in project.openings.iter().filter(|o| o.wall_id == wall.id) {
@@ -341,8 +358,9 @@ pub fn section_svg(project: &Project, section: &SectionLine) -> String {
                     let ox0 = sx(op_u - op_w_proj * 0.5);
                     let ow = op_w_proj * px_per_m;
                     let sill = op.sill();
-                    let oh_m = op.height().unwrap_or(wall_h);
-                    let oy_top = sy((sill + oh_m).min(wall_h));
+                    let top = wall.height_over(storey_h, op);
+                    let oh_m = op.height().unwrap_or(top);
+                    let oy_top = sy((sill + oh_m).min(top));
                     let oy_bot = sy(sill);
                     let stroke = match op.kind {
                         OpeningKind::Window => op_col,
@@ -372,19 +390,19 @@ pub fn section_svg(project: &Project, section: &SectionLine) -> String {
          <rect x=\"{slab_x0:.1}\" y=\"{:.1}\" width=\"{:.1}\" height=\"{slab_px:.1}\" fill=\"#cbd5e1\" stroke=\"{wall_col}\" stroke-width=\"1.6\"/>\n\
          </g>",
         slab_x1 - slab_x0,
-        sy(wall_h + slab_h),
+        sy(storey_h + slab_h),
         slab_x1 - slab_x0
     );
 
     // Cut wall sections (dark solid profile per NBR 6492).
     let _ = writeln!(svg, "<g id=\"paredes-cortadas\">");
-    for (x_start, x_end) in &cut_spans {
+    for (x_start, x_end, height) in &cut_spans {
         let rx = sx(*x_start);
         let rw = ((x_end - x_start) * px_per_m).max(6.0);
-        let top_y = sy(wall_h);
+        let top_y = sy(*height);
         let _ = writeln!(
             svg,
-            "<rect x=\"{rx:.1}\" y=\"{top_y:.1}\" width=\"{rw:.1}\" height=\"{:.1}\" fill=\"{wall_col}\"/>",
+            "<rect data-height-m=\"{height:.3}\" x=\"{rx:.1}\" y=\"{top_y:.1}\" width=\"{rw:.1}\" height=\"{:.1}\" fill=\"{wall_col}\"/>",
             ground_y - top_y
         );
     }
@@ -453,7 +471,16 @@ pub fn elevation_svg(project: &Project, elevation: &ElevationView) -> String {
         ElevationSide::North | ElevationSide::South => (max.x - min.x).max(1.0),
         ElevationSide::East | ElevationSide::West => (max.y - min.y).max(1.0),
     };
-    let wall_h = project.wall_height.max(2.0);
+    let storey_h = project.wall_height.max(0.5);
+    let wall_h = project
+        .walls
+        .iter()
+        .flat_map(|wall| {
+            let (start, end) = wall.heights(storey_h);
+            [start, end]
+        })
+        .fold(storey_h, f64::max)
+        .max(2.0);
     let roof_h = 0.65;
     let px_per_m = 90.0;
     let margin = 65.0;
@@ -484,23 +511,11 @@ pub fn elevation_svg(project: &Project, elevation: &ElevationView) -> String {
          <rect width=\"{svg_w:.0}\" height=\"{svg_h:.0}\" fill=\"#ffffff\"/>\n"
     );
 
-    // Building facade silhouette + roof fascia.
+    // Building width used by the dimension line. The actual facade body is
+    // emitted wall by wall below, so every straight or sloped top is visible.
     let bx0 = sx(0.0);
     let bw = span_m * px_per_m;
-    let top_y = sy(wall_h);
-    let roof_top = sy(wall_h + roof_h);
-    let _ = writeln!(
-        svg,
-        "<g id=\"fachada-corpo\">\n\
-         <rect x=\"{bx0:.1}\" y=\"{top_y:.1}\" width=\"{bw:.1}\" height=\"{:.1}\" fill=\"#f9fbfd\" stroke=\"{wall_col}\" stroke-width=\"1.8\"/>\n\
-         <polygon points=\"{:.1},{top_y:.1} {:.1},{roof_top:.1} {:.1},{roof_top:.1} {:.1},{top_y:.1}\" fill=\"#e2e8f0\" stroke=\"{wall_col}\" stroke-width=\"1.5\"/>\n\
-         </g>",
-        ground_y - top_y,
-        bx0 - 14.0,
-        bx0 + 18.0,
-        bx0 + bw - 18.0,
-        bx0 + bw + 14.0
-    );
+    let _ = writeln!(svg, "<g id=\"fachada-corpo\">");
 
     // Project exterior walls facing this elevation side + their doors/windows.
     let _ = writeln!(svg, "<g id=\"fachada-esquadrias\">");
@@ -522,14 +537,30 @@ pub fn elevation_svg(project: &Project, elevation: &ElevationView) -> String {
         if !on_face {
             continue;
         }
+        let start_u = project_u(wall.start);
+        let end_u = project_u(wall.end);
+        let (start_h, end_h) = wall.heights(storey_h);
+        let x_start = sx(start_u);
+        let x_end = sx(end_u);
+        let y_start = sy(start_h);
+        let y_end = sy(end_h);
+        let roof_start = sy(start_h + roof_h);
+        let roof_end = sy(end_h + roof_h);
+        let _ = writeln!(
+            svg,
+            "<polygon data-wall-id=\"{}\" data-height-start=\"{start_h:.3}\" data-height-end=\"{end_h:.3}\" points=\"{x_start:.1},{y_start:.1} {x_end:.1},{y_end:.1} {x_end:.1},{ground_y:.1} {x_start:.1},{ground_y:.1}\" fill=\"#f9fbfd\" stroke=\"{wall_col}\" stroke-width=\"1.8\"/>\n\
+             <polygon points=\"{x_start:.1},{y_start:.1} {x_start:.1},{roof_start:.1} {x_end:.1},{roof_end:.1} {x_end:.1},{y_end:.1}\" fill=\"#e2e8f0\" stroke=\"{wall_col}\" stroke-width=\"1.5\"/>",
+            wall.id,
+        );
         for op in project.openings.iter().filter(|o| o.wall_id == wall.id) {
             let center = wall.start.lerp(wall.end, op.t);
             let cu = project_u(center);
             let ow = op.width() * px_per_m;
             let ox = sx(cu) - ow * 0.5;
             let sill = op.sill();
-            let oh_m = op.height().unwrap_or(wall_h);
-            let oy_top = sy((sill + oh_m).min(wall_h));
+            let top = wall.height_over(storey_h, op);
+            let oh_m = op.height().unwrap_or(top);
+            let oy_top = sy((sill + oh_m).min(top));
             let oy_bot = sy(sill);
             let oh = (oy_bot - oy_top).max(4.0);
             let (fill, stroke) = match op.kind {
@@ -579,7 +610,7 @@ pub fn elevation_svg(project: &Project, elevation: &ElevationView) -> String {
             }
         }
     }
-    svg.push_str("</g>\n");
+    svg.push_str("</g>\n</g>\n");
 
     // Ground line & total width dimension.
     let _ = writeln!(
@@ -763,6 +794,18 @@ mod tests {
             .find(|w| (w.start.y - 4.0).abs() < 0.05 && (w.end.y - 4.0).abs() < 0.05)
             .unwrap()
             .id;
+        let east_wall = project
+            .walls
+            .iter()
+            .find(|w| (w.start.x - 6.0).abs() < 0.05 && (w.end.x - 6.0).abs() < 0.05)
+            .unwrap()
+            .id;
+        project
+            .set_wall_height(south_wall, Some(4.2), Some(3.0))
+            .unwrap();
+        project
+            .set_wall_height(east_wall, Some(4.2), Some(3.0))
+            .unwrap();
         project
             .add_opening(south_wall, OpeningKind::Window, 0.5)
             .unwrap();
@@ -786,6 +829,7 @@ mod tests {
         assert!(sec_markup.contains("CORTE AA"));
         assert!(sec_markup.contains("Ref. Prancha PR-02"));
         assert!(sec_markup.contains("id=\"paredes-cortadas\""));
+        assert!(sec_markup.contains("data-height-m=\"3.600\""));
         assert!(sec_markup.contains("±0,00"));
 
         let elev_id = project.add_elevation_view(ElevationSide::South, Some("PR-03".to_owned()));
@@ -799,6 +843,8 @@ mod tests {
         assert!(elev_markup.contains("FACHADA SUL"));
         assert!(elev_markup.contains("Ref. Prancha PR-03"));
         assert!(elev_markup.contains("id=\"fachada-esquadrias\""));
+        assert!(elev_markup.contains("data-height-start=\"4.200\""));
+        assert!(elev_markup.contains("data-height-end=\"3.000\""));
 
         let det_id = project
             .add_detail_callout(
