@@ -188,11 +188,18 @@ impl Project {
             let thickness = masonry.block_width.max(0.04);
             let height = wall.mean_height(storey);
 
-            // Intersections and concrete columns brace a panel. End points are
-            // also treated as returns/supports; the longest interval governs.
+            // Transverse returns and concrete columns brace a panel. A
+            // collinear wall joint does not restrain out-of-plane movement.
+            // End points delimit the intervals checked by this simplified model.
             let mut braces = vec![0.0, wall_length];
             for other in &self.walls {
                 if other.id == wall.id {
+                    continue;
+                }
+                let Some(other_dir) = other.end.minus(other.start).normalized() else {
+                    continue;
+                };
+                if wall_dir.dot(other_dir).abs() >= 0.5 {
                     continue;
                 }
                 for point in [other.start, other.end] {
@@ -553,5 +560,35 @@ mod tests {
             .unwrap();
         assert!(lintel.bearing_left_m < MIN_LINTEL_BEARING_M);
         assert!(!lintel.ok());
+    }
+
+    #[test]
+    fn collinear_wall_joints_do_not_brace_a_masonry_panel() {
+        let mut project = Project::default();
+        let wall = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(8.0, 0.0))
+            .unwrap();
+        project
+            .add_wall(Point::new(4.0, 0.0), Point::new(5.0, 0.0))
+            .unwrap();
+        let panel = project
+            .masonry_structure_report()
+            .panels
+            .into_iter()
+            .find(|panel| panel.wall_id == wall)
+            .unwrap();
+        assert!((panel.unbraced_m - 8.0).abs() < 1e-9);
+        assert!(!panel.ok());
+
+        project
+            .add_wall(Point::new(4.0, 0.0), Point::new(4.0, 3.0))
+            .unwrap();
+        let panel = project
+            .masonry_structure_report()
+            .panels
+            .into_iter()
+            .find(|panel| panel.wall_id == wall)
+            .unwrap();
+        assert!((panel.unbraced_m - 4.0).abs() < 1e-9);
     }
 }

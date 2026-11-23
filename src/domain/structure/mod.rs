@@ -25,7 +25,8 @@ pub const CONCRETE_KN_M3: f64 = 25.0;
 #[cfg(test)]
 pub use beam_solver::{continuous_beam, span_deflection};
 pub use beam_solver::{
-    continuous_beam_with_point_loads, effective_beam_stiffness, span_deflection_with_point_loads,
+    continuous_beam_with_end_moments, continuous_beam_with_point_loads, effective_beam_stiffness,
+    span_deflection_with_point_loads,
 };
 pub use footing_check::check_footing;
 pub use marks::StructureMarksScope;

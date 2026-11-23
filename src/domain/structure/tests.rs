@@ -36,6 +36,44 @@ fn a_continuous_beam_matches_the_textbook() {
 }
 
 #[test]
+fn an_overhang_transfers_moment_and_load_to_both_supports() {
+    // Uniform 10 kN/m load over a 1 m left overhang and a 4 m span.
+    // The overhang fixes M_A = -q a²/2; equilibrium then determines
+    // R_B = q(L²-a²)/(2L) and R_A = q(L+a)-R_B.
+    let (q, a, l) = (10.0, 1.0, 4.0);
+    let ends =
+        continuous_beam_with_end_moments(&[(l, q, 1.0)], &[Vec::new()], (-q * a * a / 2.0, 0.0));
+    assert!((ends[0].0 + 5.0).abs() < 1e-9);
+    assert!(ends[0].1.abs() < 1e-9);
+    let r_a = q * a + q * l / 2.0 + (ends[0].1 - ends[0].0) / l;
+    let r_b = q * (l + a) - r_a;
+    assert!((r_a - 31.25).abs() < 1e-9);
+    assert!((r_b - 18.75).abs() < 1e-9);
+}
+
+#[test]
+fn two_overhangs_keep_a_multispan_beam_in_equilibrium() {
+    let q = 10.0;
+    let spans = [(4.0, q, 1.0), (4.0, q, 1.0)];
+    let ends = continuous_beam_with_end_moments(
+        &spans,
+        &[Vec::new(), Vec::new()],
+        (-q * 1.0_f64.powi(2) / 2.0, -q * 2.0_f64.powi(2) / 2.0),
+    );
+    assert!((ends[0].0 + 5.0).abs() < 1e-9);
+    assert!((ends[1].1 + 20.0).abs() < 1e-9);
+    assert!((ends[0].1 - ends[1].0).abs() < 1e-9);
+    let mut reactions = [q, 0.0, 2.0 * q];
+    for (i, ((l, w, _), (left, right))) in spans.iter().zip(&ends).enumerate() {
+        let v_left = w * l / 2.0 + (right - left) / l;
+        reactions[i] += v_left;
+        reactions[i + 1] += w * l - v_left;
+    }
+    assert!((reactions.iter().sum::<f64>() - 110.0).abs() < 1e-9);
+    assert!((reactions[0] * 1.0 + reactions[1] * 5.0 + reactions[2] * 9.0 - 605.0).abs() < 1e-9);
+}
+
+#[test]
 fn generating_lays_columns_beams_slabs_and_footings() {
     let mut project = house();
     let wall = project

@@ -44,6 +44,21 @@ pub fn continuous_beam_with_point_loads(
     spans: &[(f64, f64, f64)],
     point_loads: &[Vec<(f64, f64)>],
 ) -> Vec<(f64, f64)> {
+    continuous_beam_with_end_moments(spans, point_loads, (0.0, 0.0))
+}
+
+/// End moments with prescribed bending moments at the first and last
+/// supports (sagging positive). A loaded overhang supplies a hogging end
+/// moment to its adjacent span; its vertical load is added to the support
+/// reaction by the caller.
+pub fn continuous_beam_with_end_moments(
+    spans: &[(f64, f64, f64)],
+    point_loads: &[Vec<(f64, f64)>],
+    end_moments: (f64, f64),
+) -> Vec<(f64, f64)> {
+    if spans.is_empty() {
+        return Vec::new();
+    }
     let n = spans.len() + 1;
     let mut k = vec![vec![0.0; n]; n];
     let mut f = vec![0.0; n];
@@ -75,6 +90,10 @@ pub fn continuous_beam_with_point_loads(
         f[i] -= fems[i].0;
         f[i + 1] -= fems[i].1;
     }
+    // Joint equilibrium with the overhangs: the right end's clockwise
+    // member moment is the negative of the reported sagging moment.
+    f[0] += end_moments.0;
+    f[n - 1] -= end_moments.1;
     let theta = solve(k, f).unwrap_or_else(|| vec![0.0; n]);
     spans
         .iter()

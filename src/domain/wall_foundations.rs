@@ -22,7 +22,7 @@ use super::conduits::PlanMark;
 use super::foundations::{choose_bars, size_rectangular_beam};
 use super::geometry::Point;
 use super::model::Project;
-use super::structure::{CONCRETE_KN_M3, continuous_beam_with_point_loads};
+use super::structure::{CONCRETE_KN_M3, continuous_beam_with_end_moments};
 
 /// How a wall reaches the soil.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -294,8 +294,13 @@ impl Project {
                             .windows(2)
                             .map(|p| ((p[1].0 - p[0].0).max(0.1), q, 1.0))
                             .collect();
+                        let before = on[0].0;
+                        let after = (length - on[on.len() - 1].0).max(0.0);
+                        let overhang_moments =
+                            (-q * before * before / 2.0, -q * after * after / 2.0);
                         let none = vec![Vec::new(); spans.len()];
-                        let ends = continuous_beam_with_point_loads(&spans, &none);
+                        let ends =
+                            continuous_beam_with_end_moments(&spans, &none, overhang_moments);
                         reactions.fill(0.0);
                         moment = 0.0;
                         shear = 0.0;
@@ -310,14 +315,9 @@ impl Project {
                             shear = shear.max(v_left.abs()).max(v_right.abs());
                         }
                         // Wall beyond the end columns hangs on them as a cantilever.
-                        let before = on[0].0;
-                        let after = (length - on[on.len() - 1].0).max(0.0);
                         reactions[0] += q * before;
                         let last = reactions.len() - 1;
                         reactions[last] += q * after;
-                        moment = moment
-                            .max(q * before * before / 2.0)
-                            .max(q * after * after / 2.0);
                         shear = shear.max(q * before).max(q * after);
                         let sized = size_rectangular_beam(
                             b,
@@ -347,7 +347,7 @@ impl Project {
                     result.steel_cm2 = steel;
                     result.bars = choose_bars(steel).replace("(superior)", "(em cima e embaixo)");
                     for ((_, column, _), reaction) in on.iter().zip(&reactions) {
-                        *effects.at_column.entry(*column).or_default() += reaction.max(0.0);
+                        *effects.at_column.entry(*column).or_default() += reaction;
                         result.reactions.push((*column, *reaction));
                     }
                 }
@@ -522,5 +522,71 @@ mod tests {
                 .iter()
                 .any(|m| matches!(m, PlanMark::Text { text, .. } if text.starts_with("VB1")))
         );
+    }
+
+    #[test]
+    fn ground_beam_overhang_reactions_follow_force_and_moment_equilibrium() {
+        let mut project = Project::default();
+        let wall = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(5.0, 0.0))
+            .unwrap();
+        let left = project
+            .add_fixture(FixtureKind::Column, Point::new(1.0, 0.0), 0.20, 0.20, 0)
+            .unwrap();
+        let right = project
+            .add_fixture(FixtureKind::Column, Point::new(5.0, 0.0), 0.20, 0.20, 0)
+            .unwrap();
+        project
+            .set_wall_foundation(wall, WallFoundationKind::GroundBeam, None)
+            .unwrap();
+        let effects = project.wall_foundation_effects();
+        let beam = &effects.results[0];
+        let q = beam.load_kn_m;
+        assert_eq!(beam.reactions.len(), 2);
+        assert_eq!(beam.reactions[0].0, left);
+        assert_eq!(beam.reactions[1].0, right);
+        assert!((beam.reactions[0].1 - 3.125 * q).abs() < 1e-6);
+        assert!((beam.reactions[1].1 - 1.875 * q).abs() < 1e-6);
+        assert!((beam.reactions.iter().map(|(_, r)| r).sum::<f64>() - 5.0 * q).abs() < 1e-6);
+        assert!((beam.moment_knm - 1.7578125 * q).abs() < 1e-6);
+    }
+
+    #[test]
+    fn excessive_overhang_reports_uplift_instead_of_hiding_the_reaction() {
+        use crate::domain::verdict::{Light, structure_verdicts};
+
+        let mut project = Project::default();
+        let wall = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(3.5, 0.0))
+            .unwrap();
+        project
+            .add_fixture(FixtureKind::Column, Point::new(2.5, 0.0), 0.20, 0.20, 0)
+            .unwrap();
+        let right = project
+            .add_fixture(FixtureKind::Column, Point::new(3.5, 0.0), 0.20, 0.20, 0)
+            .unwrap();
+        project
+            .set_wall_foundation(wall, WallFoundationKind::GroundBeam, None)
+            .unwrap();
+        let effects = project.wall_foundation_effects();
+        let beam = &effects.results[0];
+        assert!((beam.reactions[1].1 + 2.625 * beam.load_kn_m).abs() < 1e-6);
+        assert!((effects.at_column[&right] - beam.reactions[1].1).abs() < 1e-6);
+
+        let report = project.structure_report();
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("ascendente"))
+        );
+        let verdicts = structure_verdicts(&project, &report);
+        assert!(verdicts.iter().any(|verdict| {
+            verdict.element.contains(&beam.label)
+                && verdict
+                    .checks
+                    .iter()
+                    .any(|check| check.light == Light::Red && check.name == "Apoio")
+        }));
     }
 }

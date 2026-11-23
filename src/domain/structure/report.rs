@@ -1366,6 +1366,16 @@ impl Project {
             }
         }
         for result in &ground.results {
+            for (column_id, reaction) in &result.reactions {
+                if *reaction < -1e-6 {
+                    report.warnings.push(format!(
+                        "{}: reação ascendente de {:.1} kN no pilar {}. Verifique a ligação viga-pilar, a ancoragem e a estabilidade do apoio com as demais cargas.",
+                        result.label,
+                        -reaction,
+                        column_id
+                    ));
+                }
+            }
             if result.kind == crate::domain::wall_foundations::WallFoundationKind::GroundBeam
                 && result.height_m.is_none()
             {

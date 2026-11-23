@@ -1057,10 +1057,27 @@ fn sized_structure_verdicts(
                 ),
             ),
         };
+        let mut checks = vec![check];
+        for (column_id, reaction) in &foundation.reactions {
+            if *reaction < -1e-6 {
+                checks.push(Check::fail(
+                    "Apoio",
+                    format!(
+                        "O baldrame produz reação ascendente no pilar {}; revise a geometria e a ancoragem.",
+                        column_id
+                    ),
+                    format!(
+                        "Reação vertical do baldrame no pilar {} = {} kN (ascendente); verifique a ligação e a estabilidade com as demais cargas.",
+                        column_id,
+                        decimal(*reaction, 1)
+                    ),
+                ));
+            }
+        }
         verdicts.push(Verdict {
             discipline: Discipline::Structure,
             element: format!("{} {}", foundation.kind.label(), foundation.label),
-            checks: vec![check],
+            checks,
         });
     }
     for beam in &report.balance_beams {
