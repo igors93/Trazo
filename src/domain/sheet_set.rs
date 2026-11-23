@@ -4,7 +4,19 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::model::Project;
 use super::sheet::SheetLayout;
+use super::verdict::{Light, safety_summary};
+
+/// Explicit professional acknowledgement of the red checks in one sheet revision.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReleaseReview {
+    pub reviewer: String,
+    pub registration: String,
+    pub date: String,
+    pub revision: String,
+    pub red_checks: Vec<String>,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RevisionEntry {
@@ -83,6 +95,8 @@ pub struct SheetItem {
     pub status: SheetStatus,
     #[serde(default)]
     pub revisions: Vec<RevisionEntry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release_review: Option<ReleaseReview>,
     /// The discipline the sheet shows (#96): its layers on paper.
     #[serde(default, skip_serializing_if = "super::discipline::Discipline::is_all")]
     pub discipline: super::discipline::Discipline,
@@ -144,6 +158,7 @@ impl SheetSet {
                 author: initial_author,
                 description: "Emissão inicial".to_owned(),
             }],
+            release_review: None,
             discipline: super::discipline::Discipline::All,
         });
         self.active_sheet_id = Some(id);
@@ -213,6 +228,10 @@ impl SheetSet {
             description: desc.to_owned(),
         });
         sheet.layout.title_block.revision = code.clone();
+        sheet.release_review = None;
+        if sheet.status == SheetStatus::LiberadoObra {
+            sheet.status = SheetStatus::ParaAprovacao;
+        }
         if !date.trim().is_empty() {
             sheet.layout.title_block.date = date.trim().to_owned();
         }
@@ -220,15 +239,23 @@ impl SheetSet {
     }
 
     /// Exports the Master Document List (Lista Mestra de Documentos) as CSV.
-    pub fn transmittal_csv(&self, project_name: &str) -> String {
+    pub fn transmittal_csv(&self, project: &Project) -> String {
+        let red_checks = red_checks(project);
+        let project_name = &project.name;
         let mut out = format!("Lista Mestra de Documentos — {project_name}\n");
-        out.push_str("Código;Prancha;Título;Conteúdo;Formato;Escala;Revisão;Situação;Última Data;Última Descrição\n");
+        out.push_str("Código;Prancha;Título;Conteúdo;Formato;Escala;Revisão;Situação;Última Data;Última Descrição;Revisor;Registro do Revisor;Data da Revisão Técnica\n");
         for sheet in &self.sheets {
             let last = sheet.revisions.last();
             let last_date = last.map(|r| r.date.as_str()).unwrap_or("");
             let last_desc = last.map(|r| r.description.as_str()).unwrap_or("");
+            let status = sheet.effective_status(&red_checks);
+            let review = if status == SheetStatus::LiberadoObra && !red_checks.is_empty() {
+                sheet.release_review.as_ref()
+            } else {
+                None
+            };
             out.push_str(&format!(
-                "{};{};{};{};{};{};{};{};{};{}\n",
+                "{};{};{};{};{};{};{};{};{};{};{};{};{}\n",
                 sheet.code,
                 sheet.number,
                 sheet.title,
@@ -236,18 +263,137 @@ impl SheetSet {
                 sheet.layout.size.short_name(),
                 sheet.layout.scale.label(),
                 sheet.latest_revision_code(),
-                sheet.status.label(),
+                status.label(),
                 last_date,
-                last_desc
+                last_desc,
+                review.map(|r| r.reviewer.as_str()).unwrap_or(""),
+                review.map(|r| r.registration.as_str()).unwrap_or(""),
+                review.map(|r| r.date.as_str()).unwrap_or("")
             ));
         }
         out
     }
 }
 
+/// A stable snapshot of every failed check, including the exact calculated value.
+/// A changed result or a new failure requires another explicit review.
+pub fn red_checks(project: &Project) -> Vec<String> {
+    let mut checks: Vec<_> = safety_summary(project)
+        .verdicts
+        .into_iter()
+        .flat_map(|verdict| {
+            verdict.checks.into_iter().filter_map(move |check| {
+                (check.light == Light::Red).then(|| {
+                    format!(
+                        "{}|{}|{}|{:016x}|{}|{}",
+                        verdict.discipline.label(),
+                        verdict.element,
+                        check.name,
+                        check.utilisation.to_bits(),
+                        check.simple,
+                        check.detail
+                    )
+                })
+            })
+        })
+        .collect();
+    checks.sort();
+    checks
+}
+
+impl SheetItem {
+    pub fn effective_status(&self, current_red_checks: &[String]) -> SheetStatus {
+        if self.status != SheetStatus::LiberadoObra || current_red_checks.is_empty() {
+            return self.status;
+        }
+        match &self.release_review {
+            Some(review)
+                if review.revision == self.latest_revision_code()
+                    && review.red_checks == current_red_checks
+                    && !review.date.trim().is_empty()
+                    && valid_reviewer(&review.reviewer, &review.registration) =>
+            {
+                SheetStatus::LiberadoObra
+            }
+            _ => SheetStatus::ParaAprovacao,
+        }
+    }
+}
+
+fn valid_reviewer(name: &str, registration: &str) -> bool {
+    let reg = registration.trim().to_uppercase();
+    !name.trim().is_empty()
+        && (reg.starts_with("CREA") || reg.starts_with("CAU"))
+        && reg.chars().any(|c| c.is_ascii_digit())
+}
+
+impl Project {
+    /// The only supported transition to release. Red results need an explicit
+    /// reviewer, professional registration and dated acknowledgement.
+    pub fn set_sheet_status(
+        &mut self,
+        sheet_id: u64,
+        status: SheetStatus,
+        reviewer: Option<(&str, &str, &str)>,
+    ) -> Result<(), String> {
+        let red = if status == SheetStatus::LiberadoObra {
+            red_checks(self)
+        } else {
+            Vec::new()
+        };
+        let sheet = self
+            .sheet_set
+            .sheets
+            .iter_mut()
+            .find(|s| s.id == sheet_id)
+            .ok_or_else(|| "Prancha não encontrada.".to_owned())?;
+        let review = if status == SheetStatus::LiberadoObra && !red.is_empty() {
+            let (name, registration, date) = reviewer.ok_or_else(|| {
+                format!("Há {} verificações vermelhas. Informe nome, CREA/CAU e data do responsável pela revisão para liberar a prancha.", red.len())
+            })?;
+            if !valid_reviewer(name, registration) || date.trim().is_empty() {
+                return Err(
+                    "Informe nome, registro CREA/CAU com número e data da revisão.".to_owned(),
+                );
+            }
+            Some(ReleaseReview {
+                reviewer: name.trim().to_owned(),
+                registration: registration.trim().to_owned(),
+                date: date.trim().to_owned(),
+                revision: sheet.latest_revision_code().to_owned(),
+                red_checks: red,
+            })
+        } else {
+            None
+        };
+        sheet.status = status;
+        sheet.release_review = review;
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::geometry::Point;
+
+    #[test]
+    fn clean_sheet_can_be_released_but_a_new_red_check_revokes_it() {
+        let mut project = Project::default();
+        let id = project
+            .sheet_set
+            .add_sheet("Planta", SheetContent::FloorPlan, &project.sheet);
+        assert!(red_checks(&project).is_empty());
+        project
+            .set_sheet_status(id, SheetStatus::LiberadoObra, None)
+            .unwrap();
+        let sheet = &project.sheet_set.sheets[0];
+        assert_eq!(sheet.effective_status(&[]), SheetStatus::LiberadoObra);
+        assert_eq!(
+            sheet.effective_status(&["nova falha".to_owned()]),
+            SheetStatus::ParaAprovacao
+        );
+    }
 
     #[test]
     fn sheet_set_handles_pagination_reordering_revisions_and_master_list() {
@@ -275,7 +421,10 @@ mod tests {
         assert_eq!(set.sheets[1].id, s1);
         assert_eq!(set.sheets[1].number, "02/02");
 
-        let csv = set.transmittal_csv("Residência Sul");
+        let mut project = Project::default();
+        project.name = "Residência Sul".to_owned();
+        project.sheet_set = set.clone();
+        let csv = set.transmittal_csv(&project);
         assert!(csv.contains("PR-01;01/02;Corte AA"));
         assert!(csv.contains("PR-02;02/02;Planta Baixa"));
         assert!(csv.contains("R01"));
@@ -283,5 +432,95 @@ mod tests {
         assert!(set.remove_sheet(s2));
         assert_eq!(set.sheets.len(), 1);
         assert_eq!(set.sheets[0].number, "01/01");
+    }
+
+    #[test]
+    fn red_results_require_a_dated_reviewer_and_new_results_revoke_release() {
+        let mut project = Project::default();
+        project.set_terrain(Point::new(-2.0, -2.0), Point::new(20.0, 20.0));
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 4.0), "Sala")
+            .unwrap();
+        project.generate_structure();
+        let beam = project.structure.beams[0].id;
+        project.update_beam(beam, None, Some(0.20)).unwrap();
+        let base = project.sheet.clone();
+        let id = project
+            .sheet_set
+            .add_sheet("Forma", SheetContent::FloorPlan, &base);
+        let red = red_checks(&project);
+        assert!(!red.is_empty());
+
+        assert!(
+            project
+                .set_sheet_status(id, SheetStatus::LiberadoObra, None)
+                .is_err()
+        );
+        assert_eq!(
+            project.sheet_set.sheets[0].status,
+            SheetStatus::EmElaboracao
+        );
+        // A legacy or hand-edited file with a raw released flag is still gated.
+        project.sheet_set.sheets[0].status = SheetStatus::LiberadoObra;
+        assert_eq!(
+            project.sheet_set.sheets[0].effective_status(&red),
+            SheetStatus::ParaAprovacao
+        );
+        project.sheet_set.sheets[0].status = SheetStatus::EmElaboracao;
+        assert!(
+            project
+                .set_sheet_status(
+                    id,
+                    SheetStatus::LiberadoObra,
+                    Some(("Ana", "sem registro", "23/11/2026"))
+                )
+                .is_err()
+        );
+        project
+            .set_sheet_status(
+                id,
+                SheetStatus::LiberadoObra,
+                Some(("Ana Souza", "CREA 12345", "23/11/2026")),
+            )
+            .unwrap();
+        let sheet = &project.sheet_set.sheets[0];
+        assert_eq!(sheet.effective_status(&red), SheetStatus::LiberadoObra);
+        let released_csv = project.sheet_set.transmittal_csv(&project);
+        assert!(released_csv.contains("Ana Souza;CREA 12345;23/11/2026"));
+        let saved = serde_json::to_string(&project.sheet_set).unwrap();
+        assert!(saved.contains("Ana Souza"));
+        let restored: SheetSet = serde_json::from_str(&saved).unwrap();
+        assert_eq!(
+            restored.sheets[0].effective_status(&red),
+            SheetStatus::LiberadoObra
+        );
+
+        project.update_beam(beam, None, Some(0.18)).unwrap();
+        let changed_red = red_checks(&project);
+        assert_ne!(red, changed_red);
+        assert_eq!(
+            project.sheet_set.sheets[0].effective_status(&changed_red),
+            SheetStatus::ParaAprovacao
+        );
+        let csv = project.sheet_set.transmittal_csv(&project);
+        assert!(csv.contains("Para aprovação"));
+        assert!(!csv.contains("Ana Souza;CREA 12345"));
+
+        project
+            .set_sheet_status(
+                id,
+                SheetStatus::LiberadoObra,
+                Some(("Ana Souza", "CREA 12345", "24/11/2026")),
+            )
+            .unwrap();
+        project
+            .sheet_set
+            .add_revision(id, "24/11/2026", "Ana Souza", "Viga revista")
+            .unwrap();
+        assert_eq!(
+            project.sheet_set.sheets[0].status,
+            SheetStatus::ParaAprovacao
+        );
+        assert!(project.sheet_set.sheets[0].release_review.is_none());
     }
 }

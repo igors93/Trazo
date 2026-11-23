@@ -29,6 +29,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 
 **Documentation and output**
 
+- Sheet release gate (#104): red engineering checks require a dated, named CREA/CAU review for *Liberado para obra*. The approval is bound to the exact failed checks and sheet revision; changed results or a new revision revert the effective status to *Para aprovação* on screen, in the master list and in SVG/PDF exports. Valid reviewer details appear in the sheet and master list.
 - Associative dimensions (#26), automatic opening dimension chains along walls + one-click site dimensions (#53), layers (#27), sheets from A4 to A0 (#28), exact print scales (#29), title block and pagination (#30).
 - Texts, notes, leaders and symbols (#31), hatches by material (#32), templates (#33) and configurable schedules (#34).
 - Sections, elevations and details with cross-references (#35), sheet sets with revisions (#36), and ABNT NBR 6492 and NBR 16752 documentation styles (#37).

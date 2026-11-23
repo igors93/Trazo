@@ -4,7 +4,7 @@ use super::super::{DocDialog, FloorPlanApp, theme::*};
 use super::widgets::{primary_button, secondary_button, toggle_pill};
 use crate::domain::discipline::Discipline;
 use crate::{
-    domain::sheet_set::{SheetContent, SheetStatus},
+    domain::sheet_set::{SheetContent, SheetStatus, red_checks},
     io::export::sheet::{export_sheet_item_pdf, export_sheet_item_svg},
 };
 
@@ -16,6 +16,8 @@ impl FloorPlanApp {
         let mut open = true;
         let mut export_item: Option<(u64, bool)> = None;
         let mut changed = false;
+        let current_red_checks = red_checks(&self.project);
+        let mut status_cmd: Option<(u64, SheetStatus)> = None;
 
         egui::Window::new("Conjunto de Pranchas e Controle de Revisões")
             .open(&mut open)
@@ -190,7 +192,7 @@ impl FloorPlanApp {
                                             self.project.sheet_set.active_sheet_id = Some(sheet.id);
                                         }
                                         ui.label(
-                                            RichText::new(sheet.status.label())
+                                            RichText::new(sheet.effective_status(&current_red_checks).label())
                                                 .size(11.0)
                                                 .color(MUTED),
                                         );
@@ -270,13 +272,34 @@ impl FloorPlanApp {
                             });
                         ui.label(RichText::new("Situação:").size(12.0).color(TEXT_2));
                         for st in SheetStatus::ALL {
-                            if toggle_pill(ui, st.label(), sheet.status == st, st.label()).clicked()
+                            if toggle_pill(ui, st.label(), sheet.effective_status(&current_red_checks) == st, st.label()).clicked()
                             {
-                                sheet.status = st;
-                                changed = true;
+                                status_cmd = Some((sheet.id, st));
                             }
                         }
                     });
+
+                    if !current_red_checks.is_empty() {
+                        ui.add_space(5.0);
+                        ui.label(RichText::new(format!(
+                            "{} verificações vermelhas: a liberação exige revisão profissional explícita. Se os resultados ou a revisão mudarem, a prancha volta a 'Para aprovação'.",
+                            current_red_checks.len()
+                        )).size(11.5).color(DANGER));
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("Revisor:");
+                            ui.add(egui::TextEdit::singleline(&mut self.release_reviewer).desired_width(150.0));
+                            ui.label("CREA/CAU:");
+                            ui.add(egui::TextEdit::singleline(&mut self.release_registration).desired_width(130.0));
+                            ui.label("Data:");
+                            ui.add(egui::TextEdit::singleline(&mut self.release_date).desired_width(100.0));
+                        });
+                        if let Some(review) = &sheet.release_review {
+                            ui.label(RichText::new(format!(
+                                "Revisão registrada: {} · {} · {} · {}",
+                                review.reviewer, review.registration, review.date, review.revision
+                            )).size(11.0).color(MUTED));
+                        }
+                    }
 
                     ui.add_space(6.0);
                     ui.label(
@@ -335,6 +358,20 @@ impl FloorPlanApp {
                         }
                     });
                 }
+                if let Some((id, status)) = status_cmd {
+                    let prev = self.project.clone();
+                    match self.project.set_sheet_status(id, status, Some((
+                        &self.release_reviewer,
+                        &self.release_registration,
+                        &self.release_date,
+                    ))) {
+                        Ok(()) => {
+                            self.record_change(prev);
+                            self.message = format!("Situação da prancha: {}.", status.label());
+                        }
+                        Err(error) => self.message = error,
+                    }
+                }
             });
 
         if changed {
@@ -390,7 +427,7 @@ impl FloorPlanApp {
         else {
             return;
         };
-        let csv = self.project.sheet_set.transmittal_csv(&self.project.name);
+        let csv = self.project.sheet_set.transmittal_csv(&self.project);
         match std::fs::write(&path, format!("\u{FEFF}{csv}")) {
             Ok(()) => self.message = format!("Lista mestra exportada em {}", path.display()),
             Err(e) => self.message = format!("Erro ao exportar lista mestra: {e}"),

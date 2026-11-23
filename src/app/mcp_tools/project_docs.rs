@@ -18,6 +18,7 @@ use crate::{
         layers::LineType,
         notes::{NoteKind, TechnicalSymbol},
         sheet::{DrawingScale, Orientation, PaperSize, SheetMargins},
+        sheet_set::{SheetContent, SheetStatus, red_checks},
         views::{
             ElevationSide, detail_svg, elevation_svg, export_view_pdf, export_view_svg, section_svg,
         },
@@ -1141,6 +1142,73 @@ impl FloorPlanApp {
             })
         };
         match action.as_str() {
+            "listar_conjunto" => {
+                let red = red_checks(&self.project);
+                let sheets: Vec<_> = self.project.sheet_set.sheets.iter().map(|sheet| json!({
+                    "id": sheet.id,
+                    "codigo": sheet.code,
+                    "titulo": sheet.title,
+                    "revisao": sheet.latest_revision_code(),
+                    "situacao": sheet.effective_status(&red).label(),
+                    "revisor": sheet.release_review.as_ref().map(|r| json!({
+                        "nome": r.reviewer,
+                        "registro": r.registration,
+                        "data": r.date,
+                    })),
+                })).collect();
+                Ok(ToolOutput::ok(format!("{} pranchas no conjunto; {} verificações vermelhas.", sheets.len(), red.len()))
+                    .with_structured(json!({"pranchas": sheets, "verificacoes_vermelhas": red.len()})))
+            }
+            "adicionar_ao_conjunto" => {
+                let title = text(args, "titulo").unwrap_or_else(|| "Planta Baixa".to_owned());
+                self.apply_change(None, |project| {
+                    let id = project.sheet_set.add_sheet(&title, SheetContent::FloorPlan, &project.sheet);
+                    if let Some(sheet) = project.sheet_set.sheets.iter_mut().find(|s| s.id == id) {
+                        sheet.discipline = crate::domain::discipline::Discipline::Architecture;
+                    }
+                    Ok(Change::new(format!("Prancha {id} adicionada ao conjunto."))
+                        .data(json!({"id": id})))
+                })
+            }
+            "definir_situacao" => {
+                let id = element_id(args, "id")?;
+                let status = match text(args, "situacao").unwrap_or_default().as_str() {
+                    "em_elaboracao" => SheetStatus::EmElaboracao,
+                    "para_aprovacao" => SheetStatus::ParaAprovacao,
+                    "liberado_obra" => SheetStatus::LiberadoObra,
+                    "as_built" => SheetStatus::AsBuilt,
+                    _ => return Err("'situacao' deve ser em_elaboracao, para_aprovacao, liberado_obra ou as_built.".to_owned()),
+                };
+                let reviewer = text(args, "revisor").unwrap_or_default();
+                let registration = text(args, "registro_revisor").unwrap_or_default();
+                let date = text(args, "data_revisao").unwrap_or_default();
+                self.apply_change(None, |project| {
+                    project.set_sheet_status(id, status, Some((&reviewer, &registration, &date)))?;
+                    Ok(Change::new(format!("Prancha {id}: {}.", status.label()))
+                        .data(json!({"id": id, "situacao": status.label()})))
+                })
+            }
+            "exportar_conjunto" => {
+                let id = element_id(args, "id")?;
+                let format = text(args, "formato").unwrap_or_else(|| "pdf".to_owned());
+                if format != "pdf" && format != "svg" {
+                    return Err("'formato' deve ser pdf ou svg.".to_owned());
+                }
+                let item = self.project.sheet_set.sheets.iter().find(|s| s.id == id)
+                    .ok_or_else(|| "Prancha não encontrada.".to_owned())?;
+                let path = match text(args, "caminho") {
+                    Some(input) => resolve_path(&input, &format),
+                    None => unique_path(documents_dir().join(format!("{}-{}.{}", file_stem(&self.project.name), item.code.to_lowercase(), format))),
+                };
+                ensure_parent(&path)?;
+                if format == "pdf" {
+                    crate::io::export::sheet::export_sheet_item_pdf(&self.project, item, &path)?;
+                } else {
+                    crate::io::export::sheet::export_sheet_item_svg(&self.project, item, &path)?;
+                }
+                Ok(ToolOutput::ok(format!("Prancha exportada em {}", path.display()))
+                    .with_structured(json!({"caminho": path.display().to_string(), "situacao": item.effective_status(&red_checks(&self.project)).label()})))
+            }
             "obter" => {
                 let data = sheet_json(&self.project.sheet);
                 Ok(ToolOutput::ok(format!(
@@ -1257,7 +1325,7 @@ impl FloorPlanApp {
                     },
                 )
             }
-            _ => Err("Informe 'acao': obter ou configurar.".to_owned()),
+            _ => Err("Informe 'acao': obter, configurar, listar_conjunto, adicionar_ao_conjunto, definir_situacao ou exportar_conjunto.".to_owned()),
         }
     }
 }
@@ -1275,6 +1343,74 @@ mod tests {
         let out = app.run_mcp_tool(name, &args);
         assert!(!out.is_error, "{name}: {}", out.text);
         out
+    }
+
+    #[test]
+    fn sheet_release_gate_is_enforced_through_mcp_and_export() {
+        let mut app = app();
+        app.project
+            .set_terrain(Point::new(-2.0, -2.0), Point::new(20.0, 20.0));
+        app.project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 4.0), "Sala")
+            .unwrap();
+        app.project.generate_structure();
+        let beam = app.project.structure.beams[0].id;
+        app.project.update_beam(beam, None, Some(0.20)).unwrap();
+        let out = ok(
+            &mut app,
+            "prancha",
+            json!({"acao": "adicionar_ao_conjunto", "titulo": "Forma"}),
+        );
+        let id = out.structured.unwrap()["id"].as_u64().unwrap();
+        let denied = app.run_mcp_tool(
+            "prancha",
+            &json!({
+                "acao": "definir_situacao", "id": id, "situacao": "liberado_obra"
+            }),
+        );
+        assert!(denied.is_error);
+        assert_eq!(
+            app.project.sheet_set.sheets[0].status,
+            SheetStatus::EmElaboracao
+        );
+
+        ok(
+            &mut app,
+            "prancha",
+            json!({
+                "acao": "definir_situacao", "id": id, "situacao": "liberado_obra",
+                "revisor": "Ana Souza", "registro_revisor": "CREA 12345", "data_revisao": "23/11/2026"
+            }),
+        );
+        let listed = ok(&mut app, "prancha", json!({"acao": "listar_conjunto"}));
+        assert_eq!(
+            listed.structured.unwrap()["pranchas"][0]["situacao"],
+            "Liberado para obra"
+        );
+        let path = std::env::temp_dir().join(format!("trazo-gate-{}.svg", std::process::id()));
+        ok(
+            &mut app,
+            "prancha",
+            json!({
+                "acao": "exportar_conjunto", "id": id, "formato": "svg", "caminho": path.display().to_string()
+            }),
+        );
+        let markup = std::fs::read_to_string(&path).unwrap();
+        assert!(markup.contains("VERMELHOS REVISADOS"));
+        assert!(markup.contains("Ana Souza"));
+
+        app.project.update_beam(beam, None, Some(0.18)).unwrap();
+        ok(
+            &mut app,
+            "prancha",
+            json!({
+                "acao": "exportar_conjunto", "id": id, "formato": "svg", "caminho": path.display().to_string()
+            }),
+        );
+        let markup = std::fs::read_to_string(&path).unwrap();
+        assert!(markup.contains("Para aprovação"));
+        assert!(!markup.contains("VERMELHOS REVISADOS"));
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]

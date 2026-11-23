@@ -280,7 +280,7 @@ Each tab of the window keeps its own view. Every sheet in a sheet set has a disc
 - **Quadros** (schedules): areas, doors and windows, rooms and materials, configurable and placed on sheets.
 - **Quantitativos** (construction quantities): blocks with waste, half blocks, U-blocks, lintels and sills, laying mortar, plaster, and the finishes of each room, exported to CSV for the shopping list.
 - **Vistas** (views): sections, elevations and detail callouts with cross-references between drawings.
-- **Pranchas** (sheet sets): multi-sheet sets with automatic numbering (`01/03`), revisions (`R00`, `R01`…), issue status and a master document list.
+- **Pranchas** (sheet sets): multi-sheet sets with automatic numbering (`01/03`), revisions (`R00`, `R01`…), issue status and a master document list. To select **Liberado para obra** while the *Segurança* window has red checks, enter the reviewing professional's name, numbered CREA/CAU registration and review date. The PDF/SVG sheet records the reviewer. If a red check changes or a new sheet revision is issued, the effective status returns to **Para aprovação** until reviewed again. This is a recorded professional acknowledgement, not a digital signature or a substitute for ART/RRT.
 - **Modelos** (templates and sample projects): ready-made floor plan, site plan and wet-area detail setups, plus three full sample projects (`examples/casa-terrea.json`, `examples/sobrado.json`, `examples/apartamento.json`).
 - Documentation styles follow ABNT NBR 6492:2021 and NBR 16752, with visual and monochrome site presets. Checking the requirements that apply to a given project remains the designer's responsibility.
 

@@ -1127,9 +1127,15 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "prancha",
             title: "Prancha técnica e carimbo (ABNT)",
-            description: "Consulta ou configura o formato de papel (A4–A0 ou personalizado), orientação, escala (1:25–1:200 ou 'melhor') e os dados do carimbo ABNT NBR 16752 usados ao exportar pranchas em escala.",
+            description: "Consulta ou configura a prancha ABNT e gerencia o conjunto de pranchas. A liberação para obra com resultados vermelhos exige revisão profissional registrada.",
             properties: json!({
-                "acao": { "type": "string", "enum": ["obter", "configurar"], "description": "O que fazer; padrão obter." },
+                "acao": { "type": "string", "enum": ["obter", "configurar", "listar_conjunto", "adicionar_ao_conjunto", "definir_situacao", "exportar_conjunto"], "description": "O que fazer; padrão obter." },
+                "id": integer("ID da prancha do conjunto para definir_situacao ou exportar_conjunto."),
+                "situacao": { "type": "string", "enum": ["em_elaboracao", "para_aprovacao", "liberado_obra", "as_built"], "description": "Nova situação da prancha." },
+                "revisor": string("Nome do profissional que revisou as verificações vermelhas."),
+                "registro_revisor": string("Registro profissional com número, iniciado por CREA ou CAU."),
+                "data_revisao": string("Data da revisão profissional."),
+                "caminho": string("Caminho opcional para exportar_conjunto."),
                 "formato": { "type": "string", "enum": ["A4", "A3", "A2", "A1", "A0", "personalizado"], "description": "Formato da folha." },
                 "largura_mm": number("Para formato personalizado: largura em mm."),
                 "altura_mm": number("Para formato personalizado: altura em mm."),

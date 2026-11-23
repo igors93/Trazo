@@ -1540,20 +1540,28 @@ pub fn scaled_sheet_item_svg(
     project: &Project,
     item: &crate::domain::sheet_set::SheetItem,
 ) -> String {
+    let mut effective = item.clone();
+    let current_red = crate::domain::sheet_set::red_checks(project);
+    effective.status = item.effective_status(&current_red);
+    if effective.status != crate::domain::sheet_set::SheetStatus::LiberadoObra
+        || current_red.is_empty()
+    {
+        effective.release_review = None;
+    }
+    let item = &effective;
     // Each sheet shows its own discipline (#96) with the same faded reference
     // underlay used on screen for specialized disciplines.
     let mut themed = project.clone();
     themed.sheet = item.layout.clone();
     themed.sheet.title_block.sheet_number = item.number.clone();
     themed.sheet.title_block.revision = item.latest_revision_code().to_owned();
-    if !item.title.trim().is_empty() {
-        themed.sheet.title_block.drawing_title = format!(
-            "{} · {} ({})",
-            item.code,
-            item.title.trim(),
-            item.status.label()
-        );
-    }
+    let title = if item.title.trim().is_empty() {
+        item.content.label()
+    } else {
+        item.title.trim()
+    };
+    themed.sheet.title_block.drawing_title =
+        format!("{} · {} ({})", item.code, title, item.status.label());
     let mut svg = if item.discipline.focus().is_some() {
         let underlay = themed.for_underlay(item.discipline, &[]);
         let overlay = themed.for_view(item.discipline, &[]);
@@ -1589,7 +1597,8 @@ fn write_revision_table(
     };
     let row_h = 3.6;
     let visible_revs: Vec<_> = item.revisions.iter().rev().take(4).collect();
-    let table_h = (visible_revs.len() + 2) as f64 * row_h + 1.0;
+    let table_h =
+        (visible_revs.len() + 2 + usize::from(item.release_review.is_some())) as f64 * row_h + 1.0;
     let x = frame_x + frame_w - w;
     let y = (frame_y + frame_h - tb_h - table_h - 1.5).max(frame_y + 2.0);
 
@@ -1644,6 +1653,19 @@ fn write_revision_table(
             escaped(&rev.description)
         );
         cy += row_h;
+    }
+    if item.status == crate::domain::sheet_set::SheetStatus::LiberadoObra
+        && let Some(review) = &item.release_review
+    {
+        let _ = writeln!(
+            svg,
+            "<text x=\"{:.2}\" y=\"{:.2}\" font-family=\"Arial, sans-serif\" font-size=\"1.8\" fill=\"#1d2836\">VERMELHOS REVISADOS: {} · {} · {}</text>",
+            x + 2.0,
+            cy + 2.5,
+            escaped(&review.reviewer),
+            escaped(&review.registration),
+            escaped(&review.date)
+        );
     }
     svg.push_str("</g>\n");
 }

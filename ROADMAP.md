@@ -172,6 +172,11 @@ Recorded while working through the [implementation log](#implementation-log), an
 
 ## Implementation log
 
+### #104 Sheet release gate — ✅ Done
+
+- **Changes:** `Project::set_sheet_status` refuses *Liberado para obra* while red engineering checks are open unless a named reviewer records a numbered CREA/CAU registration and review date. The acknowledgement stores the exact failed checks and sheet revision. New red results or a new revision make the effective status *Para aprovação* in the sheet UI, master document CSV and SVG/PDF exports. The exported revision table identifies the reviewer. MCP `prancha` can list, add, set status and export set sheets through the same rule.
+- **Tests:** regression coverage for a denied release, valid review, JSON persistence, changed red results, a new revision, MCP release and SVG export. The entry is a recorded acknowledgement, not a cryptographic signature or proof of ART/RRT.
+
 The items worked through in the order set on 2026-11-21: #97 → #99 → #100 → #101 → #102 → #103 → #56 → #53 → #113 → #94. Each entry records what was done, how it was checked, the commit and what remains.
 
 ### #97 CI on Windows and macOS — ✅ Done
@@ -509,7 +514,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 101 | Results as a traffic light: margin to the limit, the assumptions used, and a plain-language explanation of what to change | P0 | M | M3 | ✅ |
 | 102 | Applicability limits per module (storeys, spans, loads, soils); outside them Trazo refuses to size and asks for a professional | P0 | S | M3 | ✅ |
 | 103 | Pre-sizing report (*memorial*) as PDF: inputs, assumptions, results, warnings and drawings, for a licensed professional to review and sign (ART or RRT) | P0 | M | M3 | ✅ |
-| 104 | Release gate: a sheet set cannot be marked *Liberado para obra* with open red results unless a reviewer (name and CREA/CAU number) signs them off | P1 | S | M3 | ⬜ |
+| 104 | Release gate: a sheet set cannot be marked *Liberado para obra* with open red results unless a reviewer (name and CREA/CAU number) signs them off | P1 | S | M3 | ✅ |
 
 ### C. Simulation core
 
