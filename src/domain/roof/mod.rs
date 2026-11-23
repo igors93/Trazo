@@ -105,6 +105,11 @@ pub struct Roof {
     /// No ceiling: the tiles and battens stay in sight.
     #[serde(default = "default_exposed")]
     pub exposed: bool,
+    /// Verified design resistance of the complete lateral path from the roof
+    /// plane through its bracing, connections and vertical supports to soil.
+    /// `None` means that top restraint cannot be credited in the wind model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lateral_bracing_kn: Option<f64>,
 }
 
 impl Roof {
@@ -125,6 +130,7 @@ impl Roof {
             purlin_spacing_m: default_purlin_spacing(),
             rafter_spacing_m: default_rafter_spacing(),
             exposed: true,
+            lateral_bracing_kn: None,
         }
     }
 
@@ -253,6 +259,14 @@ impl Roof {
         }
         if !(1.0..=6.0).contains(&self.beam_spacing_m) {
             return Err("O espaçamento das vigas deve ficar entre 1 e 6 m.".to_owned());
+        }
+        if self
+            .lateral_bracing_kn
+            .is_some_and(|capacity| !capacity.is_finite() || !(0.0..=100_000.0).contains(&capacity))
+        {
+            return Err(
+                "A resistência de contraventamento deve ficar entre 0 e 100.000 kN.".to_owned(),
+            );
         }
         if let Some((width, height)) = self.beam_section_cm
             && (!(5.0..=30.0).contains(&width) || !(8.0..=50.0).contains(&height) || height < width)

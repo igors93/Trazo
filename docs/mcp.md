@@ -80,6 +80,8 @@ Tools that read are marked read-only and tools that delete are marked destructiv
 
 `pre_dimensionamento` now includes `alvenaria.paineis[].vento_fora_plano` with wind demand/capacity and the proposed intermediate/crown ties, and `fundacao_paredes[]` with signed reactions to columns and receiving ground beams. `projeto_estrutural` with `configurar_vento` also returns the tall masonry-panel effects under `paineis_alvenaria`. A missing support path is exposed as `apoios_insuficientes` and a red verdict.
 
+`projeto_estrutural` with `definir_telhado` accepts `contraventamento_kn` as the verified design resistance of the full lateral path (or `null` to remove it). `configurar_vento` and `pre_dimensionamento` return `vento.contraventamento` and `vento.estabilidade_global` with four directional checks. Roof bearing alone never counts as top lateral restraint.
+
 ## Working together in real time
 
 You and the assistant can edit the same plan at the same time without overwriting each other.

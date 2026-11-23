@@ -676,6 +676,58 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                 &rows,
             );
         }
+        if !report.wind.global.is_empty() {
+            pages.subheading("Estabilidade global sob vento");
+            let rows: Vec<_> = report
+                .wind
+                .global
+                .iter()
+                .map(|global| {
+                    (
+                        light_of
+                            .get(&format!("Estabilidade global {}", global.direction))
+                            .copied(),
+                        vec![
+                            global.direction.to_owned(),
+                            format!(
+                                "{} / {}",
+                                decimal(global.wind_kn, 1),
+                                decimal(global.roof_uplift_kn, 1)
+                            ),
+                            format!("{:.2}/{:.2}", global.alpha, global.alpha_limit),
+                            format!(
+                                "{}/{}",
+                                decimal(global.drift_mm, 1),
+                                decimal(global.drift_limit_mm, 1)
+                            ),
+                            decimal(global.overturning_ratio, 2),
+                            if global.supports_ok && global.bracing_ok {
+                                "completo".to_owned()
+                            } else {
+                                "incompleto".to_owned()
+                            },
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &[
+                    "Direção",
+                    "W / U (kN)",
+                    "α / limite",
+                    "Δ / limite (mm)",
+                    "Mres/Md",
+                    "Caminho",
+                ],
+                &[1.1, 1.6, 1.4, 2.0, 1.3, 1.8],
+                &rows,
+            );
+            for brace in &report.wind.bracing {
+                pages.paragraph(&format!("Cobertura {}: contraventamento lateral exige {} kN; resistência informada {}.",
+                    brace.label, decimal(brace.demand_kn, 1),
+                    brace.capacity_kn.map_or("não informada".to_owned(), |kn| format!("{} kN", decimal(kn, 1)))), 3.0, INK);
+            }
+        }
         if !report.slabs.is_empty() {
             pages.subheading("Lajes");
             let rows: Vec<_> = report

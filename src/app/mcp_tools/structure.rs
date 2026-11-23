@@ -204,6 +204,17 @@ fn roof_arg(
     if let Some(v) = number(args, "espacamento_vigas_m")? {
         roof.beam_spacing_m = v;
     }
+    if let Some(value) = args.get("contraventamento_kn") {
+        roof.lateral_bracing_kn = if value.is_null() {
+            None
+        } else {
+            Some(
+                value
+                    .as_f64()
+                    .ok_or("'contraventamento_kn' deve ser um número em kN ou null.")?,
+            )
+        };
+    }
     if let Some(value) = args.get("secao_vigas_cm") {
         let values = value
             .as_array()
@@ -319,6 +330,31 @@ pub(super) fn wind_json(
             "peso_kn_m2": round2(r.dead_kpa),
             "levanta": r.lifts(),
             "ancoragem_por_ponta_kn": round2(r.anchor_kn),
+        })).collect::<Vec<_>>(),
+        "contraventamento": effects.bracing.iter().map(|brace| json!({
+            "telhado": brace.label,
+            "demanda_kn": round2(brace.demand_kn),
+            "resistencia_informada_kn": brace.capacity_kn.map(round2),
+            "apoios_ancorados": brace.path_ok,
+            "atende": brace.ok(),
+        })).collect::<Vec<_>>(),
+        "estabilidade_global": effects.global.iter().map(|global| json!({
+            "direcao": global.direction,
+            "altura_m": round2(global.height_m),
+            "fachada_m": round2(global.facade_m),
+            "vento_kn": round2(global.wind_kn),
+            "momento_vento_knm": round2(global.overturning_knm),
+            "peso_permanente_kn": round2(global.gravity_kn),
+            "succao_cobertura_kn": round2(global.roof_uplift_kn),
+            "momento_estabilizante_knm": round2(global.stabilizing_knm),
+            "razao_tombamento": round2(global.overturning_ratio),
+            "alfa": global.alpha.is_finite().then(|| round2(global.alpha)),
+            "alfa_limite": round2(global.alpha_limit),
+            "deslocamento_mm": global.drift_mm.is_finite().then(|| round2(global.drift_mm)),
+            "deslocamento_limite_mm": round2(global.drift_limit_mm),
+            "apoios_ok": global.supports_ok,
+            "contraventamento_ok": global.bracing_ok,
+            "atende": global.ok(),
         })).collect::<Vec<_>>(),
         "paineis_alvenaria": masonry.panels.iter().filter_map(|panel| {
             let effect = panel.wind.as_ref()?;
@@ -963,6 +999,15 @@ impl FloorPlanApp {
                         .iter()
                         .find(|r| r.id == id)
                         .ok_or("Telhado não analisado.")?;
+                    let mut data = roof_json(result);
+                    if let Some(brace) = report.wind.bracing.iter().find(|brace| brace.roof_id == id) {
+                        data["contraventamento"] = json!({
+                            "demanda_kn": brace.demand_kn,
+                            "resistencia_informada_kn": brace.capacity_kn,
+                            "apoios_ancorados": brace.path_ok,
+                            "atende": brace.ok(),
+                        });
+                    }
                     Ok(Change::new(format!(
                         "Telhado {}: meia-água de {:.0} %, {} m³ de madeira{}{}.",
                         result.label,
@@ -978,7 +1023,7 @@ impl FloorPlanApp {
                             n => format!("; {n} ponta(s) de viga sem apoio embaixo"),
                         }
                     ))
-                    .data(roof_json(result)))
+                    .data(data))
                 })
             }
             "remover_telhado" => {
@@ -1857,6 +1902,33 @@ mod tests {
         assert!(!roofed.is_error, "{}", roofed.text);
         let data = roofed.structured.unwrap();
         assert_eq!(data["pecas"].as_array().unwrap().len(), 4, "{data}");
+        let roof_id = app.project.structure.roofs[0].id;
+        let bracing = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({
+                "acao": "definir_telhado", "id": roof_id, "contraventamento_kn": 100.0,
+                "ajustar_paredes": false
+            }),
+        );
+        assert!(!bracing.is_error, "{}", bracing.text);
+        assert_eq!(
+            app.project.structure.roofs[0].lateral_bracing_kn,
+            Some(100.0)
+        );
+        let wind_report = app
+            .run_mcp_tool(
+                "projeto_estrutural",
+                &json!({
+                    "acao": "configurar_vento", "v0_ms": 40.0
+                }),
+            )
+            .structured
+            .unwrap();
+        assert_eq!(
+            wind_report["estabilidade_global"].as_array().unwrap().len(),
+            4
+        );
+        assert_eq!(wind_report["contraventamento"].as_array().unwrap().len(), 1);
         assert!((data["inclinacao_pct"].as_f64().unwrap() - 34.0).abs() < 0.01);
         // The west wall now stands 4.30 m tall.
         let west = app

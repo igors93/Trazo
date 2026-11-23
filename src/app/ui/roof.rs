@@ -203,6 +203,19 @@ pub(super) fn roof_tab(
                 ui.end_row();
                 ui.label("Telhado aparente");
                 changed |= ui.checkbox(&mut edited.exposed, "sem forro").changed();
+                ui.label("Contraventamento");
+                let mut braced = edited.lateral_bracing_kn.is_some();
+                let mut capacity = edited.lateral_bracing_kn.unwrap_or(0.0);
+                if ui.checkbox(&mut braced, "caminho verificado").on_hover_text("Resistência de cálculo do caminho completo: plano da cobertura, ligações, apoios verticais e fundações.").changed() {
+                    edited.lateral_bracing_kn = braced.then_some(capacity);
+                    changed = true;
+                }
+                ui.end_row();
+                ui.label("Resistência lateral");
+                changed |= ui.add_enabled(braced, egui::DragValue::new(&mut capacity).range(0.0..=100_000.0).suffix(" kN")).changed();
+                if braced {
+                    edited.lateral_bracing_kn = Some(capacity);
+                }
                 ui.label("Área");
                 ui.label(format!(
                     "{} × {} m",
@@ -497,8 +510,25 @@ fn wind_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Opt
             .color(if roof.lifts() { WARNING } else { TEXT_2 }),
         );
     }
+    for brace in &report.wind.bracing {
+        ui.label(RichText::new(format!(
+            "Telhado {} · contraventamento: exige {} kN; resistência verificada {}; apoios ancorados {}.",
+            brace.label, decimal(brace.demand_kn, 1),
+            brace.capacity_kn.map_or("não informada".to_owned(), |kn| format!("{} kN", decimal(kn, 1))),
+            if brace.path_ok { "sim" } else { "não" }
+        )).color(if brace.ok() { TEXT_2 } else { WARNING }));
+    }
+    for global in &report.wind.global {
+        ui.label(RichText::new(format!(
+            "Estabilidade {}: vento {} kN, α {:.2}/{:.2}, deslocamento {} / {} mm, tombamento {:.2} · {}",
+            global.direction, decimal(global.wind_kn, 1), global.alpha, global.alpha_limit,
+            decimal(global.drift_mm, 1), decimal(global.drift_limit_mm, 1),
+            global.overturning_ratio,
+            if global.ok() { "triagem atende" } else { "revisar caminho e estrutura" }
+        )).color(if global.ok() { TEXT_2 } else { WARNING }));
+    }
     ui.label(
-        RichText::new("Pilar travado pelo telhado só vale com o telhado contraventado até os oitões; mourões articulados na base não seguram o vento sozinhos.")
+        RichText::new("O apoio vertical do telhado só trava o pilar após informar resistência verificada do caminho lateral completo até as fundações. A triagem global não substitui o projeto de ligações, fundações e deslizamento.")
             .size(11.0)
             .color(MUTED),
     );

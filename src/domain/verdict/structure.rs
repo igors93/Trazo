@@ -940,6 +940,40 @@ fn sized_structure_verdicts(
             }],
         });
     }
+    for brace in &report.wind.bracing {
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Telhado {} · contraventamento", brace.label),
+            checks: vec![Check::new(
+                "Caminho lateral",
+                if brace.path_ok { brace.capacity_kn.map_or(2.0, |kn| brace.demand_kn / kn.max(1e-9)) } else { 2.0 },
+                if brace.ok() { "A resistência informada cobre o esforço de cálculo até as fundações.".to_owned() }
+                else { format!("Verifique o contraventamento completo para {:.1} kN e ancore pelo menos dois apoios às fundações.", brace.demand_kn) },
+                format!("Demanda {:.1} kN; capacidade verificada {}. A resistência deve incluir plano do telhado, ligações, apoios e fundações.",
+                    brace.demand_kn, brace.capacity_kn.map_or("não informada".to_owned(), |kn| format!("{kn:.1} kN"))),
+            )],
+        });
+    }
+    for global in &report.wind.global {
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Estabilidade global {}", global.direction),
+            checks: vec![
+                Check::new("Apoios e travamento", if global.supports_ok && global.bracing_ok { 0.0 } else { 2.0 },
+                    if global.supports_ok && global.bracing_ok { "Caminho lateral e apoios declarados." } else { "Faltam fundações, apoios do telhado ou resistência de contraventamento." }.to_owned(),
+                    "O esforço horizontal precisa chegar às fundações; o simples apoio vertical da cobertura não trava os pilares.".to_owned()),
+                Check::new("Instabilidade global α", global.alpha / global.alpha_limit,
+                    format!("α = {:.2}; limite {:.2} para até três pavimentos.", global.alpha, global.alpha_limit),
+                    "Triagem conservadora de nós fixos (NBR 6118 §15.5.2), com 0,4 EcsIc dos pilares engastados; não substitui análise de segunda ordem.".to_owned()),
+                Check::new("Deslocamento lateral", global.drift_mm / global.drift_limit_mm,
+                    format!("Flecha lateral {:.1} mm; limite H/850 = {:.1} mm.", global.drift_mm, global.drift_limit_mm),
+                    format!("Vento na fachada de {:.2} m × {:.2} m: {:.1} kN na direção {}.", global.facade_m, global.height_m, global.wind_kn, global.direction)),
+                Check::new("Tombamento global", 1.0 / global.overturning_ratio.max(1e-9),
+                    format!("Momento estabilizante {:.1} kN·m para {:.1} kN·m de vento de cálculo.", global.stabilizing_knm, 1.4 * global.overturning_knm),
+                    format!("Triagem de corpo rígido com 0,9 G favorável, 1,4 W lateral e 1,4 U de sucção (U = {:.1} kN). Não verifica deslizamento nem cada sapata isolada.", global.roof_uplift_kn)),
+            ],
+        });
+    }
     for post in &report.timber_posts {
         verdicts.push(Verdict {
             discipline: Discipline::Structure,

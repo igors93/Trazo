@@ -1338,6 +1338,21 @@ impl Project {
                 decimal(roof.anchor_kn, 1)
             ));
         }
+        for brace in wind.bracing.iter().filter(|brace| !brace.ok()) {
+            report.warnings.push(format!(
+                "Telhado {}: o caminho de contraventamento até as fundações pede {:.1} kN de resistência lateral de cálculo; resistência verificada {}.",
+                brace.label,
+                brace.demand_kn,
+                brace.capacity_kn.map_or("não informada".to_owned(), |kn| format!("{kn:.1} kN"))
+            ));
+        }
+        for global in wind.global.iter().filter(|global| !global.ok()) {
+            report.warnings.push(format!(
+                "Estabilidade global {}: α = {:.2}/{:.2}, deslocamento = {:.1}/{:.1} mm, momento estabilizante/solicitante = {:.2}; confira apoios, travamento e fundações.",
+                global.direction, global.alpha, global.alpha_limit,
+                global.drift_mm, global.drift_limit_mm, global.overturning_ratio
+            ));
+        }
         report.wind = wind;
         // The survey (#112) may allow less than the pressure adopted.
         if let Some(survey) = &self.structure.soil_survey {

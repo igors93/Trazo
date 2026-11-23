@@ -8,6 +8,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 
 ### Added
 
+- Global wind-stability screening in both plan axes and both wind signs now reports lateral force, overturning balance, the NBR 6118 α indicator and lateral drift. Roof bearing only braces a tall-wall column when a declared lateral bracing path has enough design resistance and two grounded supports (#147).
 - Tall masonry walls now receive an out-of-plane wind check and a preliminary design of intermediate reinforced-concrete ties plus a crown beam, including spacing, section, steel, plan mark, UI, PDF, MCP and traffic lights (#147).
 - Ground beams now connect at transverse T-junctions; secondary beams pass point reactions through chains of ground beams to columns and footings, with a red fallback for unsupported requested beams (#143).
 

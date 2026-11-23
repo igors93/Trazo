@@ -17,6 +17,8 @@
 //!   net uplift 1.4 · (1.0 + Cpi) · q − 0.9 · g, when positive, is the
 //!   anchorage each roof beam end needs.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use super::foundations::size_rectangular_beam;
@@ -178,6 +180,57 @@ impl RoofWindResult {
 pub struct WindReport {
     pub columns: Vec<ColumnWindResult>,
     pub roofs: Vec<RoofWindResult>,
+    pub bracing: Vec<RoofBracingResult>,
+    pub global: Vec<GlobalStabilityResult>,
+}
+
+/// Design shear that must reach the ground through the roof bracing path.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RoofBracingResult {
+    pub roof_id: u64,
+    pub label: String,
+    pub demand_kn: f64,
+    pub capacity_kn: Option<f64>,
+    pub path_ok: bool,
+}
+
+impl RoofBracingResult {
+    pub fn ok(&self) -> bool {
+        self.path_ok
+            && self
+                .capacity_kn
+                .is_some_and(|capacity| capacity + 1e-9 >= self.demand_kn)
+    }
+}
+
+/// Conservative whole-structure screening in one horizontal direction.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GlobalStabilityResult {
+    pub direction: &'static str,
+    pub height_m: f64,
+    pub facade_m: f64,
+    pub wind_kn: f64,
+    pub overturning_knm: f64,
+    pub gravity_kn: f64,
+    pub roof_uplift_kn: f64,
+    pub stabilizing_knm: f64,
+    pub overturning_ratio: f64,
+    pub alpha: f64,
+    pub alpha_limit: f64,
+    pub drift_mm: f64,
+    pub drift_limit_mm: f64,
+    pub supports_ok: bool,
+    pub bracing_ok: bool,
+}
+
+impl GlobalStabilityResult {
+    pub fn ok(&self) -> bool {
+        self.supports_ok
+            && self.bracing_ok
+            && self.overturning_ratio >= 1.0 - 1e-9
+            && self.alpha <= self.alpha_limit + 1e-9
+            && self.drift_mm <= self.drift_limit_mm + 1e-9
+    }
 }
 
 /// μ, steel per face (cm²) of a section `b` × `h` under `md` (kN·m).
@@ -193,6 +246,238 @@ fn bending(b: f64, h: f64, md: f64, fck: f64) -> (f64, f64) {
 }
 
 impl Project {
+    fn global_wind_stability(
+        &self,
+        report: &StructureReport,
+        wind: &WindReport,
+    ) -> Vec<GlobalStabilityResult> {
+        if wind.columns.is_empty() && report.roofs.is_empty() {
+            return Vec::new();
+        }
+        let mut points: Vec<Point> = self
+            .walls
+            .iter()
+            .flat_map(|wall| [wall.start, wall.end])
+            .collect();
+        for roof in &self.structure.roofs {
+            points.extend([roof.min, roof.max]);
+        }
+        let Some(first) = points.first().copied() else {
+            return Vec::new();
+        };
+        let (lo, hi) = points.into_iter().fold((first, first), |(lo, hi), p| {
+            (
+                Point::new(lo.x.min(p.x), lo.y.min(p.y)),
+                Point::new(hi.x.max(p.x), hi.y.max(p.y)),
+            )
+        });
+        let height = self
+            .walls
+            .iter()
+            .map(|wall| {
+                let (a, b) = wall.heights(self.wall_height);
+                a.max(b)
+            })
+            .chain(self.structure.roofs.iter().map(|roof| roof.high_m))
+            .fold(self.wall_height, f64::max);
+        let mut supports = Vec::new();
+        let mut gravity = Vec::new();
+        let mut uplift = Vec::new();
+        let mut supports_ok = !report.footings.is_empty()
+            || !report.timber_posts.is_empty()
+            || report.wall_foundations.iter().any(|f| {
+                f.kind == super::wall_foundations::WallFoundationKind::StripFooting
+                    && !f.unsupported
+            });
+        for footing in &report.footings {
+            if let Some(fixture) = self.fixtures.iter().find(|f| f.id == footing.id) {
+                supports.push((fixture.center, footing.width_m / 2.0, footing.depth_m / 2.0));
+                gravity.push((
+                    fixture.center,
+                    25.0 * footing.width_m * footing.depth_m * footing.height_m,
+                ));
+            }
+        }
+        for post in &report.timber_posts {
+            if let Some(fixture) = self.fixtures.iter().find(|f| f.id == post.id) {
+                supports.push((fixture.center, post.base_m / 2.0, post.base_m / 2.0));
+                gravity.push((
+                    fixture.center,
+                    24.0 * post.base_m * post.base_m * post.base_depth_m,
+                ));
+            }
+        }
+        for strip in report.wall_foundations.iter().filter(|f| {
+            f.kind == super::wall_foundations::WallFoundationKind::StripFooting && !f.unsupported
+        }) {
+            if let Some(wall) = self.walls.iter().find(|w| w.id == strip.wall_id) {
+                supports.push((wall.start, strip.width_m / 2.0, strip.width_m / 2.0));
+                supports.push((wall.end, strip.width_m / 2.0, strip.width_m / 2.0));
+                gravity.push((
+                    wall.start.midpoint(wall.end),
+                    25.0 * strip.width_m * 0.25 * strip.length_m,
+                ));
+            }
+        }
+        for wall in &self.walls {
+            let founded = report
+                .wall_foundations
+                .iter()
+                .any(|f| f.wall_id == wall.id && !f.unsupported)
+                || [wall.start, wall.end].iter().all(|end| {
+                    report.footings.iter().any(|f| {
+                        self.fixtures
+                            .iter()
+                            .find(|fix| fix.id == f.id)
+                            .is_some_and(|fix| fix.center.distance(*end) < 0.35)
+                    })
+                });
+            supports_ok &= founded;
+            if founded {
+                gravity.push((
+                    wall.start.midpoint(wall.end),
+                    self.structure.settings.masonry_kn_m3
+                        * wall.thickness()
+                        * self.wall_net_area(wall),
+                ));
+            }
+        }
+        for column in &report.columns {
+            let Some(fixture) = self.structural_columns().find(|f| f.id == column.id) else {
+                continue;
+            };
+            supports_ok &= report
+                .footings
+                .iter()
+                .any(|f| f.column.as_deref() == Some(column.label.as_str()));
+            gravity.push((
+                fixture.center,
+                25.0 * fixture.width * fixture.depth * column.height_m,
+            ));
+        }
+        for roof in &report.roofs {
+            if let Some(model) = self.structure.roofs.iter().find(|r| r.id == roof.id) {
+                supports_ok &= roof.unsupported() == 0;
+                let area = (model.max.x - model.min.x) * (model.max.y - model.min.y);
+                let center = model.min.midpoint(model.max);
+                gravity.push((center, roof.dead_kn_m2 * area));
+                if let Some(effect) = wind.roofs.iter().find(|effect| effect.id == roof.id) {
+                    uplift.push((center, effect.uplift_kpa * area));
+                }
+            }
+        }
+        if supports.is_empty() {
+            supports_ok = false;
+        }
+        let gravity_kn: f64 = gravity.iter().map(|(_, load)| load).sum();
+        let roof_uplift_kn: f64 = uplift.iter().map(|(_, load)| load).sum();
+        let nk: f64 = report
+            .columns
+            .iter()
+            .map(|column| column.load_kn.max(0.0))
+            .sum();
+        let n_storeys = self.structure.settings.floors.clamp(1, 3) as f64;
+        let alpha_limit = 0.2 + 0.1 * n_storeys;
+        let bracing_ok = wind.bracing.iter().all(RoofBracingResult::ok);
+        let mut rows = Vec::new();
+        for (direction, along_x, positive) in [
+            ("+X", true, true),
+            ("−X", true, false),
+            ("+Y", false, true),
+            ("−Y", false, false),
+        ] {
+            let facade = if along_x { hi.y - lo.y } else { hi.x - lo.x };
+            if facade < 0.1 {
+                continue;
+            }
+            let q = self
+                .structure
+                .wind
+                .pressure_kpa(height, self.building_size());
+            let force = WALL_CP * q * facade * height;
+            let moment = force * height / 2.0;
+            let edge = supports
+                .iter()
+                .map(|(point, half_x, half_y)| {
+                    let center = if along_x { point.x } else { point.y };
+                    let half = if along_x { *half_x } else { *half_y };
+                    if positive {
+                        center + half
+                    } else {
+                        center - half
+                    }
+                })
+                .reduce(|a, b| if positive { a.max(b) } else { a.min(b) })
+                .unwrap_or(0.0);
+            let downward_moment = gravity
+                .iter()
+                .map(|(point, load)| {
+                    let at = if along_x { point.x } else { point.y };
+                    0.9 * load * (if positive { edge - at } else { at - edge })
+                })
+                .sum::<f64>();
+            let uplift_moment = uplift
+                .iter()
+                .map(|(point, load)| {
+                    let at = if along_x { point.x } else { point.y };
+                    1.4 * load * (if positive { edge - at } else { at - edge }).max(0.0)
+                })
+                .sum::<f64>();
+            let stabilizing = downward_moment - uplift_moment;
+            let ei: f64 = report
+                .columns
+                .iter()
+                .filter_map(|column| {
+                    if column.height_m < height - 0.30 {
+                        return None;
+                    }
+                    let fix = self.structural_columns().find(|f| f.id == column.id)?;
+                    let (s, c) = fix.rotation_rad().sin_cos();
+                    let i_local_x = fix.depth * fix.width.powi(3) / 12.0;
+                    let i_local_y = fix.width * fix.depth.powi(3) / 12.0;
+                    let i = if along_x {
+                        i_local_x * c * c + i_local_y * s * s
+                    } else {
+                        i_local_x * s * s + i_local_y * c * c
+                    };
+                    Some(
+                        0.4 * self.structure.settings.modulus_kn_m2()
+                            * i
+                            * (height / column.height_m).powi(3),
+                    )
+                })
+                .sum();
+            let alpha = if ei > 1e-9 {
+                height * (nk / ei).sqrt()
+            } else {
+                f64::INFINITY
+            };
+            let drift_mm = if ei > 1e-9 {
+                force * height.powi(3) / (3.0 * ei) * 1000.0
+            } else {
+                f64::INFINITY
+            };
+            rows.push(GlobalStabilityResult {
+                direction,
+                height_m: height,
+                facade_m: facade,
+                wind_kn: force,
+                overturning_knm: moment,
+                gravity_kn,
+                roof_uplift_kn,
+                stabilizing_knm: stabilizing,
+                overturning_ratio: stabilizing / (1.4 * moment).max(1e-9),
+                alpha,
+                alpha_limit,
+                drift_mm,
+                drift_limit_mm: height / 850.0 * 1000.0,
+                supports_ok,
+                bracing_ok,
+            });
+        }
+        rows
+    }
+
     /// Sets the site's wind.
     pub fn set_wind(&mut self, wind: WindSettings) -> Result<(), String> {
         wind.check()?;
@@ -222,6 +507,7 @@ impl Project {
         let storey = self.wall_height;
         let fck = self.structure.settings.fck_mpa;
         let mut out = WindReport::default();
+        let mut roof_columns: HashMap<u64, Vec<usize>> = HashMap::new();
         for result in &report.columns {
             let Some(column) = self.structural_columns().find(|c| c.id == result.id) else {
                 continue;
@@ -274,11 +560,16 @@ impl Project {
             let tributary = (right - left).max(0.1);
             let q = wind.pressure_kpa(height, size);
             let w = WALL_CP * q * tributary;
-            let braced = report.roofs.iter().any(|r| {
-                r.reactions
-                    .iter()
-                    .any(|x| x.support.as_deref() == Some(result.label.as_str()))
-            });
+            let roof_id = report
+                .roofs
+                .iter()
+                .find(|r| {
+                    r.reactions
+                        .iter()
+                        .any(|x| x.support.as_deref() == Some(result.label.as_str()))
+                })
+                .map(|r| r.id);
+            let braced = roof_id.is_some();
             let moment = if braced {
                 w * height * height / 8.0
             } else {
@@ -302,6 +593,12 @@ impl Project {
                 steel_cm2: steel,
                 needed_depth_m: needed,
             });
+            if let Some(id) = roof_id {
+                roof_columns
+                    .entry(id)
+                    .or_default()
+                    .push(out.columns.len() - 1);
+            }
         }
         for result in &report.roofs {
             let Some(roof) = self.structure.roofs.iter().find(|r| r.id == result.id) else {
@@ -339,6 +636,72 @@ impl Project {
                 anchor_kn: anchor,
             });
         }
+        for roof in &self.structure.roofs {
+            let Some(roof_result) = report.roofs.iter().find(|result| result.id == roof.id) else {
+                continue;
+            };
+            let columns = roof_columns.get(&roof.id).map(Vec::as_slice).unwrap_or(&[]);
+            // A simply supported wind-loaded column sends 3/8 of its
+            // horizontal load to the top. The roof's own vertical face adds
+            // a conservative projected-area load to that same path.
+            let wall_shear: f64 = columns
+                .iter()
+                .map(|&index| {
+                    let col = &out.columns[index];
+                    3.0 / 8.0 * WALL_CP * col.q_kpa * col.tributary_m * col.height_m
+                })
+                .sum();
+            let roof_face = WALL_CP
+                * wind.pressure_kpa(roof.high_m, size.max(roof.eaves_m()))
+                * (roof.high_m - roof.low_m)
+                * roof.eaves_m();
+            let demand = 1.4 * (wall_shear + roof_face);
+            let grounded: Vec<_> = roof_result
+                .reactions
+                .iter()
+                .filter(|reaction| {
+                    reaction.support.as_ref().is_some_and(|label| {
+                        report
+                            .footings
+                            .iter()
+                            .any(|footing| footing.column.as_ref() == Some(label))
+                    })
+                })
+                .map(|reaction| reaction.point)
+                .collect();
+            let path_ok = grounded
+                .iter()
+                .any(|a| grounded.iter().any(|b| a.distance(*b) > 0.5));
+            let bracing = RoofBracingResult {
+                roof_id: roof.id,
+                label: roof_result.label.clone(),
+                demand_kn: demand,
+                capacity_kn: roof.lateral_bracing_kn,
+                path_ok,
+            };
+            if !bracing.ok() {
+                for &index in columns {
+                    let col = &mut out.columns[index];
+                    let w = WALL_CP * col.q_kpa * col.tributary_m;
+                    col.braced = false;
+                    col.moment_knm = w * col.height_m * col.height_m / 2.0;
+                    let md = 1.4 * col.moment_knm;
+                    let shear = w * col.height_m;
+                    (col.ratio, col.steel_cm2) = bending(col.width_m, col.depth_m, md, fck);
+                    col.needed_depth_m = size_rectangular_beam(
+                        col.width_m.max(0.12),
+                        md,
+                        1.4 * shear,
+                        fck,
+                        0.15,
+                        0.80,
+                    )
+                    .0;
+                }
+            }
+            out.bracing.push(bracing);
+        }
+        out.global = self.global_wind_stability(report, &out);
         out
     }
 }
@@ -378,6 +741,9 @@ mod tests {
             project
                 .add_fixture(FixtureKind::Column, Point::new(0.07, y), 0.30, 0.14, 1)
                 .unwrap();
+            project
+                .add_fixture(FixtureKind::Footing, Point::new(0.07, y), 0.80, 0.80, 0)
+                .unwrap();
         }
         for y in [0.07, 3.0, 6.0, 9.0, 12.0, 14.68] {
             project
@@ -385,15 +751,15 @@ mod tests {
                 .unwrap();
         }
         if with_roof {
-            project
-                .add_roof(Roof::new(
-                    Point::new(0.0, 0.0),
-                    Point::new(5.0, 14.75),
-                    RoofSide::West,
-                    4.30,
-                    2.60,
-                ))
-                .unwrap();
+            let mut roof = Roof::new(
+                Point::new(0.0, 0.0),
+                Point::new(5.0, 14.75),
+                RoofSide::West,
+                4.30,
+                2.60,
+            );
+            roof.lateral_bracing_kn = Some(1000.0);
+            project.add_roof(roof).unwrap();
         }
         project
     }
@@ -427,5 +793,101 @@ mod tests {
         let roof = &wind.roofs[0];
         assert!(roof.open);
         assert!((roof.uplift_kpa - 1.8 * roof.q_kpa).abs() < 1e-12);
+    }
+
+    #[test]
+    fn roof_bearing_alone_cannot_brace_the_wall_or_pass_global_stability() {
+        let mut project = gourmet(true);
+        project.structure.roofs[0].lateral_bracing_kn = None;
+        let report = project.structure_report();
+        let wind = &report.wind;
+        assert!(!wind.bracing[0].ok());
+        assert!(wind.bracing[0].path_ok);
+        assert!(wind.columns.iter().all(|column| !column.braced));
+        assert_eq!(wind.global.len(), 4);
+        assert!(
+            wind.global
+                .iter()
+                .all(|global| !global.bracing_ok && !global.ok())
+        );
+        let baseline = wind.global.iter().find(|g| g.direction == "+X").unwrap();
+        let original_force = baseline.wind_kn;
+        project.structure.wind.v0_ms = 45.0;
+        let stronger = project.structure_report();
+        let stronger = stronger
+            .wind
+            .global
+            .iter()
+            .find(|g| g.direction == "+X")
+            .unwrap();
+        assert!(stronger.wind_kn > original_force);
+        assert!(stronger.drift_mm > baseline.drift_mm);
+        assert!(stronger.overturning_knm > baseline.overturning_knm);
+    }
+
+    #[test]
+    fn roof_bracing_needs_two_grounded_supports_and_enough_capacity() {
+        let mut project = gourmet(true);
+        let report = project.structure_report();
+        assert!(report.wind.bracing[0].ok());
+        assert!(report.wind.columns.iter().all(|column| column.braced));
+        project.structure.roofs[0].lateral_bracing_kn = Some(1.0);
+        let weak = project.structure_report();
+        assert!(!weak.wind.bracing[0].ok());
+        assert!(weak.wind.columns.iter().all(|column| !column.braced));
+        project.structure.roofs[0].lateral_bracing_kn = Some(1000.0);
+        project
+            .fixtures
+            .retain(|fixture| fixture.kind != FixtureKind::Footing);
+        let ungrounded = project.structure_report();
+        assert!(!ungrounded.wind.bracing[0].path_ok);
+        assert!(ungrounded.wind.columns.iter().all(|column| !column.braced));
+    }
+
+    #[test]
+    fn a_grounded_stiff_low_rise_passes_the_global_screening() {
+        let mut project = Project::default();
+        project.set_terrain(Point::new(-2.0, -2.0), Point::new(8.0, 8.0));
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 4.0), "Sala")
+            .unwrap();
+        for x in [0.0, 4.0] {
+            for y in [0.0, 2.0, 4.0] {
+                project
+                    .add_fixture(FixtureKind::Column, Point::new(x, y), 0.80, 0.80, 0)
+                    .unwrap();
+                project
+                    .add_fixture(FixtureKind::Footing, Point::new(x, y), 1.50, 1.50, 0)
+                    .unwrap();
+            }
+        }
+        let mut roof = Roof::new(
+            Point::new(0.0, 0.0),
+            Point::new(4.0, 4.0),
+            RoofSide::West,
+            3.0,
+            2.5,
+        );
+        roof.lateral_bracing_kn = Some(1000.0);
+        project.add_roof(roof).unwrap();
+        let wind = project.structure_report().wind;
+        assert_eq!(wind.global.len(), 4);
+        assert!(wind.bracing[0].ok());
+        assert!(
+            wind.global.iter().all(GlobalStabilityResult::ok),
+            "{:?}",
+            wind.global
+        );
+        project.fixtures.retain(|fixture| {
+            fixture.kind != FixtureKind::Footing
+                || fixture.center.distance(Point::new(4.0, 4.0)) > 0.1
+        });
+        let unsupported = project.structure_report().wind;
+        assert!(
+            unsupported
+                .global
+                .iter()
+                .all(|direction| !direction.supports_ok && !direction.ok())
+        );
     }
 }
