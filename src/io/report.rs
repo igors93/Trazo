@@ -619,6 +619,63 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                 &rows,
             );
         }
+        let windy_panels: Vec<_> = report
+            .masonry
+            .panels
+            .iter()
+            .filter_map(|panel| Some((panel, panel.wind.as_ref()?)))
+            .collect();
+        if !windy_panels.is_empty() {
+            pages.subheading("Muros sob vento e cintas");
+            let rows: Vec<_> = windy_panels
+                .iter()
+                .map(|(panel, wind)| {
+                    let bands = wind
+                        .bond_beam
+                        .as_ref()
+                        .map_or("sem apoio".to_owned(), |bond| {
+                            format!(
+                                "{} + topo / {} m",
+                                bond.intermediate_count,
+                                decimal(bond.spacing_m, 2)
+                            )
+                        });
+                    (
+                        light_of.get(&format!("Alvenaria {}", panel.label)).copied(),
+                        vec![
+                            panel.label.clone(),
+                            decimal(wind.q_kpa, 2),
+                            format!(
+                                "{}/{}",
+                                decimal(wind.moment_knm_m, 2),
+                                decimal(wind.capacity_knm_m, 2)
+                            ),
+                            bands,
+                            wind.bond_beam.as_ref().map_or("—".to_owned(), |bond| {
+                                format!(
+                                    "{}×{} / {}",
+                                    bond.across_m
+                                        .map_or(">40".to_owned(), |w| decimal(w * 100.0, 0)),
+                                    decimal(bond.height_m * 100.0, 0),
+                                    bond.bars
+                                )
+                            }),
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &[
+                    "Painel",
+                    "q (kPa)",
+                    "Md/MRd (kN·m/m)",
+                    "Cintas",
+                    "Seção (cm)/aço",
+                ],
+                &[1.1, 1.3, 2.1, 2.2, 3.0],
+                &rows,
+            );
+        }
         if !report.slabs.is_empty() {
             pages.subheading("Lajes");
             let rows: Vec<_> = report

@@ -19,6 +19,8 @@ pub const MAX_BEAM_SPAN_M: f64 = 7.0;
 pub const MAX_SLAB_SPAN_M: f64 = 6.5;
 /// Tallest storey: the columns are sized without a buckling check, m.
 pub const MAX_STOREY_HEIGHT_M: f64 = 4.0;
+/// Tall wall/column wind pre-sizing is available above the ordinary storey limit.
+pub const MAX_TALL_WALL_HEIGHT_M: f64 = 6.0;
 /// Highest live load: beyond it the use is not residential or office, kN/m².
 pub const MAX_LIVE_LOAD_KN_M2: f64 = 5.0;
 /// Weakest soil for spread footings without a geotechnical study, kPa.
@@ -97,33 +99,47 @@ pub fn structure_violations(project: &Project) -> Vec<Violation> {
             ),
         });
     }
-    let mut heights: Vec<f64> = vec![project.wall_height];
+    let mut storey_heights: Vec<f64> = vec![project.wall_height];
+    let mut wall_heights = Vec::new();
     let active_id = project.floors.active_floor_id;
     for level in &project.floors.levels {
         if Some(level.id) != active_id {
-            heights.push(level.ceiling_height_m);
-            heights.extend(level.data.walls.iter().map(|w| {
+            storey_heights.push(level.ceiling_height_m);
+            wall_heights.extend(level.data.walls.iter().map(|w| {
                 let (start, end) = w.heights(level.ceiling_height_m);
                 start.max(end)
             }));
         }
     }
-    // Walls with their own, taller top (#145) count too.
-    heights.extend(project.walls.iter().map(|w| {
+    wall_heights.extend(project.walls.iter().map(|w| {
         let (start, end) = w.heights(project.wall_height);
         start.max(end)
     }));
-    let tallest = heights.into_iter().fold(0.0, f64::max);
-    if tallest > MAX_STOREY_HEIGHT_M + 1e-9 {
+    let tallest_storey = storey_heights.into_iter().fold(0.0, f64::max);
+    if tallest_storey > MAX_STOREY_HEIGHT_M + 1e-9 {
         out.push(Violation {
             scope: Scope::Structure,
             element: "Estrutura".to_owned(),
-            value: tallest,
+            value: tallest_storey,
             limit: MAX_STOREY_HEIGHT_M,
             message: format!(
-                "Pé-direito ou parede de {} m: pilares acima de {} m precisam de verificação de flambagem. {PROFESSIONAL}",
-                decimal(tallest, 2),
+                "Pé-direito de {} m: acima de {} m é necessária verificação de flambagem. {PROFESSIONAL}",
+                decimal(tallest_storey, 2),
                 decimal(MAX_STOREY_HEIGHT_M, 1)
+            ),
+        });
+    }
+    let tallest_wall = wall_heights.into_iter().fold(0.0, f64::max);
+    if tallest_wall > MAX_TALL_WALL_HEIGHT_M + 1e-9 {
+        out.push(Violation {
+            scope: Scope::Structure,
+            element: "Estrutura".to_owned(),
+            value: tallest_wall,
+            limit: MAX_TALL_WALL_HEIGHT_M,
+            message: format!(
+                "Parede de {} m: o modelo preliminar de vento e cintas vale até {} m. {PROFESSIONAL}",
+                decimal(tallest_wall, 2),
+                decimal(MAX_TALL_WALL_HEIGHT_M, 1)
             ),
         });
     }
@@ -320,6 +336,20 @@ mod tests {
         project.structure.settings.live_kn_m2 = 1.5;
         project.wall_height = 4.5;
         assert!(structural_refusal(&project).unwrap().contains("flambagem"));
+    }
+
+    #[test]
+    fn a_tall_wall_does_not_inherit_the_ordinary_storey_height_limit() {
+        let mut project = house();
+        let wall = project.walls[0].id;
+        project.set_wall_height(wall, Some(4.3), None).unwrap();
+        assert!(structure_violations(&project).is_empty());
+        project.set_wall_height(wall, Some(6.1), None).unwrap();
+        assert!(
+            structure_violations(&project)
+                .iter()
+                .any(|v| v.message.contains("modelo preliminar de vento"))
+        );
     }
 
     #[test]

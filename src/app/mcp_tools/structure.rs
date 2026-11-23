@@ -291,6 +291,7 @@ pub(super) fn roof_json(result: &crate::domain::roof::RoofResult) -> Value {
 pub(super) fn wind_json(
     wind: &crate::domain::wind::WindSettings,
     effects: &crate::domain::wind::WindReport,
+    masonry: &crate::domain::masonry_structure::MasonryStructureReport,
 ) -> Value {
     let round2 = |v: f64| (v * 100.0).round() / 100.0;
     json!({
@@ -319,6 +320,20 @@ pub(super) fn wind_json(
             "levanta": r.lifts(),
             "ancoragem_por_ponta_kn": round2(r.anchor_kn),
         })).collect::<Vec<_>>(),
+        "paineis_alvenaria": masonry.panels.iter().filter_map(|panel| {
+            let effect = panel.wind.as_ref()?;
+            Some(json!({
+                "rotulo": panel.label,
+                "q_kn_m2": round2(effect.q_kpa),
+                "momento_knm_m": round2(effect.moment_knm_m),
+                "resistencia_knm_m": round2(effect.capacity_knm_m),
+                "uso": round2(effect.ratio),
+                "apoios_ok": effect.end_columns && effect.base_supported,
+                "aberturas_livres": effect.openings_clear,
+                "cintas_intermediarias": effect.bond_beam.as_ref().map(|tie| tie.intermediate_count),
+                "espacamento_cintas_m": effect.bond_beam.as_ref().map(|tie| round2(tie.spacing_m)),
+            }))
+        }).collect::<Vec<_>>(),
     })
 }
 
@@ -875,7 +890,7 @@ impl FloorPlanApp {
                         "Vento: V0 = {:.0} m/s, categoria {}.",
                         wind.v0_ms, wind.category
                     ))
-                    .data(wind_json(&project.structure.wind, &report.wind)))
+                    .data(wind_json(&project.structure.wind, &report.wind, &report.masonry)))
                 })
             }
             "inserir_mourao" => {
@@ -1190,6 +1205,30 @@ impl FloorPlanApp {
                     "limite_sem_amarracao_m": (panel.unbraced_limit_m * 100.0).round() / 100.0,
                     "compressao_mpa": round1(panel.compression_mpa),
                     "resistencia_reduzida_mpa": round1(panel.compression_capacity_mpa),
+                    "vento_fora_plano": panel.wind.as_ref().map(|wind| json!({
+                        "altura_critica_m": round1(wind.height_m),
+                        "q_kpa": round1(wind.q_kpa),
+                        "momento_solicitante_knm_m": round1(wind.moment_knm_m),
+                        "momento_resistente_knm_m": round1(wind.capacity_knm_m),
+                        "uso": (wind.ratio * 100.0).round() / 100.0,
+                        "pilares_extremos": wind.end_columns,
+                        "fundacao_continua": wind.base_supported,
+                        "sem_aberturas": wind.openings_clear,
+                        "atende": wind.ok(),
+                        "cintas": wind.bond_beam.as_ref().map(|bond| json!({
+                            "intermediarias": bond.intermediate_count,
+                            "coroamento": true,
+                            "passo_m": round1(bond.spacing_m),
+                            "vao_maximo_m": round1(bond.max_span_m),
+                            "secao_atravessando_cm": bond.across_m.map(|w| round1(w * 100.0)),
+                            "altura_cm": round1(bond.height_m * 100.0),
+                            "momento_knm": round1(bond.moment_knm),
+                            "cortante_kn": round1(bond.shear_kn),
+                            "aco_cm2": round1(bond.steel_cm2),
+                            "barras": bond.bars,
+                            "atende": bond.ok(),
+                        })),
+                    })),
                     "atende": panel.ok(),
                 })
             })
@@ -1472,7 +1511,7 @@ impl FloorPlanApp {
             "pilares": columns,
             "sapatas": footings,
             "telhados": report.roofs.iter().map(roof_json).collect::<Vec<_>>(),
-            "vento": wind_json(&self.project.structure.wind, &report.wind),
+            "vento": wind_json(&self.project.structure.wind, &report.wind, &report.masonry),
             "mouroes": report.timber_posts.iter().map(|p| json!({
                 "id": p.id,
                 "rotulo": p.label,
@@ -1530,6 +1569,9 @@ impl FloorPlanApp {
                 "momento_knm": round1(f.moment_knm),
                 "armadura_cm2": (f.steel_cm2 * 100.0).round() / 100.0,
                 "barras": f.bars,
+                "reacoes_pilares": f.reactions.iter().map(|(id, kn)| json!({"pilar_id": id, "carga_kn": round1(*kn)})).collect::<Vec<_>>(),
+                "reacoes_baldrames": f.beam_reactions.iter().map(|(id, kn)| json!({"baldrame_id": id, "carga_kn": round1(*kn)})).collect::<Vec<_>>(),
+                "apoios_insuficientes": f.unsupported,
                 "pressao_solo_kpa": round1(f.pressure_kpa),
                 "largura_necessaria_cm": round1(f.needed_width_m * 100.0),
             })).collect::<Vec<_>>(),
@@ -1573,8 +1615,57 @@ impl FloorPlanApp {
 #[cfg(test)]
 mod tests {
     use crate::app::FloorPlanApp;
+    use crate::domain::{
+        fixtures::FixtureKind, geometry::Point, wall_foundations::WallFoundationKind,
+    };
     use eframe::egui;
     use serde_json::json;
+
+    #[test]
+    fn pre_dimensionamento_exposes_tall_panel_wind_and_ground_beam_reactions() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        app.project.masonry.block_width = 0.20;
+        let wall = app
+            .project
+            .add_wall(Point::new(0.0, 0.0), Point::new(6.0, 0.0))
+            .unwrap();
+        app.project.set_wall_height(wall, Some(4.3), None).unwrap();
+        for x in [0.0, 3.0, 6.0] {
+            app.project
+                .add_fixture(FixtureKind::Column, Point::new(x, 0.0), 0.20, 0.20, 0)
+                .unwrap();
+        }
+        app.project
+            .set_wall_foundation(wall, WallFoundationKind::GroundBeam, None)
+            .unwrap();
+        let report = app
+            .run_mcp_tool("pre_dimensionamento", &json!({}))
+            .structured
+            .unwrap();
+        let wind = &report["alvenaria"]["paineis"][0]["vento_fora_plano"];
+        assert!(wind["q_kpa"].as_f64().unwrap() > 0.0);
+        assert!(wind["cintas"]["intermediarias"].as_u64().unwrap() > 0);
+        assert_eq!(report["vento"]["paineis_alvenaria"][0]["rotulo"], "AL1");
+        let configured = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({"acao":"configurar_vento", "v0_ms":40.0}),
+        );
+        assert!(!configured.is_error, "{}", configured.text);
+        assert!(
+            configured.structured.unwrap()["paineis_alvenaria"][0]["q_kn_m2"]
+                .as_f64()
+                .unwrap()
+                > wind["q_kpa"].as_f64().unwrap()
+        );
+        assert_eq!(report["limites"]["recusado"], serde_json::Value::Null);
+        assert_eq!(
+            report["fundacao_paredes"][0]["reacoes_pilares"]
+                .as_array()
+                .unwrap()
+                .len(),
+            3
+        );
+    }
 
     #[test]
     fn an_assistant_lays_out_and_checks_the_structure() {

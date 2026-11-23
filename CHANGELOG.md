@@ -8,6 +8,9 @@ Everything below is on `main` and will become the first release, 0.1.0.
 
 ### Added
 
+- Tall masonry walls now receive an out-of-plane wind check and a preliminary design of intermediate reinforced-concrete ties plus a crown beam, including spacing, section, steel, plan mark, UI, PDF, MCP and traffic lights (#147).
+- Ground beams now connect at transverse T-junctions; secondary beams pass point reactions through chains of ground beams to columns and footings, with a red fallback for unsupported requested beams (#143).
+
 **Drawing engine**
 
 - `f64` geometry with controlled tolerances (#01), free-shape rooms (#02) and direct vertex editing (#10).

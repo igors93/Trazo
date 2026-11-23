@@ -78,6 +78,8 @@ Trazo exposes 53 tools. Their names and messages are in Portuguese, like the int
 
 Tools that read are marked read-only and tools that delete are marked destructive, so clients can ask before running them. `executar_lote` cannot contain file or history tools.
 
+`pre_dimensionamento` now includes `alvenaria.paineis[].vento_fora_plano` with wind demand/capacity and the proposed intermediate/crown ties, and `fundacao_paredes[]` with signed reactions to columns and receiving ground beams. `projeto_estrutural` with `configurar_vento` also returns the tall masonry-panel effects under `paineis_alvenaria`. A missing support path is exposed as `apoios_insuficientes` and a red verdict.
+
 ## Working together in real time
 
 You and the assistant can edit the same plan at the same time without overwriting each other.

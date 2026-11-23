@@ -201,7 +201,7 @@ impl Project {
     }
 
     /// Largest plan dimension of the building, metres.
-    fn building_size(&self) -> f64 {
+    pub(crate) fn building_size(&self) -> f64 {
         let mut points = self.walls.iter().flat_map(|w| [w.start, w.end]);
         let Some(first) = points.next() else {
             return 10.0;

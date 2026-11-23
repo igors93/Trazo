@@ -403,7 +403,14 @@ fn wind_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Opt
             action = Some(RoofAction::Wind(wind));
         }
     });
-    if report.wind.columns.is_empty() && report.wind.roofs.is_empty() {
+    if report.wind.columns.is_empty()
+        && report.wind.roofs.is_empty()
+        && report
+            .masonry
+            .panels
+            .iter()
+            .all(|panel| panel.wind.is_none())
+    {
         ui.label(
             RichText::new("Nenhuma parede mais alta que o pé-direito nem telhado para verificar.")
                 .color(MUTED),
@@ -434,6 +441,38 @@ fn wind_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Opt
                 }
             ))
             .color(if ok { TEXT_2 } else { WARNING }),
+        );
+    }
+    for panel in &report.masonry.panels {
+        let Some(wind) = &panel.wind else { continue };
+        let bands = wind
+            .bond_beam
+            .as_ref()
+            .map_or("sem pilares nas pontas".to_owned(), |bond| {
+                format!(
+                    "{} cintas intermediárias + coroamento a cada {} m, seção {}×{} cm",
+                    bond.intermediate_count,
+                    decimal(bond.spacing_m, 2),
+                    bond.across_m
+                        .map_or("mais de 40".to_owned(), |w| decimal(w * 100.0, 0)),
+                    decimal(bond.height_m * 100.0, 0)
+                )
+            });
+        ui.label(
+            RichText::new(format!(
+                "Painel {}: vento q = {} kN/m², M = {} / {} kN·m/m; {}{}",
+                panel.label,
+                decimal(wind.q_kpa, 2),
+                decimal(wind.moment_knm_m, 2),
+                decimal(wind.capacity_knm_m, 2),
+                bands,
+                if wind.ok() {
+                    "."
+                } else {
+                    "; revise apoios, aberturas e seção."
+                }
+            ))
+            .color(if wind.ok() { TEXT_2 } else { WARNING }),
         );
     }
     for roof in &report.wind.roofs {

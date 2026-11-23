@@ -7,10 +7,12 @@
 //! executive masonry design.
 
 use super::conduits::PlanMark;
+use super::foundations::{choose_bars, size_rectangular_beam};
 use super::geometry::{Point, distance_to_segment};
 use super::masonry::Masonry;
 use super::model::{OpeningKind, Project};
 use super::quantities::LINTEL_BEARING_M;
+use super::wind::WALL_CP;
 
 /// Minimum bearing used by the check. The generated takeoff still requests
 /// the preferred 30 cm on each side whenever the wall has room for it.
@@ -99,6 +101,60 @@ pub struct MasonryPanelResult {
     /// Reduced design capacity, MPa; zero for infill.
     pub compression_capacity_mpa: f64,
     pub compression_ratio: f64,
+    /// Out-of-plane wind check for walls taller than the storey.
+    pub wind: Option<MasonryPanelWindResult>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MasonryBondBeamDesign {
+    /// Number of intermediate ties, excluding the crown beam at the top.
+    pub intermediate_count: usize,
+    pub spacing_m: f64,
+    pub max_span_m: f64,
+    /// Cross-section: projection across the wall and vertical height.
+    pub across_m: Option<f64>,
+    pub height_m: f64,
+    pub moment_knm: f64,
+    pub shear_kn: f64,
+    pub steel_cm2: f64,
+    pub bars: String,
+    pub flexure_ratio: f64,
+    pub shear_ratio: f64,
+    pub start: Point,
+    pub end: Point,
+}
+
+impl MasonryBondBeamDesign {
+    pub fn ok(&self) -> bool {
+        self.across_m.is_some() && self.flexure_ratio.max(self.shear_ratio) <= 1.0 + 1e-9
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MasonryPanelWindResult {
+    /// Highest top of a possibly sloped wall, metres.
+    pub height_m: f64,
+    pub q_kpa: f64,
+    pub moment_knm_m: f64,
+    pub capacity_knm_m: f64,
+    pub ratio: f64,
+    pub end_columns: bool,
+    pub base_supported: bool,
+    pub openings_clear: bool,
+    pub bond_beam: Option<MasonryBondBeamDesign>,
+}
+
+impl MasonryPanelWindResult {
+    pub fn ok(&self) -> bool {
+        self.ratio <= 1.0 + 1e-9
+            && self.end_columns
+            && self.base_supported
+            && self.openings_clear
+            && self
+                .bond_beam
+                .as_ref()
+                .is_some_and(MasonryBondBeamDesign::ok)
+    }
 }
 
 impl MasonryPanelResult {
@@ -106,6 +162,13 @@ impl MasonryPanelResult {
         (self.slenderness / self.slenderness_limit.max(1e-9))
             .max(self.unbraced_m / self.unbraced_limit_m.max(1e-9))
             .max(self.compression_ratio)
+            .max(self.wind.as_ref().map_or(0.0, |wind| {
+                if wind.ok() {
+                    wind.ratio
+                } else {
+                    wind.ratio.max(2.0)
+                }
+            }))
     }
 
     pub fn ok(&self) -> bool {
@@ -164,6 +227,114 @@ fn lintel_bars(moment_knm: f64, height_m: f64) -> (String, f64) {
 }
 
 impl Project {
+    fn masonry_panel_wind(
+        &self,
+        wall: &super::model::Wall,
+        masonry: &Masonry,
+        height: f64,
+        thickness: f64,
+    ) -> Option<MasonryPanelWindResult> {
+        if height <= self.wall_height + 0.20 {
+            return None;
+        }
+        let q = self
+            .structure
+            .wind
+            .pressure_kpa(height, self.building_size());
+        let pressure = WALL_CP * q;
+        let design_pressure = 1.4 * pressure;
+        // NBR 16868-1 Table 3: lowest listed mortar class, with filled
+        // vertical joints, has ftk normal to bed joints = 0.10 MPa;
+        // gamma_m = 2.0 (Table 2). One-way simply supported vertical strips.
+        let capacity = (0.10 / 2.0) * 1000.0 * thickness * thickness / 6.0;
+        let max_spacing = (8.0 * capacity / design_pressure.max(1e-9)).sqrt();
+        let segments = ((height / max_spacing.max(0.01)).ceil() as usize).clamp(1, 12);
+        let spacing = height / segments as f64;
+        let direction = wall.end.minus(wall.start).normalized()?;
+        let length = wall.length();
+        let mut columns: Vec<f64> = self
+            .structural_columns()
+            .filter(|column| {
+                distance_to_segment(column.center, wall.start, wall.end)
+                    <= column.width.max(column.depth) * 0.5 + 0.08
+            })
+            .map(|column| {
+                column
+                    .center
+                    .minus(wall.start)
+                    .dot(direction)
+                    .clamp(0.0, length)
+            })
+            .collect();
+        columns.sort_by(f64::total_cmp);
+        columns.dedup_by(|a, b| (*a - *b).abs() < 0.05);
+        let end_columns = columns.len() >= 2
+            && columns.first().is_some_and(|s| *s <= 0.30)
+            && columns.last().is_some_and(|s| *s >= length - 0.30);
+        let base_supported = self
+            .structure
+            .wall_foundations
+            .iter()
+            .any(|foundation| foundation.wall_id == wall.id);
+        let openings_clear = !self
+            .openings
+            .iter()
+            .any(|opening| opening.wall_id == wall.id);
+        let bond_beam = if end_columns {
+            let span = columns
+                .windows(2)
+                .map(|pair| pair[1] - pair[0])
+                .fold(0.0, f64::max);
+            let beam_height = next_course(0.20, masonry);
+            let line_load = pressure * spacing;
+            let moment = line_load * span * span / 8.0;
+            let shear = line_load * span / 2.0;
+            // Out-of-plane bending: the section depth is across the wall;
+            // its vertical height is the beam width in the sizing routine.
+            let (across, flexure, shear_ratio, steel) = size_rectangular_beam(
+                beam_height,
+                1.4 * moment,
+                1.4 * shear,
+                self.structure.settings.fck_mpa,
+                0.15,
+                0.40,
+            );
+            Some(MasonryBondBeamDesign {
+                intermediate_count: segments - 1,
+                spacing_m: spacing,
+                max_span_m: span,
+                across_m: across,
+                height_m: beam_height,
+                moment_knm: moment,
+                shear_kn: shear,
+                steel_cm2: steel,
+                bars: choose_bars(steel).replace("(superior)", "(em ambas faces)"),
+                flexure_ratio: flexure,
+                shear_ratio,
+                start: wall.start,
+                end: wall.end,
+            })
+        } else {
+            None
+        };
+        let span_moment = if end_columns {
+            design_pressure * spacing * spacing / 8.0
+        } else {
+            design_pressure * height * height / 2.0
+        };
+        Some(MasonryPanelWindResult {
+            height_m: height,
+            q_kpa: q,
+            moment_knm_m: span_moment,
+            capacity_knm_m: capacity,
+            ratio: span_moment / capacity.max(1e-9),
+            end_columns,
+            base_supported,
+            openings_clear,
+            bond_beam,
+        })
+    }
+
     /// Derives every lintel/sill and checks every masonry wall panel.
     pub fn masonry_structure_report(&self) -> MasonryStructureReport {
         let mut report = MasonryStructureReport::default();
@@ -187,6 +358,8 @@ impl Project {
             let wall_length = wall.length();
             let thickness = masonry.block_width.max(0.04);
             let height = wall.mean_height(storey);
+            let (height_start, height_end) = wall.heights(storey);
+            let wind_height = height_start.max(height_end);
 
             // Transverse returns and concrete columns brace a panel. A
             // collinear wall joint does not restrain out-of-plane movement.
@@ -285,6 +458,7 @@ impl Project {
                 compression_mpa: compression,
                 compression_capacity_mpa: capacity,
                 compression_ratio,
+                wind: self.masonry_panel_wind(wall, masonry, wind_height, thickness),
             };
             if !panel.ok() {
                 report.warnings.push(format!(
@@ -293,6 +467,32 @@ impl Project {
                     panel.kind.label().to_lowercase(),
                     panel.utilisation() * 100.0
                 ));
+            }
+            if let Some(wind) = &panel.wind {
+                if !wind.end_columns {
+                    report.warnings.push(format!(
+                        "{}: vento fora do plano sem pilares nas duas extremidades; a cinta não tem apoios laterais.",
+                        panel.label
+                    ));
+                }
+                if !wind.base_supported {
+                    report.warnings.push(format!(
+                        "{}: falta fundação contínua sob a parede para o modelo de cintas contra vento.",
+                        panel.label
+                    ));
+                }
+                if !wind.openings_clear {
+                    report.warnings.push(format!(
+                        "{}: aberturas interrompem o painel sob vento; verifique os trechos e ligações localmente.",
+                        panel.label
+                    ));
+                }
+                if wind.bond_beam.as_ref().is_some_and(|beam| !beam.ok()) {
+                    report.warnings.push(format!(
+                        "{}: cinta contra vento exige seção maior que 40 cm atravessando a parede.",
+                        panel.label
+                    ));
+                }
             }
             report.panels.push(panel);
 
@@ -448,14 +648,35 @@ pub fn masonry_structure_marks(report: &MasonryStructureReport) -> Vec<PlanMark>
             ),
         });
     }
+    for panel in &report.panels {
+        let Some(bond) = panel.wind.as_ref().and_then(|wind| wind.bond_beam.as_ref()) else {
+            continue;
+        };
+        let Some(dir) = bond.end.minus(bond.start).normalized() else {
+            continue;
+        };
+        let normal = Point::new(-dir.y, dir.x);
+        marks.push(PlanMark::Text {
+            anchor: bond
+                .start
+                .midpoint(bond.end)
+                .translated(normal.scaled(0.32)),
+            text: format!(
+                "{} CA: {} interm. + coroamento, passo {:.2} m",
+                panel.label, bond.intermediate_count, bond.spacing_m
+            ),
+        });
+    }
     marks
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::fixtures::FixtureKind;
     use crate::domain::geometry::Point;
     use crate::domain::model::OpeningKind;
+    use crate::domain::wall_foundations::WallFoundationKind;
 
     #[test]
     fn every_built_opening_gets_a_lintel_and_windows_get_a_sill() {
@@ -590,5 +811,127 @@ mod tests {
             .find(|panel| panel.wall_id == wall)
             .unwrap();
         assert!((panel.unbraced_m - 4.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_tall_wall_gets_wind_and_bond_beams_with_balanced_lateral_load() {
+        let mut project = Project::default();
+        project.masonry.block_width = 0.20;
+        let wall = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(6.0, 0.0))
+            .unwrap();
+        project.set_wall_height(wall, Some(4.3), None).unwrap();
+        for x in [0.0, 3.0, 6.0] {
+            project
+                .add_fixture(FixtureKind::Column, Point::new(x, 0.0), 0.20, 0.20, 0)
+                .unwrap();
+        }
+        project
+            .set_wall_foundation(wall, WallFoundationKind::GroundBeam, None)
+            .unwrap();
+        let panel = project
+            .masonry_structure_report()
+            .panels
+            .into_iter()
+            .find(|panel| panel.wall_id == wall)
+            .unwrap();
+        let wind = panel.wind.as_ref().unwrap();
+        let bond = wind.bond_beam.as_ref().unwrap();
+        assert!(wind.ok());
+        assert!(panel.ok());
+        assert!(bond.intermediate_count >= 1);
+        assert!((bond.max_span_m - 3.0).abs() < 1e-9);
+        assert!(
+            (bond.moment_knm - WALL_CP * wind.q_kpa * bond.spacing_m * 3.0_f64.powi(2) / 8.0).abs()
+                < 1e-9
+        );
+        assert!(
+            (wind.moment_knm_m - 1.4 * WALL_CP * wind.q_kpa * bond.spacing_m.powi(2) / 8.0).abs()
+                < 1e-9
+        );
+        let structure = project.structure_report();
+        let verdicts = crate::domain::verdict::structure_verdicts(&project, &structure);
+        assert!(verdicts.iter().any(|verdict| {
+            verdict.element == panel.label.replace("AL", "Alvenaria AL")
+                && verdict
+                    .checks
+                    .iter()
+                    .any(|check| check.name == "Cintas intermediárias")
+        }));
+        assert!(
+            project.structure_marks().iter().any(|mark| {
+                matches!(mark, PlanMark::Text { text, .. } if text.contains("CA:"))
+            })
+        );
+
+        let mut stronger = project.structure.wind;
+        stronger.v0_ms = 50.0;
+        project.set_wind(stronger).unwrap();
+        let strong_panel = project
+            .masonry_structure_report()
+            .panels
+            .into_iter()
+            .find(|panel| panel.wall_id == wall)
+            .unwrap();
+        assert!(
+            strong_panel
+                .wind
+                .unwrap()
+                .bond_beam
+                .unwrap()
+                .intermediate_count
+                >= bond.intermediate_count
+        );
+        project.set_wall_height(wall, Some(4.3), Some(2.8)).unwrap();
+        let sloped = project
+            .masonry_structure_report()
+            .panels
+            .into_iter()
+            .find(|panel| panel.wall_id == wall)
+            .unwrap();
+        assert!((sloped.wind.unwrap().height_m - 4.3).abs() < 1e-9);
+    }
+
+    #[test]
+    fn tall_wall_wind_fails_without_base_or_when_openings_interrupt_the_panel() {
+        let mut project = Project::default();
+        project.masonry.block_width = 0.20;
+        let wall = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(4.0, 0.0))
+            .unwrap();
+        project.set_wall_height(wall, Some(4.0), None).unwrap();
+        for x in [0.0, 4.0] {
+            project
+                .add_fixture(FixtureKind::Column, Point::new(x, 0.0), 0.20, 0.20, 0)
+                .unwrap();
+        }
+        let report = project.masonry_structure_report();
+        assert!(!report.panels[0].wind.as_ref().unwrap().base_supported);
+        assert!(!report.panels[0].ok());
+        project
+            .set_wall_foundation(wall, WallFoundationKind::GroundBeam, None)
+            .unwrap();
+        project.add_opening(wall, OpeningKind::Door, 0.5).unwrap();
+        let report = project.masonry_structure_report();
+        assert!(!report.panels[0].wind.as_ref().unwrap().openings_clear);
+        assert!(!report.panels[0].ok());
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("aberturas"))
+        );
+        let structure = project.structure_report();
+        assert!(
+            crate::domain::verdict::structure_verdicts(&project, &structure)
+                .iter()
+                .any(|verdict| {
+                    verdict.element == "Alvenaria AL1"
+                        && verdict.checks.iter().any(|check| {
+                            check.name == "Vento fora do plano"
+                                && check.light == crate::domain::verdict::Light::Red
+                        })
+                })
+        );
     }
 }

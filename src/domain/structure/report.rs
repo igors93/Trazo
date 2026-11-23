@@ -1366,6 +1366,12 @@ impl Project {
             }
         }
         for result in &ground.results {
+            if result.unsupported {
+                report.warnings.push(format!(
+                    "{}: baldrame solicitado sem dois apoios ligados à rede de pilares e baldrames; foi analisada sapata corrida sob a parede.",
+                    result.label
+                ));
+            }
             for (column_id, reaction) in &result.reactions {
                 if *reaction < -1e-6 {
                     report.warnings.push(format!(

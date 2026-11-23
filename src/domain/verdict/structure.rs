@@ -478,6 +478,57 @@ fn sized_structure_verdicts(
                 ),
             ));
         }
+        if let Some(wind) = &panel.wind {
+            checks.push(Check::new(
+                "Vento fora do plano",
+                if wind.ok() { wind.ratio } else { wind.ratio.max(2.0) },
+                if wind.ok() {
+                    "O painel alto atende no modelo com cintas ligadas aos pilares.".to_owned()
+                } else {
+                    "Revise os apoios, aberturas e cintas do painel alto antes de construir.".to_owned()
+                },
+                format!(
+                    "q = {} kPa; Md = {} kN·m/m; MRd = {} kN·m/m; uso {} %. Modelo unidirecional conservador, ftk = 0,10 MPa e γm = 2,0 (NBR 16868-1, Tabelas 2 e 3); pilares nas pontas: {}; fundação: {}; sem aberturas: {}.",
+                    decimal(wind.q_kpa, 2),
+                    decimal(wind.moment_knm_m, 2),
+                    decimal(wind.capacity_knm_m, 2),
+                    decimal(wind.ratio * 100.0, 0),
+                    wind.end_columns,
+                    wind.base_supported,
+                    wind.openings_clear
+                ),
+            ));
+            if let Some(bond) = &wind.bond_beam {
+                checks.push(Check::new(
+                    "Cintas intermediárias",
+                    if bond.ok() {
+                        bond.flexure_ratio.max(bond.shear_ratio)
+                    } else {
+                        2.0
+                    },
+                    if bond.ok() {
+                        format!(
+                            "Preveja {} cintas intermediárias e uma de coroamento, ligadas aos pilares.",
+                            bond.intermediate_count
+                        )
+                    } else {
+                        "A cinta proposta não cabe na seção preliminar; aumente a seção ou acrescente pilares."
+                            .to_owned()
+                    },
+                    format!(
+                        "Passo = {} m, vão máximo = {} m, seção = {}×{} cm, M = {} kN·m, V = {} kN, As = {} cm² {}.",
+                        decimal(bond.spacing_m, 2),
+                        decimal(bond.max_span_m, 2),
+                        bond.across_m.map_or("mais de 40".to_owned(), cm),
+                        cm(bond.height_m),
+                        decimal(bond.moment_knm, 2),
+                        decimal(bond.shear_kn, 2),
+                        decimal(bond.steel_cm2, 2),
+                        bond.bars
+                    ),
+                ));
+            }
+        }
         verdicts.push(Verdict {
             discipline: Discipline::Structure,
             element: format!("Alvenaria {}", panel.label),
@@ -1058,6 +1109,13 @@ fn sized_structure_verdicts(
             ),
         };
         let mut checks = vec![check];
+        if foundation.unsupported {
+            checks.push(Check::fail(
+                "Apoios",
+                "O baldrame não tem caminho de carga até dois apoios; revise as ligações ou mantenha a sapata corrida.".to_owned(),
+                "A solicitação de baldrame foi substituída por sapata corrida porque a rede de apoios não alcança pilares suficientes.".to_owned(),
+            ));
+        }
         for (column_id, reaction) in &foundation.reactions {
             if *reaction < -1e-6 {
                 checks.push(Check::fail(

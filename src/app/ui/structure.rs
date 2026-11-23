@@ -858,7 +858,7 @@ impl FloorPlanApp {
                             .striped(true)
                             .spacing([12.0, 6.0])
                             .show(ui, |ui| {
-                                titles(ui, &["Painel", "Uso", "Material", "h/t", "Sem amarração", "Compressão", "Situação"]);
+                                titles(ui, &["Painel", "Uso", "Material", "h/t", "Sem amarração", "Compressão", "Vento/cintas", "Situação"]);
                                 for panel in &report.masonry.panels {
                                     ui.label(RichText::new(&panel.label).font(strong(12.5)));
                                     ui.label(panel.kind.label());
@@ -882,6 +882,17 @@ impl FloorPlanApp {
                                     } else {
                                         "— (vedação)".to_owned()
                                     });
+                                    ui.label(panel.wind.as_ref().map_or("—".to_owned(), |wind| {
+                                        wind.bond_beam.as_ref().map_or(
+                                            "sem pilares extremos".to_owned(),
+                                            |bond| format!(
+                                                "{} % · {} interm. + topo / {} m",
+                                                decimal(wind.ratio * 100.0, 0),
+                                                bond.intermediate_count,
+                                                decimal(bond.spacing_m, 2)
+                                            ),
+                                        )
+                                    }));
                                     status(ui, panel.ok());
                                     ui.end_row();
                                 }

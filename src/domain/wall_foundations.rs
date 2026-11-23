@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use super::conduits::PlanMark;
 use super::foundations::{choose_bars, size_rectangular_beam};
-use super::geometry::Point;
+use super::geometry::{Point, distance_to_segment, nearest_point_on_segment};
 use super::model::Project;
 use super::structure::{CONCRETE_KN_M3, continuous_beam_with_end_moments};
 
@@ -81,6 +81,10 @@ pub struct WallFoundationResult {
     pub pressure_kpa: f64,
     /// Ground beam: column ids it rests on, with the reaction on each (kN).
     pub reactions: Vec<(u64, f64)>,
+    /// Ground beam: receiving ground-beam ids and transferred reactions (kN).
+    pub beam_reactions: Vec<(u64, f64)>,
+    /// A manually selected ground beam without two connected supports.
+    pub unsupported: bool,
 }
 
 /// What the wall foundations add to the footings, and their results.
@@ -89,6 +93,18 @@ pub struct WallFoundationEffects {
     /// Column id → ground beam reactions arriving at its footing, kN.
     pub at_column: HashMap<u64, f64>,
     pub results: Vec<WallFoundationResult>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum GroundSupport {
+    Column(u64),
+    Beam { id: u64, station_m: f64 },
+}
+
+#[derive(Clone, Copy, Debug)]
+struct GroundStation {
+    at_m: f64,
+    support: GroundSupport,
 }
 
 fn round_up(value: f64, step: f64) -> f64 {
@@ -130,6 +146,133 @@ impl Project {
         on
     }
 
+    fn ground_stations(
+        &self,
+        wall: &super::model::Wall,
+        resolved: &HashMap<u64, (usize, Vec<GroundStation>)>,
+    ) -> Vec<GroundStation> {
+        let mut stations: Vec<GroundStation> = self
+            .columns_on_wall(wall)
+            .into_iter()
+            .map(|(at_m, id, _)| GroundStation {
+                at_m,
+                support: GroundSupport::Column(id),
+            })
+            .collect();
+        let Some(direction) = wall.end.minus(wall.start).normalized() else {
+            return stations;
+        };
+        for (at_m, endpoint) in [(0.0, wall.start), (wall.length(), wall.end)] {
+            if stations
+                .iter()
+                .any(|station| (station.at_m - at_m).abs() < 0.05)
+            {
+                continue;
+            }
+            let mut candidates = self
+                .structure
+                .wall_foundations
+                .iter()
+                .filter(|foundation| {
+                    foundation.kind == WallFoundationKind::GroundBeam
+                        && foundation.wall_id != wall.id
+                })
+                .filter_map(|foundation| {
+                    let (rank, supports) = resolved.get(&foundation.id)?;
+                    let other = self.walls.iter().find(|w| w.id == foundation.wall_id)?;
+                    let other_dir = other.end.minus(other.start).normalized()?;
+                    if direction.dot(other_dir).abs() >= 0.95
+                        || distance_to_segment(endpoint, other.start, other.end) > 0.08
+                    {
+                        return None;
+                    }
+                    let (nearest, _) = nearest_point_on_segment(endpoint, other.start, other.end);
+                    let station_m = nearest.distance(other.start);
+                    let first = supports.first()?.at_m;
+                    let last = supports.last()?.at_m;
+                    if station_m < first - 1e-9 || station_m > last + 1e-9 {
+                        return None;
+                    }
+                    Some((*rank, foundation.id, station_m))
+                })
+                .collect::<Vec<_>>();
+            candidates.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
+            if let Some((_, id, station_m)) = candidates.first() {
+                stations.push(GroundStation {
+                    at_m,
+                    support: GroundSupport::Beam {
+                        id: *id,
+                        station_m: *station_m,
+                    },
+                });
+            }
+        }
+        stations.sort_by(|a, b| {
+            a.at_m.total_cmp(&b.at_m).then_with(|| {
+                let priority = |s: &GroundStation| match s.support {
+                    GroundSupport::Column(_) => 0,
+                    GroundSupport::Beam { .. } => 1,
+                };
+                priority(a).cmp(&priority(b))
+            })
+        });
+        stations.dedup_by(|a, b| (a.at_m - b.at_m).abs() < 0.05);
+        stations
+    }
+
+    fn resolved_ground_beams(&self) -> HashMap<u64, (usize, Vec<GroundStation>)> {
+        let mut resolved = HashMap::new();
+        let beams: Vec<_> = self
+            .structure
+            .wall_foundations
+            .iter()
+            .filter(|f| f.kind == WallFoundationKind::GroundBeam)
+            .collect();
+        for foundation in &beams {
+            if let Some(wall) = self.walls.iter().find(|w| w.id == foundation.wall_id) {
+                let stations = self
+                    .columns_on_wall(wall)
+                    .into_iter()
+                    .map(|(at_m, id, _)| GroundStation {
+                        at_m,
+                        support: GroundSupport::Column(id),
+                    })
+                    .collect::<Vec<_>>();
+                if stations.len() >= 2 {
+                    resolved.insert(foundation.id, (0, stations));
+                }
+            }
+        }
+        loop {
+            let mut added = 0;
+            for foundation in &beams {
+                if resolved.contains_key(&foundation.id) {
+                    continue;
+                }
+                let Some(wall) = self.walls.iter().find(|w| w.id == foundation.wall_id) else {
+                    continue;
+                };
+                let stations = self.ground_stations(wall, &resolved);
+                if stations.len() >= 2 {
+                    let rank = stations
+                        .iter()
+                        .filter_map(|station| match station.support {
+                            GroundSupport::Beam { id, .. } => resolved.get(&id).map(|(r, _)| r + 1),
+                            GroundSupport::Column(_) => None,
+                        })
+                        .max()
+                        .unwrap_or(0);
+                    resolved.insert(foundation.id, (rank, stations));
+                    added += 1;
+                }
+            }
+            if added == 0 {
+                break;
+            }
+        }
+        resolved
+    }
+
     fn wall_is_open(&self, wall: &super::model::Wall) -> bool {
         let open: f64 = self
             .openings
@@ -150,6 +293,7 @@ impl Project {
         let mut beams = 0;
         let mut strips = 0;
         let walls = self.walls.clone();
+        let mut remaining = Vec::new();
         for wall in &walls {
             if self
                 .structure
@@ -165,20 +309,64 @@ impl Project {
             let supported = on.len() >= 2
                 && on.first().is_some_and(|(s, _, _)| *s <= 0.30)
                 && on.last().is_some_and(|(s, _, _)| *s >= length - 0.30);
-            let kind = if supported {
-                beams += 1;
-                WallFoundationKind::GroundBeam
-            } else {
-                strips += 1;
-                WallFoundationKind::StripFooting
-            };
+            if !supported {
+                remaining.push(wall);
+                continue;
+            }
             let id = self.id();
             self.structure.wall_foundations.push(WallFoundation {
                 id,
                 wall_id: wall.id,
-                kind,
+                kind: WallFoundationKind::GroundBeam,
                 width_m: None,
             });
+            beams += 1;
+        }
+        // Extend the supported network from column-backed beams. A secondary
+        // beam is promoted only when both wall ends reach a column or an
+        // already resolved beam; cycles remain on strip footings.
+        loop {
+            let mut promoted = Vec::new();
+            let resolved = self.resolved_ground_beams();
+            remaining.retain(|wall| {
+                let supports = self.ground_stations(wall, &resolved);
+                let supported = supports.len() >= 2
+                    && supports.first().is_some_and(|s| s.at_m <= 0.30)
+                    && supports
+                        .last()
+                        .is_some_and(|s| s.at_m >= wall.length() - 0.30);
+                if supported {
+                    promoted.push(*wall);
+                    false
+                } else {
+                    true
+                }
+            });
+            if promoted.is_empty() {
+                break;
+            }
+            // Re-evaluate in wall order so newly promoted beams are available
+            // to the next level of the support network.
+            for wall in promoted {
+                let id = self.id();
+                self.structure.wall_foundations.push(WallFoundation {
+                    id,
+                    wall_id: wall.id,
+                    kind: WallFoundationKind::GroundBeam,
+                    width_m: None,
+                });
+                beams += 1;
+            }
+        }
+        for wall in remaining {
+            let id = self.id();
+            self.structure.wall_foundations.push(WallFoundation {
+                id,
+                wall_id: wall.id,
+                kind: WallFoundationKind::StripFooting,
+                width_m: None,
+            });
+            strips += 1;
         }
         (beams, strips)
     }
@@ -232,6 +420,8 @@ impl Project {
         }
         let s = self.structure.settings;
         let (mut beam_no, mut strip_no) = (0, 0);
+        let resolved = self.resolved_ground_beams();
+        let mut incoming: HashMap<u64, Vec<(f64, f64)>> = HashMap::new();
         let mut ordered: Vec<&WallFoundation> = self.structure.wall_foundations.iter().collect();
         ordered.sort_by(|a, b| {
             let mid = |f: &WallFoundation| {
@@ -245,6 +435,24 @@ impl Project {
                 .cmp(&((mb.y / 0.3).round() as i64))
                 .then(ma.x.total_cmp(&mb.x))
         });
+        let mut labels = HashMap::new();
+        for foundation in &ordered {
+            let label = if foundation.kind == WallFoundationKind::GroundBeam
+                && resolved.contains_key(&foundation.id)
+            {
+                beam_no += 1;
+                format!("VB{beam_no}")
+            } else {
+                strip_no += 1;
+                format!("SC{strip_no}")
+            };
+            labels.insert(foundation.id, label);
+        }
+        // Solve dependents first, while preserving spatial labels above.
+        ordered.sort_by(|a, b| {
+            let rank = |f: &WallFoundation| resolved.get(&f.id).map_or(0, |(r, _)| *r);
+            rank(b).cmp(&rank(a))
+        });
         for foundation in ordered {
             let Some(wall) = self.walls.iter().find(|w| w.id == foundation.wall_id) else {
                 continue;
@@ -256,7 +464,7 @@ impl Project {
             let mut result = WallFoundationResult {
                 id: foundation.id,
                 wall_id: wall.id,
-                label: String::new(),
+                label: labels.get(&foundation.id).cloned().unwrap_or_default(),
                 kind: foundation.kind,
                 length_m: length,
                 load_kn_m: wall_q,
@@ -272,12 +480,15 @@ impl Project {
                 soil_kpa: s.soil_kpa,
                 pressure_kpa: 0.0,
                 reactions: Vec::new(),
+                beam_reactions: Vec::new(),
+                unsupported: false,
             };
-            let on = self.columns_on_wall(wall);
+            let on = resolved.get(&foundation.id).map(|(_, stations)| stations);
             match foundation.kind {
-                WallFoundationKind::GroundBeam if on.len() >= 2 => {
-                    beam_no += 1;
-                    result.label = format!("VB{beam_no}");
+                WallFoundationKind::GroundBeam
+                    if on.is_some_and(|stations| stations.len() >= 2) =>
+                {
+                    let on = on.unwrap();
                     let b = foundation
                         .width_m
                         .unwrap_or_else(|| round_up(wall.thickness().max(0.15), 0.05));
@@ -288,31 +499,80 @@ impl Project {
                     let mut reactions = vec![0.0; on.len()];
                     let (mut moment, mut shear) = (0.0_f64, 0.0_f64);
                     let (mut h, mut flexure, mut shear_ratio, mut steel) = (None, 0.0, 0.0, 0.0);
+                    let mut support_loads = vec![0.0; on.len()];
+                    let mut span_loads = vec![Vec::new(); on.len() - 1];
+                    for (at_m, load_kn) in incoming.remove(&foundation.id).unwrap_or_default() {
+                        if let Some((i, _)) = on
+                            .iter()
+                            .enumerate()
+                            .find(|(_, station)| (station.at_m - at_m).abs() <= 0.05)
+                        {
+                            support_loads[i] += load_kn;
+                        } else if let Some((i, pair)) = on
+                            .windows(2)
+                            .enumerate()
+                            .find(|(_, pair)| at_m > pair[0].at_m && at_m < pair[1].at_m)
+                        {
+                            span_loads[i].push((at_m - pair[0].at_m, load_kn));
+                        } else {
+                            // A junction within numerical tolerance of an end
+                            // support still transfers its full vertical force.
+                            let last = on.len() - 1;
+                            let nearest = if at_m < on[0].at_m { 0 } else { last };
+                            support_loads[nearest] += load_kn;
+                        }
+                    }
+                    for loads in &mut span_loads {
+                        loads.sort_by(|a, b| a.0.total_cmp(&b.0));
+                    }
                     for _ in 0..3 {
                         q = wall_q + CONCRETE_KN_M3 * b * h_guess;
                         let spans: Vec<(f64, f64, f64)> = on
                             .windows(2)
-                            .map(|p| ((p[1].0 - p[0].0).max(0.1), q, 1.0))
+                            .map(|p| ((p[1].at_m - p[0].at_m).max(0.1), q, 1.0))
                             .collect();
-                        let before = on[0].0;
-                        let after = (length - on[on.len() - 1].0).max(0.0);
+                        let before = on[0].at_m;
+                        let after = (length - on[on.len() - 1].at_m).max(0.0);
                         let overhang_moments =
                             (-q * before * before / 2.0, -q * after * after / 2.0);
-                        let none = vec![Vec::new(); spans.len()];
                         let ends =
-                            continuous_beam_with_end_moments(&spans, &none, overhang_moments);
-                        reactions.fill(0.0);
+                            continuous_beam_with_end_moments(&spans, &span_loads, overhang_moments);
+                        reactions.clone_from(&support_loads);
                         moment = 0.0;
                         shear = 0.0;
                         for (i, ((l, w, _), (left, right))) in spans.iter().zip(&ends).enumerate() {
-                            let v_left = w * l / 2.0 + (right - left) / l;
-                            let v_right = v_left - w * l;
+                            let pts = &span_loads[i];
+                            let point_sum: f64 = pts.iter().map(|(_, p)| p).sum();
+                            let point_left: f64 = pts.iter().map(|(a, p)| p * (l - a) / l).sum();
+                            let v_left = w * l / 2.0 + point_left + (right - left) / l;
+                            let v_right = v_left - w * l - point_sum;
                             reactions[i] += v_left;
                             reactions[i + 1] -= v_right;
-                            let x = (v_left / w.max(1e-9)).clamp(0.0, *l);
-                            let span = left + v_left * x - w * x * x / 2.0;
-                            moment = moment.max(span.abs()).max(left.abs()).max(right.abs());
-                            shear = shear.max(v_left.abs()).max(v_right.abs());
+                            let moment_at = |x: f64| {
+                                left + v_left * x
+                                    - w * x * x / 2.0
+                                    - pts.iter().map(|(a, p)| p * (x - a).max(0.0)).sum::<f64>()
+                            };
+                            let mut start = 0.0;
+                            let mut p_before = 0.0;
+                            for (end, p_at_end) in pts
+                                .iter()
+                                .map(|(a, p)| (*a, *p))
+                                .chain(std::iter::once((*l, 0.0)))
+                            {
+                                let zero_shear =
+                                    ((v_left - p_before) / w.max(1e-9)).clamp(start, end);
+                                moment = moment
+                                    .max(moment_at(start).abs())
+                                    .max(moment_at(end).abs())
+                                    .max(moment_at(zero_shear).abs());
+                                shear = shear
+                                    .max((v_left - w * start - p_before).abs())
+                                    .max((v_left - w * end - p_before).abs());
+                                p_before += p_at_end;
+                                start = end;
+                            }
+                            shear = shear.max(v_right.abs());
                         }
                         // Wall beyond the end columns hangs on them as a cantilever.
                         reactions[0] += q * before;
@@ -346,14 +606,21 @@ impl Project {
                     result.shear_ratio = shear_ratio;
                     result.steel_cm2 = steel;
                     result.bars = choose_bars(steel).replace("(superior)", "(em cima e embaixo)");
-                    for ((_, column, _), reaction) in on.iter().zip(&reactions) {
-                        *effects.at_column.entry(*column).or_default() += reaction;
-                        result.reactions.push((*column, *reaction));
+                    for (station, reaction) in on.iter().zip(&reactions) {
+                        match station.support {
+                            GroundSupport::Column(id) => {
+                                *effects.at_column.entry(id).or_default() += reaction;
+                                result.reactions.push((id, *reaction));
+                            }
+                            GroundSupport::Beam { id, station_m } => {
+                                incoming.entry(id).or_default().push((station_m, *reaction));
+                                result.beam_reactions.push((id, *reaction));
+                            }
+                        }
                     }
                 }
                 _ => {
-                    strip_no += 1;
-                    result.label = format!("SC{strip_no}");
+                    result.unsupported = foundation.kind == WallFoundationKind::GroundBeam;
                     result.kind = WallFoundationKind::StripFooting;
                     // Exact closed-form strip width (25 cm footing thickness):
                     // σ = (wall_q + 25·B·0.25) / B <= soil_kpa => B >= wall_q / (soil_kpa - 6.25).
@@ -588,5 +855,111 @@ mod tests {
                     .iter()
                     .any(|check| check.light == Light::Red && check.name == "Apoio")
         }));
+    }
+
+    #[test]
+    fn secondary_ground_beams_route_loads_through_a_beam_chain_to_columns() {
+        let mut project = Project::default();
+        let primary_wall = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(6.0, 0.0))
+            .unwrap();
+        let secondary_wall = project
+            .add_wall(Point::new(3.0, 0.0), Point::new(3.0, 4.0))
+            .unwrap();
+        let tertiary_wall = project
+            .add_wall(Point::new(3.0, 2.0), Point::new(5.0, 2.0))
+            .unwrap();
+        for point in [
+            Point::new(0.0, 0.0),
+            Point::new(6.0, 0.0),
+            Point::new(3.0, 4.0),
+            Point::new(5.0, 2.0),
+        ] {
+            project
+                .add_fixture(FixtureKind::Column, point, 0.20, 0.20, 0)
+                .unwrap();
+        }
+        project
+            .set_wall_foundation(primary_wall, WallFoundationKind::GroundBeam, None)
+            .unwrap();
+        let baseline_moment = project.wall_foundation_effects().results[0].moment_knm;
+        assert_eq!(project.generate_wall_foundations(), (2, 0));
+        let effects = project.wall_foundation_effects();
+        let primary = effects
+            .results
+            .iter()
+            .find(|r| r.wall_id == primary_wall)
+            .unwrap();
+        let secondary = effects
+            .results
+            .iter()
+            .find(|r| r.wall_id == secondary_wall)
+            .unwrap();
+        let tertiary = effects
+            .results
+            .iter()
+            .find(|r| r.wall_id == tertiary_wall)
+            .unwrap();
+        assert_eq!(tertiary.beam_reactions.len(), 1);
+        assert_eq!(tertiary.beam_reactions[0].0, secondary.id);
+        assert_eq!(secondary.beam_reactions.len(), 1);
+        assert_eq!(secondary.beam_reactions[0].0, primary.id);
+        assert_eq!(primary.reactions.len(), 2);
+        assert!(primary.moment_knm > baseline_moment);
+        let total_wall_and_beams: f64 = effects
+            .results
+            .iter()
+            .map(|result| result.load_kn_m * result.length_m)
+            .sum();
+        let total_columns: f64 = effects.at_column.values().sum();
+        assert!((total_columns - total_wall_and_beams).abs() < 1e-6);
+    }
+
+    #[test]
+    fn unsupported_ground_beam_falls_back_to_strip_with_a_failed_support_check() {
+        use crate::domain::verdict::{Light, structure_verdicts};
+
+        let mut project = Project::default();
+        let wall = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(4.0, 0.0))
+            .unwrap();
+        project
+            .set_wall_foundation(wall, WallFoundationKind::GroundBeam, None)
+            .unwrap();
+        let report = project.structure_report();
+        let result = &report.wall_foundations[0];
+        assert_eq!(result.kind, WallFoundationKind::StripFooting);
+        assert!(result.unsupported);
+        assert!(structure_verdicts(&project, &report).iter().any(|verdict| {
+            verdict.element.contains(&result.label)
+                && verdict
+                    .checks
+                    .iter()
+                    .any(|c| c.light == Light::Red && c.name == "Apoios")
+        }));
+    }
+
+    #[test]
+    fn a_beam_cycle_without_a_grounded_path_stays_on_strip_footings() {
+        let mut project = Project::default();
+        project
+            .add_wall(Point::new(0.0, 0.0), Point::new(4.0, 0.0))
+            .unwrap();
+        project
+            .add_wall(Point::new(0.0, 0.0), Point::new(0.0, 4.0))
+            .unwrap();
+        for point in [Point::new(4.0, 0.0), Point::new(0.0, 4.0)] {
+            project
+                .add_fixture(FixtureKind::Column, point, 0.20, 0.20, 0)
+                .unwrap();
+        }
+        assert_eq!(project.generate_wall_foundations(), (0, 2));
+        assert!(
+            project
+                .wall_foundation_effects()
+                .results
+                .iter()
+                .all(|result| result.kind == WallFoundationKind::StripFooting)
+        );
     }
 }
