@@ -138,8 +138,12 @@ pub struct RoomFinishQuantities {
     pub floor_area_m2: f64,
     pub floor_with_waste_m2: f64,
     pub wall_net_area_m2: f64,
+    /// Net internal wall finish area with +10% cutting/application waste, m².
+    pub wall_with_waste_m2: f64,
     pub ceiling_area_m2: f64,
     pub baseboard_linear_m: f64,
+    /// Waterproofing area when enabled on the room (floor + wet perimeter upturn), m².
+    pub waterproofing_m2: f64,
 }
 
 impl Project {
@@ -173,15 +177,39 @@ impl Project {
         Ok(())
     }
 
-    /// Computes practical finish quantities (floor + 10% waste, net wall area,
-    /// ceiling area, and linear baseboard subtracting door/gap spans).
+    /// Computes practical finish quantities (floor + 10% waste, net wall area
+    /// using each wall's real height, wall + 10% waste, ceiling area, linear
+    /// baseboard subtracting door/gap spans, and waterproofing area when active).
     pub fn room_finish_quantities(&self, room: &Room) -> Option<RoomFinishQuantities> {
         let floor_area_m2 = self
             .room_usable_area(room)
             .or_else(|| self.room_area(room))?;
         let outline = self.room_outline(room)?;
         let perimeter = polygon_perimeter(&outline);
-        let wall_h = self.wall_height.max(2.0);
+        let storey_h = self.wall_height.max(2.0);
+
+        // Compute gross wall area using each enclosing wall's actual mean height (#145)
+        // when the room lists explicit wall_ids; fallback to perimeter × storey_h.
+        let wall_gross_area = if !room.wall_ids.is_empty() {
+            let mut sum_len = 0.0;
+            let mut sum_area = 0.0;
+            for &wid in &room.wall_ids {
+                if let Some(w) = self.walls.iter().find(|w| w.id == wid) {
+                    let len = w.length();
+                    sum_len += len;
+                    sum_area += len * w.mean_height(storey_h);
+                }
+            }
+            if sum_len > 1e-6 {
+                // Scale gently to the room's actual inner outline perimeter so shared
+                // longer walls don't over-count beyond this room's boundary.
+                perimeter * (sum_area / sum_len)
+            } else {
+                perimeter * storey_h
+            }
+        } else {
+            perimeter * storey_h
+        };
 
         let mut openings_area = 0.0;
         let mut floor_openings_width = 0.0;
@@ -191,7 +219,12 @@ impl Project {
             .filter(|o| room.wall_ids.contains(&o.wall_id))
         {
             let w = op.width();
-            let h = op.height().unwrap_or(wall_h);
+            let op_wall_h = self
+                .walls
+                .iter()
+                .find(|wall| wall.id == op.wall_id)
+                .map_or(storey_h, |wall| wall.height_over(storey_h, op));
+            let h = op.height().unwrap_or(op_wall_h).min(op_wall_h);
             openings_area += w * h;
             if matches!(
                 op.kind,
@@ -211,12 +244,33 @@ impl Project {
             (perimeter - floor_openings_width).max(0.0)
         };
 
+        let wall_net_area_m2 = (wall_gross_area - openings_area).max(0.0);
+        let waterproofing_m2 = if room.finishes.as_ref().is_some_and(|f| f.waterproofing) {
+            // NBR 9575 standard allowance: full floor area + 30 cm perimeter upturn
+            // (or 1.50 m wet-wall height on bathrooms / showers).
+            let lower = room.display_name().to_lowercase();
+            let upturn_h = if lower.contains("banheiro")
+                || lower.contains("lavabo")
+                || lower.contains("suíte")
+                || lower.contains("suite")
+            {
+                0.90
+            } else {
+                0.30
+            };
+            floor_area_m2 + (perimeter - floor_openings_width).max(0.0) * upturn_h
+        } else {
+            0.0
+        };
+
         Some(RoomFinishQuantities {
             floor_area_m2,
             floor_with_waste_m2: floor_area_m2 * 1.10,
-            wall_net_area_m2: (perimeter * wall_h - openings_area).max(0.0),
+            wall_net_area_m2,
+            wall_with_waste_m2: wall_net_area_m2 * 1.10,
             ceiling_area_m2: floor_area_m2,
             baseboard_linear_m,
+            waterproofing_m2,
         })
     }
 }

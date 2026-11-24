@@ -33,6 +33,9 @@ pub struct ScheduleConfig {
     pub show_rooms_schedule: bool,
     #[serde(default = "default_true")]
     pub show_materials_schedule: bool,
+    /// Include the consolidated construction quantities schedule (#56) on sheets.
+    #[serde(default)]
+    pub show_quantities_schedule: bool,
     #[serde(default = "default_true")]
     pub show_perimeter: bool,
     #[serde(default = "default_true")]
@@ -52,6 +55,7 @@ impl Default for ScheduleConfig {
             show_openings_schedule: true,
             show_rooms_schedule: true,
             show_materials_schedule: true,
+            show_quantities_schedule: false,
             show_perimeter: true,
             show_sill: true,
             show_occupancy: true,
@@ -212,6 +216,9 @@ pub fn active_schedules(project: &Project, config: &ScheduleConfig) -> Vec<Sched
     }
     if config.show_materials_schedule && !project.walls.is_empty() {
         tables.push(build_materials_schedule(project, config));
+    }
+    if config.show_quantities_schedule && (!project.walls.is_empty() || !project.rooms.is_empty()) {
+        tables.push(super::quantities::build_quantities_schedule(project));
     }
     if project.rooms.iter().any(|r| r.finishes.is_some()) {
         tables.push(super::finishes::build_finishes_schedule(project));

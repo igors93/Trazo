@@ -114,8 +114,20 @@ fn parse_stair_shape(raw: &str) -> Option<StairShape> {
 
 impl FloorPlanApp {
     /// Read-only consolidated construction quantities takeoff (#56).
-    pub(super) fn tool_quantities(&mut self) -> Result<ToolOutput, String> {
-        let takeoff = self.project.construction_takeoff();
+    pub(super) fn tool_quantities(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        let all_floors = args
+            .get("todos_pavimentos")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let waste_override = number(args, "perda_blocos_pct")?;
+        if let Some(w) = waste_override
+            && !(0.0..=50.0).contains(&w)
+        {
+            return Err("'perda_blocos_pct' deve ficar entre 0 e 50.".to_owned());
+        }
+        let takeoff = self
+            .project
+            .construction_takeoff_with_options(all_floors, waste_override);
         let structure = self.project.cached_structure_report();
         let reinforcement = self.project.cached_reinforcement_report();
         let roof_tiles: u64 = structure
@@ -128,47 +140,120 @@ impl FloorPlanApp {
         let roof_area_m2: f64 = structure.roofs.iter().map(|r| r.surface_m2).sum();
         let steel_kg = reinforcement.total_mass_kg();
 
+        let masonry_json: Vec<Value> = takeoff
+            .masonry
+            .iter()
+            .map(|m| {
+                json!({
+                    "material": m.masonry,
+                    "area_liquida_m2": round2(m.net_area_m2),
+                    "blocos": m.blocks.ceil() as u64,
+                    "blocos_com_perda": m.blocks_with_waste.ceil() as u64,
+                    "meios_blocos": m.half_blocks.ceil() as u64,
+                    "meios_blocos_com_perda": m.half_blocks_with_waste.ceil() as u64,
+                    "canaletas_cinta": m.bond_beam_u_blocks.ceil() as u64,
+                    "canaletas_vergas": m.lintel_u_blocks.ceil() as u64,
+                    "canaletas": m.u_blocks.ceil() as u64,
+                    "canaletas_com_perda": m.u_blocks_with_waste.ceil() as u64,
+                })
+            })
+            .collect();
+        let walls_json: Vec<Value> = takeoff
+            .walls
+            .iter()
+            .map(|w| {
+                json!({
+                    "parede_id": w.wall_id,
+                    "pavimento": w.floor_name,
+                    "material": w.masonry,
+                    "comprimento_m": round2(w.length_m),
+                    "altura_m": round2(w.height_m),
+                    "area_bruta_m2": round2(w.gross_m2),
+                    "aberturas_m2": round2(w.openings_m2),
+                    "area_liquida_m2": round2(w.net_m2),
+                    "blocos": w.blocks.ceil() as u64,
+                    "meios_blocos": w.half_blocks.ceil() as u64,
+                    "canaletas": w.u_blocks.ceil() as u64,
+                    "argamassa_m3": round(w.mortar_m3),
+                    "reboco_m2": round2(w.plaster_m2),
+                    "reboco_m3": round(w.plaster_m3),
+                    "graute_m3": round(w.grout_m3),
+                })
+            })
+            .collect();
+        let lintels_json: Vec<Value> = takeoff
+            .lintels
+            .iter()
+            .map(|l| {
+                json!({
+                    "abertura_id": l.opening_id,
+                    "parede_id": l.wall_id,
+                    "pavimento": l.floor_name,
+                    "codigo": l.code,
+                    "tipo": l.kind,
+                    "abertura": l.opening,
+                    "vao_m": round2(l.opening_width_m),
+                    "transpasse_lado_m": round2(l.bearing_each_side_m),
+                    "comprimento_m": round2(l.length_m),
+                    "canaletas": l.u_blocks.ceil() as u64,
+                    "graute_m3": round(l.grout_m3),
+                })
+            })
+            .collect();
+        let rooms_json: Vec<Value> = takeoff
+            .rooms
+            .iter()
+            .map(|r| {
+                json!({
+                    "pavimento": r.floor_name,
+                    "comodo": r.room,
+                    "piso_m2": round2(r.floor_m2),
+                    "piso_com_perda_m2": round2(r.floor_with_waste_m2),
+                    "rodape_m": round2(r.skirting_m),
+                    "paredes_m2": round2(r.walls_m2),
+                    "paredes_com_perda_m2": round2(r.walls_with_waste_m2),
+                    "teto_m2": round2(r.ceiling_m2),
+                    "impermeabilizacao_m2": round2(r.waterproofing_m2),
+                    "acabamento_piso": r.floor_spec,
+                    "acabamento_parede": r.wall_spec,
+                    "acabamento_teto": r.ceiling_spec,
+                    "acabamento_rodape": r.baseboard_spec,
+                    "impermeabilizado": r.waterproofing,
+                })
+            })
+            .collect();
+        let floors_json: Vec<Value> = takeoff
+            .floors
+            .iter()
+            .map(|f| {
+                json!({
+                    "pavimento": f.floor_name,
+                    "alvenaria_liquida_m2": round2(f.net_wall_m2),
+                    "blocos_com_perda": f.blocks_with_waste.ceil() as u64,
+                    "meios_blocos_com_perda": f.half_blocks_with_waste.ceil() as u64,
+                    "canaletas_com_perda": f.u_blocks_with_waste.ceil() as u64,
+                    "argamassa_m3": round(f.mortar_m3),
+                    "reboco_m2": round2(f.plaster_m2),
+                    "reboco_m3": round(f.plaster_m3),
+                    "graute_m3": round(f.grout_m3),
+                    "vergas_qtd": f.lintel_count,
+                    "vergas_m": round2(f.lintel_m),
+                    "piso_com_perda_m2": round2(f.floor_with_waste_m2),
+                    "paredes_internas_m2": round2(f.room_walls_m2),
+                    "teto_m2": round2(f.ceiling_m2),
+                })
+            })
+            .collect();
+
         let data = json!({
             "projeto_id": self.active_project_id(),
+            "todos_pavimentos": takeoff.all_floors,
             "perda_percentual": round2(takeoff.waste_percent),
-            "alvenaria": takeoff.masonry.iter().map(|m| json!({
-                "material": m.masonry,
-                "blocos": m.blocks.ceil() as u64,
-                "blocos_com_perda": m.blocks_with_waste.ceil() as u64,
-                "meios_blocos": m.half_blocks.ceil() as u64,
-                "meios_blocos_com_perda": m.half_blocks_with_waste.ceil() as u64,
-                "canaletas": m.u_blocks.ceil() as u64,
-            })).collect::<Vec<_>>(),
-            "paredes": takeoff.walls.iter().map(|w| json!({
-                "parede_id": w.wall_id,
-                "material": w.masonry,
-                "comprimento_m": round2(w.length_m),
-                "altura_m": round2(w.height_m),
-                "area_bruta_m2": round2(w.gross_m2),
-                "aberturas_m2": round2(w.openings_m2),
-                "area_liquida_m2": round2(w.net_m2),
-                "blocos": w.blocks.ceil() as u64,
-                "meios_blocos": w.half_blocks.ceil() as u64,
-                "canaletas": w.u_blocks.ceil() as u64,
-                "argamassa_m3": round(w.mortar_m3),
-                "reboco_m2": round2(w.plaster_m2),
-                "reboco_m3": round(w.plaster_m3),
-            })).collect::<Vec<_>>(),
-            "vergas_contravergas": takeoff.lintels.iter().map(|l| json!({
-                "abertura_id": l.opening_id,
-                "tipo": l.kind,
-                "abertura": l.opening,
-                "comprimento_m": round2(l.length_m),
-                "canaletas": l.u_blocks.ceil() as u64,
-            })).collect::<Vec<_>>(),
-            "acabamentos": takeoff.rooms.iter().map(|r| json!({
-                "comodo": r.room,
-                "piso_m2": round2(r.floor_m2),
-                "piso_com_perda_m2": round2(r.floor_with_waste_m2),
-                "rodape_m": round2(r.skirting_m),
-                "paredes_m2": round2(r.walls_m2),
-                "teto_m2": round2(r.ceiling_m2),
-            })).collect::<Vec<_>>(),
+            "alvenaria": masonry_json,
+            "paredes": walls_json,
+            "vergas_contravergas": lintels_json,
+            "acabamentos": rooms_json,
+            "por_pavimento": floors_json,
             "telhados": {
                 "quantidade": structure.roofs.len(),
                 "area_m2": round2(roof_area_m2),
@@ -180,12 +265,15 @@ impl FloorPlanApp {
                 "argamassa_m3": round(takeoff.mortar_m3),
                 "reboco_m2": round2(takeoff.plaster_m2),
                 "reboco_m3": round(takeoff.plaster_m3),
+                "graute_canaletas_m3": round(takeoff.grout_m3),
                 "vergas_m": round2(takeoff.lintel_m),
                 "piso_m2": round2(takeoff.floor_m2),
                 "piso_com_perda_m2": round2(takeoff.floor_with_waste_m2),
                 "rodape_m": round2(takeoff.skirting_m),
                 "paredes_internas_m2": round2(takeoff.room_walls_m2),
+                "paredes_internas_com_perda_m2": round2(takeoff.room_walls_with_waste_m2),
                 "teto_m2": round2(takeoff.ceiling_m2),
+                "impermeabilizacao_m2": round2(takeoff.waterproofing_m2),
                 "aco_preliminar_kg": round2(steel_kg),
                 "madeira_telhado_m3": round2(roof_timber_m3),
             },
@@ -1843,5 +1931,149 @@ mod tests {
         assert!(before_undo > 0);
         ok(&mut app, "desfazer", json!({ "passos": 1 }));
         assert_eq!(app.project.structure.beams.len(), 0);
+    }
+
+    #[test]
+    fn multi_floor_quantities_and_sheet_exports_work_via_mcp() {
+        let mut app = app();
+        ok(
+            &mut app,
+            "definir_terreno",
+            json!({ "largura": 12, "comprimento": 16 }),
+        );
+        let sala = ok(
+            &mut app,
+            "criar_comodo",
+            json!({ "nome": "Sala", "x": 1, "y": 1, "largura": 5, "comprimento": 4 }),
+        )
+        .structured
+        .unwrap();
+        let sala_id = sala["id"].as_u64().unwrap();
+        let wall_id = sala["paredes"][0].as_u64().unwrap();
+        ok(
+            &mut app,
+            "inserir_abertura",
+            json!({ "parede_id": wall_id, "tipo": "porta", "posicao": 0.3 }),
+        );
+        ok(
+            &mut app,
+            "inserir_abertura",
+            json!({ "parede_id": wall_id, "tipo": "janela", "posicao": 0.7 }),
+        );
+        ok(
+            &mut app,
+            "editar_comodo",
+            json!({ "id": sala_id, "preset_acabamento": "social_porcelanato" }),
+        );
+        let banho = ok(
+            &mut app,
+            "criar_comodo",
+            json!({ "nome": "Banheiro", "x": 6, "y": 1, "largura": 2.5, "comprimento": 3 }),
+        )
+        .structured
+        .unwrap();
+        let banho_id = banho["id"].as_u64().unwrap();
+        ok(
+            &mut app,
+            "editar_comodo",
+            json!({ "id": banho_id, "preset_acabamento": "area_molhada_banheiro" }),
+        );
+
+        // Add upper floor copying walls and add a bedroom there.
+        ok(
+            &mut app,
+            "pavimentos",
+            json!({ "acao": "adicionar", "nome": "1º Pavimento", "copiar_paredes": true }),
+        );
+        ok(
+            &mut app,
+            "criar_comodo",
+            json!({ "nome": "Quarto", "x": 1, "y": 6, "largura": 4, "comprimento": 3.5 }),
+        );
+
+        let single = ok(&mut app, "quantitativos", json!({})).structured.unwrap();
+        assert_eq!(single["todos_pavimentos"], false);
+        assert_eq!(single["por_pavimento"].as_array().unwrap().len(), 1);
+
+        let all = ok(
+            &mut app,
+            "quantitativos",
+            json!({ "todos_pavimentos": true, "perda_blocos_pct": 15.0 }),
+        )
+        .structured
+        .unwrap();
+        assert_eq!(all["todos_pavimentos"], true);
+        assert_eq!(all["perda_percentual"], 15.0);
+        assert_eq!(all["por_pavimento"].as_array().unwrap().len(), 2);
+        assert!(
+            all["totais"]["alvenaria_liquida_m2"].as_f64().unwrap()
+                > single["totais"]["alvenaria_liquida_m2"].as_f64().unwrap()
+        );
+        assert!(all["totais"]["graute_canaletas_m3"].as_f64().unwrap() > 0.0);
+        assert!(
+            all["totais"]["paredes_internas_com_perda_m2"]
+                .as_f64()
+                .unwrap()
+                > 0.0
+        );
+        assert!(all["totais"]["impermeabilizacao_m2"].as_f64().unwrap() > 0.0);
+
+        let first_mat = &all["alvenaria"].as_array().unwrap()[0];
+        assert!(
+            first_mat["canaletas_com_perda"].as_u64().unwrap()
+                >= first_mat["canaletas"].as_u64().unwrap()
+        );
+        assert_eq!(
+            first_mat["canaletas"].as_u64().unwrap(),
+            first_mat["canaletas_cinta"].as_u64().unwrap()
+                + first_mat["canaletas_vergas"].as_u64().unwrap()
+        );
+        let lintels = all["vergas_contravergas"].as_array().unwrap();
+        assert!(!lintels.is_empty());
+        assert!(
+            lintels[0]["codigo"].as_str().unwrap().starts_with('P')
+                || lintels[0]["codigo"].as_str().unwrap().starts_with('J')
+        );
+        assert!(lintels[0]["transpasse_lado_m"].as_f64().unwrap() >= 0.30);
+
+        let rooms = all["acabamentos"].as_array().unwrap();
+        assert!(
+            rooms
+                .iter()
+                .any(|r| r["impermeabilizacao_m2"].as_f64().unwrap() > 0.0)
+        );
+        assert!(rooms.iter().any(|r| {
+            r["acabamento_piso"]
+                .as_str()
+                .unwrap()
+                .contains("Porcelanato")
+        }));
+
+        // Export SVG and PDF takeoff sheets with todos_pavimentos=true.
+        let tmp = std::env::temp_dir().join(format!("trazo-mcp-qty-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        for (fmt, fname) in [
+            ("quantitativos_svg", "quantitativos.svg"),
+            ("quantitativos_pdf", "quantitativos.pdf"),
+            ("quantitativos_csv", "quantitativos.csv"),
+        ] {
+            let p = tmp.join(fname);
+            ok(
+                &mut app,
+                "exportar_planta",
+                json!({
+                    "formato": fmt,
+                    "todos_pavimentos": true,
+                    "caminho": p.display().to_string()
+                }),
+            );
+            assert!(p.is_file(), "missing export for {fmt}");
+            assert!(std::fs::metadata(&p).unwrap().len() > 0);
+        }
+        let svg_text = std::fs::read_to_string(tmp.join("quantitativos.svg")).unwrap();
+        assert!(svg_text.contains("Resumo por pavimento"));
+        assert!(svg_text.contains("Todos os pavimentos"));
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

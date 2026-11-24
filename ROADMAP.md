@@ -276,20 +276,18 @@ The items worked through in the order set on 2026-11-21: #97 → #99 → #100 �
 ### #56 Construction quantities — ✅ Done
 
 - **Changes:**
-  - `src/domain/quantities.rs` consolidates the takeoff of the active floor:
-    - per wall: net area, whole blocks, half blocks for the running bond, U-blocks of the bond-beam course, laying mortar and plaster on both faces;
-    - lintels over doors and windows and sills under windows, with 30 cm bearing each side;
-    - finishes per room: floor with waste, skirting, walls and ceiling.
-    Totals are kept per kind of masonry, with the block waste from *Quadros*.
-  - The *Quantitativos da obra* window (*Quantitativos* next to *Quadros*) shows the tables and exports them to CSV.
-  - The method is in `docs/engineering.md`.
-- **Tests:** `the_takeoff_matches_a_manual_takeoff_within_2_percent` (a 4 × 3 m room with a door and a window, worked out by hand: net area, blocks, half blocks, U-blocks, lintels, mortar and plaster, all within 2 %) and `each_kind_of_masonry_is_totalled_on_its_own_and_exports`. At HEAD `9ce409b`, format, Clippy and the 394 tests pass.
-- **Commit:** `75041e5`. Another process working in the same checkout committed these files under its own message before the verified commit could be made; the content is the one tested here. The docs are in this log update.
+  - `src/domain/quantities.rs` and `src/domain/finishes.rs` consolidate the construction takeoff for the active floor or across all floors (`construction_takeoff`, `construction_takeoff_all_floors`, `construction_takeoff_with_options`):
+    - per wall: floor label, net area (using each wall's real height including sloped tops, #145), whole blocks, half blocks for the running bond, U-blocks of the bond-beam course, laying mortar, plaster on both faces and U-block grout fill (`0.55 · b · h` + 10 %);
+    - lintels over doors and windows and sills under windows, with opening schedule codes (`P1`, `J1`, …), clear span, 30 cm bearing each side, U-blocks and grout fill;
+    - finishes per room: floor with +10 % waste, skirting less door/open-span widths, net wall area using each enclosing wall's real height + 10 % waste, ceiling, NBR 9575 waterproofing allowance and per-room finish specifications;
+    - per-masonry totals with bond-beam/lintel U-block breakdown, block and U-block waste from *Quadros* (or override), plus per-floor breakdown (`FloorTakeoffSummary`) in multi-floor mode.
+  - ABNT sheet & printable outputs: `ScheduleConfig::show_quantities_schedule` (`build_quantities_schedule`, *Quadro de Quantitativos de Obra*) places the takeoff on ABNT scaled sheets (`scaled_sheet_svg`), and `takeoff_sheet_svg` renders a dedicated A3 landscape vector takeoff sheet (SVG/PDF) alongside UTF-8 BOM CSV (`takeoff_csv_for`).
+  - UI & MCP: *Quantitativos da obra* (`src/app/ui/quantities.rs`) adds live block waste %, active-floor / all-floors scope toggle, sheet-inclusion toggle, and CSV/PDF/SVG exports; *Quadros* (`src/app/ui/schedules.rs`) adds the *Quadro de quantitativos* toggle; MCP exposes `quantitativos` (`todos_pavimentos`, `perda_blocos_pct`) and `exportar_planta` (`quantitativos_csv`, `quantitativos_svg`, `quantitativos_pdf`).
+  - The method is documented in `docs/engineering.md`, `docs/user-guide.md`, `docs/mcp.md` and `CHANGELOG.md`.
+- **Tests:** `the_takeoff_matches_a_manual_takeoff_within_2_percent` (a 4 × 3 m room with a door and a window, worked out by hand: net area, blocks, half blocks, bond-beam & lintel U-blocks with waste, grout, opening codes, lintels, mortar, plaster and room wall waste, all within 2 %), `each_kind_of_masonry_is_totalled_on_its_own_and_exports`, `multi_floor_takeoff_consolidates_all_floors_finishes_and_renders_sheet_svg` and `multi_floor_quantities_and_sheet_exports_work_via_mcp`.
 - **Limitations:**
-  - Only the active floor is measured.
-  - Axis lengths count the corners twice (covered by the waste).
-  - The takeoff is not placed on sheets yet, and the old *Quadro de Materiais* still has bug B20.
-  - No MCP tool, since the takeoff does not change the model.
+  - Axis lengths count wall corners twice (covered by the waste allowance).
+  - The legacy *Quadro de Materiais* schedule still retains bug B20 (tracked separately).
 
 ### #53 Opening dimension chains — ✅ Done
 

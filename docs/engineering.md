@@ -386,21 +386,22 @@ The regional utility profiles (`src/domain/utility_profiles.rs`: Generic NBR 541
 
 ## Construction quantities
 
-`construction_takeoff` (`src/domain/quantities.rs`) measures the active floor:
+`construction_takeoff` (active floor), `construction_takeoff_all_floors` and `construction_takeoff_with_options` (`src/domain/quantities.rs`) consolidate the construction takeoff for the active floor or across every floor in the project:
 
 | Quantity | Rule |
 | --- | --- |
 | Net wall area | axis length × the wall's mean height (the storey height unless the wall has its own top, #145; a sloped top averages its two ends), less each opening's width × height, up to the top over it |
 | Blocks per m² | 1 / ((block length + joint) × (block height + joint)), each wall with its own masonry |
 | Half blocks | one every other course at each wall end (each end at its own height) and at each jamb (courses = height / (block height + joint), rounded) |
-| U-blocks | the top course of every wall (bond beam), along the slope of a sloped top, replacing its blocks, plus the lintels and sills |
+| U-blocks (*canaletas*) | broken down into top-course bond beams (`bond_beam_u_blocks`, along the slope of a sloped top, replacing its blocks) and lintels/sills (`lintel_u_blocks`); `u_blocks_with_waste` applies the waste percentage from *Quadros* (or MCP override) |
 | Whole blocks | net area × blocks per m² − half blocks / 2 − top-course U-blocks; waste from *Quadros* (10 % by default) |
-| Lintels and sills | a lintel over each door and window and a sill under each window, width + 2 × 30 cm |
+| Lintels and sills | a lintel over each door and window and a sill under each window, labelled with its opening schedule code (`P1`, `J1`, …), clear span and 30 cm bearing each side (`width + 2 × 0.30 m`) |
 | Laying mortar | net area × (1 − blocks per m² × block length × block height) × block width, + 10 % |
 | Plaster | both faces of the net area, at the masonry's plaster thickness, + 10 % on the volume |
-| Finishes | per room: floor + 10 %, skirting less door widths, net walls and ceiling (`room_finish_quantities`) |
+| Grout fill (*graute*) | `0.55 × block width × block height × total U-block length × 1.10` (+ 10 % waste) for bond beams, lintels and sills |
+| Finishes | per room (`room_finish_quantities`, `src/domain/finishes.rs`): floor + 10 %, skirting less door/open-span widths, net wall area using each enclosing wall's real height (`wall.mean_height`) and + 10 % waste, ceiling, NBR 9575 waterproofing allowance (floor + perimeter upturn 90 cm in bathrooms/wet areas or 30 cm otherwise when enabled) and room finish specifications |
 
-Checked by `the_takeoff_matches_a_manual_takeoff_within_2_percent`. Axis lengths count each corner twice, which the waste allowance covers.
+The takeoff can be placed directly on ABNT sheets via `ScheduleConfig::show_quantities_schedule` (`build_quantities_schedule`, *Quadro de Quantitativos de Obra*), exported as an A3 landscape printable vector sheet (`takeoff_sheet_svg`, SVG/PDF) or UTF-8 BOM CSV (`takeoff_csv_for`), and queried via MCP `quantitativos`. Checked by `the_takeoff_matches_a_manual_takeoff_within_2_percent`, `each_kind_of_masonry_is_totalled_on_its_own_and_exports`, `multi_floor_takeoff_consolidates_all_floors_finishes_and_renders_sheet_svg` and `multi_floor_quantities_and_sheet_exports_work_via_mcp`. Axis lengths count each corner twice, which the waste allowance covers.
 
 ## Applicability limits
 

@@ -984,8 +984,11 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "quantitativos",
             title: "Quantitativos de obra",
-            description: "Levantamento consolidado de materiais do pavimento ativo: alvenaria por parede e por material (blocos, meios-blocos, canaletas, com perda, argamassa e reboco), vergas e contravergas, acabamentos por cômodo (piso +10%, rodapé, paredes e teto), madeira e telhas dos telhados e massa preliminar de aço (kg).",
-            properties: json!({}),
+            description: "Levantamento consolidado de materiais do pavimento ativo ou de todos os pavimentos: alvenaria por parede e por material (blocos com perda, meios-blocos, canaletas de cinta e vergas com perda, argamassa de assentamento, reboco/estuco e graute), vergas e contravergas por abertura (código, vão, transpasse 30 cm, canaletas), acabamentos por cômodo (piso +10%, rodapé, paredes +10%, teto, impermeabilização e especificações), madeira/telhas dos telhados e massa preliminar de aço (kg).",
+            properties: json!({
+                "todos_pavimentos": boolean("Opcional: true consolida todos os pavimentos do projeto; false mede apenas o pavimento ativo (padrão false)."),
+                "perda_blocos_pct": number("Opcional: percentual de perda para blocos, meios-blocos e canaletas (0 a 50; padrão usa a configuração de Quadros)."),
+            }),
             required: &[],
             read_only: true,
             destructive: false,
@@ -1206,11 +1209,12 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "exportar_planta",
             title: "Exportar planta e documentação",
-            description: "Exporta a planta ou a documentação técnica do projeto: pdf, pdf_abas (PDF multipágina com 1 página por aba aberta, igual à tela), png, dxf, svg, prancha_pdf/prancha_pdf_abas/prancha_svg (prancha ABNT em escala com carimbo, uma ou todas as abas), memorial_pdf (memorial técnico completo de pré-dimensionamento e desenhos), unifilar_svg/unifilar_pdf (diagrama unifilar elétrico), esforcos_svg/esforcos_pdf (diagramas de momento e cortante das vigas), porticos_svg/porticos_pdf (deformada e momentos dos pórticos planos 2D), armaduras_svg/armaduras_pdf (prancha esquemática de detalhamento preliminar de armaduras e resumo por bitola CA-50), quantitativos_csv, tabela_aco_csv ou csv (quadro de áreas e esquadrias). Sem caminho: salva em Documentos\\Trazo.",
+            description: "Exporta a planta ou a documentação técnica do projeto: pdf, pdf_abas (PDF multipágina com 1 página por aba aberta, igual à tela), png, dxf, svg, prancha_pdf/prancha_pdf_abas/prancha_svg (prancha ABNT em escala com carimbo, uma ou todas as abas), memorial_pdf (memorial técnico completo de pré-dimensionamento e desenhos), unifilar_svg/unifilar_pdf (diagrama unifilar elétrico), esforcos_svg/esforcos_pdf (diagramas de momento e cortante das vigas), porticos_svg/porticos_pdf (deformada e momentos dos pórticos planos 2D), armaduras_svg/armaduras_pdf (prancha esquemática de detalhamento preliminar de armaduras e resumo por bitola CA-50), quantitativos_csv/quantitativos_svg/quantitativos_pdf (planilha de quantitativos de obra), tabela_aco_csv ou csv (quadro de áreas e esquadrias). Sem caminho: salva em Documentos\\Trazo.",
             properties: json!({
-                "formato": { "type": "string", "enum": ["pdf", "pdf_abas", "png", "dxf", "svg", "prancha_pdf", "prancha_pdf_abas", "prancha_svg", "memorial_pdf", "unifilar_svg", "unifilar_pdf", "esforcos_svg", "esforcos_pdf", "porticos_svg", "porticos_pdf", "armaduras_svg", "armaduras_pdf", "quantitativos_csv", "tabela_aco_csv", "csv"], "description": "Formato de exportação." },
+                "formato": { "type": "string", "enum": ["pdf", "pdf_abas", "png", "dxf", "svg", "prancha_pdf", "prancha_pdf_abas", "prancha_svg", "memorial_pdf", "unifilar_svg", "unifilar_pdf", "esforcos_svg", "esforcos_pdf", "porticos_svg", "porticos_pdf", "armaduras_svg", "armaduras_pdf", "quantitativos_csv", "quantitativos_svg", "quantitativos_pdf", "tabela_aco_csv", "csv"], "description": "Formato de exportação." },
                 "caminho": string("Opcional: caminho do arquivo (relativo a Documentos\\Trazo)."),
                 "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Opcional: disciplina a exportar (padrão: disciplina da aba ativa)." },
+                "todos_pavimentos": boolean("Opcional para quantitativos_csv/svg/pdf: true inclui todos os pavimentos do projeto (padrão false)."),
             }),
             required: &["formato"],
             read_only: false,

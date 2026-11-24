@@ -422,7 +422,7 @@ impl FloorPlanApp {
             "abas" => self.tool_tabs(args),
             "pavimentos" => self.tool_floors(args),
             "dependencias" => self.tool_dependencies(args),
-            "quantitativos" => self.tool_quantities(),
+            "quantitativos" => self.tool_quantities(args),
             "ergonomia" => self.tool_ergonomics(args),
             "camadas" => self.tool_layers(args),
             "anotacoes" => self.tool_notes(args),
@@ -748,7 +748,7 @@ impl FloorPlanApp {
     fn tool_export(&self, args: &Value) -> Result<ToolOutput, String> {
         let format = text(args, "formato")
             .map(|format| format.to_lowercase())
-            .ok_or("Informe 'formato': pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, tabela_aco_csv ou csv.")?;
+            .ok_or("Informe 'formato': pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.")?;
         let (ext, suffix) = match format.as_str() {
             "pdf" => ("pdf", ""),
             "pdf_abas" => ("pdf", "-abas"),
@@ -768,10 +768,12 @@ impl FloorPlanApp {
             "armaduras_svg" => ("svg", "-armaduras"),
             "armaduras_pdf" => ("pdf", "-armaduras"),
             "quantitativos_csv" => ("csv", "-quantitativos"),
+            "quantitativos_svg" => ("svg", "-quantitativos"),
+            "quantitativos_pdf" => ("pdf", "-quantitativos"),
             "tabela_aco_csv" => ("csv", "-tabela-aco"),
             "csv" => ("csv", "-quadros"),
             _ => {
-                return Err("Formato inválido. Use: pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, tabela_aco_csv ou csv.".to_owned());
+                return Err("Formato inválido. Use: pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.".to_owned());
             }
         };
         let explicit_discipline = text(args, "disciplina");
@@ -865,8 +867,34 @@ impl FloorPlanApp {
                 crate::domain::views::export_view_pdf(&markup, &path)?;
             }
             "quantitativos_csv" => {
-                let csv = crate::domain::quantities::takeoff_csv(&self.project);
-                std::fs::write(&path, csv).map_err(|e| format!("Não foi possível gravar: {e}"))?;
+                let all_floors = args
+                    .get("todos_pavimentos")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let takeoff = self
+                    .project
+                    .construction_takeoff_with_options(all_floors, None);
+                let csv = crate::domain::quantities::takeoff_csv_for(&takeoff);
+                std::fs::write(&path, format!("\u{FEFF}{csv}"))
+                    .map_err(|e| format!("Não foi possível gravar: {e}"))?;
+            }
+            "quantitativos_svg" => {
+                let all_floors = args
+                    .get("todos_pavimentos")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let markup =
+                    crate::domain::quantities::takeoff_sheet_svg(&self.project, all_floors);
+                crate::domain::views::export_view_svg(&markup, &path)?;
+            }
+            "quantitativos_pdf" => {
+                let all_floors = args
+                    .get("todos_pavimentos")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let markup =
+                    crate::domain::quantities::takeoff_sheet_svg(&self.project, all_floors);
+                crate::domain::views::export_view_pdf(&markup, &path)?;
             }
             "tabela_aco_csv" => {
                 let reinforcement = self.project.cached_reinforcement_report();

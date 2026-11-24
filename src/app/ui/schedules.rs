@@ -53,6 +53,12 @@ impl FloorPlanApp {
                             "Quadro de materiais",
                         )
                         .changed();
+                    changed |= ui
+                        .checkbox(
+                            &mut self.project.schedules.show_quantities_schedule,
+                            "Quadro de quantitativos",
+                        )
+                        .changed();
                 });
 
                 ui.horizontal_wrapped(|ui| {
