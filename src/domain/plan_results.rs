@@ -898,16 +898,10 @@ mod tests {
 
         // Check that labels were spread apart cleanly (B05 overlap avoidance).
         let mut overlapping_pairs = 0usize;
-        for i in 0..overlay.labels.len() {
-            let a = Area::centered(
-                (overlay.labels[i].anchor.x, overlay.labels[i].anchor.y),
-                tag_size(&overlay.labels[i].text),
-            );
-            for j in (i + 1)..overlay.labels.len() {
-                let b = Area::centered(
-                    (overlay.labels[j].anchor.x, overlay.labels[j].anchor.y),
-                    tag_size(&overlay.labels[j].text),
-                );
+        for (i, label) in overlay.labels.iter().enumerate() {
+            let a = Area::centered((label.anchor.x, label.anchor.y), tag_size(&label.text));
+            for other in overlay.labels.iter().skip(i + 1) {
+                let b = Area::centered((other.anchor.x, other.anchor.y), tag_size(&other.text));
                 if a.intersects(&b, 0.0) {
                     overlapping_pairs += 1;
                 }
