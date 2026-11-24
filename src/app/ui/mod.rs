@@ -19,6 +19,7 @@ pub(in crate::app) use icons::Glyph;
 mod inspector;
 mod layers;
 mod library;
+mod loads;
 mod modify_menu;
 mod notes;
 mod options_bar;

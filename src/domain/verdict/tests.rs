@@ -38,7 +38,9 @@ fn a_generated_house_has_no_red_and_every_element_is_judged() {
         + report.columns.len()
         + report.footings.len()
         + report.masonry.bands.len()
-        + report.masonry.panels.len();
+        + report.masonry.panels.len()
+        + report.frames.len()
+        + 2; // ±X and ±Y building wind verdicts (NBR 6123 / NBR 8681 ELU-EQU)
     assert_eq!(summary.verdicts.len(), elements);
     assert_eq!(summary.red, 0, "{:?}", summary.verdicts);
     assert_eq!(summary.green + summary.yellow, elements);

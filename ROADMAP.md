@@ -172,6 +172,12 @@ Recorded while working through the [implementation log](#implementation-log), an
 
 ## Implementation log
 
+### #105 Load cases, combinations and building wind — ✅ Done
+
+- **Changes:** added `src/domain/loads/` (`nbr6120.rs`, `nbr6123.rs`, `nbr8681.rs`, `analysis.rs`, `tests.rs`) separating characteristic actions into `G1` (structural concrete self-weight), `G2` (finishes, masonry walls, roof dead, fixed concentrated loads), `Q` (NBR 6120:2019 occupancy & per-room Table 10 live loads with occupancy-dependent `ψ0/ψ1/ψ2` persisted in `StructureSettings.occupancy`), and `W±` (ABNT NBR 6123 whole-building wind in `+X`, `−X`, `+Y`, `−Y` with Tables 1–3 `S1/S2(z)/S3` presets, Table 4 `Cpe`/`Ca` with `a/b` interpolation, storey-by-storey forces, base shear, overturning moment and `ELU-EQU` rigid-body stability screening); generated all 17 ABNT NBR 8681:2003 / NBR 6118:2023 §11.8 combinations (`ELU-1..7`, `ELU-EQU±`, `ELS-QP`, `ELS-F1..3`, `ELS-R1..4`); upgraded `frame2d` (`builder.rs`, `diagrams.rs`) to solve the four fundamental load cases independently and superpose all 17 combinations linearly into governing ELU/ELS beam & column envelopes, `ELS-F` drift (`H/850`) and `ELU-6/7` column uplift checks; surfaced identically in the new *Cargas e combinações* UI tab (`src/app/ui/loads.rs`), enhanced *Pórticos 2D* tab, traffic-light verdicts (`src/domain/verdict/structure.rs`), PDF memorial (`src/io/report.rs`), MCP `pre_dimensionamento.cargas_e_combinacoes` + `porticos_2d`, and `docs/engineering.md`.
+- **Tests:** `nbr_8681_combinations_match_worked_hand_example_across_occupancies` (worked hand example for Residential/Office/Garage), `nbr_6123_building_wind_matches_published_table4_worked_example` (2-storey 12×6 m building, `V0 = 40 m/s`, Cat. III, Table 4 `α = 0°/90°` & interpolation), `frame_nbr8681_superposition_matches_direct_factored_solve_and_feeds_outputs` (linear superposition vs direct factored `Frame2D` solve to `< 1e-9` + traffic lights + PDF memorial), `multi_storey_real_floors_raise_s2_with_height_and_narrow_frame_flags_wind_uplift`, and `mcp_reports_nbr6120_nbr8681_combinations_and_nbr6123_building_wind`.
+- **Limitations:** static equivalent wind only (no NBR 6123 §9 dynamic gust analysis, 3D torsional diaphragm eccentricity, or seismic NBR 15421); remains inside Trazo's #102 applicability limits (≤ 3 storeys, ≤ 4 m storey height, ≤ 5 kN/m² live load).
+
 ### #104 Sheet release gate — ✅ Done
 
 - **Changes:** `Project::set_sheet_status` refuses *Liberado para obra* while red engineering checks are open unless a named reviewer records a numbered CREA/CAU registration and review date. The acknowledgement stores the exact failed checks and sheet revision. New red results or a new revision make the effective status *Para aprovação* in the sheet UI, master document CSV and SVG/PDF exports. The exported revision table identifies the reviewer. MCP `prancha` can list, add, set status and export set sheets through the same rule.
@@ -521,7 +527,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
 | 94 | 2D frame analysis: beams and columns together (column stiffness, rigid and pinned joints), internal forces, reactions and the deformed shape | P0 | XL | M4 | ✅ |
-| 105 | Load cases and combinations: NBR 6120 loads, NBR 8681 ultimate and service combinations, and wind on the building (NBR 6123) | P1 | L | M4 | ⬜ |
+| 105 | Load cases and combinations: NBR 6120 loads, NBR 8681 ultimate and service combinations, and wind on the building (NBR 6123) | P1 | L | M4 | ✅ |
 | 106 | Results on the plan and on paper: diagrams over the beams, deformed shape, utilisation colours and an animated load path from slab to soil, with labels that avoid each other (B05) | P1 | M | M4 | 🟡 Beam diagrams on a separate sheet |
 | 107 | What-if mode: sliders for span, section, load and material, results updating live and the safe range highlighted | P1 | M | M4 | ⬜ |
 | 108 | Analysis in the background with cached results and a shared font database, so large projects stay responsive (B04, B17) | P1 | M | M4 | ⬜ |

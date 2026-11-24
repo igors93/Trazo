@@ -721,6 +721,7 @@ impl FloorPlanApp {
                         "Solo e fundações",
                         "Telhado",
                         "Pórticos 2D",
+                        "Cargas e combinações",
                     ]
                     .iter()
                     .enumerate()
@@ -806,6 +807,19 @@ impl FloorPlanApp {
                         );
                         if settings != before {
                             edits.push(StructureEdit::Settings(settings));
+                        }
+                        return;
+                    }
+                    if tab == 6 {
+                        let before_settings = settings;
+                        let mut wind = self.project.structure.wind;
+                        let before_wind = wind;
+                        super::loads::loads_tab(ui, &report.loads, &mut settings, &mut wind);
+                        if settings != before_settings {
+                            edits.push(StructureEdit::Settings(settings));
+                        }
+                        if wind != before_wind {
+                            edits.push(StructureEdit::Roof(super::roof::RoofAction::Wind(wind)));
                         }
                         return;
                     }

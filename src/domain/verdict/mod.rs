@@ -200,12 +200,22 @@ pub fn assumptions(project: &Project) -> Vec<String> {
             s.fck_mpa, s.soil_kpa
         ),
         format!(
-            "Cargas: sobrecarga {} kN/m², revestimento {} kN/m², alvenaria {} kN/m³ (NBR 6120).",
+            "Cargas (NBR 6120:2019): ocupação {} (ψ0 = {}, ψ1 = {}, ψ2 = {}), sobrecarga {} kN/m², revestimento {} kN/m², alvenaria {} kN/m³.",
+            s.occupancy.label(),
+            decimal(s.occupancy.psi0(), 2),
+            decimal(s.occupancy.psi1(), 2),
+            decimal(s.occupancy.psi2(), 2),
             decimal(s.live_kn_m2, 1),
             decimal(s.finish_kn_m2, 1),
             decimal(s.masonry_kn_m3, 0)
         ),
-        "Vigas contínuas sobre apoios simples (pilares), sem vento nem sismo.".to_owned(),
+        format!(
+            "Vento na edificação (NBR 6123): V0 = {:.0} m/s, categoria {}, S1 = {}, S3 = {}, coeficientes da Tabela 4; combinações ELU e ELS pela NBR 8681 / NBR 6118 §11.8 (sem ação sísmica NBR 15421).",
+            project.structure.wind.v0_ms,
+            project.structure.wind.category,
+            decimal(project.structure.wind.s1, 2),
+            decimal(project.structure.wind.s3, 2)
+        ),
         "Caixas-d'água e equipamentos entram como cargas concentradas permanentes; a carga informada de equipamento deve incluir impacto/vibração quando aplicável.".to_owned(),
         "Pilares por carga axial com fator de posição; sem flambagem nem flexão composta.".to_owned(),
         "Métodos estruturais documentados para a NBR 6118:2023; a edição 2026 ainda requer auditoria e revisão profissional.".to_owned(),

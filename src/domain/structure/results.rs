@@ -24,8 +24,12 @@ pub struct SpanResult {
     pub length_m: f64,
     pub width_m: f64,
     pub height_m: f64,
-    /// Characteristic permanent and live load, kN/m.
+    /// Characteristic permanent and live load, kN/m (`dead_kn_m = g1_dead_kn_m + g2_dead_kn_m`).
     pub dead_kn_m: f64,
+    /// Structural self-weight component `G1` (beam + slab self-weight), kN/m.
+    pub g1_dead_kn_m: f64,
+    /// Non-structural permanent component `G2` (finishes + walls), kN/m.
+    pub g2_dead_kn_m: f64,
     pub live_kn_m: f64,
     /// Characteristic concentrated loads applied along this span.
     pub point_loads: Vec<SpanPointLoad>,
@@ -262,6 +266,8 @@ pub struct StructureReport {
     pub wind: crate::domain::wind::WindReport,
     /// Lintels, sills and masonry wall-panel checks (#111).
     pub masonry: crate::domain::masonry_structure::MasonryStructureReport,
+    /// NBR 6120 load cases, NBR 6123 building wind and NBR 8681 combinations (#105).
+    pub loads: crate::domain::loads::LoadAnalysisReport,
     /// 2D plane-frame analysis per continuous beam line (#94).
     pub frames: Vec<crate::domain::frame2d::FrameLineResult>,
     /// Eligible frame lines that failed to solve; never hidden from outputs.

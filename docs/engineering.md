@@ -29,22 +29,50 @@ This guide documents every engineering calculation in Trazo: the formula, the st
 | Moments | Sagging positive: hogging (support) moments are negative |
 | Loads | Characteristic values unless stated; ultimate design uses γf = 1.4 (NBR 8681 normal combination, simplified) |
 | Quasi-permanent load | g + ψ2·q with ψ2 = 0.3 (dwellings, NBR 6118:2023, table 11.2) |
-| Code | `src/domain/structure/`, `src/domain/reinforcement/`, `src/domain/roof/`, `src/domain/soil/`, `src/domain/foundations/`, `src/domain/electrical/`, `src/domain/distribution/`, `src/domain/conduits.rs`, `src/domain/verdict/` |
+| Code | `src/domain/structure/`, `src/domain/loads/`, `src/domain/frame2d/`, `src/domain/reinforcement/`, `src/domain/roof/`, `src/domain/soil/`, `src/domain/foundations/`, `src/domain/electrical/`, `src/domain/distribution/`, `src/domain/conduits.rs`, `src/domain/verdict/` |
 
-## Loads
+## Loads, combinations and building wind (#105)
 
-| Load | Value | Source |
-| --- | --- | --- |
-| Reinforced concrete | 25 kN/m³ | NBR 6120:2019 (unit weights of materials) |
-| Masonry (hollow ceramic blocks, plastered) | 13 kN/m³ (setting) | NBR 6120:2019 (unit weights of materials), typical value |
-| Lattice slab (*treliçada*) self weight | 25 · h · 0.55 kN/m² | Approximation: joists, fillers and topping weigh about 55 % of a solid slab of the same thickness |
-| Solid slab self weight | 25 · h kN/m² | — |
-| Finishes and screed | 1.0 kN/m² (setting) | Typical value |
-| Live load, dwellings | 1.5 kN/m² (setting) | NBR 6120:2019, table 10 |
-| Live load per room (optional) | corridors, service areas 2.0; stairs, balconies 2.5; garages 3.0 kN/m² | NBR 6120:2019, table 10 (simplified) |
-| Walls on beams | t · H · γ (kN/m), for the floors above | — |
+`src/domain/loads/` separates characteristic actions into fundamental load cases (`G1`, `G2`, `Q`, `W+`, `W−`), computes wind on the entire rectangular building across four orthogonal directions (`+X`, `−X`, `+Y`, `−Y`), and combines them into the full ABNT NBR 8681:2003 / NBR 6118:2023 §11.8 ultimate (ELU) and serviceability (ELS) suites.
 
-Loads are applied as uniform loads per beam span, plus point loads where a beam or a column rests on a beam.
+### Fundamental load cases (ABNT NBR 6120:2019)
+
+| Load case | Contents | Typical values | Source |
+| --- | --- | --- | --- |
+| `G1` — Structural self-weight | Reinforced concrete slabs (`25·h` solid; `25·h·0.55` lattice), beams (`25·b·h`), columns (`25·b·h·H`) | Concrete `25 kN/m³`, steel `78.5 kN/m³` | NBR 6120:2019, Table 1 |
+| `G2` — Non-structural permanent | Floor finishes and screed (`1.0 kN/m²` default), plastered masonry walls (`t·H·γ`, `13 kN/m³` default), roof dead weight, fixed concentrated loads (water tanks / equipment) | Editable in *Estrutura* | NBR 6120:2019, Table 1 |
+| `Q` — Occupancy & roof live loads | Base occupancy (`1.5` residential, `2.0` office, `3.0` garage, `4.0` retail kN/m²) or per-room NBR 6120 minimums (corridors/service `2.0`, stairs/balconies `2.5`, garages `3.0`); non-accessible roof `0.25 kN/m²` | No multi-storey reduction for `≤ 3` storeys (NBR 6120:2019 §6.3 reduces only from 4 storeys) | NBR 6120:2019, Table 10 & §6.3 |
+| `W+` / `W−` — Wind on the building | Storey-by-storey horizontal drag forces in `+X`, `−X`, `+Y`, `−Y` and wall facade pressure/suction | `V0 = 35 m/s`, cat. III, `S1 = S3 = 1.0` default | NBR 6123, Tables 1–4 |
+
+### Wind on the whole building (ABNT NBR 6123)
+
+For any building with walls, roofs or structural columns (`src/domain/loads/nbr6123.rs`):
+
+- **Characteristic wind speed and dynamic pressure:** `Vk(z) = V0 · S1 · S2(z) · S3` and `q(z) = 0.613 · Vk(z)² / 1000` (kPa), with `S2(z) = b · Fr · (max(z, 5 m)/10)^p` (Tables 1–2, categories I–V, classes A `≤ 20 m`, B `20–50 m`, C `> 50 m`) and statistical factor `S3` presets (Table 3, Groups 1–5: `1.10, 1.00, 0.95, 0.88, 0.83`).
+- **External and internal wall pressure coefficients (Table 4 & §6.2.5):** from the plan bounding rectangle (`a ≥ b`) and total building height `H`, Trazo computes `h/b` (`≤ 1/2`, `1/2..3/2`, `3/2..6`) and `a/b` (`1..3/2`, linear interpolation in `3/2..2` per Table 4 Note 1, `2..4`) for wind on the long face (`α = 0°`) and short face (`α = 90°`), yielding `Cpe,barlavento`, `Cpe,sotavento`, side-wall suction `Cpe,lateral`, and net drag `Ca = Cpe,barlavento − Cpe,sotavento`. Closed buildings use `Cpi = +0.2 / −0.3`; open-sided buildings use `+0.8 / −0.6`. Geometries outside `h/b ≤ 6` or `a/b ≤ 4` raise a yellow review check.
+- **Storey-by-storey forces and global overturning (`ELU-EQU`):** each storey band `k` (real floor heights when multiple floors exist, else `floors` copies of `wall_height`) receives `F_w,k = Ca · q(z_top,k) · l1 · h_k`, summed into base shear `V_w = Σ F_w,k` and base overturning moment `M_w = Σ F_w,k · z_mid,k`. Rigid-body overturning is screened in `±X` and `±Y` against `M_estab = 0.90 · G_total · l2 / 2` vs `1.40 · M_w` (`ELU-EQU`).
+- **Distribution to 2D portal frames:** the ground-floor diaphragm shear (`V_w − 0.5 · F_w,1`) is divided across parallel column-supported frames along each axis so building wind shear is conserved and enters the `W+` / `W−` frame load cases directly.
+
+### Ultimate (ELU) and serviceability (ELS) combinations (ABNT NBR 8681:2003 / NBR 6118:2023 §11.8)
+
+Partial factors for grouped building actions: `γg = 1.40` (unfavorable), `γg = 1.00` (favorable in strength ELU), `γg,equ = 0.90` (favorable in rigid-body `ELU-EQU`), `γq = 1.40`, `γw = 1.40` (NBR 8681 Tables 1–2 / NBR 6118 Table 11.1). Combination factors from NBR 8681 Table 6 / NBR 6118 Table 11.2:
+
+| Action | `ψ0` | `ψ1` | `ψ2` |
+| --- | --- | --- | --- |
+| Live load — Residential (`OccupancyClass::Residential`) | `0.50` | `0.40` | `0.30` |
+| Live load — Office / Retail (`Office`, `Retail`) | `0.70` | `0.60` | `0.40` |
+| Live load — Garage (`Garage`) | `0.80` | `0.70` | `0.60` |
+| Wind (`W` — general structures) | `0.60` | `0.30` | `0.00` |
+
+Active combination suite (`build_nbr8681_combinations`, 17 combinations):
+
+- **ELU Normal:** `ELU-1` (`1.4·G + 1.4·Q`), `ELU-2/3` (`1.4·G + 1.4·Q ± 0.84·W`), `ELU-4/5` (`1.4·G ± 1.4·W + 1.4·ψ0,q·Q`), `ELU-6/7` (`1.0·G ± 1.4·W`, favorable gravity for reversal & column uplift).
+- **ELU Equilibrium:** `ELU-EQU±` (`0.9·G ± 1.4·W`, rigid-body overturning and roof uplift).
+- **ELS Quasi-Permanent:** `ELS-QP` (`1.0·G + ψ2,q·Q`, long-term deflection and creep; also drives continuous-beam Branson deflection).
+- **ELS Frequent:** `ELS-F1` (`1.0·G + ψ1,q·Q`), `ELS-F2/F3` (`1.0·G + ψ2,q·Q ± 0.30·W`, lateral drift vs `H/850`).
+- **ELS Rare:** `ELS-R1/R2` (`1.0·G + 1.0·Q ± 0.30·W`), `ELS-R3/R4` (`1.0·G + ψ1,q·Q ± 1.0·W`).
+
+**Validation:** checked in CI by `nbr_8681_combinations_match_worked_hand_example_across_occupancies` (worked example for Residential, Office and Garage occupancies), `nbr_6123_building_wind_matches_published_table4_worked_example` (2-storey `12 × 6 m` building, `V0 = 40 m/s`, Cat. III, Table 4 `α = 0° / 90°` & `a/b` interpolation), `frame_nbr8681_superposition_matches_direct_factored_solve_and_feeds_outputs` (linear superposition vs direct factored `Frame2D` solve to `< 1e-9`), and `multi_storey_real_floors_raise_s2_with_height_and_narrow_frame_flags_wind_uplift`. **Limitations:** static equivalent wind only (no NBR 6123 §9 dynamic gust response, no torsional eccentricity or 3D diaphragm distribution, no seismic NBR 15421); applicability limits (#102: up to 3 storeys, 4 m storey height, 5 kN/m² live load) still refuse the structure outside their domain.
 
 ## Slabs
 
@@ -123,7 +151,7 @@ Each continuous beam line and its supporting columns are assembled and solved to
 | Column & beam stiffness | Real axial area `A = b·h` and in-plane inertia `I = b·h³/12` aligned with the frame axis, concrete secant modulus `Ecs = 0.85 · 5600 · √fck` | NBR 6118 |
 | Gravity loads | Every span receives its characteristic distributed dead + live load and every retained concentrated load at its actual distance from the left support; this includes tanks/equipment, secondary-beam and roof reactions, and transfer columns | Same load path as the continuous-beam analysis |
 | Rigid & pinned joints | Monolithic rigid beam–column joints (`EndRelease::Rigid`) or exact static condensation for internal hinges (`PinnedStart`, `PinnedEnd`, `PinnedBoth`); column bases fixed (`Fixed`) or pinned (`Pinned`), with automatic sway bracing (`RollerX`) when both joints and bases are pinned | Direct Stiffness Method |
-| Loads | Characteristic uniform gravity loads (`dead + live`) and concentrated loads via exact fixed-end forces, plus frequent service horizontal wind at roof level `H = ψ1 · q · (H/2) · b_trib · 1.2` (`ψ1 = 0.30`, NBR 6118:2023 table 11.2 / 13.3) | NBR 6120, NBR 6123, NBR 6118 |
+| Loads & combinations (#105) | Each frame is solved independently for the four fundamental load cases (`G1` structural self-weight, `G2` non-structural permanent + fixed point loads, `Q` NBR 6120 live loads + variable point loads, `W+` full characteristic NBR 6123 diaphragm wind share) and superposed linearly across all 17 NBR 8681 ELU and ELS combinations (`ELU-1..7`, `ELU-EQU±`, `ELS-QP`, `ELS-F1..3`, `ELS-R1..4`) to build governing ELU beam/column envelopes, check column uplift/tension under `ELU-6/7`, and check `ELS-F` lateral drift against `H/850` | NBR 6120, NBR 6123, NBR 8681, NBR 6118 |
 | Internal forces & deformed shape | Member axial `N`, shear `V(x)`, bending moment `M(x)` for both beams and columns, support reactions (`Rx, Ry, Mz`), exact Hermite cubic + fixed-fixed particular deflected shape, and global equilibrium check (`ΣFx, ΣFy, ΣM`) | Structural mechanics |
 | Lateral drift | Service lateral sway `Δh` at beam level checked against `H / 850` | NBR 6118:2023, table 13.3 |
 | Solver failure contract | Every eligible line that cannot be solved keeps its frame label and the original diagnostic. It is excluded only from numerical result tables, while an explicit red failure is emitted to warnings, safety verdicts, the UI, PDF memorial, A3 diagram and MCP `falhas_porticos_2d` | Fail-safe reporting contract |

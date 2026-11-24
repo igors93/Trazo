@@ -81,21 +81,26 @@ pub(super) fn frames_tab(
         ui.add_space(10.0);
     }
 
-    ui.label(RichText::new("Resumo dos pórticos planos 2D (rigidez direta)").font(strong(13.0)));
+    ui.label(
+        RichText::new(
+            "Resumo dos pórticos planos 2D — Envoltórias ELU / ELS (NBR 8681 · NBR 6123)",
+        )
+        .font(strong(13.0)),
+    );
     ui.add_space(4.0);
     egui::Grid::new("frames_2d_summary")
         .striped(true)
-        .spacing([12.0, 5.0])
+        .spacing([10.0, 5.0])
         .show(ui, |ui| {
             for title in [
                 "Pórtico",
                 "Modelo",
-                "M máx viga",
-                "M máx pilar",
-                "P concentrada",
-                "Vento H",
-                "Desloc. lateral Δh",
+                "ELU Md,viga",
+                "ELU Md,pilar",
+                "Vento Wk",
+                "ELS-F Δh",
                 "Limite H/850",
+                "Arrancamento",
                 "Situação",
             ] {
                 ui.label(RichText::new(title).font(strong(12.0)).color(TEXT_2));
@@ -108,15 +113,43 @@ pub(super) fn frames_tab(
                     (false, true) => "Rotul. / Engast.",
                     (false, false) => "Rotul. / Contrav.",
                 };
+                let (m_beam, beam_combo) = if frame.envelope.elu_min_beam_neg_knm.abs()
+                    > frame.envelope.elu_max_beam_pos_knm
+                {
+                    (
+                        frame.envelope.elu_min_beam_neg_knm,
+                        frame.envelope.elu_min_beam_neg_combo.as_str(),
+                    )
+                } else {
+                    (
+                        frame.envelope.elu_max_beam_pos_knm,
+                        frame.envelope.elu_max_beam_pos_combo.as_str(),
+                    )
+                };
                 ui.label(RichText::new(&frame.label).font(strong(12.0)));
                 ui.label(model);
-                ui.label(format!("{} kN·m", dec(frame.max_beam_moment_knm(), 1)));
-                ui.label(format!("{} kN·m", dec(frame.max_column_moment_knm(), 1)));
-                ui.label(format!("{} kN", dec(frame.total_point_load_kn(), 1)));
-                ui.label(format!("{} kN", dec(frame.lateral_wind_kn, 1)));
+                ui.label(format!("{} kN·m ({beam_combo})", dec(m_beam, 1)));
+                ui.label(format!(
+                    "{} kN·m ({})",
+                    dec(frame.envelope.elu_max_column_moment_knm, 1),
+                    frame.envelope.elu_max_column_moment_combo
+                ));
+                ui.label(format!("{} kN", dec(frame.characteristic_wind_kn, 1)));
                 ui.label(format!("{} mm", dec(frame.max_lateral_drift_mm, 2)));
                 ui.label(format!("{} mm", dec(frame.drift_limit_mm, 2)));
-                if frame.drift_ok() {
+                if frame.envelope.has_column_uplift {
+                    ui.label(
+                        RichText::new(format!(
+                            "Tração +{} kN ({})",
+                            dec(frame.envelope.elu_min_column_axial_kn, 1),
+                            frame.envelope.elu_min_column_axial_combo
+                        ))
+                        .color(DANGER),
+                    );
+                } else {
+                    ui.label(RichText::new("Sem tração").color(SUCCESS));
+                }
+                if frame.drift_ok() && !frame.envelope.has_column_uplift {
                     ui.label(RichText::new("Atende").color(SUCCESS));
                 } else {
                     ui.label(RichText::new("Revise").color(WARNING));
@@ -124,6 +157,51 @@ pub(super) fn frames_tab(
                 ui.end_row();
             }
         });
+
+    if let Some(first) = frames.first()
+        && !first.combinations.is_empty()
+    {
+        ui.add_space(10.0);
+        ui.collapsing(
+            RichText::new(format!(
+                "Combinações NBR 8681 ({} — {} combinações ELU / ELS)",
+                first.label,
+                first.combinations.len()
+            ))
+            .font(strong(12.5)),
+            |ui| {
+                egui::Grid::new("frames_2d_combinations")
+                    .striped(true)
+                    .spacing([10.0, 4.0])
+                    .show(ui, |ui| {
+                        for title in [
+                            "Comb.",
+                            "Expressão",
+                            "M+ viga",
+                            "M− viga",
+                            "V viga",
+                            "M pilar",
+                            "N comp.",
+                            "Δh (mm)",
+                        ] {
+                            ui.label(RichText::new(title).font(strong(11.5)).color(TEXT_2));
+                        }
+                        ui.end_row();
+                        for c in &first.combinations {
+                            ui.label(RichText::new(c.code).font(strong(11.5)));
+                            ui.label(&c.formula);
+                            ui.label(format!("{} kN·m", dec(c.max_beam_pos_knm, 1)));
+                            ui.label(format!("{} kN·m", dec(c.min_beam_neg_knm, 1)));
+                            ui.label(format!("{} kN", dec(c.max_beam_shear_kn, 1)));
+                            ui.label(format!("{} kN·m", dec(c.max_column_moment_knm, 1)));
+                            ui.label(format!("{} kN", dec(c.max_column_compression_kn, 1)));
+                            ui.label(dec(c.max_lateral_drift_mm, 2));
+                            ui.end_row();
+                        }
+                    });
+            },
+        );
+    }
 
     ui.add_space(10.0);
     ui.label(RichText::new("Esforços nos pilares e reações de apoio (2D)").font(strong(13.0)));

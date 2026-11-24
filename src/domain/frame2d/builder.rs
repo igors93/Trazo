@@ -1,19 +1,25 @@
 //! Builds and solves a 2D plane frame (`Frame2D`) for each continuous beam
 //! line in a `Project`, incorporating real column axial & flexural stiffness,
-//! rigid or pinned beam-column joints, fixed or pinned column bases, beam
-//! gravity loads, concentrated loads, and NBR 6123 service lateral wind.
+//! rigid or pinned beam-column joints, fixed or pinned column bases, separate
+//! NBR 6120 load cases (`G1`, `G2`, `Q`), NBR 6123 building wind (`W+`, `W−`),
+//! and exact NBR 8681 / NBR 6118 ultimate (ELU) & service (ELS) combinations
+//! and envelopes (#94, #105).
 
 use std::collections::HashMap;
 
 use crate::domain::{
     fixtures::FixtureKind,
+    loads::{
+        CombinationCategory, CombinationFactors, LoadCaseKind, PSI1_WIND,
+        build_nbr8681_combinations,
+    },
     model::Project,
     structure::{BeamSupport, SpanPointLoad, StructureReport},
 };
 
 use super::{
     model::{EndRelease, Frame2D, MemberKind, SupportKind},
-    solver::{MemberSample, solve_frame},
+    solver::{FrameSolution, MemberSample, solve_frame},
 };
 
 /// Internal forces in one beam span from the 2D plane-frame analysis.
@@ -58,6 +64,65 @@ pub struct FrameColumnForces {
     pub reaction_mz_knm: f64,
 }
 
+/// Summary of one fundamental load case (`G1`, `G2`, `Q`, `W+`, `W−`) on a 2D frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FrameLoadCaseResult {
+    pub kind: LoadCaseKind,
+    pub total_vertical_kn: f64,
+    pub total_horizontal_kn: f64,
+    pub max_beam_moment_knm: f64,
+    pub max_column_moment_knm: f64,
+    pub max_lateral_drift_mm: f64,
+}
+
+/// Summary of one NBR 8681 / NBR 6118 combination evaluated by exact superposition
+/// on a 2D plane frame (#105).
+#[derive(Clone, Debug, PartialEq)]
+pub struct FrameCombinationResult {
+    pub code: &'static str,
+    pub name: &'static str,
+    pub category: CombinationCategory,
+    pub formula: String,
+    /// Largest sagging (positive) beam moment, kN·m.
+    pub max_beam_pos_knm: f64,
+    /// Largest hogging (negative, reported as signed ≤ 0) beam moment, kN·m.
+    pub min_beam_neg_knm: f64,
+    /// Largest absolute beam shear, kN.
+    pub max_beam_shear_kn: f64,
+    /// Largest absolute column bending moment, kN·m.
+    pub max_column_moment_knm: f64,
+    /// Largest column compression magnitude (`max(-N, 0)`), kN.
+    pub max_column_compression_kn: f64,
+    /// Minimum column axial force (signed: negative = compression, positive = net tension/uplift), kN.
+    pub max_column_tension_kn: f64,
+    /// Largest local beam deflection along any span, mm.
+    pub max_beam_deflection_mm: f64,
+    /// Largest horizontal displacement magnitude at beam level, mm.
+    pub max_lateral_drift_mm: f64,
+}
+
+/// Governing ELU and ELS envelopes across all NBR 8681 combinations for one frame (#105).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FrameEnvelope {
+    pub elu_max_beam_pos_knm: f64,
+    pub elu_max_beam_pos_combo: String,
+    pub elu_min_beam_neg_knm: f64,
+    pub elu_min_beam_neg_combo: String,
+    pub elu_max_beam_shear_kn: f64,
+    pub elu_max_beam_shear_combo: String,
+    pub elu_max_column_moment_knm: f64,
+    pub elu_max_column_moment_combo: String,
+    pub elu_max_column_compression_kn: f64,
+    pub elu_max_column_compression_combo: String,
+    /// Largest signed column axial force (`> 0` indicates net tension / uplift under wind).
+    pub elu_min_column_axial_kn: f64,
+    pub elu_min_column_axial_combo: String,
+    pub has_column_uplift: bool,
+    pub els_qp_max_beam_deflection_mm: f64,
+    pub els_f_max_drift_mm: f64,
+    pub els_f_drift_combo: String,
+}
+
 /// Sampled deformed geometry & bending moment diagram for one member,
 /// stored in the frame's local 2D plane `(x, y)` for SVG/UI rendering.
 #[derive(Clone, Debug, PartialEq)]
@@ -90,11 +155,13 @@ pub struct FrameLineResult {
     pub braced_sway: bool,
     pub total_length_m: f64,
     pub story_height_m: f64,
-    /// Service horizontal wind force applied at beam level (NBR 6123), kN.
+    /// Frequent service horizontal wind force (`ψ1·Wk`) at beam level (NBR 6123 / NBR 6118), kN.
     pub lateral_wind_kn: f64,
+    /// Full characteristic horizontal wind force (`Wk`) assigned to this frame from NBR 6123, kN.
+    pub characteristic_wind_kn: f64,
     pub beams: Vec<FrameBeamForces>,
     pub columns: Vec<FrameColumnForces>,
-    /// Largest horizontal displacement magnitude at beam level, mm.
+    /// Largest horizontal displacement magnitude at beam level under ELS-F (`ψ1·W`), mm.
     pub max_lateral_drift_mm: f64,
     /// NBR 6118 Table 13.3 inter-storey service drift limit (`H / 850`), mm.
     pub drift_limit_mm: f64,
@@ -103,6 +170,12 @@ pub struct FrameLineResult {
     pub equilibrium_residual_knm: f64,
     pub reactions: Vec<FrameReactionPoint>,
     pub members: Vec<DeformedMember>,
+    /// Fundamental NBR 6120 / NBR 6123 load cases (`G1`, `G2`, `Q`, `W+`, `W−`).
+    pub load_cases: Vec<FrameLoadCaseResult>,
+    /// All NBR 8681 / NBR 6118 ELU and ELS combinations solved by exact superposition.
+    pub combinations: Vec<FrameCombinationResult>,
+    /// Governing ELU and ELS envelopes across all combinations.
+    pub envelope: FrameEnvelope,
 }
 
 /// A portal-frame line that was eligible for analysis but could not be
@@ -154,8 +227,271 @@ impl FrameLineResult {
     }
 }
 
+/// Exact linear combination of four solved `FrameSolution` instances (`G1, G2, Q, W+`).
+fn combine_solutions(
+    g1: &FrameSolution,
+    g2: &FrameSolution,
+    q: &FrameSolution,
+    w: &FrameSolution,
+    factors: &CombinationFactors,
+    frame: &Frame2D,
+) -> FrameSolution {
+    let c = |a: f64, b: f64, d: f64, e: f64| factors.combine(a, b, d, e);
+    let displacements = (0..g1.displacements.len())
+        .map(|i| super::solver::NodalDisplacement {
+            u_m: c(
+                g1.displacements[i].u_m,
+                g2.displacements[i].u_m,
+                q.displacements[i].u_m,
+                w.displacements[i].u_m,
+            ),
+            v_m: c(
+                g1.displacements[i].v_m,
+                g2.displacements[i].v_m,
+                q.displacements[i].v_m,
+                w.displacements[i].v_m,
+            ),
+            theta_rad: c(
+                g1.displacements[i].theta_rad,
+                g2.displacements[i].theta_rad,
+                q.displacements[i].theta_rad,
+                w.displacements[i].theta_rad,
+            ),
+        })
+        .collect();
+
+    let reactions = (0..g1.reactions.len())
+        .map(|i| super::solver::SupportReaction {
+            node: g1.reactions[i].node,
+            rx_kn: c(
+                g1.reactions[i].rx_kn,
+                g2.reactions[i].rx_kn,
+                q.reactions[i].rx_kn,
+                w.reactions[i].rx_kn,
+            ),
+            ry_kn: c(
+                g1.reactions[i].ry_kn,
+                g2.reactions[i].ry_kn,
+                q.reactions[i].ry_kn,
+                w.reactions[i].ry_kn,
+            ),
+            mz_knm: c(
+                g1.reactions[i].mz_knm,
+                g2.reactions[i].mz_knm,
+                q.reactions[i].mz_knm,
+                w.reactions[i].mz_knm,
+            ),
+        })
+        .collect();
+
+    let members = (0..g1.members.len())
+        .map(|mi| {
+            let m1 = &g1.members[mi];
+            let m2 = &g2.members[mi];
+            let mq = &q.members[mi];
+            let mw = &w.members[mi];
+            let local_end_forces = std::array::from_fn(|k| {
+                c(
+                    m1.local_end_forces[k],
+                    m2.local_end_forces[k],
+                    mq.local_end_forces[k],
+                    mw.local_end_forces[k],
+                )
+            });
+            let fm = &frame.members[mi];
+            let n_start = &frame.nodes[fm.start];
+            let n_end = &frame.nodes[fm.end];
+            let dx = n_end.x - n_start.x;
+            let dy = n_end.y - n_start.y;
+            let len = dx.hypot(dy).max(1e-12);
+            let cos_a = dx / len;
+            let sin_a = dy / len;
+
+            let n_samples = m1.samples.len();
+            let mut samples = Vec::with_capacity(n_samples);
+            let mut max_sagging = f64::NEG_INFINITY;
+            let mut max_abs_moment = 0.0_f64;
+            let mut max_abs_shear = 0.0_f64;
+
+            for si in 0..n_samples {
+                let s1 = m1.samples[si];
+                let s2 = m2.samples[si];
+                let sq = mq.samples[si];
+                let sw = mw.samples[si];
+                let dx_m = c(s1.dx_m, s2.dx_m, sq.dx_m, sw.dx_m);
+                let dy_m = c(s1.dy_m, s2.dy_m, sq.dy_m, sw.dy_m);
+                let axial_kn = c(s1.axial_kn, s2.axial_kn, sq.axial_kn, sw.axial_kn);
+                let shear_kn = c(s1.shear_kn, s2.shear_kn, sq.shear_kn, sw.shear_kn);
+                let moment_knm = c(s1.moment_knm, s2.moment_knm, sq.moment_knm, sw.moment_knm);
+                max_sagging = max_sagging.max(moment_knm);
+                max_abs_moment = max_abs_moment.max(moment_knm.abs());
+                max_abs_shear = max_abs_shear.max(shear_kn.abs());
+                samples.push(MemberSample {
+                    s_m: s1.s_m,
+                    x0: s1.x0,
+                    y0: s1.y0,
+                    dx_m,
+                    dy_m,
+                    axial_kn,
+                    shear_kn,
+                    moment_knm,
+                });
+            }
+
+            // Compute exact local transverse deflection relative to member chord.
+            let mut max_local_def_m = 0.0_f64;
+            if let (Some(first), Some(last)) = (samples.first(), samples.last()) {
+                let v0 = -sin_a * first.dx_m + cos_a * first.dy_m;
+                let v1 = -sin_a * last.dx_m + cos_a * last.dy_m;
+                for s in &samples {
+                    let xi = (s.s_m / len).clamp(0.0, 1.0);
+                    let v_loc = -sin_a * s.dx_m + cos_a * s.dy_m;
+                    let v_chord = (1.0 - xi) * v0 + xi * v1;
+                    max_local_def_m = max_local_def_m.max((v_loc - v_chord).abs());
+                }
+            }
+
+            super::solver::MemberResult {
+                member: m1.member,
+                label: m1.label.clone(),
+                kind: m1.kind,
+                length_m: m1.length_m,
+                local_end_forces,
+                moment_start_knm: -local_end_forces[2],
+                moment_end_knm: local_end_forces[5],
+                max_sagging_knm: max_sagging.max(0.0),
+                max_abs_moment_knm: max_abs_moment,
+                max_abs_shear_kn: max_abs_shear,
+                axial_kn: -local_end_forces[0],
+                max_local_deflection_mm: max_local_def_m * 1000.0,
+                samples,
+            }
+        })
+        .collect();
+
+    let equilibrium = super::solver::EquilibriumResidual {
+        sum_fx_kn: c(
+            g1.equilibrium.sum_fx_kn,
+            g2.equilibrium.sum_fx_kn,
+            q.equilibrium.sum_fx_kn,
+            w.equilibrium.sum_fx_kn,
+        ),
+        sum_fy_kn: c(
+            g1.equilibrium.sum_fy_kn,
+            g2.equilibrium.sum_fy_kn,
+            q.equilibrium.sum_fy_kn,
+            w.equilibrium.sum_fy_kn,
+        ),
+        sum_mz_knm: c(
+            g1.equilibrium.sum_mz_knm,
+            g2.equilibrium.sum_mz_knm,
+            q.equilibrium.sum_mz_knm,
+            w.equilibrium.sum_mz_knm,
+        ),
+    };
+
+    FrameSolution {
+        displacements,
+        reactions,
+        members,
+        equilibrium,
+    }
+}
+
+fn summarize_load_case(
+    kind: LoadCaseKind,
+    sol: &FrameSolution,
+    top_nodes: &[usize],
+    sign: f64,
+) -> FrameLoadCaseResult {
+    let total_vertical_kn: f64 = sol.reactions.iter().map(|r| sign * r.ry_kn).sum();
+    let total_horizontal_kn: f64 = sol.reactions.iter().map(|r| -sign * r.rx_kn).sum();
+    let max_beam_moment_knm = sol
+        .members
+        .iter()
+        .filter(|m| m.kind == MemberKind::Beam)
+        .map(|m| m.max_abs_moment_knm)
+        .fold(0.0_f64, f64::max);
+    let max_column_moment_knm = sol
+        .members
+        .iter()
+        .filter(|m| m.kind == MemberKind::Column)
+        .map(|m| m.max_abs_moment_knm)
+        .fold(0.0_f64, f64::max);
+    let max_lateral_drift_mm = top_nodes
+        .iter()
+        .map(|&nid| sol.displacements[nid].u_m.abs() * 1000.0)
+        .fold(0.0_f64, f64::max);
+
+    FrameLoadCaseResult {
+        kind,
+        total_vertical_kn,
+        total_horizontal_kn,
+        max_beam_moment_knm,
+        max_column_moment_knm,
+        max_lateral_drift_mm,
+    }
+}
+
+fn summarize_combination(
+    factors: &CombinationFactors,
+    sol: &FrameSolution,
+    top_nodes: &[usize],
+) -> FrameCombinationResult {
+    let mut max_beam_pos_knm = 0.0_f64;
+    let mut min_beam_neg_knm = 0.0_f64;
+    let mut max_beam_shear_kn = 0.0_f64;
+    let mut max_beam_deflection_mm = 0.0_f64;
+    let mut max_column_moment_knm = 0.0_f64;
+    let mut max_column_compression_kn = 0.0_f64;
+    let mut max_column_tension_kn = f64::NEG_INFINITY;
+
+    for m in &sol.members {
+        match m.kind {
+            MemberKind::Beam => {
+                max_beam_pos_knm = max_beam_pos_knm.max(m.max_sagging_knm);
+                for s in &m.samples {
+                    min_beam_neg_knm = min_beam_neg_knm.min(s.moment_knm);
+                }
+                max_beam_shear_kn = max_beam_shear_kn.max(m.max_abs_shear_kn);
+                max_beam_deflection_mm = max_beam_deflection_mm.max(m.max_local_deflection_mm);
+            }
+            MemberKind::Column => {
+                max_column_moment_knm = max_column_moment_knm.max(m.max_abs_moment_knm);
+                max_column_compression_kn = max_column_compression_kn.max((-m.axial_kn).max(0.0));
+                max_column_tension_kn = max_column_tension_kn.max(m.axial_kn);
+            }
+        }
+    }
+    if !max_column_tension_kn.is_finite() {
+        max_column_tension_kn = 0.0;
+    }
+
+    let max_lateral_drift_mm = top_nodes
+        .iter()
+        .map(|&nid| sol.displacements[nid].u_m.abs() * 1000.0)
+        .fold(0.0_f64, f64::max);
+
+    FrameCombinationResult {
+        code: factors.code,
+        name: factors.name,
+        category: factors.category,
+        formula: factors.formula.clone(),
+        max_beam_pos_knm,
+        min_beam_neg_knm,
+        max_beam_shear_kn,
+        max_column_moment_knm,
+        max_column_compression_kn,
+        max_column_tension_kn,
+        max_beam_deflection_mm,
+        max_lateral_drift_mm,
+    }
+}
+
 /// Analyzes every continuous beam line of `project` as a coupled 2D portal
-/// frame (beams + columns together) using the Direct Stiffness Method.
+/// frame (beams + columns together) using the Direct Stiffness Method,
+/// solving separate NBR 6120 / NBR 6123 load cases and combining them into
+/// the full NBR 8681 / NBR 6118 ELU and ELS envelopes.
 pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> ProjectFrameAnalysis {
     let settings = project.structure.settings;
     let e_c = settings.modulus_kn_m2();
@@ -185,30 +521,46 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
         .collect();
     let labels = project.structure_labels();
 
-    // Estimate average perpendicular spacing between frames for service wind tributary width.
-    let wind_tributary_m = if !project.rooms.is_empty() {
-        let mut sum = 0.0;
-        let mut count = 0usize;
-        for room in &project.rooms {
-            if let Some((min, max)) = project.room_bounds(room) {
-                sum += ((max.x - min.x).abs() + (max.y - min.y).abs()) * 0.5;
-                count += 1;
+    // Count eligible column-supported frames along X and along Y so building-level
+    // NBR 6123 diaphragm shear distributes conservatively across parallel frames.
+    let mut frames_along_x = 0usize;
+    let mut frames_along_y = 0usize;
+    let mut line_along_x = Vec::with_capacity(lines.len());
+    for line in &lines {
+        let mut sum_dx = 0.0;
+        let mut sum_dy = 0.0;
+        for &beam_id in &line.spans {
+            if let Some(beam) = project.structure.beams.iter().find(|b| b.id == beam_id)
+                && let Some((a, b)) = project.beam_endpoints(beam)
+            {
+                sum_dx += (b.x - a.x).abs();
+                sum_dy += (b.y - a.y).abs();
             }
         }
-        if count > 0 {
-            (sum / count as f64 * 0.5).clamp(1.2, 3.5)
-        } else {
-            2.0
+        let is_x = sum_dx >= sum_dy;
+        line_along_x.push(is_x);
+        let eligible = !line.spans.is_empty()
+            && line.supports.len() == line.spans.len() + 1
+            && line
+                .supports
+                .iter()
+                .any(|s| matches!(s, BeamSupport::Column { .. }));
+        if eligible {
+            if is_x {
+                frames_along_x += 1;
+            } else {
+                frames_along_y += 1;
+            }
         }
-    } else {
-        2.0
-    };
+    }
 
+    let bwind = &report.loads.building_wind;
+    let combo_specs = build_nbr8681_combinations(settings.occupancy);
     let rigid_joints = settings.frame_rigid_joints;
     let fixed_bases = settings.frame_fixed_bases;
     let mut analysis = ProjectFrameAnalysis::default();
 
-    for line in &lines {
+    for (line_idx, line) in lines.iter().enumerate() {
         let frame_label = format!("Pórtico {}", line.label);
         if line.spans.is_empty() {
             continue;
@@ -233,20 +585,9 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
             continue;
         }
 
-        // Determine frame orientation in plan (mostly X vs mostly Y) for column in-plane inertia.
-        let mut sum_dx = 0.0;
-        let mut sum_dy = 0.0;
-        for &beam_id in &line.spans {
-            if let Some(beam) = project.structure.beams.iter().find(|b| b.id == beam_id)
-                && let Some((a, b)) = project.beam_endpoints(beam)
-            {
-                sum_dx += (b.x - a.x).abs();
-                sum_dy += (b.y - a.y).abs();
-            }
-        }
-        let along_x = sum_dx >= sum_dy;
+        let along_x = line_along_x[line_idx];
 
-        // Gather span lengths & heights.
+        // Gather span lengths & stations.
         let mut span_lengths = Vec::with_capacity(line.spans.len());
         let mut stations = Vec::with_capacity(line.supports.len());
         stations.push(0.0_f64);
@@ -292,13 +633,13 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
             .fold(0.0_f64, f64::max)
             .max(project.wall_height.max(2.0));
 
-        let mut frame = Frame2D::default();
+        // Assemble shared frame geometry once.
+        let mut geom = Frame2D::default();
         let mut top_nodes = Vec::with_capacity(line.supports.len());
         let mut column_meta: Vec<(usize, u64, String, usize, f64, f64, f64)> = Vec::new();
         let braced_sway = !rigid_joints && !fixed_bases;
         let mut sway_brace_placed = false;
 
-        // Create beam-level nodes and columns beneath each column support.
         for (idx, sup) in line.supports.iter().enumerate() {
             let x = stations[idx];
             match *sup {
@@ -314,31 +655,28 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
                         SupportKind::Free
                     };
                     let top_id =
-                        frame.add_node(format!("{col_label}t"), x, story_height, top_support);
+                        geom.add_node(format!("{col_label}t"), x, story_height, top_support);
                     let base_support = if fixed_bases {
                         SupportKind::Fixed
                     } else {
                         SupportKind::Pinned
                     };
-                    let base_id = frame.add_node(col_label.clone(), x, 0.0, base_support);
+                    let base_id = geom.add_node(col_label.clone(), x, 0.0, base_support);
 
                     let (sx, sy) = col_fixtures
                         .get(&id)
                         .copied()
                         .or_else(|| col_results.get(&id).map(|c| (c.width_m, c.depth_m)))
                         .unwrap_or((0.14, 0.20));
-                    // In-plane dimension bends in the frame plane; out-of-plane is width b.
                     let (h_inplane, b_out) = if along_x { (sx, sy) } else { (sy, sx) };
                     let area = b_out * h_inplane;
                     let inertia = b_out * h_inplane.powi(3) / 12.0;
-                    // When joints are pinned, release rotation at the top of the column
-                    // so the beam stays continuous across interior supports while column top M = 0.
                     let col_release = if rigid_joints {
                         EndRelease::Rigid
                     } else {
                         EndRelease::PinnedEnd
                     };
-                    let member_id = frame.add_member(
+                    let member_id = geom.add_member(
                         col_label.clone(),
                         MemberKind::Column,
                         base_id,
@@ -352,7 +690,7 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
                     column_meta.push((member_id, id, col_label, base_id, story_height, sx, sy));
                 }
                 BeamSupport::Beam { .. } => {
-                    let top_id = frame.add_node(
+                    let top_id = geom.add_node(
                         format!("A{}", idx + 1),
                         x,
                         story_height,
@@ -363,16 +701,18 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
             }
         }
 
-        // Create beam members and apply gravity uniform loads (dead + live).
+        // Create beam members on the base geometry, then clone into 4 load cases: G1, G2, Q, W+.
         let mut beam_meta: Vec<(usize, u64, String, f64, f64, Vec<SpanPointLoad>)> = Vec::new();
+        let mut beam_loads_split: Vec<(usize, f64, f64, f64, Vec<SpanPointLoad>)> = Vec::new();
+
         for (i, &beam_id) in line.spans.iter().enumerate() {
             let span = span_results.get(&beam_id);
             let b_w = span.map(|s| s.width_m).unwrap_or(0.14).max(0.10);
             let h_b = span.map(|s| s.height_m).unwrap_or(0.30).max(0.15);
-            let load_kn_m = span
-                .map(|s| s.dead_kn_m + s.live_kn_m)
-                .unwrap_or(0.0)
-                .max(0.0);
+            let g1 = span.map(|s| s.g1_dead_kn_m).unwrap_or(0.0).max(0.0);
+            let g2 = span.map(|s| s.g2_dead_kn_m).unwrap_or(0.0).max(0.0);
+            let q_live = span.map(|s| s.live_kn_m).unwrap_or(0.0).max(0.0);
+            let load_kn_m = (g1 + g2 + q_live).max(0.0);
             let area = b_w * h_b;
             let inertia = b_w * h_b.powi(3) / 12.0;
             let span_label = if line.spans.len() == 1 {
@@ -380,7 +720,7 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
             } else {
                 format!("{}.{}", line.label, i + 1)
             };
-            let member_id = frame.add_member(
+            let member_id = geom.add_member(
                 span_label.clone(),
                 MemberKind::Beam,
                 top_nodes[i],
@@ -390,11 +730,8 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
                 e_c,
                 EndRelease::Rigid,
             );
-            frame.add_uniform_load(member_id, -load_kn_m);
             let point_loads = span.map(|s| s.point_loads.clone()).unwrap_or_default();
-            for point in &point_loads {
-                frame.add_point_load(member_id, point.position_m, -point.load_kn);
-            }
+            beam_loads_split.push((member_id, g1, g2, q_live, point_loads.clone()));
             beam_meta.push((
                 member_id,
                 beam_id,
@@ -405,24 +742,54 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
             ));
         }
 
-        // Service horizontal wind force at beam level (NBR 6123 dynamic pressure
-        // with NBR 6118 Table 13.3 frequent combination factor ψ1 = 0.30 for
-        // inter-storey lateral drift H/850).
-        let q_wind_kpa = project
-            .structure
-            .wind
-            .pressure_kpa(story_height, cursor.max(story_height));
-        let drag_ca = 1.2;
-        let psi1_wind = 0.30;
-        let lateral_wind_kn =
-            psi1_wind * q_wind_kpa * (story_height * 0.5) * wind_tributary_m * drag_ca;
-        if lateral_wind_kn > 1e-6 {
-            frame.add_nodal_load(top_nodes[0], lateral_wind_kn, 0.0, 0.0);
+        let mut frame_g1 = geom.clone();
+        let mut frame_g2 = geom.clone();
+        let mut frame_q = geom.clone();
+        let mut frame_w = geom.clone();
+
+        for (member_id, g1, g2, q_live, point_loads) in &beam_loads_split {
+            frame_g1.add_uniform_load(*member_id, -*g1);
+            frame_g2.add_uniform_load(*member_id, -*g2);
+            frame_q.add_uniform_load(*member_id, -*q_live);
+            for point in point_loads {
+                let p_dead = point.load_kn * point.quasi_factor.clamp(0.0, 1.0);
+                let p_live = point.load_kn - p_dead;
+                frame_g2.add_point_load(*member_id, point.position_m, -p_dead);
+                frame_q.add_point_load(*member_id, point.position_m, -p_live);
+            }
         }
 
-        let sol = match solve_frame(&frame) {
-            Ok(solution) => solution,
-            Err(reason) => {
+        // Characteristic NBR 6123 horizontal wind force assigned to this frame at beam level.
+        let characteristic_wind_kn = if !bwind.directions.is_empty() {
+            if along_x {
+                bwind.diaphragm_shear_x_kn() / frames_along_x.max(1) as f64
+            } else {
+                bwind.diaphragm_shear_y_kn() / frames_along_y.max(1) as f64
+            }
+        } else {
+            let q_wind_kpa = project
+                .structure
+                .wind
+                .pressure_kpa(story_height, cursor.max(story_height));
+            q_wind_kpa * (story_height * 0.5) * 2.0 * 1.2
+        };
+        if characteristic_wind_kn > 1e-6 {
+            frame_w.add_nodal_load(top_nodes[0], characteristic_wind_kn, 0.0, 0.0);
+        }
+        let lateral_wind_kn = PSI1_WIND * characteristic_wind_kn;
+
+        // Solve the four fundamental load cases.
+        let (sol_g1, sol_g2, sol_q, sol_w) = match (
+            solve_frame(&frame_g1),
+            solve_frame(&frame_g2),
+            solve_frame(&frame_q),
+            solve_frame(&frame_w),
+        ) {
+            (Ok(s1), Ok(s2), Ok(sq), Ok(sw)) => (s1, s2, sq, sw),
+            (Err(reason), _, _, _)
+            | (_, Err(reason), _, _)
+            | (_, _, Err(reason), _)
+            | (_, _, _, Err(reason)) => {
                 analysis.failures.push(FrameAnalysisFailure {
                     label: frame_label,
                     reason,
@@ -430,6 +797,76 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
                 continue;
             }
         };
+
+        let load_cases = vec![
+            summarize_load_case(LoadCaseKind::G1, &sol_g1, &top_nodes, 1.0),
+            summarize_load_case(LoadCaseKind::G2, &sol_g2, &top_nodes, 1.0),
+            summarize_load_case(LoadCaseKind::Q, &sol_q, &top_nodes, 1.0),
+            summarize_load_case(LoadCaseKind::WindPos, &sol_w, &top_nodes, 1.0),
+            summarize_load_case(LoadCaseKind::WindNeg, &sol_w, &top_nodes, -1.0),
+        ];
+
+        // Evaluate every NBR 8681 combination via exact linear superposition.
+        let mut combinations = Vec::with_capacity(combo_specs.len());
+        let mut primary_service_sol: Option<FrameSolution> = None;
+        let mut envelope = FrameEnvelope {
+            elu_min_column_axial_kn: f64::NEG_INFINITY,
+            ..FrameEnvelope::default()
+        };
+
+        for factors in &combo_specs {
+            let combined = combine_solutions(&sol_g1, &sol_g2, &sol_q, &sol_w, factors, &geom);
+            let summary = summarize_combination(factors, &combined, &top_nodes);
+
+            if factors.code == "ELS-R1" {
+                primary_service_sol = Some(combined);
+            }
+
+            if factors.category.is_ultimate() {
+                if summary.max_beam_pos_knm >= envelope.elu_max_beam_pos_knm {
+                    envelope.elu_max_beam_pos_knm = summary.max_beam_pos_knm;
+                    envelope.elu_max_beam_pos_combo = factors.code.to_owned();
+                }
+                if summary.min_beam_neg_knm <= envelope.elu_min_beam_neg_knm {
+                    envelope.elu_min_beam_neg_knm = summary.min_beam_neg_knm;
+                    envelope.elu_min_beam_neg_combo = factors.code.to_owned();
+                }
+                if summary.max_beam_shear_kn >= envelope.elu_max_beam_shear_kn {
+                    envelope.elu_max_beam_shear_kn = summary.max_beam_shear_kn;
+                    envelope.elu_max_beam_shear_combo = factors.code.to_owned();
+                }
+                if summary.max_column_moment_knm >= envelope.elu_max_column_moment_knm {
+                    envelope.elu_max_column_moment_knm = summary.max_column_moment_knm;
+                    envelope.elu_max_column_moment_combo = factors.code.to_owned();
+                }
+                if summary.max_column_compression_kn >= envelope.elu_max_column_compression_kn {
+                    envelope.elu_max_column_compression_kn = summary.max_column_compression_kn;
+                    envelope.elu_max_column_compression_combo = factors.code.to_owned();
+                }
+                if summary.max_column_tension_kn > envelope.elu_min_column_axial_kn {
+                    envelope.elu_min_column_axial_kn = summary.max_column_tension_kn;
+                    envelope.elu_min_column_axial_combo = factors.code.to_owned();
+                }
+            } else if factors.category == CombinationCategory::ElsQuasiPermanent {
+                envelope.els_qp_max_beam_deflection_mm = summary.max_beam_deflection_mm;
+            } else if factors.category == CombinationCategory::ElsFrequent
+                && summary.max_lateral_drift_mm >= envelope.els_f_max_drift_mm
+            {
+                envelope.els_f_max_drift_mm = summary.max_lateral_drift_mm;
+                envelope.els_f_drift_combo = factors.code.to_owned();
+            }
+
+            combinations.push(summary);
+        }
+        if !envelope.elu_min_column_axial_kn.is_finite() {
+            envelope.elu_min_column_axial_kn = 0.0;
+        }
+        envelope.has_column_uplift = envelope.elu_min_column_axial_kn > 1e-3;
+
+        // Primary displayed service solution (`ELS-R1`: G1 + G2 + Q + ψ1·W+).
+        let sol = primary_service_sol.unwrap_or_else(|| {
+            combine_solutions(&sol_g1, &sol_g2, &sol_q, &sol_w, &combo_specs[0], &geom)
+        });
 
         let reaction_map: HashMap<usize, (f64, f64, f64)> = sol
             .reactions
@@ -483,17 +920,14 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
             })
             .collect();
 
-        let max_lateral_drift_mm = top_nodes
-            .iter()
-            .map(|&nid| sol.displacements[nid].u_m.abs() * 1000.0)
-            .fold(0.0_f64, f64::max);
+        let max_lateral_drift_mm = envelope.els_f_max_drift_mm;
         let drift_limit_mm = story_height * 1000.0 / 850.0;
 
         let reactions: Vec<FrameReactionPoint> = sol
             .reactions
             .iter()
             .map(|r| {
-                let node = &frame.nodes[r.node];
+                let node = &geom.nodes[r.node];
                 FrameReactionPoint {
                     label: node.label.clone(),
                     x_m: node.x,
@@ -524,6 +958,7 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
             total_length_m: cursor,
             story_height_m: story_height,
             lateral_wind_kn,
+            characteristic_wind_kn,
             beams,
             columns,
             max_lateral_drift_mm,
@@ -536,6 +971,9 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
             equilibrium_residual_knm: sol.equilibrium.sum_mz_knm.abs(),
             reactions,
             members,
+            load_cases,
+            combinations,
+            envelope,
         });
     }
 

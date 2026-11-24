@@ -215,6 +215,7 @@ fn structure_fingerprint(project: &Project) -> u64 {
     hash_f64(&mut h, s.finish_kn_m2);
     hash_f64(&mut h, s.masonry_kn_m3);
     s.per_room_live_loads.hash(&mut h);
+    (s.occupancy as u8).hash(&mut h);
     s.frame_rigid_joints.hash(&mut h);
     s.frame_fixed_bases.hash(&mut h);
     project.walls.len().hash(&mut h);

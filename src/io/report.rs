@@ -420,6 +420,32 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
         (
             None,
             vec![
+                "Ocupação (NBR 6120 / 8681)".into(),
+                format!(
+                    "{} · ψ0 = {} · ψ1 = {} · ψ2 = {}",
+                    s.occupancy.label(),
+                    decimal(s.occupancy.psi0(), 2),
+                    decimal(s.occupancy.psi1(), 2),
+                    decimal(s.occupancy.psi2(), 2)
+                ),
+            ],
+        ),
+        (
+            None,
+            vec![
+                "Vento (NBR 6123)".into(),
+                format!(
+                    "V0 = {:.0} m/s · cat. {} · S1 = {} · S3 = {}",
+                    project.structure.wind.v0_ms,
+                    project.structure.wind.category,
+                    decimal(project.structure.wind.s1, 2),
+                    decimal(project.structure.wind.s3, 2)
+                ),
+            ],
+        ),
+        (
+            None,
+            vec![
                 "Sobrecarga".into(),
                 format!("{} kN/m²", decimal(s.live_kn_m2, 1)),
             ],
@@ -890,8 +916,111 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                 &rows,
             );
         }
+        if !report.loads.is_empty() {
+            let n6120 = &report.loads.nbr6120;
+            pages.subheading("Casos de carga (NBR 6120:2019) e vento na edificação (NBR 6123)");
+            pages.paragraph(
+                &format!(
+                    "G1 (peso próprio estrutural) = {} kN · G2 (permanente não estrutural) = {} kN · Q (sobrecarga) = {} kN · Total gravitacional = {} kN. {}",
+                    decimal(n6120.total_g1_kn, 1),
+                    decimal(n6120.total_g2_kn, 1),
+                    decimal(n6120.total_q_kn, 1),
+                    decimal(n6120.total_gravity_kn(), 1),
+                    n6120.live_reduction_note
+                ),
+                2.8,
+                INK,
+            );
+            let bw = &report.loads.building_wind;
+            if !bw.directions.is_empty() {
+                let wrows: Vec<_> = bw
+                    .directions
+                    .iter()
+                    .map(|d| {
+                        let axis_key = if d.direction.along_x() {
+                            "Vento na edificação (±X)"
+                        } else {
+                            "Vento na edificação (±Y)"
+                        };
+                        (
+                            light_of.get(axis_key).copied(),
+                            vec![
+                                d.direction.label().to_owned(),
+                                format!(
+                                    "{}×{} m",
+                                    decimal(d.facade_width_m, 1),
+                                    decimal(d.depth_m, 1)
+                                ),
+                                format!(
+                                    "+{}/{}",
+                                    decimal(d.coeffs.cpe_windward, 2),
+                                    decimal(d.coeffs.cpe_leeward, 2)
+                                ),
+                                decimal(d.coeffs.ca_drag, 2),
+                                decimal(d.base_shear_kn, 1),
+                                decimal(d.overturning_moment_knm, 1),
+                                if d.overturning_safety_ratio.is_finite() {
+                                    format!(
+                                        "{}×",
+                                        decimal(d.overturning_safety_ratio.min(999.9), 1)
+                                    )
+                                } else {
+                                    "∞".to_owned()
+                                },
+                            ],
+                        )
+                    })
+                    .collect();
+                pages.table(
+                    &[
+                        "Direção",
+                        "Fach.×Prof.",
+                        "Cpe barl/sot",
+                        "Ca",
+                        "Vw (kN)",
+                        "Mw (kN·m)",
+                        "ELU-EQU",
+                    ],
+                    &[1.5, 1.7, 1.7, 0.9, 1.3, 1.5, 1.3],
+                    &wrows,
+                );
+            }
+            if !report.loads.combinations.is_empty() {
+                pages.subheading("Combinações de ações (NBR 8681:2003 / NBR 6118 §11.8)");
+                let crows: Vec<_> = report
+                    .loads
+                    .combinations
+                    .iter()
+                    .map(|c| {
+                        (
+                            None,
+                            vec![
+                                c.factors.code.to_owned(),
+                                c.factors.category.label().to_owned(),
+                                c.factors.formula.clone(),
+                                decimal(c.vertical_kn, 1),
+                                decimal(c.horizontal_x_kn, 1),
+                                decimal(c.horizontal_y_kn, 1),
+                            ],
+                        )
+                    })
+                    .collect();
+                pages.table(
+                    &[
+                        "Comb.",
+                        "Tipo",
+                        "Expressão",
+                        "Fz (kN)",
+                        "Fx (kN)",
+                        "Fy (kN)",
+                    ],
+                    &[1.2, 1.7, 4.1, 1.1, 1.0, 1.0],
+                    &crows,
+                );
+            }
+        }
         if !report.frames.is_empty() {
-            pages.subheading("Pórticos planos 2D (vigas + pilares · rigidez direta)");
+            pages.subheading("Pórticos planos 2D (vigas + pilares · envoltórias NBR 8681)");
             let rows: Vec<_> = report
                 .frames
                 .iter()
@@ -902,20 +1031,36 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                         (false, true) => "Rotul. / Engast.",
                         (false, false) => "Rotul. / Contrav.",
                     };
-                    let light = if f.drift_ok() {
-                        Some(Light::Green)
+                    let light = light_of.get(&f.label).copied().or(Some(if f.drift_ok() {
+                        Light::Green
                     } else {
-                        Some(Light::Red)
+                        Light::Red
+                    }));
+                    let (m_beam, b_code) = if f.envelope.elu_min_beam_neg_knm.abs()
+                        > f.envelope.elu_max_beam_pos_knm
+                    {
+                        (
+                            f.envelope.elu_min_beam_neg_knm,
+                            f.envelope.elu_min_beam_neg_combo.as_str(),
+                        )
+                    } else {
+                        (
+                            f.envelope.elu_max_beam_pos_knm,
+                            f.envelope.elu_max_beam_pos_combo.as_str(),
+                        )
                     };
                     (
                         light,
                         vec![
                             f.label.clone(),
                             model.to_owned(),
-                            format!("{} kN·m", decimal(f.max_beam_moment_knm(), 1)),
-                            format!("{} kN·m", decimal(f.max_column_moment_knm(), 1)),
-                            format!("{} kN", decimal(f.total_point_load_kn(), 1)),
-                            format!("{} kN", decimal(f.lateral_wind_kn, 1)),
+                            format!("{} ({b_code})", decimal(m_beam, 1)),
+                            format!(
+                                "{} ({})",
+                                decimal(f.envelope.elu_max_column_moment_knm, 1),
+                                f.envelope.elu_max_column_moment_combo
+                            ),
+                            format!("{} kN", decimal(f.characteristic_wind_kn, 1)),
                             format!(
                                 "{}/{} mm",
                                 decimal(f.max_lateral_drift_mm, 2),
@@ -929,13 +1074,12 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                 &[
                     "Pórtico",
                     "Modelo",
-                    "M máx viga",
-                    "M máx pilar",
-                    "P conc.",
-                    "Vento H",
-                    "Δh / H/850",
+                    "ELU Md,viga (kN·m)",
+                    "ELU Md,pilar (kN·m)",
+                    "Vento Wk",
+                    "ELS-F Δh / H/850",
                 ],
-                &[1.7, 1.8, 1.4, 1.4, 1.2, 1.1, 1.9],
+                &[1.6, 1.7, 2.0, 2.0, 1.2, 2.0],
                 &rows,
             );
         }

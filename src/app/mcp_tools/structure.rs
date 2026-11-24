@@ -425,6 +425,136 @@ fn round1(value: f64) -> f64 {
     (value * 10.0).round() / 10.0
 }
 
+fn loads_analysis_json(loads: &crate::domain::loads::LoadAnalysisReport) -> Value {
+    let n6120 = &loads.nbr6120;
+    let bw = &loads.building_wind;
+    let round2 = |v: f64| (v * 100.0).round() / 100.0;
+    let rooms: Vec<Value> = n6120
+        .rooms
+        .iter()
+        .map(|r| {
+            json!({
+                "comodo": r.room_name,
+                "area_m2": round2(r.area_m2),
+                "categoria": r.category,
+                "g1_kn_m2": round2(r.g1_kn_m2),
+                "g2_kn_m2": round2(r.g2_kn_m2),
+                "q_min_tabela10_kn_m2": round2(r.table_min_q_kn_m2),
+                "q_adotada_kn_m2": round2(r.active_q_kn_m2),
+            })
+        })
+        .collect();
+    let directions: Vec<Value> = bw
+        .directions
+        .iter()
+        .map(|d| {
+            let storeys: Vec<Value> = d
+                .storeys
+                .iter()
+                .map(|st| {
+                    json!({
+                        "pavimento": st.label,
+                        "z_topo_m": round2(st.z_top_m),
+                        "s2": (st.s2 * 1000.0).round() / 1000.0,
+                        "vk_ms": round1(st.vk_ms),
+                        "q_kpa": (st.q_kpa * 1000.0).round() / 1000.0,
+                        "area_m2": round2(st.facade_area_m2),
+                        "forca_kn": round1(st.force_kn),
+                    })
+                })
+                .collect();
+            json!({
+                "direcao": d.direction.short(),
+                "rotulo": d.direction.label(),
+                "fachada_m": round2(d.facade_width_m),
+                "profundidade_m": round2(d.depth_m),
+                "h_sobre_b": round2(d.coeffs.h_over_b),
+                "a_sobre_b": round2(d.coeffs.a_over_b),
+                "dentro_tabela4": d.coeffs.within_table4,
+                "cpe_barlavento": round2(d.coeffs.cpe_windward),
+                "cpe_sotavento": round2(d.coeffs.cpe_leeward),
+                "cpe_lateral_borda": round2(d.coeffs.cpe_side_edge),
+                "ca_arrasto": round2(d.coeffs.ca_drag),
+                "cpi_pos": round2(d.coeffs.cpi_pos),
+                "cpi_neg": round2(d.coeffs.cpi_neg),
+                "pressao_max_parede_kpa": round2(d.max_wall_pressure_kpa),
+                "succao_max_parede_kpa": round2(d.max_wall_suction_kpa),
+                "cortante_base_kn": round1(d.base_shear_kn),
+                "cortante_diafragma_kn": round1(d.diaphragm_shear_kn),
+                "momento_tombamento_knm": round1(d.overturning_moment_knm),
+                "momento_estabilizante_elu_equ_knm": round1(d.stabilizing_moment_knm),
+                "razao_tombamento_elu_equ": d.overturning_safety_ratio.is_finite().then(|| round2(d.overturning_safety_ratio)),
+                "atende_tombamento": d.overturning_ok(),
+                "pavimentos": storeys,
+            })
+        })
+        .collect();
+    let combos: Vec<Value> = loads
+        .combinations
+        .iter()
+        .map(|c| {
+            json!({
+                "codigo": c.factors.code,
+                "nome": c.factors.name,
+                "categoria": c.factors.category.key(),
+                "norma": c.factors.clause,
+                "formula": c.factors.formula,
+                "gama_g1": round2(c.factors.gamma_g1),
+                "gama_g2": round2(c.factors.gamma_g2),
+                "gama_q": round2(c.factors.gamma_q),
+                "gama_w": round2(c.factors.gamma_w),
+                "vertical_kn": round1(c.vertical_kn),
+                "horizontal_x_kn": round1(c.horizontal_x_kn),
+                "horizontal_y_kn": round1(c.horizontal_y_kn),
+            })
+        })
+        .collect();
+    json!({
+        "nbr_6120": {
+            "ocupacao": n6120.occupancy.key(),
+            "categoria_nbr_8681": n6120.occupancy.nbr8681_category(),
+            "pavimentos": n6120.storeys,
+            "concreto_kn_m3": n6120.concrete_kn_m3,
+            "aco_kn_m3": n6120.steel_kn_m3,
+            "alvenaria_kn_m3": n6120.masonry_kn_m3,
+            "revestimento_kn_m2": n6120.finish_kn_m2,
+            "sobrecarga_base_kn_m2": n6120.base_live_kn_m2,
+            "sobrecarga_por_comodo": n6120.per_room_live_loads,
+            "psi0_q": n6120.psi0_q,
+            "psi1_q": n6120.psi1_q,
+            "psi2_q": n6120.psi2_q,
+            "psi0_w": n6120.psi0_w,
+            "psi1_w": n6120.psi1_w,
+            "psi2_w": n6120.psi2_w,
+            "g1_total_kn": round1(n6120.total_g1_kn),
+            "g2_total_kn": round1(n6120.total_g2_kn),
+            "g_total_kn": round1(n6120.total_g_kn()),
+            "q_total_kn": round1(n6120.total_q_kn),
+            "nota_reducao": n6120.live_reduction_note,
+            "comodos": rooms,
+        },
+        "vento_edificacao_nbr_6123": {
+            "v0_ms": bw.settings.v0_ms,
+            "categoria_terreno": bw.settings.category,
+            "s1": bw.settings.s1,
+            "s3": bw.settings.s3,
+            "classe": bw.building_class,
+            "fechada": bw.enclosed,
+            "planta_x_m": round2(bw.plan_width_x_m),
+            "planta_y_m": round2(bw.plan_depth_y_m),
+            "altura_total_m": round2(bw.total_height_m),
+            "direcoes": directions,
+        },
+        "combinacoes_nbr_8681": combos,
+        "resumo": {
+            "elu_vertical_max_kn": round1(loads.max_elu_vertical_kn()),
+            "elu_horizontal_max_kn": round1(loads.max_elu_horizontal_kn()),
+            "els_qp_vertical_kn": round1(loads.els_qp_vertical_kn()),
+            "els_frequente_horizontal_kn": round1(loads.els_frequent_horizontal_kn()),
+        },
+    })
+}
+
 impl FloorPlanApp {
     pub(super) fn tool_structural_design(&mut self, args: &Value) -> Result<ToolOutput, String> {
         let action = text(args, "acao").unwrap_or_default();
@@ -677,7 +807,7 @@ impl FloorPlanApp {
                     let occ = parse_occupancy_class(&raw).ok_or(
                         "'ocupacao' deve ser residencial, escritorio, garagem ou comercial.",
                     )?;
-                    settings.live_kn_m2 = occ.live_kn_m2();
+                    settings.apply_occupancy(occ);
                 }
                 if let Some(v) = number(args, "fck_mpa")? {
                     if !(20.0..=50.0).contains(&v) {
@@ -1492,6 +1622,40 @@ impl FloorPlanApp {
                         })
                     })
                     .collect();
+                let frame_cases: Vec<Value> = f
+                    .load_cases
+                    .iter()
+                    .map(|lc| {
+                        json!({
+                            "caso": lc.kind.code(),
+                            "descricao": lc.kind.label(),
+                            "vertical_kn": round1(lc.total_vertical_kn),
+                            "horizontal_kn": round1(lc.total_horizontal_kn),
+                            "momento_max_viga_knm": round1(lc.max_beam_moment_knm),
+                            "momento_max_pilar_knm": round1(lc.max_column_moment_knm),
+                            "deslocamento_lateral_mm": (lc.max_lateral_drift_mm * 100.0).round() / 100.0,
+                        })
+                    })
+                    .collect();
+                let frame_combos: Vec<Value> = f
+                    .combinations
+                    .iter()
+                    .map(|c| {
+                        json!({
+                            "codigo": c.code,
+                            "categoria": c.category.key(),
+                            "formula": c.formula,
+                            "momento_pos_viga_knm": round1(c.max_beam_pos_knm),
+                            "momento_neg_viga_knm": round1(c.min_beam_neg_knm),
+                            "cortante_viga_kn": round1(c.max_beam_shear_kn),
+                            "momento_pilar_knm": round1(c.max_column_moment_knm),
+                            "compressao_pilar_kn": round1(c.max_column_compression_kn),
+                            "axial_max_tracao_pilar_kn": round1(c.max_column_tension_kn),
+                            "flecha_viga_mm": (c.max_beam_deflection_mm * 100.0).round() / 100.0,
+                            "deslocamento_lateral_mm": (c.max_lateral_drift_mm * 100.0).round() / 100.0,
+                        })
+                    })
+                    .collect();
                 json!({
                     "rotulo": f.label,
                     "nos_rigidos": f.rigid_joints,
@@ -1500,6 +1664,7 @@ impl FloorPlanApp {
                     "comprimento_total_m": (f.total_length_m * 100.0).round() / 100.0,
                     "altura_m": (f.story_height_m * 100.0).round() / 100.0,
                     "vento_lateral_kn": round1(f.lateral_wind_kn),
+                    "vento_caracteristico_kn": round1(f.characteristic_wind_kn),
                     "carga_pontual_total_kn": round1(f.total_point_load_kn()),
                     "momento_max_viga_knm": round1(f.max_beam_moment_knm()),
                     "momento_max_pilar_knm": round1(f.max_column_moment_knm()),
@@ -1507,6 +1672,28 @@ impl FloorPlanApp {
                     "limite_deslocamento_mm": (f.drift_limit_mm * 100.0).round() / 100.0,
                     "deslocamento_ok": f.drift_ok(),
                     "residuo_equilibrio_kn": f.equilibrium_residual_kn,
+                    "envoltoria_elu": {
+                        "momento_pos_viga_knm": round1(f.envelope.elu_max_beam_pos_knm),
+                        "combinacao_momento_pos": f.envelope.elu_max_beam_pos_combo,
+                        "momento_neg_viga_knm": round1(f.envelope.elu_min_beam_neg_knm),
+                        "combinacao_momento_neg": f.envelope.elu_min_beam_neg_combo,
+                        "cortante_viga_kn": round1(f.envelope.elu_max_beam_shear_kn),
+                        "combinacao_cortante": f.envelope.elu_max_beam_shear_combo,
+                        "momento_pilar_knm": round1(f.envelope.elu_max_column_moment_knm),
+                        "combinacao_momento_pilar": f.envelope.elu_max_column_moment_combo,
+                        "compressao_pilar_kn": round1(f.envelope.elu_max_column_compression_kn),
+                        "combinacao_compressao_pilar": f.envelope.elu_max_column_compression_combo,
+                        "axial_min_pilar_kn": round1(f.envelope.elu_min_column_axial_kn),
+                        "combinacao_axial_min": f.envelope.elu_min_column_axial_combo,
+                        "arrancamento_pilar": f.envelope.has_column_uplift,
+                    },
+                    "envoltoria_els": {
+                        "flecha_viga_qp_mm": (f.envelope.els_qp_max_beam_deflection_mm * 100.0).round() / 100.0,
+                        "deslocamento_lateral_f_mm": (f.envelope.els_f_max_drift_mm * 100.0).round() / 100.0,
+                        "combinacao_deslocamento": f.envelope.els_f_drift_combo,
+                    },
+                    "casos_de_carga": frame_cases,
+                    "combinacoes": frame_combos,
                     "vigas": frame_beams,
                     "pilares": frame_cols,
                 })
@@ -1523,6 +1710,7 @@ impl FloorPlanApp {
                 })
             })
             .collect();
+        let loads_json = loads_analysis_json(&report.loads);
         Ok(ToolOutput::ok(format!(
             "{} laje(s), {} viga(s), {} pórtico(s) 2D resolvido(s), {} falha(s) de pórtico, {} pilar(es), {} sapata(s), {} verga(s)/contraverga(s), {} painel(is) de alvenaria, {} kg de aço preliminar, {} alerta(s).",
             slabs.len(),
@@ -1542,6 +1730,7 @@ impl FloorPlanApp {
                 "fck_mpa": settings.fck_mpa,
                 "solo_kpa": settings.soil_kpa,
                 "pavimentos": settings.floors,
+                "ocupacao": settings.occupancy.key(),
                 "sobrecarga_kn_m2": settings.live_kn_m2,
                 "revestimento_kn_m2": settings.finish_kn_m2,
                 "peso_alvenaria_kn_m3": settings.masonry_kn_m3,
@@ -1549,6 +1738,7 @@ impl FloorPlanApp {
                 "portico_nos_rigidos": settings.frame_rigid_joints,
                 "portico_bases_engastadas": settings.frame_fixed_bases,
             },
+            "cargas_e_combinacoes": loads_json,
             "lajes": slabs,
             "vigas": beams,
             "porticos_2d": frames_2d,
@@ -2290,5 +2480,63 @@ mod tests {
                 light["elemento"] == failure["rotulo"] && light["semaforo"] == "vermelho"
             })
         }));
+    }
+
+    #[test]
+    fn mcp_reports_nbr6120_nbr8681_combinations_and_nbr6123_building_wind() {
+        let context = eframe::egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let built = app.run_mcp_tool(
+            "executar_lote",
+            &json!({
+                "acoes": [
+                    { "ferramenta": "criar_comodo", "argumentos": { "nome": "Sala", "x": 0, "y": 0, "largura": 5.0, "comprimento": 4.0 } },
+                    { "ferramenta": "criar_comodo", "argumentos": { "nome": "Garagem", "x": 5.0, "y": 0, "largura": 3.5, "comprimento": 4.0 } },
+                    { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "configurar", "ocupacao": "escritorio", "sobrecarga_por_comodo": true } },
+                    { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "configurar_vento", "v0_ms": 40.0, "categoria_terreno": 3, "s1": 1.0, "s3": 1.0 } },
+                    { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "gerar_estrutura" } },
+                ]
+            }),
+        );
+        assert!(!built.is_error, "{}", built.text);
+
+        let report = app
+            .run_mcp_tool("pre_dimensionamento", &json!({}))
+            .structured
+            .unwrap();
+        assert_eq!(report["materiais"]["ocupacao"], "escritorio");
+
+        let loads = &report["cargas_e_combinacoes"];
+        assert_eq!(loads["nbr_6120"]["ocupacao"], "escritorio");
+        assert!((loads["nbr_6120"]["psi0_q"].as_f64().unwrap() - 0.70).abs() < 1e-6);
+        assert!((loads["nbr_6120"]["psi1_q"].as_f64().unwrap() - 0.60).abs() < 1e-6);
+        assert!((loads["nbr_6120"]["psi2_q"].as_f64().unwrap() - 0.40).abs() < 1e-6);
+        assert!(loads["nbr_6120"]["g1_total_kn"].as_f64().unwrap() > 0.0);
+        assert!(loads["nbr_6120"]["g2_total_kn"].as_f64().unwrap() > 0.0);
+        assert!(loads["nbr_6120"]["q_total_kn"].as_f64().unwrap() > 0.0);
+
+        let wind = &loads["vento_edificacao_nbr_6123"];
+        assert_eq!(wind["v0_ms"], 40.0);
+        assert_eq!(wind["direcoes"].as_array().unwrap().len(), 4);
+        assert!(wind["direcoes"][0]["cortante_base_kn"].as_f64().unwrap() > 0.0);
+        assert_eq!(wind["direcoes"][0]["atende_tombamento"], true);
+
+        let combos = loads["combinacoes_nbr_8681"].as_array().unwrap();
+        assert_eq!(combos.len(), 17);
+        assert!(combos.iter().any(|c| c["codigo"] == "ELU-1"));
+        assert!(combos.iter().any(|c| c["codigo"] == "ELU-EQU+"));
+        assert!(combos.iter().any(|c| c["codigo"] == "ELS-QP"));
+        assert!(combos.iter().any(|c| c["codigo"] == "ELS-F2"));
+
+        let frame0 = &report["porticos_2d"][0];
+        assert_eq!(frame0["casos_de_carga"].as_array().unwrap().len(), 5);
+        assert_eq!(frame0["combinacoes"].as_array().unwrap().len(), 17);
+        assert!(frame0["vento_caracteristico_kn"].as_f64().unwrap() > 0.0);
+        assert!(
+            frame0["envoltoria_elu"]["momento_pos_viga_knm"]
+                .as_f64()
+                .unwrap()
+                > 0.0
+        );
     }
 }

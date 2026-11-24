@@ -154,7 +154,7 @@ fn draw_frame_row(svg: &mut String, frame: &FrameLineResult, x: f64, y: f64, w: 
     let _ = writeln!(
         svg,
         r##"<text x="{:.1}" y="{:.1}" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="#0f172a">{} ({} m × H = {} m){brace_tag}</text>
-<text x="{:.1}" y="{:.1}" text-anchor="end" font-family="Arial, sans-serif" font-size="10.5" fill="{drift_color}">M_viga máx = {} kN·m · M_pilar máx = {} kN·m · Desloc. lateral Δh = {} mm (lim. {} mm) · H_vento = {} kN</text>"##,
+<text x="{:.1}" y="{:.1}" text-anchor="end" font-family="Arial, sans-serif" font-size="10.2" fill="{drift_color}">ELU Md,viga = {} ({}) · Md,pilar = {} ({}) kN·m · ELS-F Δh = {} / {} mm · Wk = {} kN</text>"##,
         x + 12.0,
         y + 18.0,
         esc(&frame.label),
@@ -162,11 +162,25 @@ fn draw_frame_row(svg: &mut String, frame: &FrameLineResult, x: f64, y: f64, w: 
         dec(frame.story_height_m, 2),
         x + w - 12.0,
         y + 18.0,
-        dec(frame.max_beam_moment_knm(), 1),
-        dec(frame.max_column_moment_knm(), 1),
+        dec(
+            frame
+                .envelope
+                .elu_max_beam_pos_knm
+                .max(frame.envelope.elu_min_beam_neg_knm.abs()),
+            1
+        ),
+        esc(
+            if frame.envelope.elu_min_beam_neg_knm.abs() > frame.envelope.elu_max_beam_pos_knm {
+                &frame.envelope.elu_min_beam_neg_combo
+            } else {
+                &frame.envelope.elu_max_beam_pos_combo
+            }
+        ),
+        dec(frame.envelope.elu_max_column_moment_knm, 1),
+        esc(&frame.envelope.elu_max_column_moment_combo),
         dec(frame.max_lateral_drift_mm, 2),
         dec(frame.drift_limit_mm, 2),
-        dec(frame.lateral_wind_kn, 1),
+        dec(frame.characteristic_wind_kn, 1),
     );
 
     let panel_y = y + 26.0;

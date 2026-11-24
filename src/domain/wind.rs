@@ -63,6 +63,51 @@ impl Default for WindSettings {
     }
 }
 
+/// NBR 6123 Table 3 statistical factor `S3` groups.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindImportanceGroup {
+    /// Group 1: essential facilities (hospitals, fire stations, power plants) — `S3 = 1.10`.
+    Group1Essential,
+    /// Group 2: hotels, residences, commercial & industrial buildings — `S3 = 1.00`.
+    Group2Standard,
+    /// Group 3: low-occupancy buildings and warehouses — `S3 = 0.95`.
+    Group3LowOccupancy,
+    /// Group 4: sealing / non-structural cladding — `S3 = 0.88`.
+    Group4Cladding,
+    /// Group 5: temporary structures — `S3 = 0.83`.
+    Group5Temporary,
+}
+
+impl WindImportanceGroup {
+    pub const ALL: [Self; 5] = [
+        Self::Group1Essential,
+        Self::Group2Standard,
+        Self::Group3LowOccupancy,
+        Self::Group4Cladding,
+        Self::Group5Temporary,
+    ];
+
+    pub fn s3(self) -> f64 {
+        match self {
+            Self::Group1Essential => 1.10,
+            Self::Group2Standard => 1.00,
+            Self::Group3LowOccupancy => 0.95,
+            Self::Group4Cladding => 0.88,
+            Self::Group5Temporary => 0.83,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Group1Essential => "Grupo 1 · essenciais (S3 = 1,10)",
+            Self::Group2Standard => "Grupo 2 · residências/comércio (S3 = 1,00)",
+            Self::Group3LowOccupancy => "Grupo 3 · baixa ocupação (S3 = 0,95)",
+            Self::Group4Cladding => "Grupo 4 · vedações (S3 = 0,88)",
+            Self::Group5Temporary => "Grupo 5 · temporárias (S3 = 0,83)",
+        }
+    }
+}
+
 impl WindSettings {
     pub fn check(&self) -> Result<(), String> {
         if !(25.0..=55.0).contains(&self.v0_ms) {
@@ -77,6 +122,28 @@ impl WindSettings {
             return Err("S1 vai de 0,5 a 1,5 e S3 de 0,8 a 1,2.".to_owned());
         }
         Ok(())
+    }
+
+    /// Building dimension class per NBR 6123 §5.3.2 (`A ≤ 20 m`, `B: 20–50 m`, `C > 50 m`).
+    pub fn building_class(size: f64) -> &'static str {
+        if size > 50.0 {
+            "C"
+        } else if size > 20.0 {
+            "B"
+        } else {
+            "A"
+        }
+    }
+
+    /// Terrain roughness category description per NBR 6123 §5.3.1.
+    pub fn category_label(category: u8) -> &'static str {
+        match category {
+            1 => "I · superfícies lisas / mar aberto",
+            2 => "II · terreno aberto / poucos obstáculos",
+            3 => "III · subúrbios / casas baixas",
+            4 => "IV · cidades / obstáculos numerosos",
+            _ => "V · centros densos / edifícios altos",
+        }
     }
 
     /// S2 at height `z` for a building whose largest dimension is `size`
@@ -116,9 +183,14 @@ impl WindSettings {
         b * fr * (z.max(5.0) / 10.0).powf(p)
     }
 
-    /// Dynamic pressure at height `z`, kPa.
+    /// Characteristic wind speed `Vk = V0 · S1 · S2 · S3`, m/s (NBR 6123 §4.2).
+    pub fn vk_ms(&self, z: f64, size: f64) -> f64 {
+        self.v0_ms * self.s1 * self.s2(z, size) * self.s3
+    }
+
+    /// Dynamic pressure at height `z`, kPa (`q = 0.613 · Vk² / 1000`).
     pub fn pressure_kpa(&self, z: f64, size: f64) -> f64 {
-        let vk = self.v0_ms * self.s1 * self.s2(z, size) * self.s3;
+        let vk = self.vk_ms(z, size);
         0.613 * vk * vk / 1000.0
     }
 }

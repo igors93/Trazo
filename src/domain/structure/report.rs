@@ -408,8 +408,9 @@ impl Project {
                 handled_concentrated.insert(fixture.id);
             }
         }
-        // Slab loads shared by the beams along the slab's sides.
-        let mut beam_dead: HashMap<u64, f64> = HashMap::new();
+        // Slab loads shared by the beams along the slab's sides (separated into G1 self-weight and G2 finishes).
+        let mut beam_g1: HashMap<u64, f64> = HashMap::new();
+        let mut beam_g2: HashMap<u64, f64> = HashMap::new();
         let mut beam_live: HashMap<u64, f64> = HashMap::new();
         for slab in &self.structure.slabs {
             let Some(room) = self.rooms.iter().find(|room| room.id == slab.room_id) else {
@@ -417,7 +418,9 @@ impl Project {
             };
             let (lx, ly) = self.slab_spans(room);
             let area = self.room_area(room).unwrap_or(lx * ly);
-            let dead = slab.kind.self_weight(slab.thickness_m) + settings.finish_kn_m2;
+            let slab_g1 = slab.kind.self_weight(slab.thickness_m);
+            let slab_g2 = settings.finish_kn_m2;
+            let dead = slab_g1 + slab_g2;
             let live = if settings.per_room_live_loads {
                 room_live_load_kn_m2(room.display_name(), settings.live_kn_m2)
             } else {
@@ -454,7 +457,8 @@ impl Project {
             };
             let total: f64 = shares.values().sum();
             for (id, share) in &shares {
-                *beam_dead.entry(*id).or_default() += dead * area * share / total.max(1e-9);
+                *beam_g1.entry(*id).or_default() += slab_g1 * area * share / total.max(1e-9);
+                *beam_g2.entry(*id).or_default() += slab_g2 * area * share / total.max(1e-9);
                 *beam_live.entry(*id).or_default() += live * area * share / total.max(1e-9);
             }
             let mut point_load_kn = 0.0;
@@ -787,7 +791,9 @@ impl Project {
                     0.0
                 };
                 let own = CONCRETE_KN_M3 * beam.width_m * beam.height_m;
-                let dead = own + walls_kn_m + beam_dead.get(id).copied().unwrap_or(0.0) / length;
+                let g1_dead = own + beam_g1.get(id).copied().unwrap_or(0.0) / length;
+                let g2_dead = walls_kn_m + beam_g2.get(id).copied().unwrap_or(0.0) / length;
+                let dead = g1_dead + g2_dead;
                 let live = beam_live.get(id).copied().unwrap_or(0.0) / length;
                 let inertia = beam.width_m * beam.height_m.powi(3) / 12.0;
                 // Map incoming secondary-beam reactions `(t, P)` along `beam.from -> beam.to`
@@ -815,9 +821,18 @@ impl Project {
                     .iter()
                     .map(|point| (point.t, point.load_kn * point.quasi_factor))
                     .collect();
-                spans.push((beam.id, length, dead, live, beam.width_m, beam.height_m));
+                let psi2_q = settings.occupancy.psi2();
+                spans.push((
+                    beam.id,
+                    length,
+                    g1_dead,
+                    g2_dead,
+                    live,
+                    beam.width_m,
+                    beam.height_m,
+                ));
                 stiff.push((length, dead + live, modulus * inertia));
-                qp_stiff.push((length, dead + 0.3 * live, modulus * inertia));
+                qp_stiff.push((length, dead + psi2_q * live, modulus * inertia));
                 span_points.push(pts);
                 span_pts_qp.push(pts_qp);
                 span_point_records.push(point_records);
@@ -834,9 +849,13 @@ impl Project {
             let mut wall_reactions = vec![0.0; line.joints.len()];
             let mut results = Vec::new();
             let count = spans.len();
-            for (i, (((id, length, dead, live, b, h), (left, right)), (qp_left, qp_right))) in
-                spans.iter().zip(&moments).zip(&qp_moments).enumerate()
+            let psi2_q = settings.occupancy.psi2();
+            for (
+                i,
+                (((id, length, g1_dead, g2_dead, live, b, h), (left, right)), (qp_left, qp_right)),
+            ) in spans.iter().zip(&moments).zip(&qp_moments).enumerate()
             {
+                let dead = *g1_dead + *g2_dead;
                 let w = dead + live;
                 let pts = &span_points[i];
                 let pts_qp = &span_pts_qp[i];
@@ -870,10 +889,10 @@ impl Project {
                         .map(|k| moment_at(*length * k as f64 / 100.0))
                         .fold(f64::NEG_INFINITY, f64::max)
                 };
-                // Quasi-permanent load (ψ2 = 0.3), exact quasi-permanent moments,
-                // Branson's equivalent inertia with Mr and CA-50 steel, plus creep
-                // factor 1 + 1.32 (NBR 6118 §17.3.2.1).
-                let w_qp = dead + 0.3 * live;
+                // Quasi-permanent load (NBR 8681 / NBR 6118 Table 11.2 ψ2), exact
+                // quasi-permanent moments, Branson's equivalent inertia with Mr and
+                // CA-50 steel, plus creep factor 1 + 1.32 (NBR 6118 §17.3.2.1).
+                let w_qp = dead + psi2_q * live;
                 let p_qp_v_left: f64 = pts_qp
                     .iter()
                     .map(|&(a_pos, p)| p * (length - a_pos) / length)
@@ -914,7 +933,9 @@ impl Project {
                     length_m: *length,
                     width_m: *b,
                     height_m: *h,
-                    dead_kn_m: *dead,
+                    dead_kn_m: dead,
+                    g1_dead_kn_m: *g1_dead,
+                    g2_dead_kn_m: *g2_dead,
                     live_kn_m: *live,
                     point_loads: span_point_records[i]
                         .iter()
@@ -1424,6 +1445,23 @@ impl Project {
             .extend(report.masonry.warnings.iter().cloned());
         report.slabs.sort_by(|a, b| natural(&a.label, &b.label));
         report.beams.sort_by(|a, b| natural(&a.label, &b.label));
+        // NBR 6120 load cases, NBR 6123 building wind and NBR 8681 combinations (#105).
+        report.loads = crate::domain::loads::analyze_project_loads(self, &report);
+        if report.loads.nbr6120.total_g_kn() > 1e-6 {
+            for dir in &report.loads.building_wind.directions {
+                if !dir.overturning_ok() {
+                    report.warnings.push(format!(
+                        "Vento na edificação ({}): momento estabilizante em ELU-EQU ({} kN·m) abaixo do momento solicitante de cálculo ({} kN·m); verifique estabilidade global e ancoragens.",
+                        dir.direction.label(),
+                        decimal(dir.stabilizing_moment_knm, 1),
+                        decimal(
+                            crate::domain::loads::GAMMA_W * dir.overturning_moment_knm,
+                            1
+                        )
+                    ));
+                }
+            }
+        }
         let frame_analysis = crate::domain::frame2d::analyze_project_frames(self, &report);
         report.frames = frame_analysis.frames;
         report.frame_failures = frame_analysis.failures;
@@ -1442,6 +1480,14 @@ impl Project {
                 report.warnings.push(format!(
                     "{}: deslocamento lateral ({:.2} mm) excede H/850 ({:.2} mm); enrijeça os pilares ou adicione contraventamento.",
                     frame.label, frame.max_lateral_drift_mm, frame.drift_limit_mm
+                ));
+            }
+            if frame.envelope.has_column_uplift {
+                report.warnings.push(format!(
+                    "{}: tração/arrancamento em pilar sob vento ({}, N_mín = {} kN); verifique ancoragem e contrapeso na fundação.",
+                    frame.label,
+                    frame.envelope.elu_min_column_axial_combo,
+                    decimal(frame.envelope.elu_min_column_axial_kn, 1)
                 ));
             }
         }

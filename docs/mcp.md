@@ -82,6 +82,8 @@ Tools that read are marked read-only and tools that delete are marked destructiv
 
 `projeto_estrutural` with `definir_telhado` accepts `contraventamento_kn` as the verified design resistance of the full lateral path (or `null` to remove it). `configurar_vento` and `pre_dimensionamento` return `vento.contraventamento` and `vento.estabilidade_global` with four directional checks. Roof bearing alone never counts as top lateral restraint.
 
+`pre_dimensionamento` also returns `cargas_e_combinacoes` (`nbr_6120` with `G1`/`G2`/`Q` totals, per-room Table 10 live loads and occupancy `ψ0/ψ1/ψ2`; `vento_edificacao_nbr_6123` with four orthogonal directions, Table 4 `Cpe`/`Ca`, storey-by-storey forces and `ELU-EQU` overturning; `combinacoes_nbr_8681` with all 17 ELU/ELS combinations and resultants) and enriches every `porticos_2d[]` entry with `vento_caracteristico_kn`, `casos_de_carga`, `combinacoes`, `envoltoria_elu` (including `arrancamento_pilar`) and `envoltoria_els`. Setting `ocupacao` via `projeto_estrutural` → `configurar` updates both the base live load and the NBR 8681 combination factors.
+
 ## Working together in real time
 
 You and the assistant can edit the same plan at the same time without overwriting each other.

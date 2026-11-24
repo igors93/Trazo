@@ -98,6 +98,147 @@ fn sized_structure_verdicts(
             )],
         });
     }
+    for frame in &report.frames {
+        let mut checks = vec![Check::new(
+            "Deslocamento lateral (ELS-F)",
+            frame.max_lateral_drift_mm / frame.drift_limit_mm.max(1e-9),
+            if frame.drift_ok() {
+                format!(
+                    "Deslocamento lateral de {} mm fica dentro de H/850 = {} mm sob vento frequente.",
+                    decimal(frame.max_lateral_drift_mm, 2),
+                    decimal(frame.drift_limit_mm, 2)
+                )
+            } else {
+                "O pórtico desloca demais com o vento: aumente os pilares ou adicione contraventamento."
+                    .to_owned()
+            },
+            format!(
+                "Combinação {} (NBR 8681 / NBR 6118 Tabela 13.3): Δh = {} mm ≤ H/850 = {} mm; vento característico Wk = {} kN (NBR 6123), ELU Md,viga = {} kN·m ({}), Md,pilar = {} kN·m ({}).",
+                frame.envelope.els_f_drift_combo,
+                decimal(frame.max_lateral_drift_mm, 2),
+                decimal(frame.drift_limit_mm, 2),
+                decimal(frame.characteristic_wind_kn, 1),
+                decimal(
+                    frame
+                        .envelope
+                        .elu_max_beam_pos_knm
+                        .max(frame.envelope.elu_min_beam_neg_knm.abs()),
+                    1
+                ),
+                if frame.envelope.elu_min_beam_neg_knm.abs() > frame.envelope.elu_max_beam_pos_knm {
+                    &frame.envelope.elu_min_beam_neg_combo
+                } else {
+                    &frame.envelope.elu_max_beam_pos_combo
+                },
+                decimal(frame.envelope.elu_max_column_moment_knm, 1),
+                frame.envelope.elu_max_column_moment_combo
+            ),
+        )];
+        if frame.envelope.has_column_uplift {
+            checks.push(Check::fail(
+                "Arrancamento (ELU)",
+                format!(
+                    "Pilar em tração sob vento ({}, N = +{} kN): verifique ancoragem na fundação ou aumente a rigidez/contrapeso.",
+                    frame.envelope.elu_min_column_axial_combo,
+                    decimal(frame.envelope.elu_min_column_axial_kn, 1)
+                ),
+                format!(
+                    "Combinação {} (NBR 8681, G favorável + 1,40·W): esforço axial de tração de {} kN em pilar do pórtico.",
+                    frame.envelope.elu_min_column_axial_combo,
+                    decimal(frame.envelope.elu_min_column_axial_kn, 1)
+                ),
+            ));
+        } else {
+            checks.push(Check::new(
+                "Compressão sob vento (ELU)",
+                0.0,
+                "Todos os pilares permanecem comprimidos em todas as combinações de ELU com vento."
+                    .to_owned(),
+                format!(
+                    "Envoltória NBR 8681 ({} combinações): compressão máx. {} kN ({}); mínimo axial {} kN ({}, sem tração).",
+                    frame.combinations.len(),
+                    decimal(frame.envelope.elu_max_column_compression_kn, 1),
+                    frame.envelope.elu_max_column_compression_combo,
+                    decimal(frame.envelope.elu_min_column_axial_kn, 1),
+                    frame.envelope.elu_min_column_axial_combo
+                ),
+            ));
+        }
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: frame.label.clone(),
+            checks,
+        });
+    }
+    if (!report.columns.is_empty() || !report.beams.is_empty() || !report.slabs.is_empty())
+        && report.loads.nbr6120.total_g_kn() > 1e-6
+    {
+        for axis in [
+            crate::domain::loads::WindDirection::PosX,
+            crate::domain::loads::WindDirection::PosY,
+        ] {
+            if let Some(dir) = report
+                .loads
+                .building_wind
+                .directions
+                .iter()
+                .find(|d| d.direction == axis)
+            {
+                let axis_label = if axis.along_x() { "±X" } else { "±Y" };
+                let design_overturning = crate::domain::loads::GAMMA_W * dir.overturning_moment_knm;
+                let util = if dir.stabilizing_moment_knm > 1e-9 {
+                    design_overturning / dir.stabilizing_moment_knm
+                } else {
+                    f64::INFINITY
+                };
+                let mut checks = vec![Check::new(
+                    "Tombamento global (ELU-EQU)",
+                    util,
+                    if dir.overturning_ok() {
+                        format!(
+                            "O peso permanente vence o tombamento do vento no eixo {axis_label} (folga de {:.1}×).",
+                            dir.overturning_safety_ratio.min(99.9)
+                        )
+                    } else {
+                        format!(
+                            "Vento no eixo {axis_label} supera o momento estabilizante em ELU-EQU: amplie a base, o contraventamento ou ancore as fundações."
+                        )
+                    },
+                    format!(
+                        "NBR 6123 (V0 = {:.0} m/s, cat. {}, classe {}, Ca = {}, Cpe = +{}/{}) e NBR 8681 ELU-EQU: Vw = {} kN, Mw,d = 1,40 × {} = {} kN·m ≤ Mestab = 0,90·G·L/2 = {} kN·m.",
+                        report.loads.building_wind.settings.v0_ms,
+                        report.loads.building_wind.settings.category,
+                        report.loads.building_wind.building_class,
+                        decimal(dir.coeffs.ca_drag, 2),
+                        decimal(dir.coeffs.cpe_windward, 2),
+                        decimal(dir.coeffs.cpe_leeward, 2),
+                        decimal(dir.base_shear_kn, 1),
+                        decimal(dir.overturning_moment_knm, 1),
+                        decimal(design_overturning, 1),
+                        decimal(dir.stabilizing_moment_knm, 1)
+                    ),
+                )];
+                if !dir.coeffs.within_table4 {
+                    checks.push(Check::new(
+                        "Geometria Tabela 4",
+                        0.95,
+                        "Relação altura/largura ou comprimento/largura fora da Tabela 4 da NBR 6123: confirme coeficientes aerodinâmicos com engenheiro."
+                            .to_owned(),
+                        format!(
+                            "h/b = {}, a/b = {} (Tabela 4 da NBR 6123 cobre h/b ≤ 6 e a/b ≤ 4).",
+                            decimal(dir.coeffs.h_over_b, 2),
+                            decimal(dir.coeffs.a_over_b, 2)
+                        ),
+                    ));
+                }
+                verdicts.push(Verdict {
+                    discipline: Discipline::Structure,
+                    element: format!("Vento na edificação ({axis_label})"),
+                    checks,
+                });
+            }
+        }
+    }
     for slab in &report.slabs {
         let mut checks = Vec::new();
         if slab.supported {

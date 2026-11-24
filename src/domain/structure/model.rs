@@ -177,10 +177,12 @@ impl SoilClass {
     }
 }
 
-/// Typical building occupancies with their NBR 6120:2019 base live load.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// Typical building occupancies with their NBR 6120:2019 base live load and
+/// NBR 8681:2003 Table 6 / NBR 6118:2023 Table 11.2 combination factors (ψ0, ψ1, ψ2).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OccupancyClass {
+    #[default]
     Residential,
     Office,
     Garage,
@@ -194,6 +196,15 @@ impl OccupancyClass {
         OccupancyClass::Garage,
         OccupancyClass::Retail,
     ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Residential => "residencial",
+            Self::Office => "escritorio",
+            Self::Garage => "garagem",
+            Self::Retail => "comercial",
+        }
+    }
 
     pub fn label(self) -> &'static str {
         match self {
@@ -210,6 +221,47 @@ impl OccupancyClass {
             Self::Office => 2.0,
             Self::Garage => 3.0,
             Self::Retail => 4.0,
+        }
+    }
+
+    /// NBR 8681:2003 Table 6 / NBR 6118:2023 Table 11.2 combination factor `ψ0`
+    /// for secondary variable actions in normal ELU combinations.
+    pub fn psi0(self) -> f64 {
+        match self {
+            Self::Residential => 0.50,
+            Self::Office | Self::Retail => 0.70,
+            Self::Garage => 0.80,
+        }
+    }
+
+    /// NBR 8681:2003 Table 6 / NBR 6118:2023 Table 11.2 frequent factor `ψ1`
+    /// for ELS-F (frequent) and secondary actions in ELS-R (rare) combinations.
+    pub fn psi1(self) -> f64 {
+        match self {
+            Self::Residential => 0.40,
+            Self::Office | Self::Retail => 0.60,
+            Self::Garage => 0.70,
+        }
+    }
+
+    /// NBR 8681:2003 Table 6 / NBR 6118:2023 Table 11.2 quasi-permanent factor `ψ2`
+    /// for ELS-QP (long-term deflection) and secondary actions in ELS-F combinations.
+    pub fn psi2(self) -> f64 {
+        match self {
+            Self::Residential => 0.30,
+            Self::Office | Self::Retail => 0.40,
+            Self::Garage => 0.60,
+        }
+    }
+
+    /// NBR 8681:2003 Table 6 / NBR 6118:2023 Table 11.2 category description.
+    pub fn nbr8681_category(self) -> &'static str {
+        match self {
+            Self::Residential => "Edifícios residenciais (sem predominância de equipamentos)",
+            Self::Office | Self::Retail => {
+                "Edifícios comerciais / escritórios (concentração de pessoas)"
+            }
+            Self::Garage => "Garagens / arquivos / oficinas (predominância de pesos)",
         }
     }
 }
@@ -259,6 +311,9 @@ pub struct StructureSettings {
     pub masonry_kn_m3: f64,
     /// Apply NBR 6120 per-room minimum live loads (e.g. balconies 2.5, garages 3.0 kN/m²).
     pub per_room_live_loads: bool,
+    /// Building occupancy class (NBR 6120:2019 / NBR 8681:2003 Table 6 ψ0, ψ1, ψ2).
+    #[serde(default)]
+    pub occupancy: OccupancyClass,
     /// 2D plane-frame analysis (#94): monolithic rigid beam-column joints (`true`)
     /// or pinned column-top joints (`false`).
     #[serde(default = "default_true")]
@@ -278,6 +333,7 @@ impl Default for StructureSettings {
             finish_kn_m2: 1.0,
             masonry_kn_m3: 13.0,
             per_room_live_loads: false,
+            occupancy: OccupancyClass::Residential,
             frame_rigid_joints: true,
             frame_fixed_bases: true,
         }
@@ -290,6 +346,7 @@ impl StructureSettings {
     }
 
     pub fn apply_occupancy(&mut self, occupancy: OccupancyClass) {
+        self.occupancy = occupancy;
         self.live_kn_m2 = occupancy.live_kn_m2();
     }
     fn is_default(&self) -> bool {
