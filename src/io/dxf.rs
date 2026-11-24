@@ -92,8 +92,15 @@ pub fn export(project: &Project, path: &Path) -> Result<(), String> {
 
 /// Imports an ASCII DXF file from `path` into `project`.
 pub fn import_file(project: &mut Project, path: &Path) -> Result<DxfImportReport, String> {
+    let budget = crate::io::memory::MemoryBudget::for_file(
+        path,
+        crate::io::memory::DXF_FACTOR,
+        crate::io::memory::MAX_DXF_FALLBACK_BYTES,
+    )?;
+    budget.check()?;
     let bytes =
         fs::read(path).map_err(|error| format!("Não foi possível ler o arquivo DXF: {error}"))?;
+    budget.check()?;
     let content = match String::from_utf8(bytes) {
         Ok(text) => text,
         Err(err) => err
@@ -102,6 +109,7 @@ pub fn import_file(project: &mut Project, path: &Path) -> Result<DxfImportReport
             .map(|b| b as char)
             .collect::<String>(),
     };
+    budget.check()?;
     import_str(project, &content)
 }
 

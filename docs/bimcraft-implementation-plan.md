@@ -55,7 +55,7 @@ Ambos os projetos são escritos em **Rust puro + `egui`/`eframe`** com licença 
     - Busca/seleção por ID ou GUID (*Consultar por ID/GUID* + MCP).
   - **Critério de pronto:** projetos antigos migram sem aviso; salvar/reabrir preserva 100% dos GUIDs; cópias recebem GUIDs novos sem quebrar vínculos.
 
-- [ ] **T-03 · Orçamento de Memória (`MemoryBudget`) Contra Arquivos Grandes e Hostis** *(Tamanho: S)*
+- [x] **T-03 · Orçamento de Memória (`MemoryBudget`) Contra Arquivos Grandes e Hostis** *(Tamanho: S)*
   - **Ref. BIMCraft:** `crates/core/src/memory.rs`, `Cargo.toml` (`cap = "0.1"`, `sysinfo = "0.40"`).
   - **O que implementar:**
     - Instalar alocador global contador seguro (`cap::Cap`) sem `unsafe` combinado com `sysinfo` para ler RAM livre.

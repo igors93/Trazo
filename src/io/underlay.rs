@@ -21,6 +21,12 @@ const MAX_UNDERLAY_SIDE: u32 = 2400;
 /// Loads an image (PNG, JPEG, WebP, BMP), SVG, or PDF (specific 1-based page)
 /// from disk and returns straight RGBA pixels plus a compact embedded PNG.
 pub fn load_underlay_file(path: &Path, pdf_page: u32) -> Result<DecodedUnderlay, String> {
+    let budget = crate::io::memory::MemoryBudget::for_file(
+        path,
+        crate::io::memory::UNDERLAY_FACTOR,
+        crate::io::memory::MAX_UNDERLAY_FALLBACK_BYTES,
+    )?;
+    budget.check()?;
     let ext = path
         .extension()
         .and_then(|e| e.to_str())

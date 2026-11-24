@@ -7,7 +7,13 @@ mod mcp;
 
 use eframe::egui;
 
+/// Global counting allocator (zero `unsafe` in our crate) feeding `io::memory`
+/// so oversized or hostile files abort cleanly before exhausting system RAM.
+#[global_allocator]
+static ALLOCATOR: cap::Cap<std::alloc::System> = cap::Cap::new(std::alloc::System, usize::MAX);
+
 fn main() -> eframe::Result {
+    io::memory::install_system_meter(|| ALLOCATOR.allocated());
     io::crash_log::install_panic_hook();
 
     // `trazo --mcp-stdio`: no window of its own; it serves MCP on

@@ -5,6 +5,9 @@ use std::{
 };
 
 use crate::domain::model::{CURRENT_PROJECT_VERSION, Project};
+use crate::io::memory::{
+    MAX_PROJECT_FALLBACK_BYTES, MemoryBudget, PROJECT_FACTOR, read_json_metered,
+};
 
 pub fn save(project: &Project, path: &Path) -> Result<(), String> {
     let mut stored = project.clone();
@@ -87,15 +90,11 @@ pub fn load(path: &Path) -> Result<(Project, Vec<String>), String> {
         .unwrap_or("projeto");
     let backup_path = parent.join(format!("{}.trazo.bak", file_stem));
 
-    let (content, mut warnings) = if path.exists() {
-        let content = fs::read_to_string(path)
-            .map_err(|error| format!("Não foi possível ler o arquivo: {}", error))?;
-        (content, Vec::new())
+    let (source_path, warnings) = if path.exists() {
+        (path, Vec::new())
     } else if backup_path.exists() {
-        let content = fs::read_to_string(&backup_path)
-            .map_err(|error| format!("Não foi possível ler cópia de segurança: {}", error))?;
         (
-            content,
+            backup_path.as_path(),
             vec![
                 "Arquivo principal ausente; restaurado a partir de cópia de segurança.".to_owned(),
             ],
@@ -104,8 +103,29 @@ pub fn load(path: &Path) -> Result<(Project, Vec<String>), String> {
         return Err("Arquivo não encontrado.".to_owned());
     };
 
-    let project: Project = serde_json::from_str(&content)
+    let budget = MemoryBudget::for_file(source_path, PROJECT_FACTOR, MAX_PROJECT_FALLBACK_BYTES)?;
+    load_with_budget(source_path, &budget, warnings)
+}
+
+pub(crate) fn load_with_budget(
+    source_path: &Path,
+    budget: &MemoryBudget,
+    mut warnings: Vec<String>,
+) -> Result<(Project, Vec<String>), String> {
+    budget.check()?;
+    let content = fs::read_to_string(source_path)
+        .map_err(|error| format!("Não foi possível ler o arquivo: {}", error))?;
+    budget.check()?;
+    let value = read_json_metered(&content, budget).map_err(|error| {
+        if budget.check().is_err() {
+            error
+        } else {
+            format!("Formato de arquivo inválido: {}", error)
+        }
+    })?;
+    let project: Project = serde_json::from_value(value)
         .map_err(|error| format!("Formato de arquivo inválido: {}", error))?;
+    budget.check()?;
     let (mut project, migration_warnings) = migrate_to_current(project)?;
     warnings.extend(migration_warnings);
     let repair_warnings = project
@@ -415,6 +435,28 @@ mod tests {
         assert_ne!(copy_opening.wall_id, 10);
         assert_ne!(proj.guid_of(copy_opening.id), Some(saved_opening_guid));
 
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn load_with_exceeded_memory_budget_refuses_cleanly_without_panic() {
+        let mut project = Project::default();
+        for i in 0..25 {
+            let x = i as f64 * 2.0;
+            project.add_wall(Point::new(x, 0.0), Point::new(x + 1.5, 0.0));
+        }
+        let path =
+            std::env::temp_dir().join(format!("trazo-budget-refusal-{}.json", std::process::id()));
+        save(&project, &path).unwrap();
+
+        // Tiny simulated budget (4 MB with 1 MB/check fake meter) must abort mid-JSON cleanly.
+        let tight_budget = crate::io::memory::testing::fake_budget(4_000_000);
+        let err = load_with_budget(&path, &tight_budget, Vec::new()).unwrap_err();
+        assert!(err.contains("excedeu o limite seguro"), "{err}");
+
+        // Normal unlimited load still succeeds untouched.
+        let (loaded, _) = load(&path).unwrap();
+        assert_eq!(loaded.walls.len(), 25);
         let _ = fs::remove_file(path);
     }
 }
