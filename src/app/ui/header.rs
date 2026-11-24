@@ -220,6 +220,10 @@ impl FloorPlanApp {
             self.open_new_window();
             ui.close();
         }
+        if menu_item(ui, Some(Icon::Plan), "Página inicial", "").clicked() {
+            self.show_start_page = true;
+            ui.close();
+        }
         if menu_item(ui, Some(Icon::Plan), "Novo a partir de modelo...", "").clicked() {
             self.active_doc_dialog = super::super::DocDialog::Templates;
             ui.close();
@@ -230,6 +234,10 @@ impl FloorPlanApp {
         }
         if menu_item(ui, Some(Icon::Save), "Salvar", "Ctrl+S").clicked() {
             self.save();
+            ui.close();
+        }
+        if menu_item(ui, Some(Icon::Save), "Salvar como modelo (.trazot)...", "").clicked() {
+            self.save_as_template();
             ui.close();
         }
         if menu_item(ui, Some(Icon::Print), "Imprimir em escala...", "Ctrl+P").clicked() {

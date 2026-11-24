@@ -341,6 +341,16 @@ pub struct FloorPlanApp {
     split_ratio: f32,
     /// Last cross-discipline dependency sync report for the active project.
     sync_report: crate::domain::dependencies::DependencySyncReport,
+    /// Start Page (*Página Inicial*, T-06) visibility flag.
+    show_start_page: bool,
+    /// Pending autosave draft awaiting user choice (*Recuperar / Descartar / Adiar*).
+    pending_recovery: Option<Project>,
+    /// User-registered `.trazot` project templates.
+    user_templates: crate::io::templates::UserTemplates,
+    /// Recently opened/saved project files shown as cards on the Start Page.
+    recent_files: crate::io::templates::RecentFiles,
+    /// Lazily decoded PNG thumbnails extracted from recent `.trazo` ZIP files.
+    thumbnail_cache: std::collections::HashMap<PathBuf, Option<egui::TextureHandle>>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -361,7 +371,23 @@ impl FloorPlanApp {
         } else {
             recovery::load()
         };
-        let restored = recovered.is_some();
+        let show_start_page = !cfg!(test) && initial_file.is_none();
+        let (initial_project, pending_recovery, restored) = if show_start_page {
+            (Project::default(), recovered, false)
+        } else {
+            let has = recovered.is_some();
+            (recovered.unwrap_or_default(), None, has)
+        };
+        let user_templates = if cfg!(test) {
+            crate::io::templates::UserTemplates::default()
+        } else {
+            crate::io::templates::UserTemplates::load()
+        };
+        let recent_files = if cfg!(test) {
+            crate::io::templates::RecentFiles::default()
+        } else {
+            crate::io::templates::RecentFiles::load()
+        };
         let preferences = if cfg!(test) {
             Settings::default()
         } else {
@@ -375,7 +401,7 @@ impl FloorPlanApp {
             Self::start_mcp(context, tunnel_token.clone(), mcp_events.clone())
         };
         let mut app = Self {
-            project: recovered.unwrap_or_default(),
+            project: initial_project,
             history: History::new(),
             file_path: None,
             dirty: restored,
@@ -529,6 +555,11 @@ impl FloorPlanApp {
             split_tab: None,
             split_ratio: 0.5,
             sync_report: crate::domain::dependencies::DependencySyncReport::default(),
+            show_start_page,
+            pending_recovery,
+            user_templates,
+            recent_files,
+            thumbnail_cache: std::collections::HashMap::new(),
         };
         if restored {
             app.restore_tab_drafts();
@@ -759,10 +790,72 @@ impl FloorPlanApp {
     /// Opens a project in a new tab (or in the active one when it is blank).
     pub fn request_open(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
-            .add_filter("Projeto Trazo", &["trazo", "json"])
+            .add_filter("Projeto ou Modelo Trazo", &["trazo", "trazot", "json"])
             .pick_file()
         {
             let _ = self.open_in_tab(&path);
+        }
+    }
+
+    pub(super) fn recover_pending_draft(&mut self) {
+        if let Some(draft) = self.pending_recovery.take() {
+            let before = std::mem::replace(&mut self.project, draft);
+            self.note_plan_change(&before, true);
+            self.history.clear();
+            self.file_path = None;
+            self.dirty = true;
+            self.recovery_pending = false;
+            self.show_start_page = false;
+            self.fit_view_requested();
+            self.restore_tab_drafts();
+            self.sync_inspector_fields();
+            self.sync_masonry_fields();
+            self.message = "Rascunho recuperado. Salve o projeto para mantê-lo.".to_owned();
+        }
+    }
+
+    pub(super) fn discard_pending_draft(&mut self) {
+        self.pending_recovery = None;
+        recovery::clear();
+        recovery::clear_tabs();
+        self.message = "Rascunho automático descartado.".to_owned();
+    }
+
+    pub(super) fn defer_pending_draft(&mut self) {
+        self.pending_recovery = None;
+        self.message = "Recuperação adiada; o rascunho permanece salvo em disco.".to_owned();
+    }
+
+    pub(super) fn save_as_template(&mut self) -> bool {
+        let default_name = format!(
+            "{}.trazot",
+            if self.project.name.trim().is_empty() {
+                "modelo-trazo"
+            } else {
+                self.project.name.trim()
+            }
+        );
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Modelo de Projeto Trazo", &["trazot"])
+            .set_file_name(&default_name)
+            .save_file()
+        else {
+            return false;
+        };
+        let mut to_save = self.project.clone();
+        to_save.workspace_tabs = self.collect_workspace_tabs(self.active_project_id);
+        match project_file::save(&to_save, &path) {
+            Ok(()) => {
+                if self.user_templates.pick(&path) && !cfg!(test) {
+                    let _ = self.user_templates.save();
+                }
+                self.message = format!("Modelo salvo em {}.", path.display());
+                true
+            }
+            Err(error) => {
+                self.message = format!("Não foi possível salvar o modelo: {error}");
+                false
+            }
         }
     }
 
@@ -825,6 +918,7 @@ impl FloorPlanApp {
     }
 
     fn new_project(&mut self) {
+        self.show_start_page = false;
         recovery::clear();
         self.measurements.clear();
         let before = std::mem::take(&mut self.project);
@@ -847,16 +941,39 @@ impl FloorPlanApp {
     }
 
     pub fn open_file(&mut self, path: &Path) -> OpenResult {
+        let is_template = crate::io::templates::is_template_path(path);
         match project_file::load(path) {
             Ok((mut project, warnings)) => {
                 let saved_tabs = std::mem::take(&mut project.workspace_tabs);
+                if is_template {
+                    // Starting from a `.trazot` template always creates a fresh untitled
+                    // project with its own project GUID so the template is never overwritten.
+                    project.guids.project = crate::domain::guid::Guid::new();
+                }
                 recovery::clear();
                 self.measurements.clear();
                 let before = std::mem::replace(&mut self.project, project);
                 self.note_plan_change(&before, true);
                 self.history.clear();
                 self.sync_report = crate::domain::dependencies::DependencySyncReport::default();
-                self.file_path = Some(path.to_path_buf());
+                if is_template {
+                    self.file_path = None;
+                    if self.user_templates.pick(path) && !cfg!(test) {
+                        let _ = self.user_templates.save();
+                    }
+                } else {
+                    self.file_path = Some(path.to_path_buf());
+                    self.recent_files.record(
+                        path,
+                        &self.project.name,
+                        self.project.walls.len(),
+                        self.project.rooms.len(),
+                    );
+                    if !cfg!(test) {
+                        let _ = self.recent_files.save();
+                    }
+                }
+                self.show_start_page = false;
                 self.dirty = false;
                 self.recovery_pending = false;
                 self.pending_action = None;
@@ -871,7 +988,14 @@ impl FloorPlanApp {
                 }
                 self.sync_inspector_fields();
                 self.sync_masonry_fields();
-                if warnings.is_empty() {
+                if is_template {
+                    self.message = format!(
+                        "Novo projeto criado a partir do modelo \"{}\".",
+                        path.file_stem()
+                            .map(|s| s.to_string_lossy().into_owned())
+                            .unwrap_or_else(|| "modelo".to_owned())
+                    );
+                } else if warnings.is_empty() {
                     self.message = "Projeto aberto com sucesso.".to_owned();
                 } else {
                     self.message = format!("Projeto aberto com avisos: {}", warnings.join("; "));
@@ -908,6 +1032,16 @@ impl FloorPlanApp {
         match project_file::save(&to_save, &path) {
             Ok(()) => {
                 recovery::clear();
+                self.recent_files.record(
+                    &path,
+                    &to_save.name,
+                    to_save.walls.len(),
+                    to_save.rooms.len(),
+                );
+                self.thumbnail_cache.remove(&path);
+                if !cfg!(test) {
+                    let _ = self.recent_files.save();
+                }
                 self.file_path = Some(path);
                 self.dirty = false;
                 self.recovery_pending = false;
@@ -3715,5 +3849,63 @@ mod tests {
         assert_eq!(app.active_doc_dialog, DocDialog::None);
         press(&mut app, &context, Key::P, egui::Modifiers::CTRL);
         assert_eq!(app.active_doc_dialog, DocDialog::Print);
+    }
+
+    #[test]
+    fn opening_trazot_template_creates_untitled_project_and_compressed_trazo_embeds_thumbnail() {
+        let mut template = Project::default();
+        template.name = "Modelo Padrão Escritório".to_owned();
+        template
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Sala")
+            .unwrap();
+        let tpl_guid = template.project_guid();
+
+        let dir = std::env::temp_dir().join(format!("trazo-t06-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let tpl_path = dir.join("padrao.trazot");
+        let proj_path = dir.join("obra.trazo");
+
+        project_file::save(&template, &tpl_path).unwrap();
+        let raw_tpl = std::fs::read(&tpl_path).unwrap();
+        assert!(crate::io::container::is_zip(&raw_tpl));
+        assert!(crate::io::container::read_thumbnail(&tpl_path).is_some());
+
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        assert_eq!(app.open_file(&tpl_path), OpenResult::Success);
+        assert_eq!(
+            app.file_path, None,
+            "opening .trazot must leave file_path empty"
+        );
+        assert!(!app.dirty);
+        assert_eq!(app.project.rooms.len(), 1);
+        assert_ne!(
+            app.project.project_guid(),
+            tpl_guid,
+            "new project from template must get a fresh project GUID"
+        );
+        assert_eq!(app.user_templates.shown().len(), 1);
+        assert!(app.recent_files.entries.is_empty());
+
+        // Saving as `.trazo` writes a compressed ZIP with thumbnail and records in recents.
+        assert!(app.write_project(proj_path.clone()));
+        assert!(crate::io::container::read_thumbnail(&proj_path).is_some());
+        assert_eq!(app.recent_files.entries.len(), 1);
+
+        // Start Page recovery actions work cleanly.
+        app.pending_recovery = Some(template.clone());
+        app.show_start_page = true;
+        app.defer_pending_draft();
+        assert!(app.pending_recovery.is_none());
+        assert!(app.show_start_page);
+
+        app.pending_recovery = Some(template);
+        app.recover_pending_draft();
+        assert!(app.pending_recovery.is_none());
+        assert!(!app.show_start_page);
+        assert!(app.dirty);
+        assert_eq!(app.project.name, "Modelo Padrão Escritório");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

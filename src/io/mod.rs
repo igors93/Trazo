@@ -1,3 +1,4 @@
+pub mod container;
 pub mod crash_log;
 pub mod dwg;
 pub mod dxf;
@@ -10,6 +11,7 @@ pub mod project_file;
 pub mod recovery;
 pub mod report;
 pub mod settings;
+pub mod templates;
 pub mod underlay;
 pub mod updates;
 pub mod xref;

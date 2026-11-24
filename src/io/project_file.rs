@@ -5,17 +5,33 @@ use std::{
 };
 
 use crate::domain::model::{CURRENT_PROJECT_VERSION, Project};
+use crate::io::container;
 use crate::io::memory::{
     MAX_PROJECT_FALLBACK_BYTES, MemoryBudget, PROJECT_FACTOR, read_json_metered,
 };
+
+fn uses_zip_container(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("trazo") || ext.eq_ignore_ascii_case("trazot"))
+}
 
 pub fn save(project: &Project, path: &Path) -> Result<(), String> {
     let mut stored = project.clone();
     stored.version = CURRENT_PROJECT_VERSION;
     stored.normalize_precision();
     stored.ensure_all_guids();
-    let content = serde_json::to_string_pretty(&stored)
-        .map_err(|error| format!("Falha na serialização do projeto: {}", error))?;
+
+    let bytes: Vec<u8> = if uses_zip_container(path) {
+        let json = serde_json::to_string(&stored)
+            .map_err(|error| format!("Falha na serialização do projeto: {}", error))?;
+        let thumb = container::render_thumbnail_png(&stored);
+        container::pack_project(&json, thumb.as_deref(), 6)?
+    } else {
+        serde_json::to_string_pretty(&stored)
+            .map_err(|error| format!("Falha na serialização do projeto: {}", error))?
+            .into_bytes()
+    };
 
     let parent = path.parent().unwrap_or_else(|| Path::new("."));
     let file_stem = path
@@ -27,7 +43,7 @@ pub fn save(project: &Project, path: &Path) -> Result<(), String> {
 
     let write_res = (|| -> Result<(), std::io::Error> {
         let mut file = fs::File::create(&tmp_path)?;
-        file.write_all(content.as_bytes())?;
+        file.write_all(&bytes)?;
         file.sync_all()?;
         Ok(())
     })();
@@ -113,8 +129,23 @@ pub(crate) fn load_with_budget(
     mut warnings: Vec<String>,
 ) -> Result<(Project, Vec<String>), String> {
     budget.check()?;
-    let content = fs::read_to_string(source_path)
+    let raw_bytes = fs::read(source_path)
         .map_err(|error| format!("Não foi possível ler o arquivo: {}", error))?;
+    budget.check()?;
+    let max_inflated = budget
+        .left()
+        .map(|left| left / PROJECT_FACTOR.max(1))
+        .unwrap_or(MAX_PROJECT_FALLBACK_BYTES);
+    if let Some(declared) = container::inflated_size(&raw_bytes)
+        && declared > max_inflated
+    {
+        return Err(format!(
+            "O projeto descomprimido ocupa {} e excede o orçamento de memória disponível.",
+            crate::io::memory::format_bytes(declared)
+        ));
+    }
+    let content = container::unpack_project(&raw_bytes, max_inflated)?;
+    drop(raw_bytes);
     budget.check()?;
     let value = read_json_metered(&content, budget).map_err(|error| {
         if budget.check().is_err() {

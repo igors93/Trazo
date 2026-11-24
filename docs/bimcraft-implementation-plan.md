@@ -78,7 +78,7 @@ Ambos os projetos são escritos em **Rust puro + `egui`/`eframe`** com licença 
     - Registrar *change sets* por edição para revalidar apenas elementos afetados e seus dependentes.
   - **Critério de pronto:** edição em planta sintética de 500 paredes e 5 pavimentos roda em `< 50 ms` no núcleo e picking/snap em `< 2 ms`.
 
-- [ ] **T-06 · Formato Compacto Paralelo (`.trazo` ZIP), Templates de Projeto (`.trazot`) e Página Inicial (*Start Page*)** *(Tamanho: M)*
+- [x] **T-06 · Formato Compacto Paralelo (`.trazo` ZIP), Templates de Projeto (`.trazot`) e Página Inicial (*Start Page*)** *(Tamanho: M)*
   - **Ref. BIMCraft:** `crates/core/src/bimc.rs`, `files.rs`, `ui-egui/src/project_templates.rs`, `autosave.md`.
   - **O que implementar:**
     - Suportar salvamento opcional/padrão comprimido por blocos de 1 MiB em paralelo (`rayon` + `flate2` dentro de ZIP com índice `pieces.json`), mantendo leitura transparente do JSON puro atual.

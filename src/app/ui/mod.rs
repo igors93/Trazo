@@ -35,6 +35,7 @@ mod schedules;
 mod selection;
 mod sheet;
 mod sheet_set;
+mod start_page;
 mod status_bar;
 mod structure;
 mod tabs;
@@ -116,7 +117,11 @@ impl FloorPlanApp {
             .frame(egui::Frame::new().fill(theme::BAND))
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
-                self.plan_area(ui);
+                if self.show_start_page {
+                    self.start_page_view(ui);
+                } else {
+                    self.plan_area(ui);
+                }
             });
         self.room_name_dialog(ui);
         self.unsaved_changes_dialog(&context);
