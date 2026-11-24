@@ -726,7 +726,11 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                                 decimal(global.drift_mm, 1),
                                 decimal(global.drift_limit_mm, 1)
                             ),
-                            decimal(global.overturning_ratio, 2),
+                            format!(
+                                "{}/{}",
+                                decimal(global.overturning_ratio, 2),
+                                decimal(global.sliding_fs, 2)
+                            ),
                             if global.supports_ok && global.bracing_ok {
                                 "completo".to_owned()
                             } else {
@@ -742,16 +746,22 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                     "W / U (kN)",
                     "α / limite",
                     "Δ / limite (mm)",
-                    "Mres/Md",
+                    "Tomb./Desl.",
                     "Caminho",
                 ],
-                &[1.1, 1.6, 1.4, 2.0, 1.3, 1.8],
+                &[1.0, 1.5, 1.3, 1.9, 1.7, 1.8],
                 &rows,
             );
             for brace in &report.wind.bracing {
-                pages.paragraph(&format!("Cobertura {}: contraventamento lateral exige {} kN; resistência informada {}.",
-                    brace.label, decimal(brace.demand_kn, 1),
+                pages.paragraph(&format!("Cobertura {}: contraventamento lateral exige {} kN ({}); resistência informada {}.",
+                    brace.label, decimal(brace.demand_kn, 1), brace.tie_spec,
                     brace.capacity_kn.map_or("não informada".to_owned(), |kn| format!("{} kN", decimal(kn, 1)))), 3.0, INK);
+            }
+            for roof_wind in &report.wind.roofs {
+                if roof_wind.lifts() {
+                    pages.paragraph(&format!("Cobertura {}: sucção líquida de cálculo {} kN/m² → ancorar apoios para {} kN ({}).",
+                        roof_wind.label, decimal(roof_wind.net_design_kpa, 2), decimal(roof_wind.anchor_kn, 1), roof_wind.anchor_spec), 3.0, INK);
+                }
             }
         }
         if !report.slabs.is_empty() {

@@ -223,6 +223,12 @@ pub struct ColumnWindResult {
     pub steel_cm2: f64,
     /// Smallest depth across the wall that passes, metres.
     pub needed_depth_m: Option<f64>,
+    /// Footing base eccentricity under wind moment (m), when a footing exists under this column.
+    pub footing_eccentricity_m: Option<f64>,
+    /// Peak soil pressure under wind combination (kPa) vs 1.3·σ_adm (NBR 6122).
+    pub footing_max_kpa: Option<f64>,
+    /// Foundation wind bearing/overturning utilisation ratio (≤ 1.0 passes).
+    pub footing_wind_ratio: Option<f64>,
 }
 
 /// A roof under the wind's suction.
@@ -239,6 +245,11 @@ pub struct RoofWindResult {
     pub net_design_kpa: f64,
     /// Anchorage each beam end needs, design kN (largest).
     pub anchor_kn: f64,
+    /// Anchor bolt diameter (mm), count per support, combined N+V interaction ratio and spec (#147).
+    pub anchor_bolt_mm: f64,
+    pub anchor_bolt_count: usize,
+    pub anchor_interaction: f64,
+    pub anchor_spec: String,
 }
 
 impl RoofWindResult {
@@ -264,6 +275,10 @@ pub struct RoofBracingResult {
     pub demand_kn: f64,
     pub capacity_kn: Option<f64>,
     pub path_ok: bool,
+    /// Proposed CA-50 X-bracing steel tie bar diameter (mm), required area (cm²) and spec (#147).
+    pub tie_bar_mm: f64,
+    pub tie_as_cm2: f64,
+    pub tie_spec: String,
 }
 
 impl RoofBracingResult {
@@ -287,6 +302,12 @@ pub struct GlobalStabilityResult {
     pub roof_uplift_kn: f64,
     pub stabilizing_knm: f64,
     pub overturning_ratio: f64,
+    /// Conservative base-to-soil friction coefficient μ (NBR 6122).
+    pub friction_mu: f64,
+    /// Available sliding resistance μ · (0.9·G − 1.4·U) (kN).
+    pub sliding_resistance_kn: f64,
+    /// Sliding factor of safety `F_res / W_k` (required ≥ 1.50, NBR 6122).
+    pub sliding_fs: f64,
     pub alpha: f64,
     pub alpha_limit: f64,
     pub drift_mm: f64,
@@ -300,9 +321,92 @@ impl GlobalStabilityResult {
         self.supports_ok
             && self.bracing_ok
             && self.overturning_ratio >= 1.0 - 1e-9
+            && self.sliding_fs >= 1.50 - 1e-9
             && self.alpha <= self.alpha_limit + 1e-9
             && self.drift_mm <= self.drift_limit_mm + 1e-9
     }
+}
+
+/// Conservative concrete-to-soil friction coefficient `μ = tan(δ)` (NBR 6122).
+pub fn soil_friction_mu(soil_kpa: f64) -> f64 {
+    if soil_kpa < 120.0 {
+        0.30
+    } else if soil_kpa < 180.0 {
+        0.35
+    } else if soil_kpa < 350.0 {
+        0.45
+    } else {
+        0.55
+    }
+}
+
+/// Sizes a CA-50 steel X-bracing diagonal tie rod (at 45° in the roof plane)
+/// to transmit `demand_kn` lateral wind shear (`N_diag = √2 · F_d`).
+pub fn size_bracing_tie(demand_kn: f64) -> (f64, f64, String) {
+    let n_diag_kn = demand_kn.max(0.0) * std::f64::consts::SQRT_2;
+    let fyd_mpa = 500.0 / 1.15;
+    let as_req_cm2 = (n_diag_kn * 10.0) / fyd_mpa; // kN / (MPa * 0.1) -> cm²
+    for &diam in &[10.0_f64, 12.5, 16.0, 20.0, 25.0] {
+        let area = std::f64::consts::PI * (diam / 10.0).powi(2) / 4.0;
+        if area >= as_req_cm2.max(0.78) {
+            return (
+                diam,
+                as_req_cm2,
+                format!("X em aço CA-50 Ø{diam} mm (As req. {as_req_cm2:.2} cm²)"),
+            );
+        }
+    }
+    (
+        25.0,
+        as_req_cm2,
+        format!("2×Ø25 mm CA-50 ou perfil metálico (As req. {as_req_cm2:.2} cm²)"),
+    )
+}
+
+/// Sizes ASTM A307 / SAE 1020 anchor bolts (`fu = 400 MPa`, `γ_a2 = 1.35`, NBR 8800 §6.3.3)
+/// at each roof support under combined uplift tension `uplift_d_kn` and wind shear `shear_d_kn`.
+pub fn size_anchor_bolts(uplift_d_kn: f64, shear_d_kn: f64) -> (f64, usize, f64, String) {
+    let n_d = uplift_d_kn.max(0.0);
+    let v_d = shear_d_kn.max(0.0);
+    if n_d < 1e-4 && v_d < 1e-4 {
+        return (
+            10.0,
+            2,
+            0.0,
+            "2×Ø10 mm (construtivos, L_emb ≥ 15 cm)".to_owned(),
+        );
+    }
+    let fu_kpa = 400_000.0;
+    let gamma_a2 = 1.35;
+    for &(count, diam) in &[
+        (2usize, 10.0_f64),
+        (2, 12.5),
+        (2, 16.0),
+        (4, 12.5),
+        (4, 16.0),
+        (4, 20.0),
+    ] {
+        let ab = std::f64::consts::PI * (diam / 1000.0).powi(2) / 4.0;
+        // NBR 8800 §6.3.3.2: Ft,Rd = 0.75 * Ab * fu / γa2; Fv,Rd = 0.45 * Ab * fu / γa2 (threads in shear plane).
+        let n_rd = (count as f64) * 0.75 * ab * fu_kpa / gamma_a2;
+        let v_rd = (count as f64) * 0.45 * ab * fu_kpa / gamma_a2;
+        let interaction = (n_d / n_rd).powi(2) + (v_d / v_rd).powi(2);
+        if interaction <= 1.0 + 1e-9 {
+            let emb_cm = (diam * 1.5).max(15.0).round();
+            return (
+                diam,
+                count,
+                interaction,
+                format!("{count}×Ø{diam} mm SAE 1020 (L_emb ≥ {emb_cm:.0} cm)"),
+            );
+        }
+    }
+    (
+        20.0,
+        4,
+        1.5,
+        "4×Ø20 mm insuficiente — detalhar chapa de base e chumbador químico".to_owned(),
+    )
 }
 
 /// μ, steel per face (cm²) of a section `b` × `h` under `md` (kN·m).
@@ -529,6 +633,10 @@ impl Project {
             } else {
                 f64::INFINITY
             };
+            let friction_mu = soil_friction_mu(self.structure.settings.soil_kpa);
+            let net_stab_kn = (0.9 * gravity_kn - 1.4 * roof_uplift_kn).max(0.0);
+            let sliding_resistance_kn = friction_mu * net_stab_kn;
+            let sliding_fs = sliding_resistance_kn / force.max(1e-9);
             rows.push(GlobalStabilityResult {
                 direction,
                 height_m: height,
@@ -539,6 +647,9 @@ impl Project {
                 roof_uplift_kn,
                 stabilizing_knm: stabilizing,
                 overturning_ratio: stabilizing / (1.4 * moment).max(1e-9),
+                friction_mu,
+                sliding_resistance_kn,
+                sliding_fs,
                 alpha,
                 alpha_limit,
                 drift_mm,
@@ -651,6 +762,33 @@ impl Project {
             let md = 1.4 * moment;
             let (ratio, steel) = bending(along, across, md, fck);
             let needed = size_rectangular_beam(along.max(0.12), md, 1.4 * shear, fck, 0.15, 0.80).0;
+            let footing_check = |m_base_knm: f64| -> (Option<f64>, Option<f64>, Option<f64>) {
+                let Some(ft) = report
+                    .footings
+                    .iter()
+                    .find(|f| f.column.as_deref() == Some(result.label.as_str()))
+                else {
+                    return (None, None, None);
+                };
+                let n_stab = (0.9 * result.load_kn).max(1.0);
+                let b_wind = ft.width_m.min(ft.depth_m).max(0.30);
+                let l_wind = ft.width_m.max(ft.depth_m).max(0.30);
+                let ecc = m_base_knm / n_stab;
+                let area = b_wind * l_wind;
+                let max_kpa = if ecc <= b_wind / 6.0 {
+                    (n_stab / area) * (1.0 + 6.0 * ecc / b_wind)
+                } else if ecc < b_wind * 0.48 {
+                    2.0 * n_stab / (3.0 * l_wind * (0.5 * b_wind - ecc).max(0.02))
+                } else {
+                    f64::INFINITY
+                };
+                // NBR 6122: temporary wind combination allows 1.30 * σ_adm and e ≤ B/3.
+                let ratio_p = max_kpa / (1.30 * ft.soil_kpa.max(1.0));
+                let ratio_e = ecc / (b_wind / 3.0);
+                (Some(ecc), Some(max_kpa), Some(ratio_p.max(ratio_e)))
+            };
+            let base_m = if braced { 0.0 } else { moment };
+            let (ft_ecc, ft_kpa, ft_ratio) = footing_check(base_m);
             out.columns.push(ColumnWindResult {
                 id: column.id,
                 label: result.label.clone(),
@@ -664,6 +802,9 @@ impl Project {
                 ratio,
                 steel_cm2: steel,
                 needed_depth_m: needed,
+                footing_eccentricity_m: ft_ecc,
+                footing_max_kpa: ft_kpa,
+                footing_wind_ratio: ft_ratio,
             });
             if let Some(id) = roof_id {
                 roof_columns
@@ -697,6 +838,12 @@ impl Project {
             } else {
                 0.0
             };
+            let support_count = result.reactions.len().max(2) as f64;
+            let roof_face_shear =
+                1.4 * WALL_CP * q * (roof.high_m - roof.low_m).max(0.3) * roof.eaves_m()
+                    / support_count;
+            let (bolt_mm, bolt_cnt, bolt_int, bolt_spec) =
+                size_anchor_bolts(anchor, roof_face_shear);
             out.roofs.push(RoofWindResult {
                 id: result.id,
                 label: result.label.clone(),
@@ -706,6 +853,10 @@ impl Project {
                 dead_kpa: dead,
                 net_design_kpa: net,
                 anchor_kn: anchor,
+                anchor_bolt_mm: bolt_mm,
+                anchor_bolt_count: bolt_cnt,
+                anchor_interaction: bolt_int,
+                anchor_spec: bolt_spec,
             });
         }
         for roof in &self.structure.roofs {
@@ -744,12 +895,16 @@ impl Project {
             let path_ok = grounded
                 .iter()
                 .any(|a| grounded.iter().any(|b| a.distance(*b) > 0.5));
+            let (tie_bar_mm, tie_as_cm2, tie_spec) = size_bracing_tie(demand);
             let bracing = RoofBracingResult {
                 roof_id: roof.id,
                 label: roof_result.label.clone(),
                 demand_kn: demand,
                 capacity_kn: roof.lateral_bracing_kn,
                 path_ok,
+                tie_bar_mm,
+                tie_as_cm2,
+                tie_spec,
             };
             if !bracing.ok() {
                 for &index in columns {
@@ -769,6 +924,30 @@ impl Project {
                         0.80,
                     )
                     .0;
+                    // Recompute cantilever footing wind eccentricity & bearing pressure.
+                    if let Some(ft) = report
+                        .footings
+                        .iter()
+                        .find(|f| f.column.as_deref() == Some(col.label.as_str()))
+                        && let Some(col_res) = report.columns.iter().find(|c| c.id == col.id)
+                    {
+                        let n_stab = (0.9 * col_res.load_kn).max(1.0);
+                        let b_wind = ft.width_m.min(ft.depth_m).max(0.30);
+                        let l_wind = ft.width_m.max(ft.depth_m).max(0.30);
+                        let ecc = col.moment_knm / n_stab;
+                        let max_kpa = if ecc <= b_wind / 6.0 {
+                            (n_stab / (b_wind * l_wind)) * (1.0 + 6.0 * ecc / b_wind)
+                        } else if ecc < b_wind * 0.48 {
+                            2.0 * n_stab / (3.0 * l_wind * (0.5 * b_wind - ecc).max(0.02))
+                        } else {
+                            f64::INFINITY
+                        };
+                        let ratio_p = max_kpa / (1.30 * ft.soil_kpa.max(1.0));
+                        let ratio_e = ecc / (b_wind / 3.0);
+                        col.footing_eccentricity_m = Some(ecc);
+                        col.footing_max_kpa = Some(max_kpa);
+                        col.footing_wind_ratio = Some(ratio_p.max(ratio_e));
+                    }
                 }
             }
             out.bracing.push(bracing);
@@ -961,5 +1140,60 @@ mod tests {
                 .iter()
                 .all(|direction| !direction.supports_ok && !direction.ok())
         );
+    }
+
+    #[test]
+    fn soil_sliding_bracing_tie_anchor_bolts_and_footing_wind_match_hand_calculations() {
+        // 1. Soil friction coefficient μ (NBR 6122).
+        assert!((soil_friction_mu(100.0) - 0.30).abs() < 1e-12);
+        assert!((soil_friction_mu(150.0) - 0.35).abs() < 1e-12);
+        assert!((soil_friction_mu(250.0) - 0.45).abs() < 1e-12);
+        assert!((soil_friction_mu(400.0) - 0.55).abs() < 1e-12);
+
+        // 2. X-bracing CA-50 steel tie rod: N_diag = √2 · F_d, As = N_diag / fyd.
+        let demand_kn = 60.0;
+        let (diam_mm, as_cm2, spec) = size_bracing_tie(demand_kn);
+        let expected_as = demand_kn * std::f64::consts::SQRT_2 * 10.0 / (500.0 / 1.15);
+        assert!((as_cm2 - expected_as).abs() < 1e-9);
+        let bar_area = std::f64::consts::PI * (diam_mm / 10.0).powi(2) / 4.0;
+        assert!(bar_area >= as_cm2);
+        assert!(spec.contains("CA-50"));
+
+        // 3. Anchor bolts under combined uplift + shear (NBR 8800 §6.3.3).
+        let (bolt_mm, bolt_count, interaction, bolt_spec) = size_anchor_bolts(35.0, 20.0);
+        assert!(bolt_mm >= 12.0);
+        assert!(bolt_count >= 2);
+        assert!(interaction > 0.0 && interaction <= 1.0 + 1e-9);
+        assert!(bolt_spec.contains("SAE 1020"));
+        let ab = std::f64::consts::PI * (bolt_mm / 1000.0).powi(2) / 4.0;
+        let n_rd = (bolt_count as f64) * 0.75 * ab * 400_000.0 / 1.35;
+        let v_rd = (bolt_count as f64) * 0.45 * ab * 400_000.0 / 1.35;
+        let expected_inter = (35.0 / n_rd).powi(2) + (20.0 / v_rd).powi(2);
+        assert!((interaction - expected_inter).abs() < 1e-9);
+
+        // 4. Unbraced tall wall column checks footing eccentricity & pressure under wind.
+        let mut project = gourmet(true);
+        project.structure.roofs[0].lateral_bracing_kn = None;
+        let report = project.structure_report();
+        assert!(!report.wind.columns.is_empty());
+        for col in &report.wind.columns {
+            assert!(!col.braced);
+            assert!(col.footing_eccentricity_m.is_some());
+            assert!(col.footing_max_kpa.is_some());
+            assert!(col.footing_wind_ratio.is_some());
+            assert!(col.footing_eccentricity_m.unwrap() > 0.0);
+            assert!(col.footing_wind_ratio.unwrap() > 0.0);
+        }
+        // Global stability exposes soil sliding FS = μ·(0.9·G − 1.4·U) / W_k.
+        for g in &report.wind.global {
+            assert!(
+                (g.friction_mu - soil_friction_mu(project.structure.settings.soil_kpa)).abs()
+                    < 1e-12
+            );
+            let expected_res =
+                (g.friction_mu * (0.9 * g.gravity_kn - 1.4 * g.roof_uplift_kn)).max(0.0);
+            assert!((g.sliding_resistance_kn - expected_res).abs() < 1e-9);
+            assert!((g.sliding_fs - expected_res / g.wind_kn.max(1e-9)).abs() < 1e-9);
+        }
     }
 }

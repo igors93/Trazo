@@ -556,10 +556,18 @@ fn wind_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Opt
         return action;
     }
     for column in &report.wind.columns {
-        let ok = column.ratio <= 1.0 + 1e-9;
+        let footing_ok = column.footing_wind_ratio.is_none_or(|r| r <= 1.0 + 1e-9);
+        let ok = column.ratio <= 1.0 + 1e-9 && footing_ok;
+        let footing_note = column.footing_wind_ratio.map_or(String::new(), |r| {
+            format!(
+                " Sapata sob vento: uso {:.0} % (e = {} cm).",
+                r * 100.0,
+                decimal(column.footing_eccentricity_m.unwrap_or(0.0) * 100.0, 1)
+            )
+        });
         ui.label(
             RichText::new(format!(
-                "Pilar {} · parede de {} m, faixa de {} m, q = {} kN/m², {}: M = {} kN·m; {} cm atravessando a parede{}",
+                "Pilar {} · parede de {} m, faixa de {} m, q = {} kN/m², {}: M = {} kN·m; {} cm atravessando a parede{}{}",
                 column.label,
                 decimal(column.height_m, 2),
                 decimal(column.tributary_m, 2),
@@ -567,7 +575,7 @@ fn wind_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Opt
                 if column.braced { "topo travado pelo telhado" } else { "em balanço" },
                 decimal(column.moment_knm, 1),
                 decimal(column.depth_m * 100.0, 0),
-                if ok {
+                if column.ratio <= 1.0 + 1e-9 {
                     format!(" atendem ({} cm² por face).", decimal(column.steel_cm2, 2))
                 } else {
                     format!(
@@ -576,7 +584,8 @@ fn wind_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Opt
                             .needed_depth_m
                             .map_or("mais de 80 cm".to_owned(), |h| format!("{:.0} cm", h * 100.0))
                     )
-                }
+                },
+                footing_note
             ))
             .color(if ok { TEXT_2 } else { WARNING }),
         );
@@ -617,12 +626,13 @@ fn wind_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Opt
         ui.label(
             RichText::new(if roof.lifts() {
                 format!(
-                    "Telhado {}: sucção de {} kN/m²{} contra {} kN/m² de peso: ancore cada ponta de viga para {} kN e amarre as telhas.",
+                    "Telhado {}: sucção de {} kN/m²{} contra {} kN/m² de peso: ancore cada ponta de viga para {} kN ({}) e amarre as telhas.",
                     roof.label,
                     decimal(roof.uplift_kpa, 2),
                     if roof.open { " (lado aberto)" } else { "" },
                     decimal(roof.dead_kpa, 2),
-                    decimal(roof.anchor_kn, 1)
+                    decimal(roof.anchor_kn, 1),
+                    roof.anchor_spec
                 )
             } else {
                 format!(
@@ -637,23 +647,25 @@ fn wind_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Opt
     }
     for brace in &report.wind.bracing {
         ui.label(RichText::new(format!(
-            "Telhado {} · contraventamento: exige {} kN; resistência verificada {}; apoios ancorados {}.",
+            "Telhado {} · contraventamento: exige {} kN ({}); resistência verificada {}; apoios ancorados {}.",
             brace.label, decimal(brace.demand_kn, 1),
+            brace.tie_spec,
             brace.capacity_kn.map_or("não informada".to_owned(), |kn| format!("{} kN", decimal(kn, 1))),
             if brace.path_ok { "sim" } else { "não" }
         )).color(if brace.ok() { TEXT_2 } else { WARNING }));
     }
     for global in &report.wind.global {
         ui.label(RichText::new(format!(
-            "Estabilidade {}: vento {} kN, α {:.2}/{:.2}, deslocamento {} / {} mm, tombamento {:.2} · {}",
+            "Estabilidade {}: vento {} kN, α {:.2}/{:.2}, deslocamento {} / {} mm, tombamento {:.2}, deslizamento FS {:.2} · {}",
             global.direction, decimal(global.wind_kn, 1), global.alpha, global.alpha_limit,
             decimal(global.drift_mm, 1), decimal(global.drift_limit_mm, 1),
             global.overturning_ratio,
+            global.sliding_fs,
             if global.ok() { "triagem atende" } else { "revisar caminho e estrutura" }
         )).color(if global.ok() { TEXT_2 } else { WARNING }));
     }
     ui.label(
-        RichText::new("O apoio vertical do telhado só trava o pilar após informar resistência verificada do caminho lateral completo até as fundações. A triagem global não substitui o projeto de ligações, fundações e deslizamento.")
+        RichText::new("O apoio vertical do telhado só trava o pilar após informar resistência verificada do caminho lateral completo até as fundações. As sugestões de tirantes, chumbadores e montantes são pré-dimensionamentos para revisão do engenheiro.")
             .size(11.0)
             .color(MUTED),
     );

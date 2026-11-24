@@ -620,6 +620,25 @@ fn sized_structure_verdicts(
             ));
         }
         if let Some(wind) = &panel.wind {
+            let jamb_note = if wind.opening_jambs.is_empty() {
+                String::new()
+            } else {
+                let specs: Vec<String> = wind
+                    .opening_jambs
+                    .iter()
+                    .map(|j| {
+                        format!(
+                            "abertura {} ({:.2} m): {}×{} cm {}",
+                            j.opening_id,
+                            j.opening_width_m,
+                            (j.width_m * 100.0).round() as i32,
+                            (j.depth_m * 100.0).round() as i32,
+                            j.bars
+                        )
+                    })
+                    .collect();
+                format!(" Montantes grauteados sugeridos: {}.", specs.join("; "))
+            };
             checks.push(Check::new(
                 "Vento fora do plano",
                 if wind.ok() { wind.ratio } else { wind.ratio.max(2.0) },
@@ -629,14 +648,15 @@ fn sized_structure_verdicts(
                     "Revise os apoios, aberturas e cintas do painel alto antes de construir.".to_owned()
                 },
                 format!(
-                    "q = {} kPa; Md = {} kN·m/m; MRd = {} kN·m/m; uso {} %. Modelo unidirecional conservador, ftk = 0,10 MPa e γm = 2,0 (NBR 16868-1, Tabelas 2 e 3); pilares nas pontas: {}; fundação: {}; sem aberturas: {}.",
+                    "q = {} kPa; Md = {} kN·m/m; MRd = {} kN·m/m; uso {} %. Modelo unidirecional conservador, ftk = 0,10 MPa e γm = 2,0 (NBR 16868-1, Tabelas 2 e 3); pilares nas pontas: {}; fundação: {}; sem aberturas: {}.{}",
                     decimal(wind.q_kpa, 2),
                     decimal(wind.moment_knm_m, 2),
                     decimal(wind.capacity_knm_m, 2),
                     decimal(wind.ratio * 100.0, 0),
                     wind.end_columns,
                     wind.base_supported,
-                    wind.openings_clear
+                    wind.openings_clear,
+                    jamb_note
                 ),
             ));
             if let Some(bond) = &wind.bond_beam {
@@ -1076,45 +1096,71 @@ fn sized_structure_verdicts(
         });
     }
     for column in &report.wind.columns {
+        let mut checks = vec![Check::new(
+            "Flexão (vento)",
+            column.ratio,
+            if column.ratio <= 1.0 + 1e-9 {
+                format!(
+                    "{} cm atravessando a parede seguram o vento ({}), {} cm² por face.",
+                    decimal(column.depth_m * 100.0, 0),
+                    if column.braced {
+                        "topo travado pelo telhado"
+                    } else {
+                        "em balanço"
+                    },
+                    decimal(column.steel_cm2, 2)
+                )
+            } else {
+                format!(
+                    "Gire ou aumente o pilar: {} atravessando a parede{}.",
+                    column
+                        .needed_depth_m
+                        .map_or("mais de 80 cm".to_owned(), |h| format!(
+                            "{:.0} cm",
+                            h * 100.0
+                        )),
+                    if column.braced {
+                        ""
+                    } else {
+                        ", ou trave o topo com o telhado contraventado"
+                    }
+                )
+            },
+            format!(
+                "NBR 6123: q = {} kN/m², Cp = 1,3, faixa de {} m, H = {} m; M = w·H²/{} = {} kN·m, Md = 1,4 M, x/d ≤ 0,45.",
+                decimal(column.q_kpa, 2),
+                decimal(column.tributary_m, 2),
+                decimal(column.height_m, 2),
+                if column.braced { 8 } else { 2 },
+                decimal(column.moment_knm, 1)
+            ),
+        )];
+        if let Some(footing_ratio) = column.footing_wind_ratio {
+            let e_cm = column.footing_eccentricity_m.unwrap_or(0.0) * 100.0;
+            let p_max = column.footing_max_kpa.unwrap_or(0.0);
+            checks.push(Check::new(
+                "Sapata sob vento",
+                footing_ratio,
+                if footing_ratio <= 1.0 + 1e-9 {
+                    format!(
+                        "A sapata absorve o momento do vento (e = {} cm, σmáx = {:.0} kPa).",
+                        decimal(e_cm, 1),
+                        p_max
+                    )
+                } else {
+                    "A sapata sofre excentricidade ou tensão excessiva sob vento: aumente a sapata ou trave o topo do pilar.".to_owned()
+                },
+                format!(
+                    "NBR 6122 sob vento (0,9·N + M_vento): e = {} cm (limite B/3), σmáx = {:.0} kPa (limite 1,3·σadm).",
+                    decimal(e_cm, 1),
+                    p_max
+                ),
+            ));
+        }
         verdicts.push(Verdict {
             discipline: Discipline::Structure,
             element: format!("Pilar {} · vento", column.label),
-            checks: vec![Check::new(
-                "Flexão (vento)",
-                column.ratio,
-                if column.ratio <= 1.0 + 1e-9 {
-                    format!(
-                        "{} cm atravessando a parede seguram o vento ({}), {} cm² por face.",
-                        decimal(column.depth_m * 100.0, 0),
-                        if column.braced {
-                            "topo travado pelo telhado"
-                        } else {
-                            "em balanço"
-                        },
-                        decimal(column.steel_cm2, 2)
-                    )
-                } else {
-                    format!(
-                        "Gire ou aumente o pilar: {} atravessando a parede{}.",
-                        column
-                            .needed_depth_m
-                            .map_or("mais de 80 cm".to_owned(), |h| format!("{:.0} cm", h * 100.0)),
-                        if column.braced {
-                            ""
-                        } else {
-                            ", ou trave o topo com o telhado contraventado"
-                        }
-                    )
-                },
-                format!(
-                    "NBR 6123: q = {} kN/m², Cp = 1,3, faixa de {} m, H = {} m; M = w·H²/{} = {} kN·m, Md = 1,4 M, x/d ≤ 0,45.",
-                    decimal(column.q_kpa, 2),
-                    decimal(column.tributary_m, 2),
-                    decimal(column.height_m, 2),
-                    if column.braced { 8 } else { 2 },
-                    decimal(column.moment_knm, 1)
-                ),
-            )],
+            checks,
         });
     }
     for roof in &report.wind.roofs {
@@ -1132,19 +1178,22 @@ fn sized_structure_verdicts(
                 light,
                 simple: if roof.lifts() {
                     format!(
-                        "O vento levanta o telhado: ancore cada ponta de viga para {} kN e amarre as telhas.",
-                        decimal(roof.anchor_kn, 1)
+                        "O vento levanta o telhado: ancore cada ponta de viga para {} kN ({}) e amarre as telhas.",
+                        decimal(roof.anchor_kn, 1),
+                        roof.anchor_spec
                     )
                 } else {
                     "O peso do telhado vence a sucção do vento.".to_owned()
                 },
                 detail: format!(
-                    "NBR 6123: q = {} kN/m², Cpe = −1,0, Cpi = {}; 1,4·{} − 0,9·{} = {} kN/m².",
+                    "NBR 6123: q = {} kN/m², Cpe = −1,0, Cpi = {}; 1,4·{} − 0,9·{} = {} kN/m²; ligação sugerida: {} (interação N+V NBR 8800 = {:.2}).",
                     decimal(roof.q_kpa, 2),
                     if roof.open { "+0,8 (lado aberto)" } else { "0" },
                     decimal(roof.uplift_kpa, 2),
                     decimal(roof.dead_kpa, 2),
-                    decimal(roof.net_design_kpa, 2)
+                    decimal(roof.net_design_kpa, 2),
+                    roof.anchor_spec,
+                    roof.anchor_interaction
                 ),
             }],
         });
@@ -1156,10 +1205,22 @@ fn sized_structure_verdicts(
             checks: vec![Check::new(
                 "Caminho lateral",
                 if brace.path_ok { brace.capacity_kn.map_or(2.0, |kn| brace.demand_kn / kn.max(1e-9)) } else { 2.0 },
-                if brace.ok() { "A resistência informada cobre o esforço de cálculo até as fundações.".to_owned() }
-                else { format!("Verifique o contraventamento completo para {:.1} kN e ancore pelo menos dois apoios às fundações.", brace.demand_kn) },
-                format!("Demanda {:.1} kN; capacidade verificada {}. A resistência deve incluir plano do telhado, ligações, apoios e fundações.",
-                    brace.demand_kn, brace.capacity_kn.map_or("não informada".to_owned(), |kn| format!("{kn:.1} kN"))),
+                if brace.ok() {
+                    format!(
+                        "A resistência informada cobre o esforço de cálculo até as fundações (sugestão: {}).",
+                        brace.tie_spec
+                    )
+                } else {
+                    format!(
+                        "Verifique o contraventamento completo para {:.1} kN ({}) e ancore pelo menos dois apoios às fundações.",
+                        brace.demand_kn,
+                        brace.tie_spec
+                    )
+                },
+                format!("Demanda {:.1} kN; capacidade verificada {}; tirante em X sugerido: {}. A resistência deve incluir plano do telhado, ligações, apoios e fundações.",
+                    brace.demand_kn,
+                    brace.capacity_kn.map_or("não informada".to_owned(), |kn| format!("{kn:.1} kN")),
+                    brace.tie_spec),
             )],
         });
     }
@@ -1179,7 +1240,14 @@ fn sized_structure_verdicts(
                     format!("Vento na fachada de {:.2} m × {:.2} m: {:.1} kN na direção {}.", global.facade_m, global.height_m, global.wind_kn, global.direction)),
                 Check::new("Tombamento global", 1.0 / global.overturning_ratio.max(1e-9),
                     format!("Momento estabilizante {:.1} kN·m para {:.1} kN·m de vento de cálculo.", global.stabilizing_knm, 1.4 * global.overturning_knm),
-                    format!("Triagem de corpo rígido com 0,9 G favorável, 1,4 W lateral e 1,4 U de sucção (U = {:.1} kN). Não verifica deslizamento nem cada sapata isolada.", global.roof_uplift_kn)),
+                    format!("Triagem de corpo rígido com 0,9 G favorável, 1,4 W lateral e 1,4 U de sucção (U = {:.1} kN).", global.roof_uplift_kn)),
+                Check::new("Deslizamento no solo", 1.50 / global.sliding_fs.max(1e-6),
+                    if global.sliding_fs >= 1.50 - 1e-9 {
+                        format!("Atrito na base (FS = {:.2} ≥ 1,50) resiste ao vento horizontal.", global.sliding_fs)
+                    } else {
+                        format!("Risco de deslizamento sob vento (FS = {:.2} < 1,50): aumente o peso das fundações ou preveja travamento/estacas.", global.sliding_fs)
+                    },
+                    format!("NBR 6122: μ = {:.2}, F_res = μ·(0,9·G − 1,4·U) = {:.1} kN para Wk = {:.1} kN → FS = {:.2} ≥ 1,50.", global.friction_mu, global.sliding_resistance_kn, global.wind_kn, global.sliding_fs)),
             ],
         });
     }

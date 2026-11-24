@@ -130,6 +130,22 @@ impl MasonryBondBeamDesign {
     }
 }
 
+/// Sized grouted vertical concrete jamb (*montante lateral*) beside an opening
+/// in a tall masonry panel under out-of-plane wind (#147).
+#[derive(Clone, Debug, PartialEq)]
+pub struct TallOpeningJambDesign {
+    pub opening_id: u64,
+    pub opening_width_m: f64,
+    pub jamb_height_m: f64,
+    pub moment_knm: f64,
+    pub width_m: f64,
+    pub depth_m: f64,
+    pub steel_cm2: f64,
+    pub bars: String,
+    pub ratio: f64,
+    pub ok: bool,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct MasonryPanelWindResult {
     /// Highest top of a possibly sloped wall, metres.
@@ -142,6 +158,8 @@ pub struct MasonryPanelWindResult {
     pub base_supported: bool,
     pub openings_clear: bool,
     pub bond_beam: Option<MasonryBondBeamDesign>,
+    /// Grouted vertical jamb reinforcement proposed for every opening in this tall wall (#147).
+    pub opening_jambs: Vec<TallOpeningJambDesign>,
 }
 
 impl MasonryPanelWindResult {
@@ -322,6 +340,34 @@ impl Project {
         } else {
             design_pressure * height * height / 2.0
         };
+        let mut opening_jambs = Vec::new();
+        for op in self.openings.iter().filter(|op| op.wall_id == wall.id) {
+            let w_op = op.width();
+            let jamb_h = wall.height_over(self.wall_height, op).max(2.0);
+            // Tributary wind gathered by half the opening + 0.50 m adjacent masonry strip.
+            let w_jamb = WALL_CP * q * (w_op * 0.5 + 0.50);
+            let m_jamb = 1.4 * w_jamb * jamb_h * jamb_h / 8.0;
+            let v_jamb = 1.4 * w_jamb * jamb_h * 0.5;
+            let jamb_w = thickness.max(0.14);
+            let fck = self.structure.settings.fck_mpa;
+            let (across_opt, steel_cm2, flex_ratio, shear_ratio) =
+                size_rectangular_beam(jamb_w, m_jamb, v_jamb, fck, jamb_w.max(0.19), 0.35);
+            let depth_m = across_opt.unwrap_or(0.35);
+            let ratio = flex_ratio.max(shear_ratio);
+            let ok = across_opt.is_some() && ratio <= 1.0 + 1e-9 && w_op <= MAX_LINTEL_SPAN_M;
+            opening_jambs.push(TallOpeningJambDesign {
+                opening_id: op.id,
+                opening_width_m: w_op,
+                jamb_height_m: jamb_h,
+                moment_knm: m_jamb,
+                width_m: jamb_w,
+                depth_m,
+                steel_cm2,
+                bars: choose_bars(steel_cm2).replace("(superior)", "(em ambas faces)"),
+                ratio,
+                ok,
+            });
+        }
         Some(MasonryPanelWindResult {
             height_m: height,
             q_kpa: q,
@@ -332,6 +378,7 @@ impl Project {
             base_supported,
             openings_clear,
             bond_beam,
+            opening_jambs,
         })
     }
 
@@ -933,5 +980,14 @@ mod tests {
                         })
                 })
         );
+        // Opening in tall wind-loaded panel also receives a sized grouted jamb design (#147).
+        let wind = report.panels[0].wind.as_ref().unwrap();
+        assert_eq!(wind.opening_jambs.len(), 1);
+        let jamb = &wind.opening_jambs[0];
+        assert!(jamb.opening_width_m > 0.5);
+        assert!(jamb.moment_knm > 0.0);
+        assert!(jamb.steel_cm2 > 0.0);
+        assert!(!jamb.bars.is_empty());
+        assert!(jamb.ok);
     }
 }
