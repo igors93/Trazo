@@ -10,6 +10,7 @@ pub fn save(project: &Project, path: &Path) -> Result<(), String> {
     let mut stored = project.clone();
     stored.version = CURRENT_PROJECT_VERSION;
     stored.normalize_precision();
+    stored.ensure_all_guids();
     let content = serde_json::to_string_pretty(&stored)
         .map_err(|error| format!("Falha na serialização do projeto: {}", error))?;
 
@@ -111,6 +112,7 @@ pub fn load(path: &Path) -> Result<(Project, Vec<String>), String> {
         .validate_and_repair()
         .map_err(|error| format!("Erro de validação: {}", error))?;
     warnings.extend(repair_warnings);
+    project.ensure_all_guids();
     Ok((project, warnings))
 }
 
@@ -335,6 +337,84 @@ mod tests {
         assert_eq!(loaded.openings.len(), 1);
         assert_eq!(loaded.openings[0].wall_id, loaded.walls[0].id);
         assert!(!warnings.is_empty());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn guids_migrate_silently_preserve_on_roundtrip_and_refresh_on_copy() {
+        // 1. Legacy v2 project without any "guids" field loads with 0 warnings
+        //    and deterministically populates stable GUIDs for all entities.
+        let legacy_v2 = r#"{
+            "version": 2,
+            "name": "Projeto Sem Guid",
+            "walls": [
+                {"id": 10, "start": {"x": 0.0, "y": 0.0}, "end": {"x": 4.0, "y": 0.0}},
+                {"id": 11, "start": {"x": 4.0, "y": 0.0}, "end": {"x": 4.0, "y": 3.0}},
+                {"id": 12, "start": {"x": 4.0, "y": 3.0}, "end": {"x": 0.0, "y": 3.0}},
+                {"id": 13, "start": {"x": 0.0, "y": 3.0}, "end": {"x": 0.0, "y": 0.0}}
+            ],
+            "rooms": [
+                {"id": 1, "name": "Sala", "kind": "LivingRoom", "wall_ids": [10, 11, 12, 13]}
+            ],
+            "openings": [
+                {"id": 20, "wall_id": 10, "kind": "Door", "t": 0.5}
+            ],
+            "next_id": 25
+        }"#;
+        let path = std::env::temp_dir().join(format!("trazo-guid-rt-{}.json", std::process::id()));
+        fs::write(&path, legacy_v2).unwrap();
+        let (loaded1, warnings1) = load(&path).unwrap();
+        assert!(
+            warnings1.is_empty(),
+            "legacy v2 GUID migration must not emit warnings: {warnings1:?}"
+        );
+        let (loaded2, _) = load(&path).unwrap();
+        assert!(!loaded1.project_guid().is_nil());
+        assert_eq!(loaded1.project_guid(), loaded2.project_guid());
+        assert_eq!(loaded1.guid_of(1), loaded2.guid_of(1));
+        assert_eq!(loaded1.guid_of(10), loaded2.guid_of(10));
+        assert_eq!(loaded1.guid_of(20), loaded2.guid_of(20));
+        assert!(loaded1.guid_of(1).is_some());
+        assert!(loaded1.guid_of(10).is_some());
+        assert!(loaded1.guid_of(20).is_some());
+        assert!(!loaded1.guids.layers.is_empty());
+
+        // 2. Saving and reopening preserves 100% of GUIDs identically.
+        let mut proj = loaded1;
+        let saved_room_guid = proj.guid_of(1).unwrap();
+        let saved_wall_guid = proj.guid_of(10).unwrap();
+        let saved_opening_guid = proj.guid_of(20).unwrap();
+        let saved_project_guid = proj.project_guid();
+
+        save(&proj, &path).unwrap();
+        let (reloaded, warnings2) = load(&path).unwrap();
+        assert!(warnings2.is_empty());
+        assert_eq!(reloaded.project_guid(), saved_project_guid);
+        assert_eq!(reloaded.guid_of(1), Some(saved_room_guid));
+        assert_eq!(reloaded.guid_of(10), Some(saved_wall_guid));
+        assert_eq!(reloaded.guid_of(20), Some(saved_opening_guid));
+
+        // 3. Copying via fragment + insert_fragment assigns fresh GUIDs to copies
+        //    while keeping original GUIDs and internal links intact.
+        let fragment = proj.fragment(&[crate::domain::element::Element::Room(1)]);
+        let shifted = fragment
+            .transformed(&crate::domain::transform::Transform::Translate(Point::new(
+                6.0, 0.0,
+            )))
+            .unwrap();
+        let pasted = proj.insert_fragment(&shifted).unwrap();
+        assert_eq!(pasted.len(), 1);
+        let copy_room_id = pasted[0].id();
+        assert_ne!(copy_room_id, 1);
+        let copy_room_guid = proj.guid_of(copy_room_id).unwrap();
+        assert_ne!(copy_room_guid, saved_room_guid);
+        assert_eq!(proj.guid_of(1), Some(saved_room_guid));
+        // Copied opening points to a copied wall and has its own brand-new GUID.
+        assert_eq!(proj.openings.len(), 2);
+        let copy_opening = proj.openings.iter().find(|o| o.id != 20).unwrap();
+        assert_ne!(copy_opening.wall_id, 10);
+        assert_ne!(proj.guid_of(copy_opening.id), Some(saved_opening_guid));
+
         let _ = fs::remove_file(path);
     }
 }

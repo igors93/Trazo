@@ -155,7 +155,50 @@ impl FloorPlanApp {
                 if let Some(entity) = self.selection.and_then(crate::domain::model::Entity::of) {
                     self.constraints_section(ui, entity);
                 }
+                if let Some(selected) = self.selection {
+                    self.element_identity_section(ui, selected.id());
+                }
             });
+    }
+
+    fn element_identity_section(&self, ui: &mut Ui, id: u64) {
+        let Some(guid) = self.project.guid_of(id) else {
+            return;
+        };
+        let uuid_str = guid.to_uuid_string();
+        let ifc_id = guid.to_ifc_global_id();
+        section(ui, "identity_bim", "Identificação BIM", |ui| {
+            grid(ui, "identity_grid", |ui| {
+                property_label(ui, "ID");
+                property_value(ui, &format!("#{id}"));
+                ui.end_row();
+
+                property_label(ui, "GUID");
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(guid.short_label())
+                            .monospace()
+                            .size(11.5)
+                            .color(MUTED),
+                    )
+                    .on_hover_text(&uuid_str);
+                    if ui
+                        .small_button("Copiar")
+                        .on_hover_text("Copiar GUID completo (UUID v4)")
+                        .clicked()
+                    {
+                        ui.ctx().copy_text(uuid_str.clone());
+                    }
+                });
+                ui.end_row();
+
+                property_label(ui, "IFC GlobalId");
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(&ifc_id).monospace().size(10.5).color(MUTED));
+                });
+                ui.end_row();
+            });
+        });
     }
 
     fn review_notices_section(&self, ui: &mut Ui, id: u64) {

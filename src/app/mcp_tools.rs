@@ -1642,6 +1642,7 @@ impl FloorPlanApp {
             let (x, y) = from_model(Point::new(terrain.min.x, terrain.max.y));
             json!({
                 "id": terrain.id,
+                "guid": project.guid_of(terrain.id).map(|g| g.to_uuid_string()),
                 "forma": if terrain.vertices.len() >= 3 { "poligono" } else { "retangulo" },
                 "divisas": terrain.outline().into_iter().map(xy).collect::<Vec<_>>(),
                 "x": round(x),
@@ -1675,6 +1676,7 @@ impl FloorPlanApp {
                 });
                 json!({
                     "id": room.id,
+                    "guid": project.guid_of(room.id).map(|g| g.to_uuid_string()),
                     "nome": room.display_name(),
                     "forma": if rectangle { "retangulo" } else { "poligono" },
                     "centro": project.room_centroid(room).map(xy),
@@ -1714,6 +1716,7 @@ impl FloorPlanApp {
                     .collect();
                 json!({
                     "id": wall.id,
+                    "guid": project.guid_of(wall.id).map(|g| g.to_uuid_string()),
                     "espessura": round(wall.thickness()),
                     "material": wall.masonry.as_ref().map(|material| material.name.clone()),
                     "inicio": xy(wall.start),
@@ -1735,6 +1738,7 @@ impl FloorPlanApp {
             .map(|opening| {
                 json!({
                     "id": opening.id,
+                    "guid": project.guid_of(opening.id).map(|g| g.to_uuid_string()),
                     "tipo": match opening.kind {
                         OpeningKind::Door => "porta",
                         OpeningKind::Window => "janela",
@@ -1766,6 +1770,7 @@ impl FloorPlanApp {
                 let (width, depth) = fixture.extent();
                 json!({
                     "id": fixture.id,
+                    "guid": project.guid_of(fixture.id).map(|g| g.to_uuid_string()),
                     "tipo": fixture.kind.key(),
                     "nome": fixture.kind.label(),
                     "centro": xy(fixture.center),
@@ -1813,6 +1818,8 @@ impl FloorPlanApp {
             .filter(|r| r.severity != crate::domain::dependencies::ReviewSeverity::Info)
             .count();
         json!({
+            "projeto_guid": project.project_guid().to_uuid_string(),
+            "projeto_ifc_global_id": project.project_guid().to_ifc_global_id(),
             "espessura_parede_m": round(self.project.masonry.thickness()),
             "alvenaria": {
                 "material": self.project.masonry.name,
@@ -2405,5 +2412,40 @@ mod gate_tests {
         assert!(app.project.walls.len() >= 4);
         assert!(app.history.can_undo());
         let _ = std::fs::remove_file(&dxf_path);
+    }
+
+    #[test]
+    fn mcp_exposes_and_selects_elements_by_uuid_and_ifc_global_id() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let created = app.run_mcp_tool(
+            "criar_comodo",
+            &json!({ "nome": "Quarto", "x": 0.0, "y": 0.0, "largura": 3.5, "comprimento": 3.0 }),
+        );
+        assert!(!created.is_error, "{}", created.text);
+
+        let plan = app.run_mcp_tool("obter_planta", &json!({}));
+        let data = plan.structured.unwrap();
+        assert!(data["projeto_guid"].as_str().is_some());
+        assert_eq!(data["projeto_ifc_global_id"].as_str().unwrap().len(), 22);
+        let room_entry = &data["comodos"][0];
+        let room_id = room_entry["id"].as_u64().unwrap();
+        let room_guid_str = room_entry["guid"].as_str().unwrap();
+        let room_guid = crate::domain::guid::Guid::parse(room_guid_str).unwrap();
+
+        // Select by canonical UUID string.
+        let sel_uuid = app.run_mcp_tool("selecionar", &json!({ "guid": room_guid_str }));
+        assert!(!sel_uuid.is_error, "{}", sel_uuid.text);
+        assert_eq!(app.selection, Some(crate::app::Selection::Room(room_id)));
+
+        // Clear selection, then select by 22-char IFC GlobalId.
+        app.run_mcp_tool("selecionar", &json!({}));
+        assert_eq!(app.selection, None);
+        let sel_ifc = app.run_mcp_tool(
+            "selecionar",
+            &json!({ "guid": room_guid.to_ifc_global_id() }),
+        );
+        assert!(!sel_ifc.is_error, "{}", sel_ifc.text);
+        assert_eq!(app.selection, Some(crate::app::Selection::Room(room_id)));
     }
 }

@@ -77,6 +77,12 @@ impl FloorPlanApp {
     pub(super) fn tool_select(&mut self, args: &Value) -> Result<ToolOutput, String> {
         let items = if flag(args, "tudo") {
             self.project.filtered_elements(Default::default())
+        } else if let Some(guid_raw) = text(args, "guid") {
+            let id = self
+                .project
+                .resolve_element_ref(&guid_raw)
+                .ok_or_else(|| format!("Nenhum elemento encontrado para o GUID '{guid_raw}'."))?;
+            vec![self.find_element(id)?]
         } else if let Some(kind) = text(args, "tipo") {
             let kind = match kind.as_str() {
                 "comodos" | "comodo" => ElementKind::Room,
@@ -117,7 +123,12 @@ impl FloorPlanApp {
                 items.len()
             )
         };
-        Ok(ToolOutput::ok(message).with_structured(json!({ "selecao": ids_json(&items) })))
+        let guids: Vec<Option<String>> = items
+            .iter()
+            .map(|item| self.project.guid_of(item.id()).map(|g| g.to_uuid_string()))
+            .collect();
+        Ok(ToolOutput::ok(message)
+            .with_structured(json!({ "selecao": ids_json(&items), "guids": guids })))
     }
 
     /// Runs an edit on the listed elements and selects what it reports.

@@ -597,9 +597,10 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "selecionar",
             title: "Selecionar na tela",
-            description: "Seleciona elementos na tela do usuário para mostrar do que você está falando (não altera a planta). Use ids, tipo ou tudo; sem nada, limpa a seleção. obter_planta devolve em 'selecao' o que o usuário selecionou.",
+            description: "Seleciona elementos na tela do usuário para mostrar do que você está falando (não altera a planta). Use ids, guid (UUID ou IFC GlobalId de 22 caracteres), tipo ou tudo; sem nada, limpa a seleção. obter_planta devolve em 'selecao' o que o usuário selecionou.",
             properties: json!({
                 "ids": ids(),
+                "guid": string("UUID ou IFC GlobalId (22 caracteres) do elemento a localizar e selecionar."),
                 "tipo": string("comodos, paredes, aberturas, objetos, desenhos ou terreno."),
                 "tudo": boolean("Seleciona todos os elementos visíveis."),
                 "aproximar": boolean("Aproxima a vista da seleção."),

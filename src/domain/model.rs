@@ -165,6 +165,11 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub workspace_tabs: Vec<super::discipline::WorkspaceTab>,
 
+    /// Stable 128-bit globally unique identifiers (UUID v4 / IFC GlobalId)
+    /// for the project and every element, layer, view, sheet and resource.
+    #[serde(default, skip_serializing_if = "super::guid::GuidRegistry::is_empty")]
+    pub guids: super::guid::GuidRegistry,
+
     next_id: u64,
 }
 
@@ -241,6 +246,8 @@ impl Default for Project {
             xrefs: Vec::new(),
 
             workspace_tabs: Vec::new(),
+
+            guids: super::guid::GuidRegistry::default(),
 
             next_id: 1,
         }
@@ -990,7 +997,208 @@ impl Project {
 
         self.next_id += 1;
 
+        self.guids.register_new_element(id);
+
         id
+    }
+
+    fn deterministic_guid_seed(&self) -> u64 {
+        let counts = format!(
+            "v{}:n{}:w{}:r{}:o{}:f{}",
+            self.version,
+            self.next_id,
+            self.walls.len(),
+            self.rooms.len(),
+            self.openings.len(),
+            self.fixtures.len()
+        );
+        super::guid::fnv1a_seed(&[b"trazo-project", self.name.as_bytes(), counts.as_bytes()])
+    }
+
+    /// Returns the project's stable [`super::guid::Guid`], falling back to a
+    /// deterministic GUID if the project has not been persisted or populated yet.
+    pub fn project_guid(&self) -> super::guid::Guid {
+        if !self.guids.project.is_nil() {
+            return self.guids.project;
+        }
+        super::guid::Guid::seeded(self.deterministic_guid_seed(), 0)
+    }
+
+    /// Returns the stable [`super::guid::Guid`] of element `id`, if registered.
+    pub fn guid_of(&self, id: u64) -> Option<super::guid::Guid> {
+        self.guids.element_guid(id)
+    }
+
+    /// Returns the 22-character buildingSMART IFC `GlobalId` of element `id`.
+    #[allow(dead_code)]
+    pub fn ifc_global_id_of(&self, id: u64) -> Option<String> {
+        self.guid_of(id).map(super::guid::Guid::to_ifc_global_id)
+    }
+
+    /// Finds the numeric element `id` owning `guid`, if any.
+    #[allow(dead_code)]
+    pub fn id_by_guid(&self, guid: super::guid::Guid) -> Option<u64> {
+        self.guids.find_element_id(guid)
+    }
+
+    /// Resolves either a numeric id string or a UUID / 22-char IFC `GlobalId`.
+    pub fn resolve_element_ref(&self, raw: &str) -> Option<u64> {
+        self.guids.resolve_element_ref(raw)
+    }
+
+    /// Ensures the project itself and every live or inactive-floor entity,
+    /// layer, view, sheet and resource has a stable, non-nil [`super::guid::Guid`].
+    ///
+    /// Already-assigned GUIDs are preserved untouched; missing ones (e.g. when
+    /// opening legacy files) are populated deterministically without warnings.
+    pub fn ensure_all_guids(&mut self) {
+        let seed = if !self.guids.project.is_nil() {
+            let raw = self.guids.project.as_u128();
+            (raw as u64) ^ ((raw >> 64) as u64)
+        } else {
+            let s = self.deterministic_guid_seed();
+            self.guids.project = super::guid::Guid::seeded(s, 0);
+            s
+        };
+
+        for w in &self.walls {
+            self.guids.ensure_element(w.id, seed);
+        }
+        for r in &self.rooms {
+            self.guids.ensure_element(r.id, seed);
+        }
+        for o in &self.openings {
+            self.guids.ensure_element(o.id, seed);
+        }
+        if let Some(t) = &self.terrain {
+            self.guids.ensure_element(t.id, seed);
+        }
+        for l in &self.lots {
+            self.guids.ensure_element(l.id, seed);
+        }
+        for f in &self.fixtures {
+            self.guids.ensure_element(f.id, seed);
+        }
+        for d in &self.drawings {
+            self.guids.ensure_element(d.id, seed);
+        }
+        for g in &self.groups {
+            self.guids.ensure_element(g.id, seed);
+        }
+        for c in &self.constraints {
+            self.guids.ensure_element(c.id, seed);
+        }
+        for dim in &self.dimensions {
+            self.guids.ensure_element(dim.id, seed);
+        }
+        for n in &self.notes {
+            self.guids.ensure_element(n.id, seed);
+        }
+        for circ in &self.circulations {
+            self.guids.ensure_element(circ.id, seed);
+        }
+        for cond in &self.conduits {
+            self.guids.ensure_element(cond.id, seed);
+        }
+        for b in &self.structure.beams {
+            self.guids.ensure_element(b.id, seed);
+        }
+        for s in &self.structure.slabs {
+            self.guids.ensure_element(s.id, seed);
+        }
+        for bb in &self.structure.balance_beams {
+            self.guids.ensure_element(bb.id, seed);
+        }
+        for wf in &self.structure.wall_foundations {
+            self.guids.ensure_element(wf.id, seed);
+        }
+        for roof in &self.structure.roofs {
+            self.guids.ensure_element(roof.id, seed);
+        }
+        for cant in &self.structure.cantilevers {
+            self.guids.ensure_element(cant.id(), seed);
+        }
+
+        // Inactive multi-storey floor contents + floor levels themselves.
+        for floor in &self.floors.levels {
+            self.guids.ensure_element(floor.id, seed);
+            for w in &floor.data.walls {
+                self.guids.ensure_element(w.id, seed);
+            }
+            for r in &floor.data.rooms {
+                self.guids.ensure_element(r.id, seed);
+            }
+            for o in &floor.data.openings {
+                self.guids.ensure_element(o.id, seed);
+            }
+            for f in &floor.data.fixtures {
+                self.guids.ensure_element(f.id, seed);
+            }
+            for d in &floor.data.drawings {
+                self.guids.ensure_element(d.id, seed);
+            }
+            for dim in &floor.data.dimensions {
+                self.guids.ensure_element(dim.id, seed);
+            }
+            for n in &floor.data.notes {
+                self.guids.ensure_element(n.id, seed);
+            }
+            for circ in &floor.data.circulations {
+                self.guids.ensure_element(circ.id, seed);
+            }
+            for cond in &floor.data.conduits {
+                self.guids.ensure_element(cond.id, seed);
+            }
+            for b in &floor.data.beams {
+                self.guids.ensure_element(b.id, seed);
+            }
+            for bb in &floor.data.balance_beams {
+                self.guids.ensure_element(bb.id, seed);
+            }
+            for wf in &floor.data.wall_foundations {
+                self.guids.ensure_element(wf.id, seed);
+            }
+            for roof in &floor.data.roofs {
+                self.guids.ensure_element(roof.id, seed);
+            }
+            for s in &floor.data.slabs {
+                self.guids.ensure_element(s.id, seed);
+            }
+        }
+
+        // Secondary namespaces (layers, views, sheets, library/blocks/references/materials).
+        for layer in &self.layers {
+            self.guids.ensure_layer(layer.id, seed);
+        }
+        for sec in &self.views.sections {
+            self.guids.ensure_view(format!("sec:{}", sec.id), seed);
+        }
+        for elv in &self.views.elevations {
+            self.guids.ensure_view(format!("elv:{}", elv.id), seed);
+        }
+        for det in &self.views.details {
+            self.guids.ensure_view(format!("det:{}", det.id), seed);
+        }
+        for sheet in &self.sheet_set.sheets {
+            self.guids.ensure_sheet(sheet.id, seed);
+        }
+        for item in &self.library {
+            self.guids.ensure_resource(format!("lib:{}", item.id), seed);
+        }
+        for blk in &self.blocks {
+            self.guids.ensure_resource(format!("blk:{}", blk.id), seed);
+        }
+        for ins in &self.block_instances {
+            self.guids.ensure_resource(format!("ins:{}", ins.id), seed);
+        }
+        for und in &self.underlays {
+            self.guids.ensure_resource(format!("und:{}", und.id), seed);
+        }
+        for xref in &self.xrefs {
+            self.guids.ensure_resource(format!("xrf:{}", xref.id), seed);
+        }
+        self.guids
+            .ensure_resource(format!("mat:{}", self.masonry.name), seed);
     }
 
     pub fn add_wall(&mut self, start: Point, end: Point) -> Option<u64> {

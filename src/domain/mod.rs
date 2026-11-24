@@ -24,6 +24,7 @@ pub mod foundations;
 pub mod frame2d;
 pub mod geometry;
 pub mod grid_analysis;
+pub mod guid;
 pub mod hatch;
 pub mod history;
 pub mod junctions;

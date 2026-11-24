@@ -47,7 +47,7 @@ Ambos os projetos são escritos em **Rust puro + `egui`/`eframe`** com licença 
   - **Por que agora:** cria a rede de segurança antes de adicionar parsers binários (IFC/DWG/E57/RVT) e motores 3D.
   - **Critério de pronto:** `cargo clippy --all-targets --all-features -- -D warnings` verde sem `unwrap()`/`expect()` em código de produção.
 
-- [ ] **T-02 · Identificadores Globalmente Únicos (`Guid`) Estáveis em Todo o Modelo** *(Tamanho: M · Pré-requisito de IFC, Links, Diff, Parâmetros e Colaboração)*
+- [x] **T-02 · Identificadores Globalmente Únicos (`Guid`) Estáveis em Todo o Modelo** *(Tamanho: M · Pré-requisito de IFC, Links, Diff, Parâmetros e Colaboração)*
   - **Ref. BIMCraft:** `crates/core/src/ids.rs`, `ROADMAP.md` (0.5).
   - **O que implementar:**
     - Adicionar um `Guid` (128 bits, gerado via `getrandom`, serializado em Base64/UUID compacto e compatível com IFC `GlobalId` de 22 caracteres) ao lado do `id: u64` em todos os elementos (`Wall`, `Room`, `Opening`, `Fixture`, `Drawing`, `Beam`, `Column`, `Slab`, `Footing`, `Roof`, `Conduit`, `Circuit`, `Note`, `Dimension`, `View`, `Sheet`) e entradas de biblioteca (materiais, tipos, camadas, parâmetros, fases).
