@@ -55,7 +55,11 @@ impl Project {
                 "A divisa precisa ser um polígono simples com pelo menos 0,25 m².".to_owned(),
             );
         }
-        let (min, max) = bounds(&corners).unwrap();
+        let Some((min, max)) = bounds(&corners) else {
+            return Err(
+                "A divisa precisa ser um polígono simples com pelo menos 0,25 m².".to_owned(),
+            );
+        };
         let id = self
             .terrain
             .as_ref()

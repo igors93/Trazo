@@ -59,7 +59,10 @@ fn build_grid_coords(raw: &[f64], target_step: f64, max_lines: usize) -> Vec<f64
         return merged;
     }
 
-    let span = merged.last().unwrap() - merged[0];
+    let (Some(&first), Some(&last)) = (merged.first(), merged.last()) else {
+        return merged;
+    };
+    let span = last - first;
     let step = target_step.max(span / (max_lines.saturating_sub(1).max(2) as f64));
     let mut refined = Vec::new();
     for pair in merged.windows(2) {
@@ -74,7 +77,7 @@ fn build_grid_coords(raw: &[f64], target_step: f64, max_lines: usize) -> Vec<f64
             }
         }
     }
-    refined.push(*merged.last().unwrap());
+    refined.push(last);
     refined
 }
 

@@ -1613,7 +1613,11 @@ fn import_polyline_points(
     report: &mut DxfImportReport,
 ) {
     // Drop trailing duplicate vertex when explicitly closed.
-    if closed && pts.len() > 2 && pts.first().unwrap().near(*pts.last().unwrap(), 1e-4) {
+    if closed
+        && pts.len() > 2
+        && let (Some(&first), Some(&last)) = (pts.first(), pts.last())
+        && first.near(last, 1e-4)
+    {
         pts.pop();
     }
     if pts.len() < 2 {

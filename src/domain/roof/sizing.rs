@@ -395,7 +395,15 @@ pub(super) fn size_howe_truss(
                 break;
             }
         }
-        best.unwrap()
+        best.unwrap_or(RoofTrussMemberResult {
+            name: name.to_owned(),
+            axial_design_kn: -force_kn,
+            length_m: len_m,
+            section_cm: (6.0, 12.0),
+            slenderness: 0.0,
+            ratio: 0.0,
+            ok: false,
+        })
     };
 
     let size_tens = |name: &str, force_kn: f64, len_m: f64| -> RoofTrussMemberResult {
@@ -420,7 +428,15 @@ pub(super) fn size_howe_truss(
                 break;
             }
         }
-        best.unwrap()
+        best.unwrap_or(RoofTrussMemberResult {
+            name: name.to_owned(),
+            axial_design_kn: force_kn,
+            length_m: len_m,
+            section_cm: (6.0, 12.0),
+            slenderness: 0.0,
+            ratio: 0.0,
+            ok: false,
+        })
     };
 
     let top = size_comp("Banzo superior (empenas)", n_top_c, top_panel_len);

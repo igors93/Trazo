@@ -39,7 +39,7 @@ Ambos os projetos são escritos em **Rust puro + `egui`/`eframe`** com licença 
 
 ### FASE 1 — Alicerces Arquiteturais, Segurança de Runtime e Escala
 
-- [ ] **T-01 · Blindagem de Compilação, Zero-Panic e Perfil `dev` Otimizado** *(Tamanho: S)*
+- [x] **T-01 · Blindagem de Compilação, Zero-Panic e Perfil `dev` Otimizado** *(Tamanho: S)*
   - **Ref. BIMCraft:** `Cargo.toml` (`[workspace.lints]`, `[profile.dev.package.*]`), `clippy.toml`.
   - **O que implementar:**
     - Ativar `unsafe_code = "forbid"` na raiz do crate e habilitar gradativamente (módulo por módulo) `clippy::unwrap_used`, `clippy::expect_used`, `clippy::panic`, `clippy::todo`, `clippy::unimplemented`, `clippy::unreachable` em produção (liberados em `#[cfg(test)]` via `clippy.toml`).

@@ -216,12 +216,9 @@ impl Project {
             current.ceiling_height_m = live_height;
         }
 
-        let target = self
-            .floors
-            .levels
-            .iter_mut()
-            .find(|l| l.id == target_id)
-            .unwrap();
+        let Some(target) = self.floors.levels.iter_mut().find(|l| l.id == target_id) else {
+            return Err("Pavimento de destino não encontrado.".to_owned());
+        };
         let target_data = std::mem::take(&mut target.data);
         let target_height = target.ceiling_height_m.max(2.0);
         self.install_live_floor_data(target_data);
@@ -236,16 +233,27 @@ impl Project {
         self.floors.sort_by_elevation();
 
         let (elevation_m, ceiling_height_m) = if above {
-            let top = self.floors.levels.last().unwrap();
-            let elev = ((top.elevation_m + top.ceiling_height_m + top.slab_thickness_m) * 100.0)
-                .round()
-                / 100.0;
-            (elev, top.ceiling_height_m)
-        } else {
-            let bottom = self.floors.levels.first().unwrap();
+            if let Some(top) = self.floors.levels.last() {
+                let elev = ((top.elevation_m + top.ceiling_height_m + top.slab_thickness_m)
+                    * 100.0)
+                    .round()
+                    / 100.0;
+                (elev, top.ceiling_height_m)
+            } else {
+                (
+                    self.wall_height + default_slab_thickness(),
+                    self.wall_height,
+                )
+            }
+        } else if let Some(bottom) = self.floors.levels.first() {
             let h = bottom.ceiling_height_m;
             let elev = ((bottom.elevation_m - h - bottom.slab_thickness_m) * 100.0).round() / 100.0;
             (elev, h)
+        } else {
+            (
+                -(self.wall_height + default_slab_thickness()),
+                self.wall_height,
+            )
         };
 
         let copied_walls = if copy_walls_from_current {
@@ -307,13 +315,10 @@ impl Project {
             return Err("Pavimento não encontrado.".to_owned());
         }
         if self.floors.active_floor_id == Some(id) {
-            let fallback = self
-                .floors
-                .levels
-                .iter()
-                .find(|l| l.id != id)
-                .map(|l| l.id)
-                .unwrap();
+            let Some(fallback) = self.floors.levels.iter().find(|l| l.id != id).map(|l| l.id)
+            else {
+                return Err("O projeto precisa manter pelo menos um pavimento.".to_owned());
+            };
             self.switch_floor(fallback)?;
         }
         self.floors.levels.retain(|l| l.id != id);

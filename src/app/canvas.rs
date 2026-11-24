@@ -184,10 +184,9 @@ fn paint_dimensions(painter: &Painter, view: ViewTransform, project: &Project) -
             .iter()
             .map(|x| view.to_screen(Point::new(*x, 0.0)).x)
             .collect();
-        painter.line_segment(
-            [Pos2::new(xs[0], row), Pos2::new(*xs.last().unwrap(), row)],
-            stroke,
-        );
+        if let (Some(&first), Some(&last)) = (xs.first(), xs.last()) {
+            painter.line_segment([Pos2::new(first, row), Pos2::new(last, row)], stroke);
+        }
         for x in &xs {
             painter.line_segment([Pos2::new(*x, row - 5.0), Pos2::new(*x, row + 8.0)], stroke);
             painter.line_segment(
@@ -218,13 +217,9 @@ fn paint_dimensions(painter: &Painter, view: ViewTransform, project: &Project) -
             .iter()
             .map(|y| view.to_screen(Point::new(0.0, *y)).y)
             .collect();
-        painter.line_segment(
-            [
-                Pos2::new(column, ys[0]),
-                Pos2::new(column, *ys.last().unwrap()),
-            ],
-            stroke,
-        );
+        if let (Some(&first), Some(&last)) = (ys.first(), ys.last()) {
+            painter.line_segment([Pos2::new(column, first), Pos2::new(column, last)], stroke);
+        }
         for y in &ys {
             painter.line_segment(
                 [Pos2::new(column - 5.0, *y), Pos2::new(column + 8.0, *y)],

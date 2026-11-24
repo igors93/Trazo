@@ -466,14 +466,12 @@ impl FloorPlanApp {
         self.tabs
             .iter()
             .enumerate()
-            .map(|(index, slot)| match slot {
+            .filter_map(|(index, slot)| match slot {
                 Some(view) => {
-                    let project = self
-                        .project_by_id(view.project_id)
-                        .expect("every view tab references an open project");
+                    let project = self.project_by_id(view.project_id)?;
                     let path = self.project_file_path(view.project_id);
                     let linked = self.project_tab_count(view.project_id) > 1;
-                    TabInfo {
+                    Some(TabInfo {
                         tab_id: view.id,
                         project_id: view.project_id,
                         title: format_tab_title(
@@ -491,11 +489,11 @@ impl FloorPlanApp {
                         pane: view.pane,
                         shown: self.split_tab == Some(index),
                         linked,
-                    }
+                    })
                 }
                 None => {
                     let linked = self.project_tab_count(self.active_project_id) > 1;
-                    TabInfo {
+                    Some(TabInfo {
                         tab_id: self.active_tab_id,
                         project_id: self.active_project_id,
                         title: format_tab_title(
@@ -515,7 +513,7 @@ impl FloorPlanApp {
                         pane: self.active_pane,
                         shown: index == self.active_tab,
                         linked,
-                    }
+                    })
                 }
             })
             .collect()
@@ -689,24 +687,29 @@ impl FloorPlanApp {
         let old_pid = self.active_project_id;
         let target_pane = self.tab_pane(index);
 
+        let Some(next_view) = self.tabs.get_mut(index).and_then(Option::take) else {
+            return;
+        };
         let previous_view = self.take_view_tab();
         self.tabs[old] = Some(previous_view);
-        let next_view = self.tabs[index]
-            .take()
-            .expect("an inactive tab holds its view state");
         let next_pid = next_view.project_id;
 
         if next_pid != old_pid {
-            let parked = self.take_shared_project();
-            self.projects.insert(old_pid, parked);
-            let target_project = self
-                .projects
-                .remove(&next_pid)
-                .expect("every inactive project_id exists in self.projects");
-            self.put_shared_project(target_project);
-            // Notify MCP subscribers that the active project changed without
-            // mutating the target project's own revision history.
-            self.mcp_events.publish(&crate::mcp::events::plan_updated());
+            if let Some(target_project) = self.projects.remove(&next_pid) {
+                let parked = self.take_shared_project();
+                self.projects.insert(old_pid, parked);
+                self.put_shared_project(target_project);
+                // Notify MCP subscribers that the active project changed without
+                // mutating the target project's own revision history.
+                self.mcp_events.publish(&crate::mcp::events::plan_updated());
+            } else {
+                // Defensive rollback if tab state was somehow inconsistent.
+                self.tabs[index] = Some(next_view);
+                if let Some(prev) = self.tabs[old].take() {
+                    self.put_view_tab(prev);
+                }
+                return;
+            }
         }
 
         self.put_view_tab(next_view);
@@ -1053,9 +1056,9 @@ impl FloorPlanApp {
             closed.min(self.tabs.len() - 1)
         };
 
-        let next_view = self.tabs[next_index]
-            .take()
-            .expect("an inactive tab holds its view state");
+        let Some(next_view) = self.tabs.get_mut(next_index).and_then(Option::take) else {
+            return;
+        };
         let next_pid = next_view.project_id;
 
         if next_pid != closed_pid {
@@ -1066,12 +1069,10 @@ impl FloorPlanApp {
             } else {
                 recovery::clear();
             }
-            let target_project = self
-                .projects
-                .remove(&next_pid)
-                .expect("every inactive project_id exists in self.projects");
-            self.put_shared_project(target_project);
-            self.mcp_events.publish(&crate::mcp::events::plan_updated());
+            if let Some(target_project) = self.projects.remove(&next_pid) {
+                self.put_shared_project(target_project);
+                self.mcp_events.publish(&crate::mcp::events::plan_updated());
+            }
         }
 
         self.put_view_tab(next_view);

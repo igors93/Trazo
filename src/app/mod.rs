@@ -1974,9 +1974,13 @@ impl FloorPlanApp {
                     )
                 })
                 .unwrap_or(Point::new(0.0, 0.0));
-            self.project
+            let Some(id) = self
+                .project
                 .set_terrain(origin, Point::new(origin.x + width, origin.y + height))
-                .unwrap()
+            else {
+                return;
+            };
+            id
         };
         if !self.record_change(previous) {
             return;

@@ -585,7 +585,11 @@ impl FloorPlanApp {
                             note.rotation_deg = rot;
                         }
                     }
-                    let saved = project.notes.iter().find(|n| n.id == id).unwrap();
+                    let saved = project
+                        .notes
+                        .iter()
+                        .find(|n| n.id == id)
+                        .ok_or("Anotação não encontrada após inserção.")?;
                     Ok(Change::new(format!(
                         "{} adicionado(a) (id {id}): \"{}\".",
                         kind.label(),
@@ -879,8 +883,12 @@ impl FloorPlanApp {
                             el.name = n.clone();
                         }
                     }
-                    let el = project.circulations.iter().find(|c| c.id == id).unwrap();
-                    let m = el.stair_metrics().unwrap();
+                    let el = project
+                        .circulations
+                        .iter()
+                        .find(|c| c.id == id)
+                        .ok_or("Escada não encontrada após inserção.")?;
+                    let m = el.stair_metrics().ok_or("Métricas da escada indisponíveis.")?;
                     Ok(Change::new(format!("{} adicionada (id {id}): {}.", el.name, el.summary()))
                         .data(json!({
                             "id": id,
@@ -916,8 +924,12 @@ impl FloorPlanApp {
                             el.name = n.clone();
                         }
                     }
-                    let el = project.circulations.iter().find(|c| c.id == id).unwrap();
-                    let m = el.ramp_metrics().unwrap();
+                    let el = project
+                        .circulations
+                        .iter()
+                        .find(|c| c.id == id)
+                        .ok_or("Rampa não encontrada após inserção.")?;
+                    let m = el.ramp_metrics().ok_or("Métricas da rampa indisponíveis.")?;
                     Ok(Change::new(format!("{} adicionada (id {id}): {}.", el.name, el.summary()))
                         .data(json!({
                             "id": id,
@@ -1066,7 +1078,7 @@ impl FloorPlanApp {
                         .sections
                         .iter()
                         .find(|s| s.id == id)
-                        .unwrap();
+                        .ok_or("Corte não encontrado após inserção.")?;
                     Ok(Change::new(format!("Corte {} adicionado (id {id}).", saved.label))
                         .data(json!({ "id": id, "rotulo": saved.label })))
                 })
@@ -1083,7 +1095,7 @@ impl FloorPlanApp {
                         .sections
                         .iter()
                         .find(|s| s.id == id)
-                        .unwrap();
+                        .ok_or("Corte padrão não encontrado após criação.")?;
                     Ok(Change::new(format!("Corte padrão {} criado (id {id}).", saved.label))
                         .data(json!({ "id": id, "rotulo": saved.label })))
                 })
@@ -1122,7 +1134,7 @@ impl FloorPlanApp {
                         .details
                         .iter()
                         .find(|d| d.id == id)
-                        .unwrap();
+                        .ok_or("Detalhe não encontrado após inserção.")?;
                     Ok(Change::new(format!("Detalhe {} adicionado (id {id}).", saved.label))
                         .data(json!({ "id": id, "rotulo": saved.label })))
                 })

@@ -123,14 +123,24 @@ fn split_shape(shape: &Shape, at: Point) -> Result<Vec<Shape>, String> {
 fn divide_shape(shape: &Shape, parts: usize) -> Result<Vec<Shape>, String> {
     let n = parts as f64;
     match shape {
-        Shape::Line { .. } | Shape::Polyline { .. } => {
-            let (mut path, closed) = match shape {
-                Shape::Line { start, end } => (vec![*start, *end], false),
-                Shape::Polyline { points, closed } => (points.clone(), *closed),
-                _ => unreachable!(),
-            };
-            if closed {
-                path.push(path[0]);
+        Shape::Line { start, end } => {
+            let path = vec![*start, *end];
+            let lengths = running_lengths(&path);
+            let total = *lengths.last().unwrap_or(&0.0);
+            if total / n < MIN_PIECE {
+                return Err("Partes pequenas demais.".to_owned());
+            }
+            Ok((0..parts)
+                .map(|index| Shape::Line {
+                    start: point_along(&path, &lengths, total * index as f64 / n),
+                    end: point_along(&path, &lengths, total * (index + 1) as f64 / n),
+                })
+                .collect())
+        }
+        Shape::Polyline { points, closed } => {
+            let mut path = points.clone();
+            if *closed && let Some(&first) = path.first() {
+                path.push(first);
             }
             let lengths = running_lengths(&path);
             let total = *lengths.last().unwrap_or(&0.0);
@@ -752,7 +762,7 @@ fn join_arcs(shapes: &[Shape]) -> Result<Shape, String> {
             sweep,
         } = shape
         else {
-            unreachable!();
+            return Err("Todos os elementos precisam ser arcos.".to_owned());
         };
         if index == 0 {
             (center, radius) = (*c, *r);

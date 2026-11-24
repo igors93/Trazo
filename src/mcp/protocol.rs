@@ -1445,7 +1445,7 @@ mod resource_tests {
     fn insert_fixture_tool_advertises_every_fixture_kind() {
         let listed = handle_message(
             &json!({ "jsonrpc": "2.0", "id": 1, "method": "tools/list" }),
-            &mut |_, _| unreachable!(),
+            &mut |_, _| panic!("tools/list should not invoke tools"),
         )
         .unwrap();
         let tools = listed["result"]["tools"].as_array().unwrap();

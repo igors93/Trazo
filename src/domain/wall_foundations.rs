@@ -484,11 +484,8 @@ impl Project {
                 unsupported: false,
             };
             let on = resolved.get(&foundation.id).map(|(_, stations)| stations);
-            match foundation.kind {
-                WallFoundationKind::GroundBeam
-                    if on.is_some_and(|stations| stations.len() >= 2) =>
-                {
-                    let on = on.unwrap();
+            match (foundation.kind, on) {
+                (WallFoundationKind::GroundBeam, Some(on)) if on.len() >= 2 => {
                     let b = foundation
                         .width_m
                         .unwrap_or_else(|| round_up(wall.thickness().max(0.15), 0.05));

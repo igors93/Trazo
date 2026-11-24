@@ -1808,9 +1808,17 @@ impl Project {
 
     pub fn update_opening_width(&mut self, id: u64, new_width: f64) -> Result<(), String> {
         self.validate_opening_width(id, new_width)?;
-        let op_idx = self.openings.iter().position(|o| o.id == id).unwrap();
+        let op_idx = self
+            .openings
+            .iter()
+            .position(|o| o.id == id)
+            .ok_or("Abertura não encontrada.")?;
         let wall_id = self.openings[op_idx].wall_id;
-        let wall = self.walls.iter().find(|w| w.id == wall_id).unwrap();
+        let wall = self
+            .walls
+            .iter()
+            .find(|w| w.id == wall_id)
+            .ok_or("Parede da abertura não encontrada.")?;
         let wall_len = wall.length();
 
         let half_t = new_width / (2.0 * wall_len);

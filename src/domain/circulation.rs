@@ -185,7 +185,9 @@ impl CirculationElement {
     pub fn summary(&self) -> String {
         match &self.kind {
             CirculationKind::Stair { shape, .. } => {
-                let m = self.stair_metrics().unwrap();
+                let Some(m) = self.stair_metrics() else {
+                    return shape.label().to_owned();
+                };
                 let status = if m.blondel_ok {
                     "OK"
                 } else {
@@ -203,7 +205,9 @@ impl CirculationElement {
                 .replace('.', ",")
             }
             CirculationKind::Ramp { .. } => {
-                let m = self.ramp_metrics().unwrap();
+                let Some(m) = self.ramp_metrics() else {
+                    return "Rampa".to_owned();
+                };
                 let status = if m.nbr_9050_ok {
                     "NBR 9050 OK"
                 } else {
@@ -262,7 +266,9 @@ impl CirculationElement {
                 landing_depth_m,
                 ..
             } => {
-                let m = self.stair_metrics().unwrap();
+                let Some(m) = self.stair_metrics() else {
+                    return geom;
+                };
                 let treads = m.risers.saturating_sub(1).max(1);
                 let w = width_m.max(0.6);
                 let p = tread_m.max(0.22);
@@ -404,8 +410,9 @@ impl CirculationElement {
                     self.to_world(Point::new((l - 0.25).max(0.5), w * 0.5)),
                 ));
                 geom.label_pos = self.to_world(Point::new(l * 0.5, -0.25));
-                let m = self.ramp_metrics().unwrap();
-                geom.label = format!("RAMPA i={:.1}%", m.slope_percent).replace('.', ",");
+                if let Some(m) = self.ramp_metrics() {
+                    geom.label = format!("RAMPA i={:.1}%", m.slope_percent).replace('.', ",");
+                }
             }
             CirculationKind::Landing {
                 width_m,

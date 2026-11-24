@@ -327,8 +327,10 @@ fn collect_geometry(
                     segments.push((pair[0], pair[1]));
                     midpoints.push(pair[0].midpoint(pair[1]));
                 }
-                if *closed && points.len() >= 2 {
-                    let a = *points.last().unwrap();
+                if *closed
+                    && points.len() >= 2
+                    && let Some(&a) = points.last()
+                {
                     let b = points[0];
                     segments.push((a, b));
                     midpoints.push(a.midpoint(b));

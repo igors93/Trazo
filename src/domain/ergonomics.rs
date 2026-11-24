@@ -226,11 +226,9 @@ pub fn analyze_ergonomics(project: &Project, min_passage_m: f64) -> ErgonomicsRe
 
     // 3. Furniture functional clearance zone blocked by another fixture or opposing wall.
     for zone in &clearance_zones {
-        let owner = project
-            .fixtures
-            .iter()
-            .find(|f| f.id == zone.fixture_id)
-            .unwrap();
+        let Some(owner) = project.fixtures.iter().find(|f| f.id == zone.fixture_id) else {
+            continue;
+        };
         for other in &project.fixtures {
             if other.id == zone.fixture_id {
                 continue;

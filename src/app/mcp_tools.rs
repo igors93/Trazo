@@ -914,7 +914,7 @@ impl FloorPlanApp {
                 std::fs::write(&path, csv).map_err(|e| format!("Não foi possível gravar: {e}"))?;
             }
             "csv" => export::csv(&shown, &path)?,
-            _ => unreachable!(),
+            other => return Err(format!("Formato de exportação desconhecido: '{other}'.")),
         }
         let msg = match (format.as_str(), extra_pages) {
             ("memorial_pdf", Some(pages)) => format!(
@@ -1426,8 +1426,9 @@ impl FloorPlanApp {
             if let Some(name) = &name {
                 project.rename_room(id, name)?;
             }
-            if width.is_some() || length.is_some() {
-                let (current_width, current_length) = current_bounds.unwrap();
+            if (width.is_some() || length.is_some())
+                && let Some((current_width, current_length)) = current_bounds
+            {
                 project.resize_room_dimensions(
                     id,
                     width.unwrap_or(current_width),

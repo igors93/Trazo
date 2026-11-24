@@ -134,45 +134,8 @@ pub fn generate_token() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
-#[cfg(windows)]
 fn fill_os_random(buffer: &mut [u8]) -> bool {
-    #[link(name = "bcrypt")]
-    unsafe extern "system" {
-        fn BCryptGenRandom(
-            algorithm: *mut core::ffi::c_void,
-            buffer: *mut u8,
-            count: u32,
-            flags: u32,
-        ) -> i32;
-    }
-    const BCRYPT_USE_SYSTEM_PREFERRED_RNG: u32 = 0x0000_0002;
-    let Ok(len) = u32::try_from(buffer.len()) else {
-        return false;
-    };
-    // SAFETY: `buffer` is valid for `len` writable bytes and `algorithm` is null
-    // as required by BCRYPT_USE_SYSTEM_PREFERRED_RNG.
-    let status = unsafe {
-        BCryptGenRandom(
-            core::ptr::null_mut(),
-            buffer.as_mut_ptr(),
-            len,
-            BCRYPT_USE_SYSTEM_PREFERRED_RNG,
-        )
-    };
-    status == 0
-}
-
-#[cfg(unix)]
-fn fill_os_random(buffer: &mut [u8]) -> bool {
-    use std::io::Read;
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut file| file.read_exact(buffer))
-        .is_ok()
-}
-
-#[cfg(not(any(windows, unix)))]
-fn fill_os_random(_buffer: &mut [u8]) -> bool {
-    false
+    getrandom::fill(buffer).is_ok()
 }
 
 fn watch_output(stream: Box<dyn std::io::Read + Send>, state: &Mutex<TunnelState>) {

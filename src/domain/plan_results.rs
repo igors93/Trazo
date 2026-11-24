@@ -734,14 +734,12 @@ pub fn build_plan_simulation_overlay(
                 let on_edge = poly.windows(2).any(|w| {
                     let (nearest, _) = super::geometry::nearest_point_on_segment(mid, w[0], w[1]);
                     nearest.distance(mid) <= 0.35
-                }) || (poly.len() >= 3 && {
-                    let (nearest, _) = super::geometry::nearest_point_on_segment(
-                        mid,
-                        *poly.last().unwrap(),
-                        poly[0],
-                    );
-                    nearest.distance(mid) <= 0.35
-                });
+                }) || (poly.len() >= 3
+                    && poly.last().is_some_and(|&last| {
+                        let (nearest, _) =
+                            super::geometry::nearest_point_on_segment(mid, last, poly[0]);
+                        nearest.distance(mid) <= 0.35
+                    }));
                 if on_edge {
                     edge_targets.push((mid, a.distance(b)));
                 }

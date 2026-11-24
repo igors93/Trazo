@@ -164,9 +164,22 @@ fn stream_events(request: Request, messages: mpsc::Receiver<String>) {
     }
 }
 
-fn header(name: &'static str, value: &str) -> Header {
-    Header::from_bytes(name.as_bytes(), value.as_bytes())
-        .unwrap_or_else(|_| Header::from_bytes(name.as_bytes(), &b""[..]).expect("ASCII header"))
+fn with_header<R: std::io::Read>(
+    response: Response<R>,
+    name: &'static str,
+    value: &str,
+) -> Response<R> {
+    match Header::from_bytes(name.as_bytes(), value.as_bytes()) {
+        Ok(h) => response.with_header(h),
+        Err(()) => response,
+    }
+}
+
+fn with_header_box(mut response: ResponseBox, name: &'static str, value: &str) -> ResponseBox {
+    if let Ok(h) = Header::from_bytes(name.as_bytes(), value.as_bytes()) {
+        response.add_header(h);
+    }
+    response
 }
 
 fn request_header(request: &Request, name: &'static str) -> String {
@@ -179,10 +192,12 @@ fn request_header(request: &Request, name: &'static str) -> String {
 }
 
 fn text_response(status: u16, content_type: &str, body: String) -> ResponseBox {
-    Response::from_string(body)
-        .with_status_code(status)
-        .with_header(header("Content-Type", content_type))
-        .boxed()
+    with_header(
+        Response::from_string(body).with_status_code(status),
+        "Content-Type",
+        content_type,
+    )
+    .boxed()
 }
 
 fn is_local_host(host: &str) -> bool {
@@ -298,9 +313,9 @@ fn respond(
                 }
             }
             // An event stream without the tunnel token ends up here.
-            Method::Get if accept.contains("text/event-stream") => Response::empty(405)
-                .with_header(header("Allow", "POST, OPTIONS"))
-                .boxed(),
+            Method::Get if accept.contains("text/event-stream") => {
+                with_header(Response::empty(405), "Allow", "POST, OPTIONS").boxed()
+            }
             Method::Get => text_response(
                 200,
                 "text/plain; charset=UTF-8",
@@ -308,20 +323,18 @@ fn respond(
                  Conecte o assistente a este endereço terminado em /mcp (requisições POST).\n"
                     .to_owned(),
             ),
-            _ => Response::empty(405)
-                .with_header(header("Allow", "POST, GET, OPTIONS"))
-                .boxed(),
+            _ => with_header(Response::empty(405), "Allow", "POST, GET, OPTIONS").boxed(),
         }
     };
-    let response = response
-        .with_header(header("Access-Control-Allow-Origin", "*"))
-        .with_header(header(
-            "Access-Control-Allow-Methods",
-            "GET, POST, DELETE, OPTIONS",
-        ))
-        .with_header(header("Access-Control-Allow-Headers", "*"))
-        .with_header(header("Access-Control-Expose-Headers", "Mcp-Session-Id"))
-        .with_header(header("Cache-Control", "no-store"));
+    let response = with_header_box(response, "Access-Control-Allow-Origin", "*");
+    let response = with_header_box(
+        response,
+        "Access-Control-Allow-Methods",
+        "GET, POST, DELETE, OPTIONS",
+    );
+    let response = with_header_box(response, "Access-Control-Allow-Headers", "*");
+    let response = with_header_box(response, "Access-Control-Expose-Headers", "Mcp-Session-Id");
+    let response = with_header_box(response, "Cache-Control", "no-store");
     let _ = request.respond(response);
 }
 

@@ -543,7 +543,7 @@ fn build_area_gourmet() -> Project {
     }
 
     // SPT soil survey (SP-01, firm sandy/clayey silt, water table at 5.0 m).
-    let survey = SoilSurvey::new(
+    if let Ok(survey) = SoilSurvey::new(
         "SP-01".to_owned(),
         vec![
             SptReading {
@@ -579,10 +579,10 @@ fn build_area_gourmet() -> Project {
         ],
         Some(5.0),
         1.0,
-    )
-    .expect("valid reference SPT survey");
-    project.set_soil_survey(Some(survey));
-    let _ = project.apply_survey_to_soil();
+    ) {
+        project.set_soil_survey(Some(survey));
+        let _ = project.apply_survey_to_soil();
+    }
 
     // Concrete columns along the tall left boundary wall (30 cm across the wall, flush inside lot)
     // and interior block corners (omitting the middle interior column so y = 28.25 gets a strip footing).
@@ -643,8 +643,9 @@ fn build_area_gourmet() -> Project {
     roof.overhang_m = 0.50;
     roof.beam_spacing_m = 3.25;
     roof.lateral_bracing_kn = Some(60.0);
-    let roof_id = project.add_roof(roof).expect("valid gourmet roof");
-    let _ = project.fit_walls_to_roof(roof_id);
+    if let Ok(roof_id) = project.add_roof(roof) {
+        let _ = project.fit_walls_to_roof(roof_id);
+    }
 
     // Keep the enclosed bathroom/pantry interior walls at their 2.80 m slab ceiling height.
     for (a, b) in [
