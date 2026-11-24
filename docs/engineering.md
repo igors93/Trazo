@@ -475,6 +475,7 @@ The suite lives in `src/domain/validation.rs` and runs with `cargo test` on Wind
 | `a_load_directly_on_a_beam_skips_the_slab_local_check` | Direct footprint/beam intersection | point load enters the beam without a fictitious slab punching check | exact |
 | `loads_are_conserved_from_the_slabs_to_the_columns` | Equilibrium | Σ column loads = slabs + beams + columns' own weight | 0.5 % |
 | `loads_are_conserved_across_floors` | Equilibrium | ground column = its own floor's load + the column above | 1e-9 |
+| `gourmet_area_reference_project_computes_end_to_end_in_ci` | Reference semi-open gourmet pavilion (`examples/area-gourmet.json`, #150) | SPT survey, ground beams + strip footings, boundary balance beams, 4.30 m wall + sloped gables, treated Cumaru posts + eave beams, exposed 34 % mono-pitch roof, NBR 6123 wind/sliding/bolts/ties, combinations, steel schedule, traffic lights and review PDF | end-to-end |
 
 Further checks live next to their modules: `nbr_5410_minimums_for_lighting_and_outlets`, `circuits_are_sized_with_breaker_then_wire`, `demand_factors_follow_the_usual_tables` (which includes a voltage-drop example) and `conduits_are_sized_by_the_fill_limits`.
 

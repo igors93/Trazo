@@ -7,13 +7,18 @@
 use super::{
     circulation::StairShape,
     doc_style::{DocStyle, DocStylePreset},
+    drawing::Shape,
     fixtures::FixtureKind,
     geometry::Point,
     hatch::{HatchPattern, HatchStyle},
+    masonry::Masonry,
     model::{CURRENT_PROJECT_VERSION, OpeningKind, Project},
     notes::{NoteKind, TechnicalSymbol},
+    roof::{Roof, RoofSide, TileKind, TimberClass, TimberSpecies},
     setbacks::Setbacks,
     sheet::{DrawingScale, Orientation, PaperSize, SheetLayout},
+    soil::{SoilKind, SoilSurvey, SptReading},
+    wind::WindSettings,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,13 +26,15 @@ pub enum SampleProject {
     CasaTerrea,
     Sobrado,
     Apartamento,
+    AreaGourmet,
 }
 
 impl SampleProject {
-    pub const ALL: [SampleProject; 3] = [
+    pub const ALL: [SampleProject; 4] = [
         SampleProject::CasaTerrea,
         SampleProject::Sobrado,
         SampleProject::Apartamento,
+        SampleProject::AreaGourmet,
     ];
 
     pub fn file_name(self) -> &'static str {
@@ -35,6 +42,7 @@ impl SampleProject {
             Self::CasaTerrea => "casa-terrea.json",
             Self::Sobrado => "sobrado.json",
             Self::Apartamento => "apartamento.json",
+            Self::AreaGourmet => "area-gourmet.json",
         }
     }
 
@@ -43,6 +51,7 @@ impl SampleProject {
             Self::CasaTerrea => "Casa térrea (2 quartos + suíte)",
             Self::Sobrado => "Sobrado (2 pavimentos, 3 quartos)",
             Self::Apartamento => "Apartamento (2 quartos com varanda)",
+            Self::AreaGourmet => "Área gourmet semiaberta (5 × 14,75 m, ref. estrutural)",
         }
     }
 
@@ -57,6 +66,9 @@ impl SampleProject {
             Self::Apartamento => {
                 "Apartamento residencial com varanda, estar/jantar, cozinha e lavanderia, suíte, dormitório e banheiro social em prancha A3 1:50."
             }
+            Self::AreaGourmet => {
+                "Pavilhão gourmet 5 × 14,75 m na divisa esquerda com parede alta de 4,30 m, oitões inclinados, mourões tratados voltados para a piscina, telhado aparente meia-água (34 %), baldrames, vigas alavanca, sondagem SPT e verificação completa de vento."
+            }
         }
     }
 
@@ -67,6 +79,7 @@ impl SampleProject {
             Self::CasaTerrea => include_str!("../../examples/casa-terrea.json"),
             Self::Sobrado => include_str!("../../examples/sobrado.json"),
             Self::Apartamento => include_str!("../../examples/apartamento.json"),
+            Self::AreaGourmet => include_str!("../../examples/area-gourmet.json"),
         };
         serde_json::from_str::<Project>(json).unwrap_or_else(|_| self.build())
     }
@@ -77,6 +90,7 @@ impl SampleProject {
             Self::CasaTerrea => build_casa_terrea(),
             Self::Sobrado => build_sobrado(),
             Self::Apartamento => build_apartamento(),
+            Self::AreaGourmet => build_area_gourmet(),
         };
         project.version = CURRENT_PROJECT_VERSION;
         project.normalize_precision();
@@ -477,6 +491,243 @@ fn build_apartamento() -> Project {
     project
 }
 
+/// Reference semi-open gourmet area (#150): 5.00 × 14.75 m pavilion on a
+/// 10 × 50 m lot against the left boundary, with bathroom + pantry block,
+/// 4.30 m tall boundary wall, sloped gables, treated timber posts and eave
+/// beams facing the pool, exposed 34 % mono-pitch roof, SPT soil survey,
+/// ground beams + strip footings, boundary balance beams and NBR 6123 wind.
+fn build_area_gourmet() -> Project {
+    let mut project = Project::default();
+    project.name = "Área Gourmet Semiaberta (5 × 14,75 m) — Referência Trazo".to_owned();
+    project.sheet = SheetLayout::standard(PaperSize::A3, Orientation::Landscape);
+    project.sheet.scale = DrawingScale::S1_100;
+    project.sheet.title_block.drawing_title =
+        "Área Gourmet Semiaberta — Planta e Estrutura de Referência".to_owned();
+    project.sheet.title_block.client = "Projeto de Referência (#150)".to_owned();
+    project.sheet.title_block.author = "Trazo CAD".to_owned();
+    project.doc_style = DocStyle::from_preset(DocStylePreset::AbntNbr6492);
+
+    // 19 cm structural concrete block keeps 4.30 m boundary wall slenderness within NBR 16868.
+    project.masonry = Masonry {
+        name: "Bloco estrutural de concreto 19×19×39 cm".to_owned(),
+        block_width: 0.19,
+        block_length: 0.39,
+        block_height: 0.19,
+        joint: 0.01,
+        plaster: 0.015,
+    };
+
+    // 10 × 50 m lot (pavilion sits at x ∈ [0, 5], y ∈ [25.75, 40.50]).
+    let _ = project.set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 50.0));
+
+    // Closed bathroom + pantry block inside the south end of the pavilion.
+    let _ = project.add_room(
+        Point::new(0.0, 25.75),
+        Point::new(2.50, 28.25),
+        "Banheiro Gourmet",
+    );
+    let _ = project.add_room(Point::new(0.0, 28.25), Point::new(2.50, 30.75), "Despensa");
+    apply_residential_hatches(&mut project);
+
+    // Continue left boundary wall to 14.75 m total length, plus south/north gables to x = 5.0 m.
+    let _ = project.add_wall(Point::new(0.0, 30.75), Point::new(0.0, 40.50));
+    let _ = project.add_wall(Point::new(2.50, 25.75), Point::new(5.00, 25.75));
+    let _ = project.add_wall(Point::new(0.0, 40.50), Point::new(5.00, 40.50));
+
+    // Doors on the interior east wall of the bathroom and pantry (keeping the tall boundary wall clear).
+    if let Some(w) = find_wall_near(&project, Point::new(2.50, 25.75), Point::new(2.50, 28.25)) {
+        let _ = project.add_opening(w, OpeningKind::Door, 0.50);
+    }
+    if let Some(w) = find_wall_near(&project, Point::new(2.50, 28.25), Point::new(2.50, 30.75)) {
+        let _ = project.add_opening(w, OpeningKind::Door, 0.50);
+    }
+
+    // SPT soil survey (SP-01, firm sandy/clayey silt, water table at 5.0 m).
+    let survey = SoilSurvey::new(
+        "SP-01".to_owned(),
+        vec![
+            SptReading {
+                depth_m: 1.0,
+                n: 8,
+                soil: SoilKind::ClayeySilt,
+            },
+            SptReading {
+                depth_m: 2.0,
+                n: 9,
+                soil: SoilKind::ClayeySilt,
+            },
+            SptReading {
+                depth_m: 3.0,
+                n: 11,
+                soil: SoilKind::SandySilt,
+            },
+            SptReading {
+                depth_m: 4.0,
+                n: 14,
+                soil: SoilKind::SandySilt,
+            },
+            SptReading {
+                depth_m: 5.0,
+                n: 18,
+                soil: SoilKind::Sand,
+            },
+            SptReading {
+                depth_m: 6.0,
+                n: 22,
+                soil: SoilKind::Sand,
+            },
+        ],
+        Some(5.0),
+        1.0,
+    )
+    .expect("valid reference SPT survey");
+    project.set_soil_survey(Some(survey));
+    let _ = project.apply_survey_to_soil();
+
+    // Concrete columns along the tall left boundary wall (30 cm across the wall, flush inside lot)
+    // and interior block corners (omitting the middle interior column so y = 28.25 gets a strip footing).
+    let mut west_col_ids = Vec::new();
+    for y in [25.75, 28.25, 30.75, 34.00, 37.25, 40.50] {
+        let pt = Point::new(0.0, y);
+        let (c_center, c_turns, _) =
+            project.structural_placement_fitted(FixtureKind::Column, pt, 0.30, 0.20);
+        if let Some(id) = project.add_fixture(FixtureKind::Column, c_center, 0.30, 0.20, c_turns) {
+            west_col_ids.push(id);
+        }
+        let (f_center, f_turns, _) =
+            project.structural_placement_fitted(FixtureKind::Footing, pt, 1.00, 1.00);
+        let _ = project.add_fixture(FixtureKind::Footing, f_center, 1.00, 1.00, f_turns);
+    }
+    let mut inner_col_ids = Vec::new();
+    for y in [25.75, 30.75] {
+        let pt = Point::new(2.50, y);
+        if let Some(id) = project.add_fixture(FixtureKind::Column, pt, 0.20, 0.20, 0) {
+            inner_col_ids.push(id);
+        }
+        let _ = project.add_fixture(FixtureKind::Footing, pt, 0.90, 0.90, 0);
+    }
+
+    // Concrete tie beams along the boundary wall and around the bathroom/pantry block + slabs.
+    for pair in west_col_ids.windows(2) {
+        let _ = project.add_beam(pair[0], pair[1], 0.20, 0.40);
+    }
+    if west_col_ids.len() >= 3 && inner_col_ids.len() == 2 {
+        let _ = project.add_beam(west_col_ids[0], inner_col_ids[0], 0.20, 0.40);
+        let _ = project.add_beam(west_col_ids[2], inner_col_ids[1], 0.20, 0.40);
+        let _ = project.add_beam(inner_col_ids[0], inner_col_ids[1], 0.20, 0.40);
+    }
+    let room_ids: Vec<u64> = project.rooms.iter().map(|r| r.id).collect();
+    for room_id in room_ids {
+        let _ = project.set_slab(room_id, super::structure::SlabKind::Solid, None);
+    }
+
+    // Treated Cumaru timber posts (mourões Ø 20 cm) along the open pool edge (x = 5.0 m).
+    // Five posts carry the low edge of the roof directly and via timber eave beams between posts.
+    project.structure.post_species = TimberSpecies::Cumaru;
+    project.structure.post_treated = true;
+    for y in [25.75, 29.45, 33.15, 36.85, 40.50] {
+        let _ = project.add_fixture(FixtureKind::TimberPost, Point::new(5.00, y), 0.20, 0.20, 0);
+    }
+
+    // Exposed mono-pitch ceramic tile roof in C30 timber (4.30 m → 2.60 m = 34 % draining east to the pool).
+    let mut roof = Roof::new(
+        Point::new(0.0, 25.75),
+        Point::new(5.00, 40.50),
+        RoofSide::West,
+        4.30,
+        2.60,
+    );
+    roof.tile = TileKind::Ceramic;
+    roof.timber = TimberClass::C30;
+    roof.exposed = true;
+    roof.overhang_m = 0.50;
+    roof.beam_spacing_m = 3.25;
+    roof.lateral_bracing_kn = Some(60.0);
+    let roof_id = project.add_roof(roof).expect("valid gourmet roof");
+    let _ = project.fit_walls_to_roof(roof_id);
+
+    // Keep the enclosed bathroom/pantry interior walls at their 2.80 m slab ceiling height.
+    for (a, b) in [
+        (Point::new(2.50, 25.75), Point::new(2.50, 28.25)),
+        (Point::new(2.50, 28.25), Point::new(2.50, 30.75)),
+        (Point::new(0.0, 28.25), Point::new(2.50, 28.25)),
+        (Point::new(0.0, 30.75), Point::new(2.50, 30.75)),
+    ] {
+        if let Some(wall_id) = find_wall_near(&project, a, b) {
+            let _ = project.set_wall_height(wall_id, Some(2.80), None);
+        }
+    }
+
+    // Balance beams on boundary footings (#144), ground beams + strip footings (#143), and footing sizing.
+    let _ = project.generate_balance_beams();
+    let _ = project.generate_wall_foundations();
+    let _ = project.size_footings();
+
+    // NBR 6123 site wind (V0 = 35 m/s, terrain category III).
+    let _ = project.set_wind(WindSettings {
+        v0_ms: 35.0,
+        category: 3,
+        s1: 1.0,
+        s3: 1.0,
+    });
+
+    // Sanitary fixtures, gourmet counter/dining furniture and 2D pool outline.
+    let _ = project.add_fixture(
+        FixtureKind::Washbasin,
+        Point::new(0.55, 26.40),
+        0.65,
+        0.45,
+        1,
+    );
+    let _ = project.add_fixture(FixtureKind::Toilet, Point::new(0.60, 27.35), 0.40, 0.65, 1);
+    let _ = project.add_fixture(FixtureKind::Shower, Point::new(1.70, 26.55), 0.90, 1.10, 0);
+    let _ = project.add_fixture(FixtureKind::Fridge, Point::new(0.65, 29.50), 0.70, 0.70, 1);
+    let _ = project.add_fixture(
+        FixtureKind::KitchenSink,
+        Point::new(0.55, 34.00),
+        2.20,
+        0.65,
+        1,
+    );
+    let _ = project.add_fixture(FixtureKind::Stove, Point::new(0.55, 36.00), 0.80, 0.65, 1);
+    let _ = project.add_fixture(
+        FixtureKind::DiningSet,
+        Point::new(2.90, 35.00),
+        1.60,
+        2.80,
+        0,
+    );
+
+    // Swimming pool outline on the open east side (x ∈ [6.2, 9.2], y ∈ [27.5, 38.5]).
+    let _ = project.add_drawing(Shape::Polyline {
+        points: vec![
+            Point::new(6.2, 27.5),
+            Point::new(9.2, 27.5),
+            Point::new(9.2, 38.5),
+            Point::new(6.2, 38.5),
+        ],
+        closed: true,
+    });
+    let _ = project.add_note(
+        Point::new(2.6, 38.2),
+        "ÁREA GOURMET (SEMIABERTA)",
+        NoteKind::Text,
+    );
+    let _ = project.add_note(Point::new(7.7, 33.0), "PISCINA", NoteKind::Text);
+    let _ = project.add_note(
+        Point::new(9.2, 25.0),
+        "N",
+        NoteKind::Symbol(TechnicalSymbol::NorthArrow),
+    );
+    let _ = project.add_note(
+        Point::new(3.2, 32.0),
+        "NA +0,15",
+        NoteKind::Symbol(TechnicalSymbol::LevelMark { elevation_m: 0.15 }),
+    );
+    project.ensure_default_layers();
+    project
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -564,6 +815,141 @@ mod tests {
         }
 
         let _ = std::fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn gourmet_area_reference_project_computes_end_to_end_in_ci() {
+        let path = examples_dir().join(SampleProject::AreaGourmet.file_name());
+        let (project, warnings) = project_file::load(&path)
+            .unwrap_or_else(|err| panic!("failed to load area-gourmet.json: {err}"));
+        assert!(warnings.is_empty(), "load warnings: {warnings:?}");
+        assert!(
+            crate::domain::limits::structural_refusal(&project).is_none(),
+            "reference gourmet area must stay inside applicability limits"
+        );
+
+        let report = project.structure_report();
+        // #112: SPT soil survey & comparative foundation study.
+        assert!(project.structure.soil_survey.is_some());
+        let study = project.foundation_study();
+        assert!(study.survey);
+        assert!(study.recommended.is_some());
+
+        // #143: Both ground beams (under columned walls) and strip footings (under uncolumned partition).
+        let ground_beams = report
+            .wall_foundations
+            .iter()
+            .filter(|f| f.kind == crate::domain::wall_foundations::WallFoundationKind::GroundBeam)
+            .count();
+        let strip_footings = report
+            .wall_foundations
+            .iter()
+            .filter(|f| f.kind == crate::domain::wall_foundations::WallFoundationKind::StripFooting)
+            .count();
+        assert!(
+            ground_beams >= 2,
+            "expected ground beams, got {ground_beams}"
+        );
+        assert!(
+            strip_footings >= 1,
+            "expected at least one strip footing, got {strip_footings}"
+        );
+
+        // #144: Boundary columns flush inside lot + balance beams.
+        assert!(
+            !report.balance_beams.is_empty(),
+            "expected boundary balance beams"
+        );
+        assert!(report.columns.len() >= 8);
+
+        // #145: Tall 4.30 m left boundary wall and sloped gables.
+        assert!(
+            project
+                .walls
+                .iter()
+                .any(|w| w.heights(project.wall_height).0 >= 4.25),
+            "expected 4.30 m tall boundary wall"
+        );
+        assert!(
+            project.walls.iter().any(|w| {
+                let (h0, h1) = w.heights(project.wall_height);
+                (h0 - h1).abs() > 0.5
+            }),
+            "expected sloped gable walls"
+        );
+
+        // #114: Exposed 34 % mono-pitch timber roof with zero unsupported beam ends.
+        assert_eq!(report.roofs.len(), 1);
+        let roof = &report.roofs[0];
+        assert!(
+            (roof.slope_percent - 34.0).abs() < 0.2,
+            "slope={}",
+            roof.slope_percent
+        );
+        assert_eq!(
+            roof.unsupported(),
+            0,
+            "roof has unsupported beam ends: {:?}",
+            roof.reactions
+        );
+        assert!(roof.slope_ok());
+        assert!(roof.wall_plate.is_some());
+        assert!(roof.overhang_m > 0.0);
+
+        // #146: Treated Cumaru timber posts and eave beams carrying the open pool edge.
+        assert_eq!(report.timber_posts.len(), 5);
+        assert!(
+            report.timber_posts.iter().all(|p| p.ok()),
+            "timber posts must pass: {:?}",
+            report.timber_posts
+        );
+        assert!(
+            !report.eave_beams.is_empty(),
+            "expected timber eave beams spanning between posts"
+        );
+        assert!(
+            report.eave_beams.iter().all(|b| b.ok && b.treated),
+            "timber eave beams must pass: {:?}",
+            report.eave_beams
+        );
+
+        // #147: NBR 6123 wind on tall boundary wall, open-sided roof uplift + anchor bolts,
+        // X-bracing tie rod, masonry ties and 4-direction global stability + soil sliding.
+        assert!(!report.wind.columns.is_empty());
+        assert_eq!(report.wind.roofs.len(), 1);
+        assert!(report.wind.roofs[0].open);
+        assert!(!report.wind.roofs[0].anchor_spec.is_empty());
+        assert_eq!(report.wind.bracing.len(), 1);
+        assert!(report.wind.bracing[0].ok(), "{:?}", report.wind.bracing[0]);
+        assert_eq!(report.wind.global.len(), 4);
+        assert!(report.wind.global.iter().all(|g| g.sliding_fs > 0.0));
+        assert!(
+            report
+                .masonry
+                .panels
+                .iter()
+                .any(|p| p.wind.as_ref().is_some_and(|w| w.bond_beam.is_some()))
+        );
+
+        // #105, #110, #101, #103: Combinations, reinforcement schedule, traffic lights and review PDF.
+        assert_eq!(report.loads.combinations.len(), 17);
+        let reinforcement =
+            crate::domain::reinforcement::build_reinforcement_report(&project, &report);
+        assert!(reinforcement.total_mass_kg() > 0.0);
+        let verdicts = crate::domain::verdict::structure_verdicts(&project, &report);
+        assert!(!verdicts.is_empty());
+        let pages = crate::io::report::report_pages(&project, "2026-11-24");
+        assert!(pages.len() >= 5, "review memorial pages: {}", pages.len());
+        assert!(pages.iter().all(|p| p.contains("<svg")));
+    }
+
+    #[test]
+    #[ignore = "utility to regenerate examples/area-gourmet.json from build_area_gourmet"]
+    fn regenerate_area_gourmet_file() {
+        let dir = examples_dir();
+        std::fs::create_dir_all(&dir).unwrap();
+        let project = SampleProject::AreaGourmet.build();
+        project_file::save(&project, &dir.join(SampleProject::AreaGourmet.file_name())).unwrap();
     }
 
     #[test]

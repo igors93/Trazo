@@ -58,7 +58,7 @@ Engineering features follow these rules. They apply to everything in milestones 
 | Release (#58–#64, #77–#81) | 🟡 CI, licence, property tests, migrations, release binaries, crash reports, Windows installer and samples done; schema, signing and CI on Windows and macOS remain |
 | Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
 | Electrical design (#88–#91) | ✅ Devices, NBR 5410 forecast, circuits, conduits with wiring, phase balancing, voltage drop, demand, service entrance, single-line diagram |
-| Structure (#92–#94, #105–#109) | ✅ Columns, beams, slabs and footings on a formwork plan, pre-sizing with warnings, continuous beams, 2D plane-frame analysis with NBR 6120/6123/8681 load combinations, coupled slab+beam grid analogy (including L-shaped slabs), on-plan/paper simulation overlays, What-if live simulator and background cached analysis |
+| Structure (#92–#94, #105–#117, #143–#147, #150) | ✅ Complete from foundation to roof (M4 & M5): columns/beams/slabs/footings, 2D plane-frame analysis with NBR 6120/6123/8681 combinations, coupled slab+beam grid analogy, overlays, What-if, background cache, reinforcement & steel schedule, lintels/sills & NBR 16868 masonry, SPT & 4-way foundation study, ground beams & strip footings, boundary balance beams, per-wall sloped tops, timber roofs (mono-pitch/gable/hip/trusses/overhangs/uplift), timber posts & eave beams, stairs/balconies/cantilevers, tall-wall wind/sliding/bolts/ties/jambs and the end-to-end gourmet reference project (`examples/area-gourmet.json`) |
 | Discipline views (#96) | ✅ Architecture, electrical, structure, foundations and prepared plumbing views on synchronized linked tabs sharing a single live model; hydraulic pipe calculations join with #72 |
 | Plumbing (#72) | ⬜ Not started (sanitary fixture view discipline and dependency tracking prepared) |
 | Simulation, materials and planning | 🟡 Simulation core (M4: #94, #105–#109) complete; materials catalogue, costs and construction schedule remain |
@@ -367,7 +367,7 @@ What the model holds today:
 | Wind on a tall, open-sided wall | ✅ *Vento* checks tall-wall columns (including footing eccentricity/bearing under wind), roof uplift with NBR 8800 anchor bolts, CA-50 X-bracing tie rods, NBR 16868 masonry panels with ties, crown beam and grouted vertical jambs beside openings, and four-direction global stability including NBR 6122 soil sliding (`FS ≥ 1.50`), α, drift and overturning | #147 |
 | Boundary and neighbour rules | Openings in a boundary wall are limited (Código Civil art. 1.301); the roof must not drain onto the neighbour (art. 1.300) | #148 |
 | Gutter towards the pool | Roof water would fall into the pool | #122 |
-| The whole case as a reference | So that the result can be checked again whenever any of the above changes | #150 |
+| The whole case as a reference | ✅ `examples/area-gourmet.json` (`SampleProject::AreaGourmet`), computed end to end and checked in CI (`gourmet_area_reference_project_computes_end_to_end_in_ci`) | #150 |
 
 ## Next up
 
@@ -569,7 +569,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 145 | Wall height per wall and sloped wall tops (gable ends, *oitões*, parapets), with the storey height as the default; sections, elevations, quantities, structure and the limits use each wall's real height | P1 | M | M5 | ✅ |
 | 146 | Timber structural elements: posts (*mourões*) and beams of timber, with species and strength class (NBR 7190), bending, shear, compression, buckling and deflection checks, durability (treated wood, no soil contact) and post bases (concrete block with a steel anchor) | P1 | L | M5 | ✅ |
 | 147 | Tall and free-standing walls under wind: wind pressure on walls and open-sided buildings (NBR 6123: basic speed by region, terrain, openings), masonry panel slenderness and the bracing it asks for (column spacing, intermediate bond beam, thickness), for boundary walls and walls raised under a roof | P1 | M | M5 | ✅ |
-| 150 | Reference project: the semi-open gourmet area (5 × 14.75 m, boundary wall raised under a mono-pitch roof, timber posts, exposed roof draining to the pool) in `examples/`, computed end to end and checked in CI once #114 and #143–#148 ship | P1 | S | M5 | ⬜ |
+| 150 | Reference project: the semi-open gourmet area (5 × 14.75 m, boundary wall raised under a mono-pitch roof, timber posts, exposed roof draining to the pool) in `examples/`, computed end to end and checked in CI once #114 and #143–#148 ship | P1 | S | M5 | ✅ |
 
 ### E. Water, sewage and rain
 

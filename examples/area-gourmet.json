@@ -1,0 +1,1082 @@
+{
+  "version": 2,
+  "name": "Área Gourmet Semiaberta (5 × 14,75 m) — Referência Trazo",
+  "walls": [
+    {
+      "id": 2,
+      "start": {
+        "x": 0.0,
+        "y": 25.75
+      },
+      "end": {
+        "x": 2.5,
+        "y": 25.75
+      },
+      "masonry": {
+        "name": "Bloco estrutural de concreto 19×19×39 cm",
+        "block_width": 0.19,
+        "block_length": 0.39,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.19
+      },
+      "height_m": 4.3,
+      "height_end_m": 3.45
+    },
+    {
+      "id": 3,
+      "start": {
+        "x": 2.5,
+        "y": 25.75
+      },
+      "end": {
+        "x": 2.5,
+        "y": 28.25
+      },
+      "masonry": {
+        "name": "Bloco estrutural de concreto 19×19×39 cm",
+        "block_width": 0.19,
+        "block_length": 0.39,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.19
+      }
+    },
+    {
+      "id": 4,
+      "start": {
+        "x": 2.5,
+        "y": 28.25
+      },
+      "end": {
+        "x": 0.0,
+        "y": 28.25
+      },
+      "masonry": {
+        "name": "Bloco estrutural de concreto 19×19×39 cm",
+        "block_width": 0.19,
+        "block_length": 0.39,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.19
+      }
+    },
+    {
+      "id": 5,
+      "start": {
+        "x": 0.0,
+        "y": 28.25
+      },
+      "end": {
+        "x": 0.0,
+        "y": 25.75
+      },
+      "masonry": {
+        "name": "Bloco estrutural de concreto 19×19×39 cm",
+        "block_width": 0.19,
+        "block_length": 0.39,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.19
+      },
+      "height_m": 4.3
+    },
+    {
+      "id": 7,
+      "start": {
+        "x": 2.5,
+        "y": 28.25
+      },
+      "end": {
+        "x": 2.5,
+        "y": 30.75
+      },
+      "masonry": {
+        "name": "Bloco estrutural de concreto 19×19×39 cm",
+        "block_width": 0.19,
+        "block_length": 0.39,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.19
+      }
+    },
+    {
+      "id": 8,
+      "start": {
+        "x": 2.5,
+        "y": 30.75
+      },
+      "end": {
+        "x": 0.0,
+        "y": 30.75
+      },
+      "masonry": {
+        "name": "Bloco estrutural de concreto 19×19×39 cm",
+        "block_width": 0.19,
+        "block_length": 0.39,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.19
+      }
+    },
+    {
+      "id": 9,
+      "start": {
+        "x": 0.0,
+        "y": 30.75
+      },
+      "end": {
+        "x": 0.0,
+        "y": 28.25
+      },
+      "masonry": {
+        "name": "Bloco estrutural de concreto 19×19×39 cm",
+        "block_width": 0.19,
+        "block_length": 0.39,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.19
+      },
+      "height_m": 4.3
+    },
+    {
+      "id": 11,
+      "start": {
+        "x": 0.0,
+        "y": 30.75
+      },
+      "end": {
+        "x": 0.0,
+        "y": 40.5
+      },
+      "masonry": {
+        "name": "Bloco estrutural de concreto 19×19×39 cm",
+        "block_width": 0.19,
+        "block_length": 0.39,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.19
+      },
+      "height_m": 4.3
+    },
+    {
+      "id": 12,
+      "start": {
+        "x": 2.5,
+        "y": 25.75
+      },
+      "end": {
+        "x": 5.0,
+        "y": 25.75
+      },
+      "masonry": {
+        "name": "Bloco estrutural de concreto 19×19×39 cm",
+        "block_width": 0.19,
+        "block_length": 0.39,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.19
+      },
+      "height_m": 3.45,
+      "height_end_m": 2.6
+    },
+    {
+      "id": 13,
+      "start": {
+        "x": 0.0,
+        "y": 40.5
+      },
+      "end": {
+        "x": 5.0,
+        "y": 40.5
+      },
+      "masonry": {
+        "name": "Bloco estrutural de concreto 19×19×39 cm",
+        "block_width": 0.19,
+        "block_length": 0.39,
+        "joint": 0.01,
+        "plaster": 0.015,
+        "block_height": 0.19
+      },
+      "height_m": 4.3,
+      "height_end_m": 2.6
+    }
+  ],
+  "rooms": [
+    {
+      "id": 6,
+      "name": "Banheiro Gourmet",
+      "wall_ids": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "hatch": {
+        "pattern": "ceramic_grid",
+        "spacing_m": 0.3,
+        "angle_deg": 0.0,
+        "color": [
+          152,
+          178,
+          204
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "name": "Despensa",
+      "wall_ids": [
+        4,
+        7,
+        8,
+        9
+      ]
+    }
+  ],
+  "openings": [
+    {
+      "id": 14,
+      "wall_id": 3,
+      "kind": "Door",
+      "t": 0.5
+    },
+    {
+      "id": 15,
+      "wall_id": 7,
+      "kind": "Door",
+      "t": 0.5
+    }
+  ],
+  "terrain": {
+    "id": 1,
+    "min": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "max": {
+      "x": 10.0,
+      "y": 50.0
+    }
+  },
+  "setbacks": {
+    "front": 0.0,
+    "rear": 0.0,
+    "side": 0.0
+  },
+  "fixtures": [
+    {
+      "id": 16,
+      "kind": "column",
+      "center": {
+        "x": 0.151,
+        "y": 25.75
+      },
+      "width": 0.3,
+      "depth": 0.2,
+      "quarter_turns": 0
+    },
+    {
+      "id": 17,
+      "kind": "footing",
+      "center": {
+        "x": 0.501,
+        "y": 25.75
+      },
+      "width": 0.7,
+      "depth": 0.6,
+      "quarter_turns": 0
+    },
+    {
+      "id": 18,
+      "kind": "column",
+      "center": {
+        "x": 0.151,
+        "y": 28.25
+      },
+      "width": 0.3,
+      "depth": 0.2,
+      "quarter_turns": 0
+    },
+    {
+      "id": 19,
+      "kind": "footing",
+      "center": {
+        "x": 0.501,
+        "y": 28.25
+      },
+      "width": 0.65,
+      "depth": 0.6,
+      "quarter_turns": 0
+    },
+    {
+      "id": 20,
+      "kind": "column",
+      "center": {
+        "x": 0.151,
+        "y": 30.75
+      },
+      "width": 0.3,
+      "depth": 0.2,
+      "quarter_turns": 0
+    },
+    {
+      "id": 21,
+      "kind": "footing",
+      "center": {
+        "x": 0.501,
+        "y": 30.75
+      },
+      "width": 0.8,
+      "depth": 0.7,
+      "quarter_turns": 0
+    },
+    {
+      "id": 22,
+      "kind": "column",
+      "center": {
+        "x": 0.101,
+        "y": 34.0
+      },
+      "width": 0.3,
+      "depth": 0.2,
+      "quarter_turns": 1
+    },
+    {
+      "id": 23,
+      "kind": "footing",
+      "center": {
+        "x": 0.501,
+        "y": 34.0
+      },
+      "width": 0.75,
+      "depth": 0.65,
+      "quarter_turns": 1
+    },
+    {
+      "id": 24,
+      "kind": "column",
+      "center": {
+        "x": 0.101,
+        "y": 37.25
+      },
+      "width": 0.3,
+      "depth": 0.2,
+      "quarter_turns": 1
+    },
+    {
+      "id": 25,
+      "kind": "footing",
+      "center": {
+        "x": 0.501,
+        "y": 37.25
+      },
+      "width": 0.75,
+      "depth": 0.65,
+      "quarter_turns": 1
+    },
+    {
+      "id": 26,
+      "kind": "column",
+      "center": {
+        "x": 0.101,
+        "y": 40.5
+      },
+      "width": 0.3,
+      "depth": 0.2,
+      "quarter_turns": 1
+    },
+    {
+      "id": 27,
+      "kind": "footing",
+      "center": {
+        "x": 0.501,
+        "y": 40.5
+      },
+      "width": 0.6,
+      "depth": 0.6,
+      "quarter_turns": 1
+    },
+    {
+      "id": 28,
+      "kind": "column",
+      "center": {
+        "x": 2.5,
+        "y": 25.75
+      },
+      "width": 0.2,
+      "depth": 0.2,
+      "quarter_turns": 0
+    },
+    {
+      "id": 29,
+      "kind": "footing",
+      "center": {
+        "x": 2.5,
+        "y": 25.75
+      },
+      "width": 0.6,
+      "depth": 0.6,
+      "quarter_turns": 0
+    },
+    {
+      "id": 30,
+      "kind": "column",
+      "center": {
+        "x": 2.5,
+        "y": 30.75
+      },
+      "width": 0.2,
+      "depth": 0.2,
+      "quarter_turns": 0
+    },
+    {
+      "id": 31,
+      "kind": "footing",
+      "center": {
+        "x": 2.5,
+        "y": 30.75
+      },
+      "width": 0.6,
+      "depth": 0.6,
+      "quarter_turns": 0
+    },
+    {
+      "id": 42,
+      "kind": "timber_post",
+      "center": {
+        "x": 5.0,
+        "y": 25.75
+      },
+      "width": 0.2,
+      "depth": 0.2,
+      "quarter_turns": 0
+    },
+    {
+      "id": 43,
+      "kind": "timber_post",
+      "center": {
+        "x": 5.0,
+        "y": 29.45
+      },
+      "width": 0.2,
+      "depth": 0.2,
+      "quarter_turns": 0
+    },
+    {
+      "id": 44,
+      "kind": "timber_post",
+      "center": {
+        "x": 5.0,
+        "y": 33.15
+      },
+      "width": 0.2,
+      "depth": 0.2,
+      "quarter_turns": 0
+    },
+    {
+      "id": 45,
+      "kind": "timber_post",
+      "center": {
+        "x": 5.0,
+        "y": 36.85
+      },
+      "width": 0.2,
+      "depth": 0.2,
+      "quarter_turns": 0
+    },
+    {
+      "id": 46,
+      "kind": "timber_post",
+      "center": {
+        "x": 5.0,
+        "y": 40.5
+      },
+      "width": 0.2,
+      "depth": 0.2,
+      "quarter_turns": 0
+    },
+    {
+      "id": 60,
+      "kind": "washbasin",
+      "center": {
+        "x": 0.55,
+        "y": 26.4
+      },
+      "width": 0.65,
+      "depth": 0.45,
+      "quarter_turns": 1
+    },
+    {
+      "id": 61,
+      "kind": "toilet",
+      "center": {
+        "x": 0.6,
+        "y": 27.35
+      },
+      "width": 0.4,
+      "depth": 0.65,
+      "quarter_turns": 1
+    },
+    {
+      "id": 62,
+      "kind": "shower",
+      "center": {
+        "x": 1.7,
+        "y": 26.55
+      },
+      "width": 0.9,
+      "depth": 1.1,
+      "quarter_turns": 0
+    },
+    {
+      "id": 63,
+      "kind": "fridge",
+      "center": {
+        "x": 0.65,
+        "y": 29.5
+      },
+      "width": 0.7,
+      "depth": 0.7,
+      "quarter_turns": 1
+    },
+    {
+      "id": 64,
+      "kind": "kitchen_sink",
+      "center": {
+        "x": 0.55,
+        "y": 34.0
+      },
+      "width": 2.2,
+      "depth": 0.65,
+      "quarter_turns": 1
+    },
+    {
+      "id": 65,
+      "kind": "stove",
+      "center": {
+        "x": 0.55,
+        "y": 36.0
+      },
+      "width": 0.8,
+      "depth": 0.65,
+      "quarter_turns": 1
+    },
+    {
+      "id": 66,
+      "kind": "dining_set",
+      "center": {
+        "x": 2.9,
+        "y": 35.0
+      },
+      "width": 1.6,
+      "depth": 2.8,
+      "quarter_turns": 0
+    }
+  ],
+  "masonry": {
+    "name": "Bloco estrutural de concreto 19×19×39 cm",
+    "block_width": 0.19,
+    "block_length": 0.39,
+    "joint": 0.01,
+    "plaster": 0.015,
+    "block_height": 0.19
+  },
+  "wall_height": 2.8,
+  "drawings": [
+    {
+      "id": 67,
+      "shape": {
+        "kind": "polyline",
+        "points": [
+          {
+            "x": 6.2,
+            "y": 27.5
+          },
+          {
+            "x": 9.2,
+            "y": 27.5
+          },
+          {
+            "x": 9.2,
+            "y": 38.5
+          },
+          {
+            "x": 6.2,
+            "y": 38.5
+          }
+        ],
+        "closed": true
+      }
+    }
+  ],
+  "layers": [
+    {
+      "id": 1,
+      "name": "Terreno",
+      "color": [
+        94,
+        139,
+        191
+      ],
+      "line_weight_mm": 0.25,
+      "line_type": "dash_dot",
+      "visible": true,
+      "locked": false,
+      "category": "terrain"
+    },
+    {
+      "id": 2,
+      "name": "Paredes",
+      "color": [
+        29,
+        40,
+        54
+      ],
+      "line_weight_mm": 0.35,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "walls"
+    },
+    {
+      "id": 3,
+      "name": "Aberturas",
+      "color": [
+        40,
+        120,
+        210
+      ],
+      "line_weight_mm": 0.2,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "openings"
+    },
+    {
+      "id": 4,
+      "name": "Cômodos",
+      "color": [
+        142,
+        174,
+        212
+      ],
+      "line_weight_mm": 0.15,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "rooms"
+    },
+    {
+      "id": 5,
+      "name": "Mobiliário",
+      "color": [
+        59,
+        78,
+        99
+      ],
+      "line_weight_mm": 0.18,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "fixtures"
+    },
+    {
+      "id": 6,
+      "name": "Desenho 2D",
+      "color": [
+        28,
+        43,
+        60
+      ],
+      "line_weight_mm": 0.2,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "drawings"
+    },
+    {
+      "id": 7,
+      "name": "Cotas",
+      "color": [
+        98,
+        116,
+        137
+      ],
+      "line_weight_mm": 0.13,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "dimensions"
+    },
+    {
+      "id": 8,
+      "name": "Anotações",
+      "color": [
+        28,
+        43,
+        60
+      ],
+      "line_weight_mm": 0.18,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "annotations"
+    },
+    {
+      "id": 9,
+      "name": "Instalações elétricas",
+      "color": [
+        200,
+        40,
+        40
+      ],
+      "line_weight_mm": 0.18,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "electrical"
+    },
+    {
+      "id": 10,
+      "name": "Estrutura",
+      "color": [
+        0,
+        105,
+        92
+      ],
+      "line_weight_mm": 0.25,
+      "line_type": "solid",
+      "visible": true,
+      "locked": false,
+      "category": "structure"
+    }
+  ],
+  "notes": [
+    {
+      "id": 1,
+      "position": {
+        "x": 2.6,
+        "y": 38.2
+      },
+      "text": "ÁREA GOURMET (SEMIABERTA)",
+      "kind": {
+        "kind": "text"
+      },
+      "font_size": 12.0,
+      "rotation_deg": 0.0
+    },
+    {
+      "id": 2,
+      "position": {
+        "x": 7.7,
+        "y": 33.0
+      },
+      "text": "PISCINA",
+      "kind": {
+        "kind": "text"
+      },
+      "font_size": 12.0,
+      "rotation_deg": 0.0
+    },
+    {
+      "id": 3,
+      "position": {
+        "x": 9.2,
+        "y": 25.0
+      },
+      "text": "N",
+      "kind": {
+        "kind": "symbol",
+        "symbol": "north_arrow"
+      },
+      "font_size": 12.0,
+      "rotation_deg": 0.0
+    },
+    {
+      "id": 4,
+      "position": {
+        "x": 3.2,
+        "y": 32.0
+      },
+      "text": "NA +0,15",
+      "kind": {
+        "kind": "symbol",
+        "symbol": "level_mark",
+        "elevation_m": 0.15
+      },
+      "font_size": 12.0,
+      "rotation_deg": 0.0
+    }
+  ],
+  "sheet": {
+    "size": {
+      "paper": "a3"
+    },
+    "orientation": "landscape",
+    "margins": {
+      "left_mm": 25.0,
+      "right_mm": 7.0,
+      "top_mm": 7.0,
+      "bottom_mm": 7.0
+    },
+    "scale": {
+      "scale": "s1_100"
+    },
+    "title_block": {
+      "client": "Projeto de Referência (#150)",
+      "address": "",
+      "author": "Trazo CAD",
+      "registration": "",
+      "drawing_title": "Área Gourmet Semiaberta — Planta e Estrutura de Referência",
+      "date": "",
+      "sheet_number": "01/01",
+      "revision": "R00",
+      "notes": "",
+      "show_title_block": true,
+      "show_legend": true,
+      "show_north": true,
+      "show_scale_bar": true
+    }
+  },
+  "schedules": {
+    "show_area_schedule": true,
+    "show_openings_schedule": true,
+    "show_rooms_schedule": true,
+    "show_materials_schedule": true,
+    "show_quantities_schedule": false,
+    "show_perimeter": true,
+    "show_sill": true,
+    "show_occupancy": true,
+    "waste_percent": 10.0,
+    "include_on_sheet": true
+  },
+  "doc_style": {
+    "preset": "abnt_nbr6492",
+    "monochrome": false,
+    "tick": "oblique45",
+    "unit": "centimetres",
+    "wall_pen_mm": 0.35,
+    "opening_pen_mm": 0.2,
+    "dimension_pen_mm": 0.13,
+    "hatch_pen_mm": 0.13,
+    "font_family": "Arial, Helvetica, sans-serif"
+  },
+  "structure": {
+    "beams": [
+      {
+        "id": 32,
+        "from": 16,
+        "to": 18,
+        "width_m": 0.2,
+        "height_m": 0.4
+      },
+      {
+        "id": 33,
+        "from": 18,
+        "to": 20,
+        "width_m": 0.2,
+        "height_m": 0.4
+      },
+      {
+        "id": 34,
+        "from": 20,
+        "to": 22,
+        "width_m": 0.2,
+        "height_m": 0.4
+      },
+      {
+        "id": 35,
+        "from": 22,
+        "to": 24,
+        "width_m": 0.2,
+        "height_m": 0.4
+      },
+      {
+        "id": 36,
+        "from": 24,
+        "to": 26,
+        "width_m": 0.2,
+        "height_m": 0.4
+      },
+      {
+        "id": 37,
+        "from": 16,
+        "to": 28,
+        "width_m": 0.2,
+        "height_m": 0.4
+      },
+      {
+        "id": 38,
+        "from": 20,
+        "to": 30,
+        "width_m": 0.2,
+        "height_m": 0.4
+      },
+      {
+        "id": 39,
+        "from": 28,
+        "to": 30,
+        "width_m": 0.2,
+        "height_m": 0.4
+      }
+    ],
+    "slabs": [
+      {
+        "id": 40,
+        "room_id": 6,
+        "kind": "solid",
+        "thickness_m": 0.08
+      },
+      {
+        "id": 41,
+        "room_id": 10,
+        "kind": "solid",
+        "thickness_m": 0.08
+      }
+    ],
+    "settings": {
+      "fck_mpa": 25.0,
+      "soil_kpa": 180.0,
+      "floors": 1,
+      "live_kn_m2": 1.5,
+      "finish_kn_m2": 1.0,
+      "masonry_kn_m3": 13.0,
+      "per_room_live_loads": false,
+      "occupancy": "residential",
+      "frame_rigid_joints": true,
+      "frame_fixed_bases": true
+    },
+    "balance_beams": [
+      {
+        "id": 48,
+        "column": 16,
+        "anchor": 28,
+        "width_m": 0.2
+      },
+      {
+        "id": 49,
+        "column": 20,
+        "anchor": 30,
+        "width_m": 0.2
+      }
+    ],
+    "wall_foundations": [
+      {
+        "id": 50,
+        "wall_id": 2,
+        "kind": "ground_beam"
+      },
+      {
+        "id": 51,
+        "wall_id": 5,
+        "kind": "ground_beam"
+      },
+      {
+        "id": 52,
+        "wall_id": 8,
+        "kind": "ground_beam"
+      },
+      {
+        "id": 53,
+        "wall_id": 9,
+        "kind": "ground_beam"
+      },
+      {
+        "id": 54,
+        "wall_id": 11,
+        "kind": "ground_beam"
+      },
+      {
+        "id": 55,
+        "wall_id": 3,
+        "kind": "strip_footing"
+      },
+      {
+        "id": 56,
+        "wall_id": 4,
+        "kind": "strip_footing"
+      },
+      {
+        "id": 57,
+        "wall_id": 7,
+        "kind": "strip_footing"
+      },
+      {
+        "id": 58,
+        "wall_id": 12,
+        "kind": "strip_footing"
+      },
+      {
+        "id": 59,
+        "wall_id": 13,
+        "kind": "strip_footing"
+      }
+    ],
+    "soil_survey": {
+      "name": "SP-01",
+      "readings": [
+        {
+          "depth_m": 1.0,
+          "n": 8,
+          "soil": "clayey_silt"
+        },
+        {
+          "depth_m": 2.0,
+          "n": 9,
+          "soil": "clayey_silt"
+        },
+        {
+          "depth_m": 3.0,
+          "n": 11,
+          "soil": "sandy_silt"
+        },
+        {
+          "depth_m": 4.0,
+          "n": 14,
+          "soil": "sandy_silt"
+        },
+        {
+          "depth_m": 5.0,
+          "n": 18,
+          "soil": "sand"
+        },
+        {
+          "depth_m": 6.0,
+          "n": 22,
+          "soil": "sand"
+        }
+      ],
+      "water_table_m": 5.0,
+      "footing_depth_m": 1.0
+    },
+    "roofs": [
+      {
+        "id": 47,
+        "min": {
+          "x": 0.0,
+          "y": 25.75
+        },
+        "max": {
+          "x": 5.0,
+          "y": 40.5
+        },
+        "style": "mono_pitch",
+        "high_side": "west",
+        "high_m": 4.3,
+        "low_m": 2.6,
+        "overhang_m": 0.5,
+        "use_trusses": false,
+        "tile": "ceramic",
+        "timber": "c30",
+        "beam_spacing_m": 3.25,
+        "purlin_spacing_m": 1.2,
+        "rafter_spacing_m": 0.5,
+        "exposed": true,
+        "lateral_bracing_kn": 60.0
+      }
+    ],
+    "post_species": "cumaru"
+  },
+  "next_id": 68
+}
