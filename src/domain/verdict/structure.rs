@@ -1001,6 +1001,74 @@ fn sized_structure_verdicts(
                 "Cada viga do telhado descarrega metade do seu peso em cada ponta.".to_owned(),
             ));
         }
+        if roof.overhang_m > 0.01 {
+            checks.push(Check::new(
+                "Beiral (balanço)",
+                roof.overhang_bending_ratio,
+                if roof.overhang_bending_ratio <= 1.0 {
+                    format!("Beiral de {} m atende à flexão.", decimal(roof.overhang_m, 2))
+                } else {
+                    format!(
+                        "Beiral de {} m excede a resistência: reduza o beiral ou aumente os caibros.",
+                        decimal(roof.overhang_m, 2)
+                    )
+                },
+                format!(
+                    "Flexão em balanço no beiral ({} m): uso {:.0} % (NBR 7190).",
+                    decimal(roof.overhang_m, 2),
+                    roof.overhang_bending_ratio * 100.0
+                ),
+            ));
+        }
+        if let Some(truss) = &roof.truss {
+            let max_ratio = truss
+                .members
+                .iter()
+                .map(|m| m.ratio)
+                .fold(0.0_f64, f64::max);
+            checks.push(Check::new(
+                "Tesouras",
+                max_ratio,
+                if truss.ok {
+                    format!("{} ({} un.) atende à NBR 7190.", truss.kind, truss.count)
+                } else {
+                    "Tesoura acima do limite: reduza o espaçamento ou suba a classe da madeira."
+                        .to_owned()
+                },
+                format!(
+                    "{} · vão {} m · altura {} m · uso máx. {:.0} %.",
+                    truss.kind,
+                    decimal(truss.span_m, 2),
+                    decimal(truss.rise_m, 2),
+                    max_ratio * 100.0
+                ),
+            ));
+        }
+        if let Some(hip) = &roof.hip_rafters {
+            let r = hip
+                .bending_ratio
+                .max(hip.shear_ratio)
+                .max(hip.deflection_ratio);
+            checks.push(Check::new(
+                "Espigões",
+                r,
+                if hip.ok {
+                    format!(
+                        "Espigões {:.0}×{:.0} cm atendem às 4 águas.",
+                        hip.section_cm.0, hip.section_cm.1
+                    )
+                } else {
+                    "Espigões insuficientes: reduza o vão ou eleve a classe da madeira.".to_owned()
+                },
+                format!(
+                    "4 espigões {:.0}×{:.0} cm · vão {} m · uso {:.0} % (NBR 7190).",
+                    hip.section_cm.0,
+                    hip.section_cm.1,
+                    decimal(hip.span_m, 2),
+                    r * 100.0
+                ),
+            ));
+        }
         verdicts.push(Verdict {
             discipline: Discipline::Structure,
             element: format!("Telhado {}", roof.label),

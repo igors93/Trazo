@@ -252,6 +252,16 @@ fn roof_arg(
     if let Some(v) = number(args, "espacamento_caibros_m")? {
         roof.rafter_spacing_m = v;
     }
+    if let Some(raw) = text(args, "estilo") {
+        roof.style = crate::domain::roof::RoofStyle::parse(&raw)
+            .ok_or("'estilo' deve ser meia_agua, duas_aguas ou quatro_aguas.")?;
+    }
+    if let Some(v) = number(args, "beiral_m")? {
+        roof.overhang_m = v;
+    }
+    if let Some(v) = args.get("tesouras").and_then(Value::as_bool) {
+        roof.use_trusses = v;
+    }
     if let Some(v) = args.get("aparente").and_then(Value::as_bool) {
         roof.exposed = v;
     }
@@ -261,17 +271,8 @@ fn roof_arg(
 /// A roof result as tool output (#114).
 pub(super) fn roof_json(result: &crate::domain::roof::RoofResult) -> Value {
     let round2 = |v: f64| (v * 100.0).round() / 100.0;
-    json!({
-        "id": result.id,
-        "rotulo": result.label,
-        "inclinacao_pct": round2(result.slope_percent),
-        "inclinacao_minima_pct": result.min_slope_percent,
-        "carga_permanente_kn_m2": round2(result.dead_kn_m2),
-        "sobrecarga_kn_m2": result.live_kn_m2,
-        "area_telhado_m2": round2(result.surface_m2),
-        "telhas": result.tiles,
-        "madeira_m3": round2(result.timber_m3),
-        "pecas": result.elements.iter().map(|e| json!({
+    let piece_json = |e: &crate::domain::roof::RoofElementResult| {
+        json!({
             "peca": e.element.key(),
             "secao_cm": format!("{}x{}", e.section_cm.0, e.section_cm.1),
             "atende": e.ok,
@@ -287,7 +288,61 @@ pub(super) fn roof_json(result: &crate::domain::roof::RoofResult) -> Value {
             "quantidade": e.count,
             "comprimento_total_m": round2(e.total_length_m),
             "volume_m3": round2(e.volume_m3),
-        })).collect::<Vec<_>>(),
+        })
+    };
+    let truss_json = result.truss.as_ref().map(|t| {
+        let members: Vec<Value> = t
+            .members
+            .iter()
+            .map(|m| {
+                json!({
+                    "barra": m.name,
+                    "esforco_nd_kn": round2(m.axial_design_kn),
+                    "comprimento_m": round2(m.length_m),
+                    "secao_cm": format!("{}x{}", m.section_cm.0, m.section_cm.1),
+                    "esbeltez": round2(m.slenderness),
+                    "uso": round2(m.ratio),
+                    "atende": m.ok,
+                })
+            })
+            .collect();
+        json!({
+            "tipo": t.kind,
+            "vao_m": round2(t.span_m),
+            "altura_m": round2(t.rise_m),
+            "quantidade": t.count,
+            "carga_calculo_kn": round2(t.design_total_load_kn),
+            "volume_m3": round2(t.volume_m3),
+            "atende": t.ok,
+            "barras": members,
+        })
+    });
+    let uplift_json = json!({
+        "v0_ms": result.uplift.wind_v0_ms,
+        "succao_kpa": round2(result.uplift.suction_kpa),
+        "succao_beiral_kpa": round2(result.uplift.overhang_suction_kpa),
+        "succao_liquida_calculo_kpa": round2(result.uplift.net_design_uplift_kpa),
+        "ancoragem_apoio_kn": round2(result.uplift.anchor_design_kn),
+        "levanta": result.uplift.lifts,
+    });
+    json!({
+        "id": result.id,
+        "rotulo": result.label,
+        "estilo": result.style.key(),
+        "beiral_m": round2(result.overhang_m),
+        "uso_flexao_beiral": round2(result.overhang_bending_ratio),
+        "inclinacao_pct": round2(result.slope_percent),
+        "inclinacao_minima_pct": result.min_slope_percent,
+        "carga_permanente_kn_m2": round2(result.dead_kn_m2),
+        "sobrecarga_kn_m2": result.live_kn_m2,
+        "area_telhado_m2": round2(result.surface_m2),
+        "telhas": result.tiles,
+        "madeira_m3": round2(result.timber_m3),
+        "pecas": result.elements.iter().map(&piece_json).collect::<Vec<_>>(),
+        "frechal": result.wall_plate.as_ref().map(piece_json),
+        "espigoes": result.hip_rafters.as_ref().map(piece_json),
+        "tesoura": truss_json,
+        "succao_vento": uplift_json,
         "apoios": result.reactions.iter().map(|r| json!({
             "ponto": xy(r.point),
             "lado": if r.high { "alto" } else { "baixo" },

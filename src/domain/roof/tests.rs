@@ -182,3 +182,78 @@ fn the_gourmet_roof_is_framed_and_bears_on_the_columns() {
     let gable = project.walls.last().unwrap();
     assert_eq!((gable.height_m, gable.height_end_m), (Some(4.3), Some(2.6)));
 }
+
+#[test]
+fn gable_and_hip_roofs_size_howe_trusses_wall_plates_hip_rafters_overhangs_and_uplift() {
+    let mut project = Project::default();
+    // 6.0 × 8.0 m gable roof with 0.60 m overhang, ridge at 3.80 m, eaves at 2.80 m (slope = 1.0/3.0 = 33.3%).
+    let mut gable = Roof::new(
+        Point::new(0.0, 0.0),
+        Point::new(6.0, 8.0),
+        RoofSide::West,
+        3.80,
+        2.80,
+    );
+    gable.style = RoofStyle::Gable;
+    gable.overhang_m = 0.60;
+    let gid = project.add_roof(gable).unwrap();
+    let r_gable = project.analyse_roof(&project.structure.roofs[0]);
+
+    // Exact gable heights: low at both eaves, high at center ridge x = 3.0.
+    let g_ref = &project.structure.roofs[0];
+    assert!((g_ref.height_at(Point::new(0.0, 4.0)) - 2.80).abs() < 1e-9);
+    assert!((g_ref.height_at(Point::new(3.0, 4.0)) - 3.80).abs() < 1e-9);
+    assert!((g_ref.height_at(Point::new(6.0, 4.0)) - 2.80).abs() < 1e-9);
+    assert!((r_gable.slope_percent - 33.333333).abs() < 0.01);
+    assert!(r_gable.wall_plate.is_some());
+    assert!(r_gable.overhang_bending_ratio > 0.0 && r_gable.overhang_bending_ratio <= 1.0);
+    assert!(r_gable.uplift.overhang_suction_kpa > r_gable.uplift.suction_kpa);
+
+    // Exact 4-panel Howe truss statics verification (Method of Joints):
+    // N_top = (3/8 * W_d) / sin(θ), N_bot = (3/8 * W_d) / tan(θ), N_diag = (1/8 * W_d) / sin(θ), N_kp = W_d / 4.
+    let truss = r_gable
+        .truss
+        .as_ref()
+        .expect("gable roof must size Howe trusses");
+    assert!(truss.ok);
+    let theta = (1.0_f64 / 3.0_f64).atan();
+    let wd = truss.design_total_load_kn;
+    assert!((truss.members[0].axial_design_kn.abs() - (0.375 * wd / theta.sin())).abs() < 1e-6);
+    assert!((truss.members[1].axial_design_kn - (0.375 * wd / theta.tan())).abs() < 1e-6);
+    assert!((truss.members[2].axial_design_kn.abs() - (0.125 * wd / theta.sin())).abs() < 1e-6);
+    assert!((truss.members[3].axial_design_kn - (0.25 * wd)).abs() < 1e-6);
+
+    // 4-water hip roof over 6.0 × 8.0 m with 0.50 m overhang.
+    let mut hip = Roof::new(
+        Point::new(10.0, 0.0),
+        Point::new(16.0, 8.0),
+        RoofSide::West,
+        3.80,
+        2.80,
+    );
+    hip.style = RoofStyle::Hip;
+    hip.overhang_m = 0.50;
+    let _hid = project.add_roof(hip).unwrap();
+    let hip_ref = &project.structure.roofs[1];
+    let r_hip = project.analyse_roof(hip_ref);
+    assert!(r_hip.truss.is_some());
+    let hips = r_hip
+        .hip_rafters
+        .as_ref()
+        .expect("hip roof must size 4 hip rafters");
+    assert_eq!(hips.count, 4);
+    assert!(hips.ok);
+    // Exact hip surface area identity: (W + 2*oh)*(L + 2*oh)/cos(alpha).
+    let expected_area = (6.0 + 1.0) * (8.0 + 1.0) / hip_ref.cos();
+    assert!((r_hip.surface_m2 - expected_area).abs() < 1e-6);
+    // Hip perimeter edges at low_m, central ridge at high_m.
+    assert!((hip_ref.height_at(Point::new(10.0, 4.0)) - 2.80).abs() < 1e-9);
+    assert!((hip_ref.height_at(Point::new(13.0, 0.0)) - 2.80).abs() < 1e-9);
+    assert!((hip_ref.height_at(Point::new(13.0, 4.0)) - 3.80).abs() < 1e-9);
+
+    // Plan marks draw ridge & hip rafters cleanly.
+    let marks = project.roof_marks(&[r_gable, r_hip]);
+    assert!(marks.iter().any(|m| matches!(m, crate::domain::conduits::PlanMark::Text { text, .. } if text.contains("duas águas"))));
+    assert!(marks.iter().any(|m| matches!(m, crate::domain::conduits::PlanMark::Text { text, .. } if text.contains("quatro águas"))));
+    assert!(gid != 0);
+}

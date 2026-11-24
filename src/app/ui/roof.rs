@@ -9,7 +9,7 @@ use super::widgets::{primary_button, secondary_button};
 use crate::domain::geometry::Point;
 use crate::domain::model::Project;
 use crate::domain::roof::{
-    Roof, RoofElement, RoofResult, RoofSide, TileKind, TimberClass, TimberSpecies,
+    Roof, RoofElement, RoofResult, RoofSide, RoofStyle, TileKind, TimberClass, TimberSpecies,
 };
 use crate::domain::structure::StructureReport;
 
@@ -51,30 +51,77 @@ pub(super) fn roof_tab(
     let mut action = None;
     ui.add_space(6.0);
     ui.label(
-        RichText::new("Meia-água de madeira: telhas sobre ripas, caibros, terças e vigas, dimensionados pela NBR 7190; o peso desce para os pilares e vigas embaixo de cada ponta das vigas do telhado.")
+        RichText::new("Telhados de madeira (meia-água, duas águas ou quatro águas): telhas sobre ripas, caibros, terças, frechais, vigas/tesouras e espigões dimensionados pela NBR 7190, com beirais e sucção de vento NBR 6123.")
             .color(TEXT_2),
     );
-    if primary_button(ui, "Nova meia-água sobre a planta").clicked()
-        && let Some((min, max)) = plan_bounds(project)
-    {
-        let storey = project.wall_height.max(2.4);
-        let run = (max.x - min.x).max(1.0);
-        // 32 % clears the slope of ceramic tiles.
-        let roof = Roof::new(min, max, RoofSide::West, storey + 0.32 * run, storey);
-        action = Some(RoofAction::Add(roof));
-    }
+    ui.horizontal_wrapped(|ui| {
+        if primary_button(ui, "Nova meia-água").clicked()
+            && let Some((min, max)) = plan_bounds(project)
+        {
+            let storey = project.wall_height.max(2.4);
+            let run = (max.x - min.x).max(1.0);
+            let roof = Roof::new(min, max, RoofSide::West, storey + 0.32 * run, storey);
+            action = Some(RoofAction::Add(roof));
+        }
+        if secondary_button(ui, "Novo duas águas").clicked()
+            && let Some((min, max)) = plan_bounds(project)
+        {
+            let storey = project.wall_height.max(2.4);
+            let half = (max.x - min.x).max(1.0) * 0.5;
+            let mut roof = Roof::new(min, max, RoofSide::West, storey + 0.32 * half, storey);
+            roof.style = RoofStyle::Gable;
+            roof.overhang_m = 0.60;
+            roof.use_trusses = true;
+            action = Some(RoofAction::Add(roof));
+        }
+        if secondary_button(ui, "Novo quatro águas").clicked()
+            && let Some((min, max)) = plan_bounds(project)
+        {
+            let storey = project.wall_height.max(2.4);
+            let half = (max.x - min.x).min(max.y - min.y).max(1.0) * 0.5;
+            let mut roof = Roof::new(min, max, RoofSide::West, storey + 0.32 * half, storey);
+            roof.style = RoofStyle::Hip;
+            roof.overhang_m = 0.60;
+            roof.use_trusses = true;
+            action = Some(RoofAction::Add(roof));
+        }
+    });
     for roof in &project.structure.roofs {
         let result = results.iter().find(|r| r.id == roof.id);
         let label = result.map_or_else(|| "T".to_owned(), |r| r.label.clone());
         ui.add_space(10.0);
         ui.separator();
-        ui.label(RichText::new(format!("{label} · meia-água")).font(strong(13.5)));
+        ui.label(
+            RichText::new(format!("{label} · {}", roof.style.label().to_lowercase()))
+                .font(strong(13.5)),
+        );
         let mut edited = roof.clone();
         let mut changed = false;
         egui::Grid::new(("roof_settings", roof.id))
             .spacing([14.0, 6.0])
             .num_columns(4)
             .show(ui, |ui| {
+                ui.label("Tipo");
+                egui::ComboBox::from_id_salt(("roof_style", roof.id))
+                    .selected_text(edited.style.label())
+                    .show_ui(ui, |ui| {
+                        for style in RoofStyle::ALL {
+                            changed |= ui
+                                .selectable_value(&mut edited.style, style, style.label())
+                                .changed();
+                        }
+                    });
+                ui.label("Beiral");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut edited.overhang_m)
+                            .range(0.0..=1.5)
+                            .speed(0.02)
+                            .max_decimals(2)
+                            .suffix(" m"),
+                    )
+                    .changed();
+                ui.end_row();
                 ui.label("Lado alto");
                 egui::ComboBox::from_id_salt(("roof_side", roof.id))
                     .selected_text(edited.high_side.label())
@@ -203,6 +250,11 @@ pub(super) fn roof_tab(
                 ui.end_row();
                 ui.label("Telhado aparente");
                 changed |= ui.checkbox(&mut edited.exposed, "sem forro").changed();
+                ui.label("Tesouras");
+                changed |= ui
+                    .checkbox(&mut edited.use_trusses, "estruturar com tesouras")
+                    .changed();
+                ui.end_row();
                 ui.label("Contraventamento");
                 let mut braced = edited.lateral_bracing_kn.is_some();
                 let mut capacity = edited.lateral_bracing_kn.unwrap_or(0.0);
@@ -275,7 +327,12 @@ pub(super) fn roof_tab(
                     ui.label(RichText::new(title).font(strong(12.0)).color(TEXT_2));
                 }
                 ui.end_row();
-                for element in &result.elements {
+                for element in result
+                    .elements
+                    .iter()
+                    .chain(result.wall_plate.iter())
+                    .chain(result.hip_rafters.iter())
+                {
                     ui.label(RichText::new(element.element.label()).font(strong(12.5)));
                     ui.label(format!(
                         "{} × {} cm",
@@ -307,6 +364,74 @@ pub(super) fn roof_tab(
                     ui.end_row();
                 }
             });
+        if let Some(truss) = &result.truss {
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new(format!(
+                    "{} · {} un. · vão {} m · altura {} m · carga de cálculo {} kN · volume {} m³",
+                    truss.kind,
+                    truss.count,
+                    decimal(truss.span_m, 2),
+                    decimal(truss.rise_m, 2),
+                    decimal(truss.design_total_load_kn, 1),
+                    decimal(truss.volume_m3, 2)
+                ))
+                .font(strong(12.0)),
+            );
+            egui::Grid::new(("roof_truss_members", roof.id))
+                .striped(true)
+                .spacing([12.0, 4.0])
+                .show(ui, |ui| {
+                    for h in [
+                        "Barra",
+                        "Esforço Nd",
+                        "Seção",
+                        "Esbeltez λ",
+                        "Uso",
+                        "Situação",
+                    ] {
+                        ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                    }
+                    ui.end_row();
+                    for m in &truss.members {
+                        ui.label(&m.name);
+                        let kind = if m.axial_design_kn < 0.0 {
+                            format!("-{} kN (comp.)", decimal(m.axial_design_kn.abs(), 1))
+                        } else {
+                            format!("+{} kN (traç.)", decimal(m.axial_design_kn, 1))
+                        };
+                        ui.label(kind);
+                        ui.label(format!("{:.0} × {:.0} cm", m.section_cm.0, m.section_cm.1));
+                        ui.label(if m.slenderness > 0.0 {
+                            decimal(m.slenderness, 0)
+                        } else {
+                            "—".to_owned()
+                        });
+                        ui.label(format!("{:.0} %", m.ratio * 100.0));
+                        ui.label(
+                            RichText::new(if m.ok { "Atende" } else { "Revise" }).color(if m.ok {
+                                SUCCESS
+                            } else {
+                                DANGER
+                            }),
+                        );
+                        ui.end_row();
+                    }
+                });
+        }
+        if result.uplift.lifts {
+            ui.add_space(4.0);
+            ui.label(
+                RichText::new(format!(
+                    "Sucção de vento (NBR 6123, V0={} m/s): líquido {} kPa → ancorar cada apoio para {} kN.",
+                    decimal(result.uplift.wind_v0_ms, 0),
+                    decimal(result.uplift.net_design_uplift_kpa, 2),
+                    decimal(result.uplift.anchor_design_kn, 1)
+                ))
+                .size(11.5)
+                .color(WARNING),
+            );
+        }
         if let Some(critical) = result
             .elements
             .iter()

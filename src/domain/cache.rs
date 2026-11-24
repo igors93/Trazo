@@ -291,16 +291,20 @@ pub fn structure_fingerprint(project: &Project) -> u64 {
         roof.id.hash(&mut h);
         hash_point(&mut h, roof.min);
         hash_point(&mut h, roof.max);
+        (roof.style as u8).hash(&mut h);
         (roof.high_side as u8).hash(&mut h);
         (roof.tile as u8).hash(&mut h);
         (roof.timber as u8).hash(&mut h);
         roof.exposed.hash(&mut h);
+        roof.use_trusses.hash(&mut h);
         for v in [
             roof.high_m,
             roof.low_m,
+            roof.overhang_m,
             roof.beam_spacing_m,
             roof.purlin_spacing_m,
             roof.rafter_spacing_m,
+            roof.lateral_bracing_kn.unwrap_or(-1.0),
         ] {
             hash_f64(&mut h, v);
         }

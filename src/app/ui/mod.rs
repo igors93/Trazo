@@ -76,10 +76,7 @@ impl FloorPlanApp {
             )
             .show(ui, |ui| self.menu_bar(ui));
 
-        egui::Panel::top("ribbon")
-            .show_separator_line(false)
-            .frame(egui::Frame::new().fill(theme::PANEL))
-            .show(ui, |ui| self.ribbon(ui));
+        self.show_ribbon_panel(ui);
 
         egui::Panel::top("options_bar")
             .frame(
@@ -149,5 +146,64 @@ impl FloorPlanApp {
         self.poll_xrefs(&context);
         self.xref_dialog(&context);
         self.compare_dialog(&context);
+    }
+
+    fn show_ribbon_panel(&mut self, ui: &mut Ui) -> egui::InnerResponse<()> {
+        egui::Panel::top("ribbon")
+            // Reserve room for the tallest group and the horizontal scroll bar.
+            // Otherwise switching tabs moves the canvas when that bar appears.
+            .exact_size(if self.ribbon_collapsed { 27.0 } else { 120.0 })
+            .show_separator_line(false)
+            .frame(egui::Frame::new().fill(theme::PANEL))
+            .show(ui, |ui| self.ribbon(ui))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::app::RibbonTab;
+
+    #[test]
+    fn ribbon_keeps_the_same_height_across_tabs_and_window_widths() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        let tabs = [
+            RibbonTab::Architecture,
+            RibbonTab::Edit,
+            RibbonTab::Interiors,
+            RibbonTab::Electrical,
+            RibbonTab::Structure,
+            RibbonTab::Drafting,
+            RibbonTab::View,
+            RibbonTab::Output,
+        ];
+
+        for width in [1000.0, 1280.0] {
+            for tab in tabs {
+                app.ribbon_tab = tab;
+                context.begin_pass(egui::RawInput {
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(width, 600.0),
+                    )),
+                    ..Default::default()
+                });
+                let mut height = 0.0;
+                egui::Area::new(egui::Id::unique("ribbon_test")).show(&context, |ui| {
+                    ui.set_width(width);
+                    height = app.show_ribbon_panel(ui).response.rect.height();
+                });
+                context.end_pass().textures_delta.clear();
+                assert_eq!(height, 120.0, "tab {tab:?} at width {width}");
+            }
+        }
+
+        app.ribbon_collapsed = true;
+        context.begin_pass(egui::RawInput::default());
+        egui::Area::new(egui::Id::unique("ribbon_test")).show(&context, |ui| {
+            assert_eq!(app.show_ribbon_panel(ui).response.rect.height(), 27.0);
+        });
+        context.end_pass().textures_delta.clear();
     }
 }

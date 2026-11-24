@@ -1,5 +1,7 @@
-//! Mono-pitch timber roofs (*meia-água*, #114): tiles, battens, rafters,
-//! purlins and main beams sized to ABNT NBR 7190 and NBR 6120.
+//! Timber roofs (*meia-água*, *duas águas* and *quatro águas*, #114): tiles,
+//! battens, rafters, purlins, wall plates (*frechais*), main beams, pitched
+//! trusses (*tesouras*), hip rafters (*espigões*), overhangs and NBR 6123
+//! wind uplift sized to ABNT NBR 7190 and NBR 6120.
 
 mod analysis;
 mod marks;
@@ -14,7 +16,55 @@ use serde::{Deserialize, Serialize};
 use crate::domain::geometry::Point;
 
 pub use materials::{TileKind, TimberClass, TimberSpecies, timber_design, timber_design_species};
-pub use sizing::{RoofElement, RoofElementResult, RoofReaction, RoofResult};
+pub use sizing::{RoofElement, RoofElementResult, RoofReaction, RoofResult, RoofUpliftSummary};
+
+/// Roof geometry style (#114).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoofStyle {
+    /// Mono-pitch (*meia-água*): one plane sloping from `high_side` to its opposite.
+    #[default]
+    MonoPitch,
+    /// Gable (*duas águas*): central ridge parallel to the eaves, two symmetric planes.
+    Gable,
+    /// Hip (*quatro águas*): four planes sloping to every perimeter edge with hip rafters.
+    Hip,
+}
+
+impl RoofStyle {
+    pub const ALL: [Self; 3] = [Self::MonoPitch, Self::Gable, Self::Hip];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::MonoPitch => "Meia-água",
+            Self::Gable => "Duas águas",
+            Self::Hip => "Quatro águas",
+        }
+    }
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::MonoPitch => "meia_agua",
+            Self::Gable => "duas_aguas",
+            Self::Hip => "quatro_aguas",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_lowercase().as_str() {
+            "meia_agua" | "meia-agua" | "meia_água" | "meia-água" | "mono_pitch" | "monopitch" => {
+                Some(Self::MonoPitch)
+            }
+            "duas_aguas" | "duas-aguas" | "duas_águas" | "duas-águas" | "gable" => {
+                Some(Self::Gable)
+            }
+            "quatro_aguas" | "quatro-aguas" | "quatro_águas" | "quatro-águas" | "hip" => {
+                Some(Self::Hip)
+            }
+            _ => None,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -72,22 +122,32 @@ fn default_exposed() -> bool {
     true
 }
 
-/// A mono-pitch timber roof over a plan rectangle (internal coordinates,
-/// y down: north is the smaller y).
+/// A timber roof over a plan rectangle (internal coordinates,
+/// y down: north is the smaller y). Supports mono-pitch (*meia-água*),
+/// gable (*duas águas*) and hip (*quatro águas*) geometries with optional
+/// overhangs and pitched timber trusses (#114).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Roof {
     pub id: u64,
     pub min: Point,
     pub max: Point,
+    #[serde(default)]
+    pub style: RoofStyle,
     pub high_side: RoofSide,
-    /// Height of the roof at the high and at the low edge, metres.
+    /// Height of the roof at the ridge / high edge and at the eaves / low edge, metres.
     pub high_m: f64,
     pub low_m: f64,
+    /// Perimeter eave overhang (*beiral*), metres (0.0 to 1.50).
+    #[serde(default)]
+    pub overhang_m: f64,
+    /// Force timber trusses (*tesouras*) even on mono-pitch roofs; always used on gable/hip.
+    #[serde(default)]
+    pub use_trusses: bool,
     #[serde(default)]
     pub tile: TileKind,
     #[serde(default)]
     pub timber: TimberClass,
-    /// Largest distance between main beams, metres.
+    /// Largest distance between main beams or trusses, metres.
     #[serde(default = "default_beam_spacing")]
     pub beam_spacing_m: f64,
     /// Fixed width by height of the main roof beams, centimetres. When absent,
@@ -113,15 +173,18 @@ pub struct Roof {
 }
 
 impl Roof {
-    /// A roof with the usual spacings.
+    /// A roof with the usual spacings (defaults to mono-pitch).
     pub fn new(min: Point, max: Point, high_side: RoofSide, high_m: f64, low_m: f64) -> Self {
         Self {
             id: 0,
             min: Point::new(min.x.min(max.x), min.y.min(max.y)),
             max: Point::new(min.x.max(max.x), min.y.max(max.y)),
+            style: RoofStyle::MonoPitch,
             high_side,
             high_m,
             low_m,
+            overhang_m: 0.0,
+            use_trusses: false,
             tile: TileKind::default(),
             timber: TimberClass::default(),
             beam_spacing_m: default_beam_spacing(),
@@ -135,10 +198,15 @@ impl Roof {
     }
 
     fn along_x(&self) -> bool {
-        matches!(self.high_side, RoofSide::North | RoofSide::South)
+        match self.style {
+            RoofStyle::Hip => (self.max.x - self.min.x) >= (self.max.y - self.min.y),
+            RoofStyle::MonoPitch | RoofStyle::Gable => {
+                matches!(self.high_side, RoofSide::North | RoofSide::South)
+            }
+        }
     }
 
-    /// Horizontal distance from the high to the low edge, metres.
+    /// Full horizontal span perpendicular to the eaves/ridge, metres.
     pub fn run_m(&self) -> f64 {
         if self.along_x() {
             self.max.y - self.min.y
@@ -147,7 +215,16 @@ impl Roof {
         }
     }
 
-    /// Length of the eaves (the edges the slope runs between), metres.
+    /// Horizontal run of a single sloped water plane (full `run_m` for mono-pitch,
+    /// half `run_m` for symmetric gable and hip roofs), metres.
+    pub fn pitch_run_m(&self) -> f64 {
+        match self.style {
+            RoofStyle::MonoPitch => self.run_m(),
+            RoofStyle::Gable | RoofStyle::Hip => self.run_m() * 0.5,
+        }
+    }
+
+    /// Length of the eaves (parallel to the ridge), metres.
     pub fn eaves_m(&self) -> f64 {
         if self.along_x() {
             self.max.x - self.min.x
@@ -157,7 +234,7 @@ impl Roof {
     }
 
     pub fn slope(&self) -> f64 {
-        (self.high_m - self.low_m) / self.run_m().max(1e-6)
+        (self.high_m - self.low_m) / self.pitch_run_m().max(1e-6)
     }
 
     pub fn cos(&self) -> f64 {
@@ -186,11 +263,38 @@ impl Roof {
 
     /// Height of the roof over `p`, metres.
     pub fn height_at(&self, p: Point) -> f64 {
-        self.high_m - self.slope() * self.distance_from_high(p)
+        match self.style {
+            RoofStyle::MonoPitch => self.high_m - self.slope() * self.distance_from_high(p),
+            RoofStyle::Gable => {
+                let half = self.run_m() * 0.5;
+                let dist_from_ridge = (self.distance_from_high(p) - half).abs();
+                (self.high_m - self.slope() * dist_from_ridge).max(self.low_m)
+            }
+            RoofStyle::Hip => {
+                let dx = (p.x - self.min.x).min(self.max.x - p.x).max(0.0);
+                let dy = (p.y - self.min.y).min(self.max.y - p.y).max(0.0);
+                let d_edge = dx.min(dy).min(self.pitch_run_m());
+                (self.low_m + self.slope() * d_edge).min(self.high_m)
+            }
+        }
     }
 
-    /// The point at `along` on the high or the low edge.
+    /// The point at `along` on the high or the low edge (for Hip, uses the
+    /// two long eave edges perpendicular to the truss span).
     fn edge_point(&self, along: f64, high: bool) -> Point {
+        if self.style == RoofStyle::Hip {
+            return if self.along_x() {
+                Point::new(
+                    self.min.x + along,
+                    if high { self.min.y } else { self.max.y },
+                )
+            } else {
+                Point::new(
+                    if high { self.min.x } else { self.max.x },
+                    self.min.y + along,
+                )
+            };
+        }
         let side = if high {
             self.high_side
         } else {
@@ -236,6 +340,7 @@ impl Roof {
             self.max.y,
             self.high_m,
             self.low_m,
+            self.overhang_m,
             self.beam_spacing_m,
             self.purlin_spacing_m,
             self.rafter_spacing_m,
@@ -244,6 +349,9 @@ impl Roof {
         .all(|v| v.is_finite());
         if !finite {
             return Err("Medidas do telhado inválidas.".to_owned());
+        }
+        if !(0.0..=1.5).contains(&self.overhang_m) {
+            return Err("O beiral deve ficar entre 0 e 1,50 m.".to_owned());
         }
         if self.run_m() < 1.0 || self.eaves_m() < 1.0 {
             return Err("O telhado precisa de pelo menos 1 × 1 m.".to_owned());

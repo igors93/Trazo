@@ -326,7 +326,7 @@ It recommends the viable option that takes the least concrete. Checked by `the_f
 
 ## Timber roofs
 
-A mono-pitch roof (*meia-água*) over a plan rectangle (`src/domain/roof/`): tiles on battens (*ripas*), on rafters (*caibros*), on purlins (*terças*) along the eaves, on main beams (*vigas*) from the high edge to the low edge. Fibre-cement and metal sheets rest on the purlins directly.
+Timber roofs (`src/domain/roof/`, #114) support **mono-pitch (*meia-água*)**, **gable (*duas águas*)** and **hip (*quatro águas*)** geometries over a plan rectangle with configurable perimeter **overhangs (*beirais*, 0–1.50 m)**: tiles on battens (*ripas*), on rafters (*caibros*), on purlins (*terças*) along the eaves, on main beams (*vigas*), **wall plates (*frechais*)**, 4-panel **Howe pitched timber trusses (*tesouras*)** and 4 diagonal **hip rafters (*espigões*)**. Fibre-cement and metal sheets rest on the purlins directly.
 
 | Quantity | Rule | Source |
 | --- | --- | --- |
@@ -337,11 +337,13 @@ A mono-pitch roof (*meia-água*) over a plan rectangle (`src/domain/roof/`): til
 | Design strength | fd = kmod · fk / γw, kmod = 0.70 · 1.0 · 0.80 = 0.56 (long-term, roof service class 1–2, second grade; 0.448 for exterior posts in class 3–4 with kmod2 = 0.80), γw = 1.4 (bending, compression) and 1.8 (shear) | NBR 7190 |
 | Bending and shear | simply supported under 1.4 (g + q): σ = M / W ≤ fc0,d, τ = 1.5 V / (b h) ≤ fv0,d; battens take the normal load component; purlins (*terças*) are checked in **biaxial bending** (`σx/fc0,d + kM·σy/fc0,d ≤ 1` and `kM·σx/fc0,d + σy/fc0,d ≤ 1`, `kM = 0.5`, NBR 7190 §7.3.4) with resultant deflection `√(δx² + δy²)` | NBR 7190 |
 | Deflection | 5 (g + 0.2 q) L⁴ / (384 Ec0,ef I), Ec0,ef = kmod · Ec0,m, within L / 200 (L along the slope for rafters and beams) | NBR 7190 |
-| Sections | the lightest that passes: battens 5 × 1.5 or 5 × 2.5; rafters 5 × 6 to 6 × 12; purlins 6 × 12 to 10 × 25; beams 6 × 16 to 15 × 30 cm | Commercial sizes |
+| Sections | the lightest that passes: battens 5 × 1.5 or 5 × 2.5; rafters 5 × 6 to 6 × 12; purlins 6 × 12 to 10 × 25; wall plates (*frechais*) 6 × 12 to 12 × 20; beams and hip rafters (*espigões*) 6 × 16 to 15 × 30 cm | Commercial sizes |
+| Trusses (*tesouras*) | automatic on gable/hip roofs (optional on mono-pitch): symmetric 4-panel Howe truss solved by exact Method of Joints (`N_top = 3/8·Wd/sinθ` compression, `N_bot = 3/8·Wd/tanθ` tension, `N_diag = 1/8·Wd/sinθ` compression, `N_kp = Wd/4` tension) with NBR 7190 Perry–Robertson buckling (`λ ≤ 140`) and net-section tension (`0.85·A`, `γ_wt = 1.8`) | Statics + NBR 7190 |
+| Overhangs & uplift | overhang cantilever bending `M = 1.4·(g+q)·oh²/2` checked on rafters/beams; NBR 6123 uplift (`Cpe = −1.20` open mono-pitch, `−0.80` closed gable/hip, `−1.50` overhang edge) vs. `0.9·G` yields net design uplift and anchor tension per support | NBR 7190 + NBR 6123 |
 | Main beams | at the columns found on the high and low edges (within 35 cm), more added so none is farther apart than the spacing set (3 m by default); each carries its tributary width | — |
-| Supports | each beam end, (g + q) · run / 2, is a point load on the column under it (within 35 cm), else on the concrete beam under it (within 25 cm); a roof load is never multiplied by the *floors* setting | — |
+| Supports | each beam end, (g + q) · (run + 2·oh) / 2, is a point load on the column under it (within 35 cm), else on the concrete beam under it (within 25 cm); a roof load is never multiplied by the *floors* setting | — |
 
-*Ajustar as paredes ao telhado* gives the walls under the roof its height at their ends (#145): the wall on the high side rises and the gables slope. The timber and tile quantities come out per piece. Checked by `the_slope_and_heights_follow_the_high_side`, `beams_line_up_with_the_columns_and_fill_wide_gaps`, `a_beam_matches_the_hand_calculation`, `the_gourmet_roof_is_framed_and_bears_on_the_columns` and `an_assistant_roofs_the_gourmet_area_and_the_columns_take_it`. Not covered yet: gable and hip roofs, overhangs, trusses, the 1 kN maintenance point load, and wind uplift and anchorage (#147).
+*Ajustar as paredes ao telhado* gives the walls under the roof its height at their ends (#145): mono-pitch walls slope linearly, gable walls peak at the central ridge, and hip roofs slope down to all four perimeter edges. Checked by `the_slope_and_heights_follow_the_high_side`, `beams_line_up_with_the_columns_and_fill_wide_gaps`, `a_beam_matches_the_hand_calculation`, `the_gourmet_roof_is_framed_and_bears_on_the_columns`, `gable_and_hip_roofs_size_howe_trusses_wall_plates_hip_rafters_overhangs_and_uplift` and `an_assistant_roofs_the_gourmet_area_and_the_columns_take_it`. Remaining limitation: the 1 kN concentrated maintenance point load and custom metal truss connector plates still require detailing by the roof designer.
 
 ### Timber posts (*mourões*) and timber beams
 
