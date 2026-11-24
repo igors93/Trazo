@@ -1002,6 +1002,14 @@ impl Project {
         id
     }
 
+    pub(crate) fn next_id(&self) -> u64 {
+        self.next_id
+    }
+
+    pub(crate) fn set_next_id(&mut self, next_id: u64) {
+        self.next_id = next_id;
+    }
+
     fn deterministic_guid_seed(&self) -> u64 {
         let counts = format!(
             "v{}:n{}:w{}:r{}:o{}:f{}",

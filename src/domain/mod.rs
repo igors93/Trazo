@@ -51,6 +51,7 @@ pub mod sheet_set;
 pub mod slabs;
 pub mod snap;
 pub mod soil;
+pub mod storage;
 pub mod structure;
 pub mod templates;
 pub mod timber_posts;

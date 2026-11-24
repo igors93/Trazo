@@ -62,7 +62,7 @@ Ambos os projetos são escritos em **Rust puro + `egui`/`eframe`** com licença 
     - Criar `MemoryBudget` / `SwapWatch` usado por `io::project_file::load`, `io::dxf`, e futuros importadores (IFC, nuvem de pontos, PDF, DWG) que estima o custo antes de carregar e aborta com erro amigável preservando o projeto aberto caso um arquivo corrompido ou gigantesco tente exaurir a memória.
   - **Critério de pronto:** testes unitários comprovam recusa limpa quando um arquivo excede o teto de memória sem `panic` nem OOM.
 
-- [ ] **T-04 · Armazenamento Persistente em Chunks (`Arc<Chunk>`), CoW (`Shared<T>`) e Revisões por Elemento** *(Tamanho: L · Atende `#84` e base de `#62`)*
+- [x] **T-04 · Armazenamento Persistente em Chunks (`Arc<Chunk>`), CoW (`Shared<T>`) e Revisões por Elemento** *(Tamanho: L · Atende `#84` e base de `#62`)*
   - **Ref. BIMCraft:** `crates/core/src/ids.rs`, `ids/revisions.rs`, `shared.rs`.
   - **O que implementar:**
     - Substituir vetores planos clonados integralmente no histórico de undo por armazenamento estruturalmente compartilhado em chunks imutáveis (`BTreeMap<ChunkId, Arc<Chunk>>`, 1024 IDs por chunk) + `Shared<T>` com `Identity<T>` (`Weak<T>`) para detectar mutação de definições/materiais sem reter snapshots antigos.
