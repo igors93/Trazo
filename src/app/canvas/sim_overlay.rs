@@ -94,8 +94,8 @@ fn paint_rotated_rect(
     painter.add(egui::Shape::convex_polygon(corners, fill, stroke));
 }
 
-/// Paints the active structural simulation overlays onto the canvas, requesting
-/// continuous repaints whenever the animated load-path overlay is active.
+/// Paints the active structural simulation overlays onto the canvas. The app
+/// schedules continuous repaints through its frame pacer while animation is on.
 pub(super) fn paint_simulation_overlay(painter: &Painter, view: ViewTransform, project: &Project) {
     let cfg = project.structure.overlay;
     if cfg.is_empty() {
@@ -199,7 +199,6 @@ pub(super) fn paint_simulation_overlay(painter: &Painter, view: ViewTransform, p
     }
 
     // 4. Animated load path from slab -> beam -> column -> footing/soil.
-    let animated = !overlay.load_paths.is_empty();
     let phase = (time_sec * 0.75).fract() as f32;
     for arrow in &overlay.load_paths {
         let a = view.to_screen(arrow.from);
@@ -238,9 +237,5 @@ pub(super) fn paint_simulation_overlay(painter: &Painter, view: ViewTransform, p
             );
             painter.galley(rect.min, galley, color);
         }
-    }
-
-    if animated {
-        painter.ctx().request_repaint();
     }
 }

@@ -31,6 +31,7 @@ svg2pdf = "0.13"
 pdf-writer = "0.12"
 
 [dev-dependencies]
+egui_kittest = "0.37"
 proptest = "1"
 
 [lints.rust]

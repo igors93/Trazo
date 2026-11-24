@@ -95,7 +95,7 @@ impl FloorPlanApp {
             )
             .show(ui, |ui| self.status_bar(ui));
 
-        if self.show_browser {
+        if self.show_browser && !self.show_start_page {
             egui::Panel::left("project_browser")
                 .resizable(true)
                 .default_size(232.0)
@@ -104,7 +104,7 @@ impl FloorPlanApp {
                 .show(ui, |ui| self.project_browser(ui));
         }
 
-        if self.show_properties {
+        if self.show_properties && !self.show_start_page {
             egui::Panel::right("properties")
                 .resizable(true)
                 .default_size(288.0)

@@ -629,10 +629,6 @@ impl FloorPlanApp {
         }
         // What the connected assistant just did.
         self.paint_ai_activity(&painter, view);
-        if self.ai_activity.animating() {
-            ui.ctx()
-                .request_repaint_after(std::time::Duration::from_millis(33));
-        }
         // Selected groups show their extent and name.
         for group in &self.project.groups {
             if group.members.iter().all(|member| self.is_selected(*member))

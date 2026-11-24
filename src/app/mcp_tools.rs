@@ -2330,6 +2330,7 @@ mod gate_tests {
     use crate::app::FloorPlanApp;
     use crate::domain::model::OpeningKind;
     use crate::domain::openings::DoorType;
+    use crate::mcp::ToolOutput;
     use eframe::egui;
     use serde_json::json;
 
@@ -2447,5 +2448,123 @@ mod gate_tests {
         );
         assert!(!sel_ifc.is_error, "{}", sel_ifc.text);
         assert_eq!(app.selection, Some(crate::app::Selection::Room(room_id)));
+    }
+
+    #[test]
+    fn hostile_params_never_panic_or_break_model() {
+        let context = egui::Context::default();
+        let mut app = FloorPlanApp::new(&context);
+        // Seed a valid room so element-editing tools have live state alongside bogus IDs.
+        let seeded = app.run_mcp_tool(
+            "criar_comodo",
+            &json!({ "nome": "Sala", "x": 0.0, "y": 0.0, "largura": 4.0, "comprimento": 3.0 }),
+        );
+        assert!(!seeded.is_error, "{}", seeded.text);
+
+        let huge_str = "A".repeat(10_000);
+        let hostile_payloads: Vec<serde_json::Value> = vec![
+            json!({}),
+            json!({
+                "id": 999_999_999u64,
+                "ids": [0, 999_999_999u64],
+                "parede_id": 999_999_999u64,
+                "guid": "00000000-0000-0000-0000-000000000000",
+                "x": "NaN",
+                "y": "Infinity",
+                "x1": -0.0,
+                "y1": 1e308,
+                "x2": -1e308,
+                "y2": 1e-300,
+                "dx": "Infinity",
+                "dy": "-Infinity",
+                "largura": -5.0,
+                "comprimento": 0.0,
+                "altura": 1e9,
+                "nome": huge_str,
+                "acao": "inexistente",
+                "tipo": "desconhecido",
+                "operacao": "invalida",
+                "pontos": [],
+            }),
+            json!({
+                "id": "not-a-number",
+                "ids": "abc,def",
+                "guid": "not-a-valid-guid",
+                "x": null,
+                "y": true,
+                "largura": "NaN",
+                "comprimento": "Infinity",
+                "pontos": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 0.0, "y": 0.0}
+                ],
+                "acoes": [{"ferramenta": "criar_parede", "argumentos": {"x1": "NaN"}}],
+            }),
+            json!({
+                "id": 0,
+                "x": 1e20,
+                "y": -1e20,
+                "largura": 1e20,
+                "comprimento": 1e20,
+                "espessura": -1.0,
+                "rotacao": 13.7,
+                "passos": -100,
+                "todos_pavimentos": "talvez",
+                "caminho": "",
+                "formato": "invalido",
+            }),
+        ];
+
+        let tools = crate::mcp::protocol::tool_names();
+        assert!(tools.len() >= 40, "expected full MCP catalogue");
+
+        let assert_safe = |app: &FloorPlanApp, tool_name: &str, output: &ToolOutput| {
+            assert!(
+                !output.text.contains("Erro interno do Trazo"),
+                "{tool_name} swallowed a panic: {}",
+                output.text
+            );
+            // Check after every call: a later tool may reset the project and
+            // otherwise hide corruption caused by an earlier hostile input.
+            for wall in &app.project.walls {
+                assert!(wall.start.is_finite() && wall.end.is_finite());
+            }
+            for opening in &app.project.openings {
+                assert!(opening.t.is_finite() && opening.width().is_finite());
+            }
+            for fixture in &app.project.fixtures {
+                assert!(fixture.center.is_finite());
+                assert!(fixture.width.is_finite() && fixture.depth.is_finite());
+            }
+        };
+
+        for tool_name in tools {
+            // Skip tools that could write outside temp when given empty caminho.
+            if matches!(tool_name, "salvar_projeto" | "exportar_planta") {
+                for payload in &hostile_payloads {
+                    let mut p = payload.clone();
+                    if let Some(obj) = p.as_object_mut() {
+                        obj.insert("formato".to_owned(), json!("formato_inexistente"));
+                        obj.insert(
+                            "caminho".to_owned(),
+                            json!(
+                                std::env::temp_dir()
+                                    .join("trazo-hostile-nonexistent-dir-xyz/out.invalid")
+                                    .display()
+                                    .to_string()
+                            ),
+                        );
+                    }
+                    let output = app.run_mcp_tool(tool_name, &p);
+                    assert_safe(&app, tool_name, &output);
+                }
+                continue;
+            }
+            for payload in &hostile_payloads {
+                let output = app.run_mcp_tool(tool_name, payload);
+                assert_safe(&app, tool_name, &output);
+            }
+        }
     }
 }

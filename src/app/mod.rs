@@ -3,12 +3,15 @@ pub mod app_icon;
 mod canvas;
 mod interaction;
 mod mcp_tools;
+pub(crate) mod pacing;
 mod plan_sync;
 mod selection;
 mod tabs;
 mod theme;
 mod tools;
 mod ui;
+#[cfg(test)]
+mod ui_tests;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -304,6 +307,8 @@ pub struct FloorPlanApp {
     edit_notice: Option<String>,
     /// What the connected assistant did in this session, shown on the plan.
     ai_activity: ai_activity::AiActivity,
+    /// Limits continuous overlay repaints without delaying input-driven frames.
+    frame_pacer: pacing::FramePacer,
     /// The view follows what the assistant changes.
     follow_ai: bool,
     /// Where the plan was drawn last frame.
@@ -533,6 +538,7 @@ impl FloorPlanApp {
             group_name_text: String::new(),
             edit_notice: None,
             ai_activity: ai_activity::AiActivity::default(),
+            frame_pacer: pacing::FramePacer::default(),
             follow_ai: preferences.follow_ai,
             last_canvas_rect: None,
             batch_depth: 0,
@@ -3047,6 +3053,7 @@ impl eframe::App for FloorPlanApp {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let frame_start = Instant::now();
         self.show_layout(ui);
         // A refused edit's reason wins over a message written after it.
         if let Some(notice) = self.edit_notice.take() {
@@ -3054,6 +3061,18 @@ impl eframe::App for FloorPlanApp {
         }
         self.persist_settings();
         self.save_recovery_if_pending();
+        let frame_delay = self
+            .frame_pacer
+            .record_frame(Instant::now(), frame_start.elapsed());
+        let load_path_animating = self.project.structure.overlay.load_path
+            && self
+                .project
+                .category_visible(crate::domain::layers::LayerCategory::Structure)
+            && (!self.project.structure.beams.is_empty()
+                || !self.project.structure.slabs.is_empty());
+        if !self.show_start_page && (self.ai_activity.animating() || load_path_animating) {
+            ui.ctx().request_repaint_after(frame_delay);
+        }
     }
 }
 

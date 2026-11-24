@@ -86,7 +86,7 @@ Ambos os projetos são escritos em **Rust puro + `egui`/`eframe`** com licença 
     - Criar *Start Page* (Página Inicial) com *Novo*, *Abrir*, cartões dos projetos recentes com miniatura PNG embutida e estado de recuperação de autosave (*Recuperar / Descartar / Adiar*).
   - **Critério de pronto:** projeto grande salva/abre > 3× menor e mais rápido; abrir `.trazot` cria documento limpo; Start Page exibe miniaturas de arquivos recentes.
 
-- [ ] **T-07 · Suíte de Regressão de UI (`egui_kittest`), Fuzz Hostil de Comandos e Benchmark CLI (`--bench`)** *(Tamanho: M)*
+- [x] **T-07 · Suíte de Regressão de UI (`egui_kittest`), Fuzz Hostil de Comandos e Benchmark CLI (`--bench`)** *(Tamanho: M)*
   - **Ref. BIMCraft:** `crates/ui-egui/src/tests/`, `bench.rs`, `pacing.rs`, `docs/performance.md`.
   - **O que implementar:**
     - Adicionar `egui_kittest` em `dev-dependencies` para testar diálogos críticos (Estrutura, Elétrica, Prancha, Segurança, What-if) de forma headless no CI.
