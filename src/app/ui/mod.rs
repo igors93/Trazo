@@ -13,6 +13,7 @@ mod ergonomics;
 mod floors;
 mod foundations;
 mod frames;
+mod grid;
 mod header;
 pub(super) mod icons;
 pub(in crate::app) use icons::Glyph;
@@ -44,6 +45,7 @@ pub(in crate::app) use underlay::{UnderlayUiState, paint_image_underlays};
 mod updates;
 mod view;
 mod views;
+mod whatif;
 mod widgets;
 mod xref;
 

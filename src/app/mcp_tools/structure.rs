@@ -425,6 +425,68 @@ fn round1(value: f64) -> f64 {
     (value * 10.0).round() / 10.0
 }
 
+fn grid_analysis_json(grid: &crate::domain::grid_analysis::GridAnalysisReport) -> Value {
+    let slabs: Vec<Value> = grid
+        .slabs
+        .iter()
+        .map(|s| {
+            json!({
+                "id": s.slab_id,
+                "rotulo": s.label,
+                "comodo": s.room,
+                "irregular": s.is_irregular,
+                "vao_menor_m": (s.short_span_m * 100.0).round() / 100.0,
+                "w_elastico_mm": (s.w_elastic_mm * 100.0).round() / 100.0,
+                "w_longo_prazo_mm": round1(s.w_long_term_mm),
+                "limite_mm": round1(s.limit_mm),
+                "mx_pos_knm_m": (s.mx_pos_knm_m * 100.0).round() / 100.0,
+                "my_pos_knm_m": (s.my_pos_knm_m * 100.0).round() / 100.0,
+                "mx_neg_knm_m": (s.mx_neg_knm_m * 100.0).round() / 100.0,
+                "my_neg_knm_m": (s.my_neg_knm_m * 100.0).round() / 100.0,
+                "mxy_max_knm_m": (s.mxy_max_knm_m * 100.0).round() / 100.0,
+                "semaforo": s.light.key(),
+            })
+        })
+        .collect();
+    let beams: Vec<Value> = grid
+        .beams
+        .iter()
+        .map(|b| {
+            json!({
+                "id": b.beam_id,
+                "rotulo": b.label,
+                "m_pos_knm": round1(b.m_pos_knm),
+                "m_neg_knm": round1(b.m_neg_knm),
+                "v_max_kn": round1(b.v_max_kn),
+                "torcao_max_knm": (b.t_max_knm * 100.0).round() / 100.0,
+                "w_elastico_mm": (b.w_elastic_mm * 100.0).round() / 100.0,
+            })
+        })
+        .collect();
+    let reactions: Vec<Value> = grid
+        .reactions
+        .iter()
+        .map(|r| {
+            json!({
+                "rotulo": r.label,
+                "reacao_kn": round1(r.reaction_kn),
+            })
+        })
+        .collect();
+    json!({
+        "nos": grid.node_count,
+        "barras": grid.member_count,
+        "carga_total_kn": round1(grid.total_applied_kn),
+        "reacao_total_kn": round1(grid.total_reaction_kn),
+        "erro_equilibrio_kn": grid.equilibrium_error_kn,
+        "w_max_elastico_mm": (grid.max_elastic_w_mm * 100.0).round() / 100.0,
+        "lajes": slabs,
+        "vigas": beams,
+        "reacoes": reactions,
+        "erro": grid.error,
+    })
+}
+
 fn loads_analysis_json(loads: &crate::domain::loads::LoadAnalysisReport) -> Value {
     let n6120 = &loads.nbr6120;
     let bw = &loads.building_wind;
@@ -1187,8 +1249,90 @@ impl FloorPlanApp {
                     Ok(Change::new(format!("Viga alavanca {id} removida.")))
                 })
             }
+            "configurar_sobreposicao" => {
+                use crate::domain::plan_results::BeamDiagramOverlay;
+                let mut next = self.project.structure.overlay;
+                if let Some(v) = args.get("cores_aproveitamento").and_then(Value::as_bool) {
+                    next.utilisation_colors = v;
+                }
+                if let Some(raw) = text(args, "diagrama_planta") {
+                    next.beam_diagrams = BeamDiagramOverlay::from_key(&raw).ok_or(
+                        "'diagrama_planta' deve ser nenhum, momento ou cortante.",
+                    )?;
+                }
+                if let Some(v) = args.get("deformada_planta").and_then(Value::as_bool) {
+                    next.deformed_shape = v;
+                }
+                if let Some(v) = args.get("caminho_cargas").and_then(Value::as_bool) {
+                    next.load_path = v;
+                }
+                self.apply_change(None, |project| {
+                    project.structure.overlay = next;
+                    Ok(Change::new("Sobreposição estrutural na planta atualizada.").data(
+                        json!({
+                            "cores_aproveitamento": next.utilisation_colors,
+                            "diagrama_planta": next.beam_diagrams.key(),
+                            "deformada_planta": next.deformed_shape,
+                            "caminho_cargas": next.load_path,
+                        }),
+                    ))
+                })
+            }
+            "simular_whatif" => {
+                use crate::domain::whatif::{
+                    WhatIfParams, apply_whatif_to_project, evaluate_whatif,
+                };
+                let mut params = WhatIfParams::from_project(&self.project);
+                if let Some(v) = number(args, "escala_vao")? {
+                    params.span_scale = v.clamp(0.5, 2.0);
+                }
+                if let Some(v) = number(args, "largura_viga_cm")? {
+                    params.beam_width_cm = v.clamp(12.0, 40.0);
+                }
+                if let Some(v) = number(args, "altura_viga_cm")? {
+                    params.beam_height_cm = v.clamp(20.0, 80.0);
+                }
+                if let Some(v) = number(args, "lado_pilar_cm")? {
+                    params.column_side_cm = v.clamp(14.0, 60.0);
+                }
+                if let Some(v) = number(args, "espessura_laje_cm")? {
+                    params.slab_thickness_cm = v.clamp(8.0, 25.0);
+                }
+                if let Some(v) = number(args, "sobrecarga_kn_m2")? {
+                    params.live_load_kn_m2 = v.clamp(0.5, 6.0);
+                }
+                if let Some(v) = number(args, "fck_mpa")? {
+                    params.fck_mpa = v.clamp(20.0, 50.0);
+                }
+                if let Some(v) = number(args, "solo_kpa")? {
+                    params.soil_kpa = v.clamp(60.0, 500.0);
+                }
+                if let Some(v) = number(args, "vento_v0_ms")? {
+                    params.wind_v0_ms = v.clamp(30.0, 50.0);
+                }
+                if let Some(raw) = text(args, "ocupacao") {
+                    params.occupancy = parse_occupancy_class(&raw).ok_or(
+                        "'ocupacao' deve ser residencial, escritorio, garagem ou comercial.",
+                    )?;
+                }
+                let result = evaluate_whatif(&self.project, &params);
+                let apply = args
+                    .get("aplicar")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let payload = serde_json::to_value(&result)
+                    .map_err(|e| format!("Falha ao serializar What-if: {e}"))?;
+                if apply {
+                    self.apply_change(None, |project| {
+                        apply_whatif_to_project(project, &params);
+                        Ok(Change::new(result.advice.clone()).data(payload))
+                    })
+                } else {
+                    Ok(ToolOutput::ok(result.advice).with_structured(payload))
+                }
+            }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao, configurar_vento, ajustar_paredes_telhado ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, configurar_sobreposicao, simular_whatif, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao, configurar_vento, ajustar_paredes_telhado ou vista.".to_owned(),
             ),
         }
     }
@@ -1711,6 +1855,15 @@ impl FloorPlanApp {
             })
             .collect();
         let loads_json = loads_analysis_json(&report.loads);
+        let grid = self.project.cached_grid_analysis();
+        let grid_json = grid_analysis_json(&grid);
+        let ov = self.project.structure.overlay;
+        let overlay_json = json!({
+            "cores_aproveitamento": ov.utilisation_colors,
+            "diagrama_planta": ov.beam_diagrams.key(),
+            "deformada_planta": ov.deformed_shape,
+            "caminho_cargas": ov.load_path,
+        });
         Ok(ToolOutput::ok(format!(
             "{} laje(s), {} viga(s), {} pórtico(s) 2D resolvido(s), {} falha(s) de pórtico, {} pilar(es), {} sapata(s), {} verga(s)/contraverga(s), {} painel(is) de alvenaria, {} kg de aço preliminar, {} alerta(s).",
             slabs.len(),
@@ -1739,6 +1892,8 @@ impl FloorPlanApp {
                 "portico_bases_engastadas": settings.frame_fixed_bases,
             },
             "cargas_e_combinacoes": loads_json,
+            "sobreposicao_planta": overlay_json,
+            "grelha_lajes_vigas": grid_json,
             "lajes": slabs,
             "vigas": beams,
             "porticos_2d": frames_2d,
@@ -2538,5 +2693,94 @@ mod tests {
                 .unwrap()
                 > 0.0
         );
+    }
+
+    #[test]
+    fn mcp_covers_plan_overlay_whatif_and_grid_analysis() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        let built = app.run_mcp_tool(
+            "executar_lote",
+            &json!({
+                "acoes": [
+                    { "ferramenta": "criar_comodo", "argumentos": { "nome": "Sala", "x": 0, "y": 0, "largura": 5.0, "comprimento": 4.0 } },
+                    { "ferramenta": "criar_comodo", "argumentos": { "nome": "Quarto", "x": 5.0, "y": 0, "largura": 3.5, "comprimento": 4.0 } },
+                    { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "gerar_estrutura" } },
+                    {
+                        "ferramenta": "projeto_estrutural",
+                        "argumentos": {
+                            "acao": "configurar_sobreposicao",
+                            "cores_aproveitamento": true,
+                            "diagrama_planta": "momento",
+                            "deformada_planta": true,
+                            "caminho_cargas": true
+                        }
+                    },
+                ]
+            }),
+        );
+        assert!(!built.is_error, "{}", built.text);
+
+        // #106 overlay + #109 grid analysis exposed in pre_dimensionamento.
+        let report = app
+            .run_mcp_tool("pre_dimensionamento", &json!({}))
+            .structured
+            .unwrap();
+        assert_eq!(report["sobreposicao_planta"]["cores_aproveitamento"], true);
+        assert_eq!(report["sobreposicao_planta"]["diagrama_planta"], "momento");
+        let grid = &report["grelha_lajes_vigas"];
+        assert!(grid["nos"].as_u64().unwrap() > 10);
+        assert!(grid["erro_equilibrio_kn"].as_f64().unwrap() < 1e-2);
+        assert!(!grid["lajes"].as_array().unwrap().is_empty());
+        assert!(!grid["vigas"].as_array().unwrap().is_empty());
+
+        // #107 What-if non-destructive evaluation and apply.
+        let whatif = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({
+                "acao": "simular_whatif",
+                "altura_viga_cm": 50.0,
+                "fck_mpa": 30.0,
+                "aplicar": false
+            }),
+        );
+        assert!(!whatif.is_error, "{}", whatif.text);
+        let wi = whatif.structured.unwrap();
+        assert!(wi["elapsed_ms"].as_f64().unwrap() < 250.0);
+        assert_eq!(wi["safe_ranges"].as_array().unwrap().len(), 5);
+
+        // Export both plan SVG (with #106 overlay) and #109 grid SVG/PDF.
+        let tmp = std::env::temp_dir().join(format!("trazo-mcp-sim-core-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let sheet_svg = tmp.join("prancha.svg");
+        let grid_svg = tmp.join("grelha.svg");
+        let grid_pdf = tmp.join("grelha.pdf");
+        for (fmt, path) in [
+            ("prancha_svg", &sheet_svg),
+            ("grelha_svg", &grid_svg),
+            ("grelha_pdf", &grid_pdf),
+        ] {
+            let res = app.run_mcp_tool(
+                "exportar_planta",
+                &json!({
+                    "formato": fmt,
+                    "disciplina": "estrutura",
+                    "caminho": path.display().to_string()
+                }),
+            );
+            assert!(!res.is_error, "{fmt}: {}", res.text);
+            assert!(path.is_file());
+        }
+        assert!(
+            std::fs::read_to_string(&sheet_svg)
+                .unwrap()
+                .contains("simulacao-estrutural")
+        );
+        assert!(
+            std::fs::read_to_string(&grid_svg)
+                .unwrap()
+                .contains("Analogia de Grelha")
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

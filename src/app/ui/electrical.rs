@@ -403,7 +403,8 @@ impl FloorPlanApp {
         let tab_id = egui::Id::unique("trazo_electrical_tab");
         let mut tab: u8 = ctx.data(|data| data.get_temp(tab_id)).unwrap_or(0);
         let forecast = self.project.electrical_forecast();
-        let schedule = self.project.cached_load_schedule();
+        let (schedule, schedule_stale) = self.background.load_schedule_or_schedule(&self.project);
+        let _ = schedule_stale;
         let preview = if tab == 1 {
             let markup = single_line_svg(&self.project);
             svg_preview(ctx, "trazo_single_line_preview", &markup)

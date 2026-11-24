@@ -10,6 +10,7 @@ use super::conduits::PlanMark;
 use super::electrical::LoadSchedule;
 use super::fixtures::Fixture;
 use super::geometry::Point;
+use super::grid_analysis::GridAnalysisReport;
 use super::model::{Project, Room, Wall};
 use super::reinforcement::{ReinforcementReport, build_reinforcement_report};
 use super::structure::{Beam, Slab, StructureReport};
@@ -27,18 +28,29 @@ impl<T> RingCache<T> {
         }
     }
 
-    fn get_or_insert(&mut self, key: u64, compute: impl FnOnce() -> T) -> Arc<T> {
+    fn peek(&mut self, key: u64) -> Option<Arc<T>> {
+        let pos = self.entries.iter().position(|(k, _)| *k == key)?;
+        let entry = self.entries.remove(pos);
+        let value = Arc::clone(&entry.1);
+        self.entries.push(entry);
+        Some(value)
+    }
+
+    fn insert(&mut self, key: u64, value: Arc<T>) {
         if let Some(pos) = self.entries.iter().position(|(k, _)| *k == key) {
-            let entry = self.entries.remove(pos);
-            let value = Arc::clone(&entry.1);
-            self.entries.push(entry);
-            return value;
-        }
-        let value = Arc::new(compute());
-        if self.entries.len() >= CACHE_SLOTS {
+            self.entries.remove(pos);
+        } else if self.entries.len() >= CACHE_SLOTS {
             self.entries.remove(0);
         }
-        self.entries.push((key, Arc::clone(&value)));
+        self.entries.push((key, value));
+    }
+
+    fn get_or_insert(&mut self, key: u64, compute: impl FnOnce() -> T) -> Arc<T> {
+        if let Some(existing) = self.peek(key) {
+            return existing;
+        }
+        let value = Arc::new(compute());
+        self.insert(key, Arc::clone(&value));
         value
     }
 }
@@ -154,7 +166,7 @@ fn hash_slab(h: &mut DefaultHasher, s: &Slab) {
     hash_f64(h, s.thickness_m);
 }
 
-fn electrical_fingerprint(project: &Project) -> u64 {
+pub fn electrical_fingerprint(project: &Project) -> u64 {
     let mut h = DefaultHasher::new();
     hash_f64(&mut h, project.wall_height);
     hash_f64(&mut h, project.electrical.voltage_v);
@@ -204,7 +216,7 @@ fn electrical_fingerprint(project: &Project) -> u64 {
     h.finish()
 }
 
-fn structure_fingerprint(project: &Project) -> u64 {
+pub fn structure_fingerprint(project: &Project) -> u64 {
     let mut h = DefaultHasher::new();
     hash_f64(&mut h, project.wall_height);
     let s = project.structure.settings;
@@ -345,13 +357,43 @@ fn structure_fingerprint(project: &Project) -> u64 {
 type CacheSlot<T> = OnceLock<Mutex<RingCache<T>>>;
 type ElectricalTag = (Point, String);
 
+static LOAD_SCHEDULE_CACHE: CacheSlot<LoadSchedule> = OnceLock::new();
+static STRUCTURE_REPORT_CACHE: CacheSlot<StructureReport> = OnceLock::new();
+static REINFORCEMENT_CACHE: CacheSlot<ReinforcementReport> = OnceLock::new();
+static GRID_ANALYSIS_CACHE: CacheSlot<GridAnalysisReport> = OnceLock::new();
+
+pub(crate) fn store_load_schedule(key: u64, schedule: Arc<LoadSchedule>) {
+    let cache = LOAD_SCHEDULE_CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+    let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+    guard.insert(key, schedule);
+}
+
+pub(crate) fn store_structure_report(key: u64, report: Arc<StructureReport>) {
+    let cache = STRUCTURE_REPORT_CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+    let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+    guard.insert(key, report);
+}
+
+pub(crate) fn store_reinforcement_report(key: u64, report: Arc<ReinforcementReport>) {
+    let cache = REINFORCEMENT_CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+    let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+    guard.insert(key, report);
+}
+
 impl Project {
+    /// Non-blocking cache lookup for [`Project::load_schedule`].
+    pub fn peek_cached_load_schedule(&self) -> Option<Arc<LoadSchedule>> {
+        let key = electrical_fingerprint(self);
+        let cache = LOAD_SCHEDULE_CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        guard.peek(key)
+    }
+
     /// Cached [`Project::load_schedule`], reused across frames until electrical
     /// inputs change.
     pub fn cached_load_schedule(&self) -> Arc<LoadSchedule> {
-        static CACHE: CacheSlot<LoadSchedule> = OnceLock::new();
         let key = electrical_fingerprint(self);
-        let cache = CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let cache = LOAD_SCHEDULE_CACHE.get_or_init(|| Mutex::new(RingCache::new()));
         let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
         guard.get_or_insert(key, || self.load_schedule())
     }
@@ -407,27 +449,50 @@ impl Project {
         guard.get_or_insert(key, || self.foundation_marks())
     }
 
+    /// Non-blocking cache lookup for [`Project::structure_report`].
+    pub fn peek_cached_structure_report(&self) -> Option<Arc<StructureReport>> {
+        let key = structure_fingerprint(self);
+        let cache = STRUCTURE_REPORT_CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        guard.peek(key)
+    }
+
     /// Cached [`Project::structure_report`], reused across frames until
     /// structural inputs change.
     pub fn cached_structure_report(&self) -> Arc<StructureReport> {
-        static CACHE: CacheSlot<StructureReport> = OnceLock::new();
         let key = structure_fingerprint(self);
-        let cache = CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let cache = STRUCTURE_REPORT_CACHE.get_or_init(|| Mutex::new(RingCache::new()));
         let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
         guard.get_or_insert(key, || self.structure_report())
+    }
+
+    /// Non-blocking cache lookup for [`Project::cached_reinforcement_report`].
+    pub fn peek_cached_reinforcement_report(&self) -> Option<Arc<ReinforcementReport>> {
+        let key = structure_fingerprint(self);
+        let cache = REINFORCEMENT_CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        guard.peek(key)
     }
 
     /// Cached reinforcement proposal and steel schedule, derived from the
     /// same structural fingerprint as the analysis report.
     pub fn cached_reinforcement_report(&self) -> Arc<ReinforcementReport> {
-        static CACHE: CacheSlot<ReinforcementReport> = OnceLock::new();
         let key = structure_fingerprint(self);
-        let cache = CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let cache = REINFORCEMENT_CACHE.get_or_init(|| Mutex::new(RingCache::new()));
         let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
         guard.get_or_insert(key, || {
-            let structure = self.structure_report();
+            let structure = self.cached_structure_report();
             build_reinforcement_report(self, &structure)
         })
+    }
+
+    /// Cached coupled slab + beam grillage analysis (#109), invalidated
+    /// automatically whenever structural inputs change.
+    pub fn cached_grid_analysis(&self) -> Arc<GridAnalysisReport> {
+        let key = structure_fingerprint(self);
+        let cache = GRID_ANALYSIS_CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        guard.get_or_insert(key, || self.grid_analysis())
     }
 
     /// Cached [`Project::audit_dependencies`], reused across frames until

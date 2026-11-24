@@ -55,6 +55,47 @@ pub struct SpanResult {
     pub height_min_m: f64,
 }
 
+/// Characteristic bending moment M(x) (sagging positive, kN·m) along a span,
+/// including both uniform load and any concentrated point loads.
+pub fn beam_moment_at(span: &SpanResult, x: f64) -> f64 {
+    let l = span.length_m.max(1e-6);
+    let x = x.clamp(0.0, l);
+    let w = span.dead_kn_m + span.live_kn_m;
+    let mut v_left = w * l / 2.0 + (span.moment_right - span.moment_left) / l;
+    for pl in &span.point_loads {
+        let a = pl.position_m.clamp(0.0, l);
+        v_left += pl.load_kn * (l - a) / l;
+    }
+    let mut m = span.moment_left + v_left * x - 0.5 * w * x * x;
+    for pl in &span.point_loads {
+        let a = pl.position_m.clamp(0.0, l);
+        if x > a {
+            m -= pl.load_kn * (x - a);
+        }
+    }
+    m
+}
+
+/// Characteristic shear force V(x) (kN) along a span, including concentrated loads.
+pub fn beam_shear_at(span: &SpanResult, x: f64) -> f64 {
+    let l = span.length_m.max(1e-6);
+    let x = x.clamp(0.0, l);
+    let w = span.dead_kn_m + span.live_kn_m;
+    let mut v = w * l / 2.0 + (span.moment_right - span.moment_left) / l;
+    for pl in &span.point_loads {
+        let a = pl.position_m.clamp(0.0, l);
+        v += pl.load_kn * (l - a) / l;
+    }
+    v -= w * x;
+    for pl in &span.point_loads {
+        let a = pl.position_m.clamp(0.0, l);
+        if x > a {
+            v -= pl.load_kn;
+        }
+    }
+    v
+}
+
 /// A concentrated load retained with its position so downstream analyses
 /// (notably the coupled 2D frame) cannot silently turn it into zero.
 #[derive(Clone, Copy, Debug, PartialEq)]

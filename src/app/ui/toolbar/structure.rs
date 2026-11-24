@@ -121,6 +121,97 @@ impl FloorPlanApp {
             }
         });
         vertical_divider(ui, 72.0);
+        ribbon_panel(ui, "Simulação na planta", |ui| {
+            if tip(
+                ribbon_button(ui, Icon::SplitView, "E se?", false, false),
+                "Simulador interativo (What-if): controles deslizantes de vão, seção, carga e material com faixa segura em tempo real",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = DocDialog::Structure;
+                ui.ctx()
+                    .data_mut(|data| data.insert_temp(egui::Id::unique("trazo_structure_tab"), 7_u8));
+            }
+            if tip(
+                ribbon_button(ui, Icon::Grid, "Grelha", false, false),
+                "Analogia de grelha acoplada (lajes + vigas, incluindo lajes em L e irregulares) com mapa de flechas e momentos",
+            )
+            .clicked()
+            {
+                self.active_doc_dialog = DocDialog::Structure;
+                ui.ctx()
+                    .data_mut(|data| data.insert_temp(egui::Id::unique("trazo_structure_tab"), 8_u8));
+            }
+            ribbon_stack(ui, |ui| {
+                let util_on = self.project.structure.overlay.utilisation_colors;
+                if tip(
+                    ribbon_small(ui, Icon::CirculationCheck, "Cores semáforo", util_on),
+                    "Colore lajes, vigas, pilares e sapatas pelo aproveitamento (verde ≤ 85 %, amarelo ≤ 100 %, vermelho > 100 %) na tela e no papel",
+                )
+                .clicked()
+                {
+                    let prev = self.project.clone();
+                    self.project.structure.overlay.utilisation_colors = !util_on;
+                    self.record_change(prev);
+                }
+                let diag = self.project.structure.overlay.beam_diagrams;
+                let diag_label = match diag {
+                    crate::domain::plan_results::BeamDiagramOverlay::None => "Diagramas (M/V)",
+                    crate::domain::plan_results::BeamDiagramOverlay::Moment => "Momento (M)",
+                    crate::domain::plan_results::BeamDiagramOverlay::Shear => "Cortante (V)",
+                };
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::SectionView,
+                        diag_label,
+                        diag != crate::domain::plan_results::BeamDiagramOverlay::None,
+                    ),
+                    "Alterna diagramas sobre as vigas na planta e no papel: Desligado → Momento fletor (M) → Cortante (V)",
+                )
+                .clicked()
+                {
+                    let prev = self.project.clone();
+                    self.project.structure.overlay.beam_diagrams = match diag {
+                        crate::domain::plan_results::BeamDiagramOverlay::None => {
+                            crate::domain::plan_results::BeamDiagramOverlay::Moment
+                        }
+                        crate::domain::plan_results::BeamDiagramOverlay::Moment => {
+                            crate::domain::plan_results::BeamDiagramOverlay::Shear
+                        }
+                        crate::domain::plan_results::BeamDiagramOverlay::Shear => {
+                            crate::domain::plan_results::BeamDiagramOverlay::None
+                        }
+                    };
+                    self.record_change(prev);
+                }
+            });
+            ribbon_stack(ui, |ui| {
+                let defl_on = self.project.structure.overlay.deformed_shape;
+                if tip(
+                    ribbon_small(ui, Icon::Glyph(Glyph::Spline), "Deformada", defl_on),
+                    "Exibe a linha elástica exagerada sobre as vigas na planta e no papel com flecha máxima (L/xxx)",
+                )
+                .clicked()
+                {
+                    let prev = self.project.clone();
+                    self.project.structure.overlay.deformed_shape = !defl_on;
+                    self.record_change(prev);
+                }
+                let path_on = self.project.structure.overlay.load_path;
+                if tip(
+                    ribbon_small(ui, Icon::Glyph(Glyph::Move), "Caminho cargas", path_on),
+                    "Mostra o fluxo de cargas da laje → viga → pilar → sapata/solo (animado na tela e com setas no papel)",
+                )
+                .clicked()
+                {
+                    let prev = self.project.clone();
+                    self.project.structure.overlay.load_path = !path_on;
+                    self.record_change(prev);
+                }
+            });
+        });
+        vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Exibição", |ui| {
             ribbon_stack(ui, |ui| {
                 let only = self.discipline == Discipline::Structure;

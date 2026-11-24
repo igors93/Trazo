@@ -34,6 +34,7 @@ enum StructureEdit {
     Settings(crate::domain::structure::StructureSettings),
     Soil(super::foundations::SoilAction),
     Roof(super::roof::RoofAction),
+    WhatIf(crate::domain::whatif::WhatIfParams),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -548,6 +549,32 @@ impl FloorPlanApp {
         };
     }
 
+    fn export_grid_analysis(&mut self, pdf: bool) {
+        let grid = self.project.cached_grid_analysis();
+        let markup = crate::domain::grid_analysis::grid_analysis_svg(&self.project, &grid);
+        let (label, ext) = if pdf {
+            ("Documento PDF", "pdf")
+        } else {
+            ("Desenho SVG", "svg")
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(format!("grelha-lajes-vigas.{ext}"))
+            .save_file()
+        else {
+            return;
+        };
+        let result = if pdf {
+            crate::domain::views::export_view_pdf(&markup, &path)
+        } else {
+            crate::domain::views::export_view_svg(&markup, &path)
+        };
+        self.message = match result {
+            Ok(()) => format!("Análise de grelha exportada em {}", path.display()),
+            Err(error) => format!("Erro ao exportar a grelha: {error}"),
+        };
+    }
+
     fn export_reinforcement_detail(&mut self, pdf: bool) {
         let structure = self.project.cached_structure_report();
         let report = self.project.cached_reinforcement_report();
@@ -585,14 +612,18 @@ impl FloorPlanApp {
         let mut footings = false;
         let mut export_forces = None;
         let mut export_frames = None;
+        let mut export_grid = None;
         let mut export_steel = false;
         let mut export_detail = None;
         let mut export_memorial = false;
         let mut edits: Vec<StructureEdit> = Vec::new();
         let tab_id = egui::Id::unique("trazo_structure_tab");
         let mut tab: u8 = ctx.data(|data| data.get_temp(tab_id)).unwrap_or(0);
-        let report = self.project.cached_structure_report();
-        let reinforcement = self.project.cached_reinforcement_report();
+        let (report, report_stale) = self.background.structure_report_or_schedule(&self.project);
+        let (reinforcement, reinf_stale) = self
+            .background
+            .reinforcement_report_or_schedule(&self.project);
+        let analysis_pending = report_stale || reinf_stale || self.background.is_busy();
         let labels = self.project.structure_labels();
         let primary_beams: Vec<(u64, String)> = self
             .project
@@ -624,6 +655,11 @@ impl FloorPlanApp {
             })
             .unwrap_or_else(|| SecondaryBeamDraft::between(default_hosts.0, default_hosts.1));
         let mut create_secondary = false;
+        let grid_report = if tab == 8 {
+            Some(self.project.cached_grid_analysis())
+        } else {
+            None
+        };
         let preview = if tab == 1 {
             svg_preview(
                 ctx,
@@ -636,6 +672,14 @@ impl FloorPlanApp {
                 "trazo_frame_2d_diagrams",
                 &crate::domain::frame2d::frame_diagrams_svg(&self.project),
             )
+        } else if tab == 8 {
+            grid_report.as_ref().and_then(|gr| {
+                svg_preview(
+                    ctx,
+                    "trazo_grid_analysis",
+                    &crate::domain::grid_analysis::grid_analysis_svg(&self.project, gr),
+                )
+            })
         } else {
             None
         };
@@ -651,13 +695,22 @@ impl FloorPlanApp {
             .default_height(600.0)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
-                ui.label(
-                    RichText::new(
-                        "Lajes, vigas, pilares e sapatas pré-dimensionados por regras práticas, com as cargas descendo das lajes às vigas, dos pilares ao solo.",
-                    )
-                    .size(12.0)
-                    .color(TEXT_2),
-                );
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new(
+                            "Lajes, vigas, pilares e sapatas pré-dimensionados por regras práticas, com as cargas descendo das lajes às vigas, dos pilares ao solo.",
+                        )
+                        .size(12.0)
+                        .color(TEXT_2),
+                    );
+                    if analysis_pending {
+                        ui.label(
+                            RichText::new(" · Atualizando em segundo plano...")
+                                .size(11.5)
+                                .color(ACCENT_TEXT),
+                        );
+                    }
+                });
                 if let Some(refusal) = &refusal {
                     ui.add_space(4.0);
                     ui.label(
@@ -713,7 +766,7 @@ impl FloorPlanApp {
                     edits.push(StructureEdit::Settings(settings));
                 }
                 ui.add_space(6.0);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, title) in [
                         "Pré-dimensionamento",
                         "Esforços nas vigas",
@@ -722,6 +775,8 @@ impl FloorPlanApp {
                         "Telhado",
                         "Pórticos 2D",
                         "Cargas e combinações",
+                        "E se? (What-if)",
+                        "Grelha (Lajes+Vigas)",
                     ]
                     .iter()
                     .enumerate()
@@ -748,6 +803,14 @@ impl FloorPlanApp {
                         }
                         if secondary_button(ui, "Exportar SVG").clicked() {
                             export_frames = Some(false);
+                        }
+                    } else if tab == 8 {
+                        ui.separator();
+                        if secondary_button(ui, "Exportar PDF").clicked() {
+                            export_grid = Some(true);
+                        }
+                        if secondary_button(ui, "Exportar SVG").clicked() {
+                            export_grid = Some(false);
                         }
                     } else if tab == 2 {
                         ui.separator();
@@ -820,6 +883,18 @@ impl FloorPlanApp {
                         }
                         if wind != before_wind {
                             edits.push(StructureEdit::Roof(super::roof::RoofAction::Wind(wind)));
+                        }
+                        return;
+                    }
+                    if tab == 7 {
+                        if let Some(params) = super::whatif::whatif_tab(ui, &self.project) {
+                            edits.push(StructureEdit::WhatIf(params));
+                        }
+                        return;
+                    }
+                    if tab == 8 {
+                        if let Some(gr) = &grid_report {
+                            super::grid::grid_tab(ui, gr, preview.as_ref());
                         }
                         return;
                     }
@@ -1205,6 +1280,9 @@ impl FloorPlanApp {
         if let Some(pdf) = export_frames {
             self.export_frame_diagrams(pdf);
         }
+        if let Some(pdf) = export_grid {
+            self.export_grid_analysis(pdf);
+        }
         if export_steel {
             self.export_steel_schedule();
         }
@@ -1286,6 +1364,12 @@ impl FloorPlanApp {
                         } else {
                             "Nenhuma viga alavanca nova necessária.".to_owned()
                         };
+                        Ok(())
+                    }
+                    StructureEdit::WhatIf(params) => {
+                        crate::domain::whatif::apply_whatif_to_project(&mut self.project, &params);
+                        self.message =
+                            "Parâmetros da simulação E se? aplicados ao projeto.".to_owned();
                         Ok(())
                     }
                 };

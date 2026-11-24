@@ -209,6 +209,8 @@ pub struct FloorPlanApp {
     underlay_state: ui::UnderlayUiState,
     xref_manager: crate::io::xref::XrefManager,
     compare_state: ui::CompareUiState,
+    background: crate::domain::background::BackgroundAnalyzer,
+    background_wake_ready: bool,
     new_layer_name: String,
     new_note_text: String,
     new_revision_text: String,
@@ -435,6 +437,8 @@ impl FloorPlanApp {
             underlay_state: ui::UnderlayUiState::default(),
             xref_manager: crate::io::xref::XrefManager::default(),
             compare_state: ui::CompareUiState::default(),
+            background: crate::domain::background::BackgroundAnalyzer::new(),
+            background_wake_ready: false,
             new_layer_name: String::new(),
             new_note_text: String::new(),
             new_revision_text: String::new(),
@@ -2864,13 +2868,37 @@ impl FloorPlanApp {
     }
 }
 
+impl FloorPlanApp {
+    /// Pre-warms structural and electrical caches in the background thread
+    /// whenever relevant elements exist, so dialogs and plan overlays stay responsive (#108).
+    fn schedule_background_analysis(&self) {
+        if !self.project.structure.beams.is_empty()
+            || !self.project.structure.slabs.is_empty()
+            || self.project.fixtures.iter().any(|f| f.kind.is_structural())
+        {
+            self.background.schedule_structure(&self.project);
+        }
+        if !self.project.conduits.is_empty()
+            || self.project.fixtures.iter().any(|f| f.kind.is_electrical())
+        {
+            self.background.schedule_electrical(&self.project);
+        }
+    }
+}
+
 impl eframe::App for FloorPlanApp {
     /// Runs before every frame and also while the window is minimized, so
     /// an assistant's tool calls are answered even then.
-    fn logic(&mut self, _context: &egui::Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
+        if !self.background_wake_ready {
+            let wake_ctx = context.clone();
+            self.background.set_wake(move || wake_ctx.request_repaint());
+            self.background_wake_ready = true;
+        }
         self.process_mcp_calls();
         self.poll_update_check();
         self.publish_plan_changes();
+        self.schedule_background_analysis();
         self.save_recovery_if_pending();
     }
 

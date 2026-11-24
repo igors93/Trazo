@@ -58,10 +58,10 @@ Engineering features follow these rules. They apply to everything in milestones 
 | Release (#58–#64, #77–#81) | 🟡 CI, licence, property tests, migrations, release binaries, crash reports, Windows installer and samples done; schema, signing and CI on Windows and macOS remain |
 | Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
 | Electrical design (#88–#91) | ✅ Devices, NBR 5410 forecast, circuits, conduits with wiring, phase balancing, voltage drop, demand, service entrance, single-line diagram |
-| Structure (#92–#94) | ✅ Columns, beams, slabs and footings on a formwork plan, pre-sizing with warnings, continuous beams and 2D plane-frame analysis (beams + columns together, rigid/pinned joints, reactions and deformed shape) |
+| Structure (#92–#94, #105–#109) | ✅ Columns, beams, slabs and footings on a formwork plan, pre-sizing with warnings, continuous beams, 2D plane-frame analysis with NBR 6120/6123/8681 load combinations, coupled slab+beam grid analogy (including L-shaped slabs), on-plan/paper simulation overlays, What-if live simulator and background cached analysis |
 | Discipline views (#96) | ✅ Architecture, electrical, structure, foundations and prepared plumbing views on synchronized linked tabs sharing a single live model; hydraulic pipe calculations join with #72 |
 | Plumbing (#72) | ⬜ Not started (sanitary fixture view discipline and dependency tracking prepared) |
-| Simulation, materials and planning | ⬜ Beam analysis is the only simulation so far; no material catalogue, costs or schedule |
+| Simulation, materials and planning | 🟡 Simulation core (M4: #94, #105–#109) complete; materials catalogue, costs and construction schedule remain |
 | AI (#46–#52, #74–#76) | 🟡 45 MCP tools (including synchronized tabs/views, floors, cross-discipline dependencies, regional utility/soil profiles, beam-on-beam supports and target `projeto_id` guard), real-time sync, tunnel token; no approval or read-only mode |
 | Experience (#65–#69) | 🟡 Synchronized multi-view tabs (#95) with `.trazo` workspace persistence shipped; levels, guided flows and English interface not started |
 
@@ -171,6 +171,14 @@ Recorded while working through the [implementation log](#implementation-log), an
 - **Impact:** missing columns on the walls that need them most, with no warning to a newcomer.
 
 ## Implementation log
+
+### #106, #107, #108, #109 Simulation core completion — ✅ Done
+
+- **#106 Results on the plan and on paper (`src/domain/plan_results.rs`, `src/app/canvas/sim_overlay.rs`, `src/io/export/conduits.rs`):** shared `SimulationOverlay` state persisted on `ProjectStructure::overlay` drives identical on-screen and SVG/PDF paper overlays (*screen equals paper*): traffic-light utilisation colours on slabs, beams, columns and footings; bending-moment (`M`) and shear (`V`) diagrams drawn directly over beams on the floor plan; exaggerated deformed shapes (`δ` and `L/xxx`); directional slab → beam → column → footing/soil load path (animated marching flow pulses on screen, static directional arrows on paper); and overlap-free label resolution (`resolve_overlay_labels`, B05). Accessible from the *Estrutura* ribbon (*Simulação na planta*) and MCP (`projeto_estrutural` → `configurar_sobreposicao`).
+- **#107 What-if mode (`src/domain/whatif.rs`, `src/app/ui/whatif.rs`):** non-destructive interactive sliders for span scale (`0.60–1.60×`), beam width/height, column side, slab thickness, live load, concrete `fck`, soil allowable pressure, wind `V0` and NBR 6120 occupancy, running Trazo's real structural & verdict solvers in `< 100 ms` on the sample house, painting green/yellow/red safe-range bars under each slider, comparing baseline vs. simulated deltas (`Δ utilisation`, `Δ steel kg`, `Δ concrete m³`), with one-click *Aplicar* (with undo) and MCP (`projeto_estrutural` → `simular_whatif`).
+- **#108 Background analysis with cached results & shared font database (`src/domain/background.rs`, `src/domain/cache.rs`):** persistent lazily-spawned worker thread (`trazo-analysis-worker`) with latest-wins job coalescing computes `StructureReport`, `ReinforcementReport` and `LoadSchedule` off the UI thread into the shared content-fingerprinted `RingCache` (B04) alongside the shared `OnceLock` font databases (B17), displaying a status-bar progress indicator while computing and waking `egui::Context::request_repaint()` on completion.
+- **#109 Coupled slab + beam grid analysis (`src/domain/grid_analysis/`, `src/app/ui/grid.rs`):** 3-DOF/node (`w, θx, θy`) grillage FEM (*analogia de grelha*, Hambly 1991 / NBR 6118 §14.7.5) with banded Cholesky solver coupling rectangular, L-shaped and irregular slab polygons (B06) with supporting concrete beams (`EI` + cracked torsional stiffness `0.15·GJ`) and columns, reporting `mx/my/mxy`, elastic & long-term deflections vs. `L/250`, coupled beam moments/shear/torsion, column reactions with global vertical equilibrium verification, printable A3 SVG/PDF deflection heatmap (`grid_analysis_svg`), UI *Grelha (Lajes+Vigas)* tab, and MCP (`pre_dimensionamento.grelha_lajes_vigas`, `exportar_planta` `grelha_svg`/`grelha_pdf`).
+- **Tests:** `background_analyzer_computes_off_main_thread_populates_cache_and_wakes_ui`, `plan_simulation_overlay_builds_diagrams_deformed_shape_utilisation_and_load_path_without_label_overlap` (including ABNT sheet SVG round-trip), `whatif_sliders_update_sample_house_under_100ms_and_compute_safe_ranges`, `simply_supported_square_plate_matches_timoshenko_theory` (Timoshenko Table 8), `simply_supported_rectangular_2_to_1_plate_matches_timoshenko_theory` (Timoshenko Table 8), `l_shaped_slab_coupled_with_beams_satisfies_equilibrium_and_renders_valid_svg`, and `mcp_covers_plan_overlay_whatif_and_grid_analysis`.
 
 ### #105 Load cases, combinations and building wind — ✅ Done
 
@@ -526,10 +534,10 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | --- | --- | --- | --- | --- | --- |
 | 94 | 2D frame analysis: beams and columns together (column stiffness, rigid and pinned joints), internal forces, reactions and the deformed shape | P0 | XL | M4 | ✅ |
 | 105 | Load cases and combinations: NBR 6120 loads, NBR 8681 ultimate and service combinations, and wind on the building (NBR 6123) | P1 | L | M4 | ✅ |
-| 106 | Results on the plan and on paper: diagrams over the beams, deformed shape, utilisation colours and an animated load path from slab to soil, with labels that avoid each other (B05) | P1 | M | M4 | 🟡 Beam diagrams on a separate sheet |
-| 107 | What-if mode: sliders for span, section, load and material, results updating live and the safe range highlighted | P1 | M | M4 | ⬜ |
-| 108 | Analysis in the background with cached results and a shared font database, so large projects stay responsive (B04, B17) | P1 | M | M4 | ⬜ |
-| 109 | Grid analysis of slabs and beams together (grid analogy), including L-shaped and irregular slabs (B06) | P2 | XL | Exploratory | ⬜ |
+| 106 | Results on the plan and on paper: diagrams over the beams, deformed shape, utilisation colours and an animated load path from slab to soil, with labels that avoid each other (B05) | P1 | M | M4 | ✅ |
+| 107 | What-if mode: sliders for span, section, load and material, results updating live and the safe range highlighted | P1 | M | M4 | ✅ |
+| 108 | Analysis in the background with cached results and a shared font database, so large projects stay responsive (B04, B17) | P1 | M | M4 | ✅ |
+| 109 | Grid analysis of slabs and beams together (grid analogy), including L-shaped and irregular slabs (B06) | P2 | XL | Exploratory | ✅ |
 
 ### D. Structure from foundation to roof
 

@@ -180,6 +180,23 @@ For a load-bearing panel, the preliminary design compression is `σd = 1.4·(γm
 
 Regression checks: `every_built_opening_gets_a_lintel_and_windows_get_a_sill`, `an_opening_too_close_to_the_wall_end_fails_the_bearing_check`, and `slender_infill_and_loaded_structural_masonry_are_checked_separately`.
 
+## Coupled slab and beam grid analysis (grid analogy)
+
+`Project::grid_analysis` (`src/domain/grid_analysis/`, #109) couples rectangular, L-shaped and arbitrary irregular slab polygons (B06) directly with their supporting concrete beams and columns using a 3-DOF/node (`w, θx, θy`) orthogonal grillage FEM (Hambly 1991; ABNT NBR 6118:2023 §14.7.5):
+
+- **Concrete stiffness:** secant modulus `E_cs = α_i · 5600 · √fck` (NBR 6118:2023 §8.2.8) and Poisson's ratio `ν = 0.20` (§8.2.9), `G = E_cs / (2(1 + ν))`.
+- **Slab strip equivalence:** for a tributary strip of width `s` and thickness `h`, flexural rigidity `E·I = D·s` with `D = E_cs·h³ / (12·(1 − ν²))` and torsional rigidity `G·J = D·s` (Hambly 1991 §3.3, so `GJ_x/s + GJ_y/s = 2·D` matches the Kirchhoff plate biharmonic operator `D(∂⁴w/∂x⁴ + 2∂⁴w/∂x²∂y² + ∂⁴w/∂y⁴) = q`). Ribbed slabs apply a conservative `0.72` stiffness factor. Only grid cells whose centroid lies inside each room's polygon receive slab members, so L-shaped cut-outs are represented exactly without bounding-box approximations.
+- **Beam coupling:** beams share grid nodes along their spans with rectangular `I = b·h³/12` and St. Venant torsional constant `J = β(h/b)·h·b³` reduced to `0.15·GJ` for compatibility torsion cracking (NBR 6118:2023 §14.6.7.1).
+- **Solver & checks:** banded Cholesky (`L·Lᵀ`) solves `[K]{u} = {F}` and checks global vertical equilibrium `|ΣR_z − ΣF_z| < 1e-3 kN`, recovering Kirchhoff plate moments with Poisson coupling (`m_x = m̄_x + ν·m̄_y`, `m_y = m̄_y + ν·m̄_x`), twisting moment `m_xy`, elastic and long-term (`2.5×`) deflection vs. `L/250`, plus coupled beam `M+`, `M−`, `V`, `T` and column reactions.
+- **Validation:** checked against **Timoshenko & Woinowsky-Krieger (*Theory of Plates and Shells*, Table 8)** in `simply_supported_square_plate_matches_timoshenko_theory` (`w_max = 0.00406·q·a⁴/D` within 5%, `m_x = m_y = 0.0442·q·a²` at `ν = 0.20` within 3%, exact symmetry & equilibrium) and `simply_supported_rectangular_2_to_1_plate_matches_timoshenko_theory` (`w_max = 0.01013·q·a⁴/D` within 5%, `mx > 2·my`), plus `l_shaped_slab_coupled_with_beams_satisfies_equilibrium_and_renders_valid_svg`.
+- **Known limits:** linear-elastic isotropic grillage without nonlinear cracking iteration, column-strip punching refinement or ribbed orthotropy; remains within Trazo's #102 limits.
+
+## On-plan results, What-if simulation and background analysis
+
+- **On-plan & on-paper overlays (`src/domain/plan_results.rs`, #106):** `build_plan_simulation_overlay` generates traffic-light utilisation overlays, orthogonal bending-moment (`M`) and shear (`V`) diagrams over beams, exaggerated beam deformed curves (`L/xxx`) and the gravity load path (`slab → beam → column → footing/soil`), resolving all label anchors through overlap avoidance (B05) and sharing the exact same geometry between the on-screen canvas (animated load-path pulses) and SVG/PDF exports (*screen equals paper*).
+- **What-if mode (`src/domain/whatif.rs`, #107):** non-destructively clones the active model, applies span scale, beam/column/slab sections, live load, `fck`, soil allowable pressure, wind `V0` and NBR 6120 occupancy, runs Trazo's full structural, reinforcement and verdict engines in under 100 ms on the sample house, and computes colour-coded green/yellow/red safe-range bands per slider.
+- **Background analysis (`src/domain/background.rs`, `src/domain/cache.rs`, #108):** a persistent lazily-spawned worker thread (`trazo-analysis-worker`) with latest-wins edit coalescing populates the content-fingerprinted `RingCache` slots (B04) alongside shared `OnceLock` font databases (B17) so large plans remain interactive.
+
 ## Preliminary reinforcement
 
 `build_reinforcement_report` turns the characteristic forces from `structure_report` into a reviewable reinforcement proposal and a theoretical bar schedule. It uses CA-50 (`fyk = 500 MPa`), steel density 7,850 kg/m³ and the same structural applicability limits. If the whole project or an element is outside those limits, it refuses to emit reinforcement for it.

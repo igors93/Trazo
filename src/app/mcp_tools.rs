@@ -748,7 +748,7 @@ impl FloorPlanApp {
     fn tool_export(&self, args: &Value) -> Result<ToolOutput, String> {
         let format = text(args, "formato")
             .map(|format| format.to_lowercase())
-            .ok_or("Informe 'formato': pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.")?;
+            .ok_or("Informe 'formato': pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, grelha_svg, grelha_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.")?;
         let (ext, suffix) = match format.as_str() {
             "pdf" => ("pdf", ""),
             "pdf_abas" => ("pdf", "-abas"),
@@ -765,6 +765,8 @@ impl FloorPlanApp {
             "esforcos_pdf" => ("pdf", "-esforcos"),
             "porticos_svg" => ("svg", "-porticos"),
             "porticos_pdf" => ("pdf", "-porticos"),
+            "grelha_svg" => ("svg", "-grelha"),
+            "grelha_pdf" => ("pdf", "-grelha"),
             "armaduras_svg" => ("svg", "-armaduras"),
             "armaduras_pdf" => ("pdf", "-armaduras"),
             "quantitativos_csv" => ("csv", "-quantitativos"),
@@ -773,7 +775,7 @@ impl FloorPlanApp {
             "tabela_aco_csv" => ("csv", "-tabela-aco"),
             "csv" => ("csv", "-quadros"),
             _ => {
-                return Err("Formato inválido. Use: pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.".to_owned());
+                return Err("Formato inválido. Use: pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, grelha_svg, grelha_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.".to_owned());
             }
         };
         let explicit_discipline = text(args, "disciplina");
@@ -844,6 +846,16 @@ impl FloorPlanApp {
             }
             "porticos_pdf" => {
                 let markup = crate::domain::frame2d::frame_diagrams_svg(&self.project);
+                crate::domain::views::export_view_pdf(&markup, &path)?;
+            }
+            "grelha_svg" => {
+                let grid = self.project.cached_grid_analysis();
+                let markup = crate::domain::grid_analysis::grid_analysis_svg(&self.project, &grid);
+                crate::domain::views::export_view_svg(&markup, &path)?;
+            }
+            "grelha_pdf" => {
+                let grid = self.project.cached_grid_analysis();
+                let markup = crate::domain::grid_analysis::grid_analysis_svg(&self.project, &grid);
                 crate::domain::views::export_view_pdf(&markup, &path)?;
             }
             "armaduras_svg" => {

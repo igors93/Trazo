@@ -39,6 +39,7 @@ pub use output::{beam_diagrams_svg, build_columns_schedule};
 pub use results::{
     BeamLine, BeamLineResult, ColumnPosition, ColumnResult, ConcentratedLoadResult, FootingResult,
     MisalignedColumn, SlabResult, SpanPointLoad, SpanResult, StructureGeneration, StructureReport,
+    beam_moment_at, beam_shear_at,
 };
 pub use slab_geometry::{decompose_slab_panels, yield_line_shares};
 

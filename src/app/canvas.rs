@@ -15,6 +15,7 @@ mod drafts;
 mod drawings;
 mod labels;
 pub mod overlay;
+mod sim_overlay;
 pub use drafts::{paint_fragment_ghost, paint_modify_guide, paint_polygon_draft};
 pub use drawings::paint_draw_draft;
 use labels::{paint_preview_measure, paint_room_labels, paint_terrain_label, paint_wall_labels};
@@ -321,6 +322,7 @@ pub fn paint_structure_overlay(
         paint_fixture(painter, view, fixture, tone);
     }
     labels::paint_superstructure(painter, view, project);
+    sim_overlay::paint_simulation_overlay(painter, view, project);
 }
 
 /// Draws only the foundations (`Planta de Fundações`: columns, isolated
@@ -349,6 +351,7 @@ pub fn paint_foundations_overlay(
         paint_fixture(painter, view, fixture, tone);
     }
     labels::paint_foundations(painter, view, project);
+    sim_overlay::paint_simulation_overlay(painter, view, project);
 }
 
 /// Draws only sanitary/plumbing fixtures on top of the faded architecture
@@ -868,6 +871,7 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
     }
     if project.category_visible(crate::domain::layers::LayerCategory::Structure) {
         labels::paint_structure(painter, view, project);
+        sim_overlay::paint_simulation_overlay(painter, view, project);
     }
     if project.category_visible(crate::domain::layers::LayerCategory::Electrical) {
         labels::paint_conduits(painter, view, project);

@@ -54,6 +54,10 @@ Clique para ver como conectar uma IA."
 
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 3.0;
+                if let Some(busy) = self.background.busy_label() {
+                    ui.label(RichText::new(busy).size(12.0).color(ACCENT_TEXT));
+                    divider(ui);
+                }
                 let total = self.project.elements().len();
                 let selected = self.selection_count();
                 let count = if selected > 0 {

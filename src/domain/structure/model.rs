@@ -393,6 +393,12 @@ pub struct ProjectStructure {
     /// The site's wind (#147).
     #[serde(default, skip_serializing_if = "is_default_wind")]
     pub wind: crate::domain::wind::WindSettings,
+    /// On-plan and on-paper structural simulation overlays (#106).
+    #[serde(
+        default,
+        skip_serializing_if = "crate::domain::plan_results::SimulationOverlay::is_empty"
+    )]
+    pub overlay: crate::domain::plan_results::SimulationOverlay,
 }
 
 impl Default for ProjectStructure {
@@ -408,6 +414,7 @@ impl Default for ProjectStructure {
             post_species: crate::domain::roof::TimberSpecies::default(),
             post_treated: true,
             wind: crate::domain::wind::WindSettings::default(),
+            overlay: crate::domain::plan_results::SimulationOverlay::default(),
         }
     }
 }
@@ -440,6 +447,7 @@ impl ProjectStructure {
             && is_default_timber_species(&self.post_species)
             && self.post_treated
             && is_default_wind(&self.wind)
+            && self.overlay.is_empty()
     }
 }
 
