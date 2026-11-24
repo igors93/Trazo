@@ -1512,5 +1512,177 @@ fn sized_structure_verdicts(
             checks: vec![check],
         });
     }
+    for stair in &report.cantilevers.stairs {
+        let mut checks = vec![Check::new(
+            "Flecha (L/250)",
+            stair.deflection_mm / stair.limit_mm.max(1e-6),
+            if stair.deflection_mm <= stair.limit_mm {
+                format!(
+                    "Escada atende (espessura {}, As inf. {} cm²/m).",
+                    cm(stair.waist_m),
+                    decimal(stair.as_bottom_cm2_m, 2)
+                )
+            } else {
+                "Aumente a espessura da laje da escada ou reduza o lance livre.".to_owned()
+            },
+            format!(
+                "Lance {} m · h={} · Md={} kN·m/m · δ={} / {} mm (NBR 6118).",
+                decimal(stair.flight_span_m, 2),
+                cm(stair.waist_m),
+                decimal(stair.moment_design_knm_m, 1),
+                decimal(stair.deflection_mm, 1),
+                decimal(stair.limit_mm, 1)
+            ),
+        )];
+        if stair.flight_span_m > 5.5 {
+            checks.push(Check::fail(
+                "Vão",
+                "Lance acima de 5,5 m: adicione patamar apoiado ou viga intermediária.".to_owned(),
+                format!("Lance {} m > 5,5 m.", decimal(stair.flight_span_m, 2)),
+            ));
+        }
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Escada {} ({})", stair.label, stair.name),
+            checks,
+        });
+    }
+    for bal in &report.cantilevers.balconies {
+        let mut checks = vec![
+            Check::new(
+                "Espessura",
+                bal.thickness_min_m / bal.thickness_m.max(1e-6),
+                if bal.thickness_m + 1e-6 >= bal.thickness_min_m {
+                    format!(
+                        "Espessura {} atende (armadura superior {} cm²/m, γn={}).",
+                        cm(bal.thickness_m),
+                        decimal(bal.as_top_cm2_m, 2),
+                        decimal(bal.gamma_n, 2)
+                    )
+                } else {
+                    format!(
+                        "Aumente a espessura da laje em balanço para pelo menos {}.",
+                        cm(bal.thickness_min_m)
+                    )
+                },
+                format!(
+                    "L_bal={} m · h={} (mín. {}) · γn={} (NBR 6118 Tab. 13.2) · Md−={} kN·m/m.",
+                    decimal(bal.span_m, 2),
+                    cm(bal.thickness_m),
+                    cm(bal.thickness_min_m),
+                    decimal(bal.gamma_n, 2),
+                    decimal(bal.moment_d_neg_knm_m, 1)
+                ),
+            ),
+            Check::new(
+                "Flecha (L/125)",
+                bal.deflection_mm / bal.limit_mm.max(1e-6),
+                if bal.deflection_mm <= bal.limit_mm {
+                    format!(
+                        "Flecha em balanço {} mm dentro de L/125 ({} mm).",
+                        decimal(bal.deflection_mm, 1),
+                        decimal(bal.limit_mm, 1)
+                    )
+                } else {
+                    "Flecha excessiva na ponta do balanço: aumente a espessura ou reduza o balanço."
+                        .to_owned()
+                },
+                format!(
+                    "δ_longo_prazo={} mm vs L/125={} mm (NBR 6118 Tab. 13.3).",
+                    decimal(bal.deflection_mm, 1),
+                    decimal(bal.limit_mm, 1)
+                ),
+            ),
+        ];
+        if bal.is_ribbed_warning {
+            checks.push(Check::fail(
+                "Sistema em balanço",
+                "Laje treliçada em balanço exige projeto específico ou troca por laje maciça."
+                    .to_owned(),
+                "Balanços exigem armadura negativa superior contínua com cobrimento e caranguejos."
+                    .to_owned(),
+            ));
+        }
+        if !bal.back_span_ok {
+            checks.push(Check::fail(
+                "Contravão / tombamento",
+                format!(
+                    "Contravão ({} m) menor que 1,5 × balanço ({} m): garanta ancoragem ou engaste na viga.",
+                    decimal(bal.back_span_m, 2),
+                    decimal(bal.required_back_span_m, 2)
+                ),
+                "A armadura superior negativa precisa ancorar pelo menos 1,5·L_bal no vão adjacente."
+                    .to_owned(),
+            ));
+        }
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Balanço {} ({})", bal.label, bal.source),
+            checks,
+        });
+    }
+    for cb in &report.cantilevers.beams {
+        let mut checks = vec![
+            Check::new(
+                "Altura (L/5)",
+                cb.height_min_m / cb.height_m.max(1e-6),
+                if cb.height_m + 1e-6 >= cb.height_min_m {
+                    format!(
+                        "Viga em balanço {:.0}×{:.0} cm atende (As superior {} cm²).",
+                        cb.width_m * 100.0,
+                        cb.height_m * 100.0,
+                        decimal(cb.as_top_cm2, 2)
+                    )
+                } else {
+                    format!(
+                        "Aumente a altura da viga em balanço para pelo menos {}.",
+                        cm(cb.height_min_m)
+                    )
+                },
+                format!(
+                    "L_bal={} m · Md−={} kN·m · Vk={} kN · As,sup={} cm² (NBR 6118).",
+                    decimal(cb.span_m, 2),
+                    decimal(cb.moment_d_neg_knm, 1),
+                    decimal(cb.shear_k_kn, 1),
+                    decimal(cb.as_top_cm2, 2)
+                ),
+            ),
+            Check::new(
+                "Flecha (L/125)",
+                cb.deflection_mm / cb.limit_mm.max(1e-6),
+                if cb.deflection_mm <= cb.limit_mm {
+                    format!(
+                        "Flecha {} mm dentro de L/125 ({} mm).",
+                        decimal(cb.deflection_mm, 1),
+                        decimal(cb.limit_mm, 1)
+                    )
+                } else {
+                    "Flecha excessiva na viga em balanço: aumente a altura da seção.".to_owned()
+                },
+                format!(
+                    "δ={} mm vs L/125={} mm (NBR 6118 Tab. 13.3).",
+                    decimal(cb.deflection_mm, 1),
+                    decimal(cb.limit_mm, 1)
+                ),
+            ),
+        ];
+        if !cb.back_span_ok {
+            checks.push(Check::fail(
+                "Contravão",
+                format!(
+                    "Contravão ({} m) inferior a 1,5 × balanço ({} m).",
+                    decimal(cb.back_span_m, 2),
+                    decimal(cb.required_back_span_m, 2)
+                ),
+                "Garanta comprimento de ancoragem e equilíbrio contra tombamento no vão interno."
+                    .to_owned(),
+            ));
+        }
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Viga em balanço {}", cb.label),
+            checks,
+        });
+    }
     verdicts
 }

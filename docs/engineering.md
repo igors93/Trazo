@@ -180,6 +180,18 @@ For a load-bearing panel, the preliminary design compression is `σd = 1.4·(γm
 
 Regression checks: `every_built_opening_gets_a_lintel_and_windows_get_a_sill`, `an_opening_too_close_to_the_wall_end_fails_the_bearing_check`, and `slender_infill_and_loaded_structural_masonry_are_checked_separately`.
 
+## Stairs, balconies and cantilevers
+
+`Project::analyse_cantilevers` (`src/domain/cantilevers.rs`, #115) checks reinforced-concrete stairs, balconies and cantilever slabs/beams to ABNT NBR 6118:2023 and NBR 6120:2019:
+
+| Element | Rules & standard |
+| --- | --- |
+| Concrete stairs | derived from every drawn `CirculationKind::Stair`; waist `h ≥ max(L/25, 12 cm)`, equivalent vertical thickness `h_eq = h/cos(α) + riser/2`, NBR 6120 Table 10 live load (`2.5 kN/m²` residential / `3.0 kN/m²` public), `Md = 1.4·q·L²/8`, bottom & continuity top CA-50 steel, long-term deflection (`2.32×`, `0.5·Ec·I`) vs `L/250`; refused above 5.5 m clear flight |
+| Balconies & cantilever slabs | auto-detected on balcony rooms / 1-edge-supported slabs or declared via `CantileverSpec::Slab`; solid slab mandatory (ribbed cantilevers flagged red), `h ≥ max(L_bal/10, 10 cm)`, **NBR 6118:2023 §13.2.4.1 Table 13.2 additional factor `γ_n = max(1.0, 1.95 − 0.05·h_cm)`**, NBR 6120 ≥ 2.5 kN/m² live load + parapet tip load (`1.50 kN/m`) + guardrail horizontal thrust (`0.80 kN/m × 1.10 m`), top negative steel `As,sup`, long-term deflection vs **NBR 6118 Table 13.3 `L_bal/125`** (`2·L_bal/250`), and overturning/anchorage back-span check `L_adj ≥ 1.5·L_bal`; refused above 2.5 m projection |
+| Cantilever beams | declared via `CantileverSpec::Beam`; `h ≥ max(L_bal/5, 30 cm)`, `Mk = q·L²/2 + P·L`, `Vk = q·L + P`, top negative steel `As,sup`, long-term deflection vs `L_bal/125`, and `L_adj ≥ 1.5·L_bal`; refused above 3.0 m projection |
+
+Checked by `cantilever_balcony_matches_nbr6118_table13_2_gamma_n_and_l125_deflection` and `stair_and_cantilever_beam_match_worked_hand_calculations`.
+
 ## Coupled slab and beam grid analysis (grid analogy)
 
 `Project::grid_analysis` (`src/domain/grid_analysis/`, #109) couples rectangular, L-shaped and arbitrary irregular slab polygons (B06) directly with their supporting concrete beams and columns using a 3-DOF/node (`w, θx, θy`) orthogonal grillage FEM (Hambly 1991; ABNT NBR 6118:2023 §14.7.5):

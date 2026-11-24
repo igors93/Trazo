@@ -1208,6 +1208,147 @@ impl FloorPlanApp {
                         });
                         ui.label(RichText::new("Momentos em kN·m (M− nos apoios, M+ no vão), cortante em kN.").size(11.0).color(MUTED));
                     }
+                    if !report.cantilevers.is_empty() {
+                        heading(ui, "Escadas, sacadas e balanços (NBR 6118)");
+                        if !report.cantilevers.stairs.is_empty() {
+                            egui::Grid::new("structure_stairs")
+                                .striped(true)
+                                .spacing([12.0, 5.0])
+                                .show(ui, |ui| {
+                                    titles(
+                                        ui,
+                                        &[
+                                            "Escada",
+                                            "Lance",
+                                            "Espessura",
+                                            "Md (kN·m/m)",
+                                            "As inf. / sup.",
+                                            "Flecha / L/250",
+                                            "Reação",
+                                            "Situação",
+                                        ],
+                                    );
+                                    for st in &report.cantilevers.stairs {
+                                        ui.label(
+                                            RichText::new(format!("{} · {}", st.label, st.name))
+                                                .font(strong(12.0)),
+                                        );
+                                        ui.label(format!("{} m", decimal(st.flight_span_m, 2)));
+                                        ui.label(format!("{:.0} cm", st.waist_m * 100.0));
+                                        ui.label(decimal(st.moment_design_knm_m, 1));
+                                        ui.label(format!(
+                                            "{} / {} cm²/m",
+                                            decimal(st.as_bottom_cm2_m, 2),
+                                            decimal(st.as_top_cm2_m, 2)
+                                        ));
+                                        ui.label(format!(
+                                            "{} / {} mm",
+                                            decimal(st.deflection_mm, 1),
+                                            decimal(st.limit_mm, 1)
+                                        ));
+                                        ui.label(format!("{} kN", decimal(st.reaction_total_kn, 1)));
+                                        status(
+                                            ui,
+                                            st.light != crate::domain::verdict::Light::Red,
+                                        );
+                                        ui.end_row();
+                                    }
+                                });
+                        }
+                        if !report.cantilevers.balconies.is_empty() {
+                            ui.add_space(4.0);
+                            egui::Grid::new("structure_balconies")
+                                .striped(true)
+                                .spacing([12.0, 5.0])
+                                .show(ui, |ui| {
+                                    titles(
+                                        ui,
+                                        &[
+                                            "Sacada / balanço",
+                                            "Balanço",
+                                            "Espessura (γn)",
+                                            "Md− (kN·m/m)",
+                                            "As sup. (neg.)",
+                                            "Flecha / L/125",
+                                            "Contravão",
+                                            "Situação",
+                                        ],
+                                    );
+                                    for b in &report.cantilevers.balconies {
+                                        ui.label(
+                                            RichText::new(format!("{} · {}", b.label, b.source))
+                                                .font(strong(12.0)),
+                                        );
+                                        ui.label(format!("{} m", decimal(b.span_m, 2)));
+                                        ui.label(format!(
+                                            "{:.0} cm ({})",
+                                            b.thickness_m * 100.0,
+                                            decimal(b.gamma_n, 2)
+                                        ));
+                                        ui.label(decimal(b.moment_d_neg_knm_m, 1));
+                                        ui.label(format!("{} cm²/m", decimal(b.as_top_cm2_m, 2)));
+                                        ui.label(format!(
+                                            "{} / {} mm",
+                                            decimal(b.deflection_mm, 1),
+                                            decimal(b.limit_mm, 1)
+                                        ));
+                                        ui.label(format!(
+                                            "{} / {} m",
+                                            decimal(b.back_span_m, 2),
+                                            decimal(b.required_back_span_m, 2)
+                                        ));
+                                        status(
+                                            ui,
+                                            b.light != crate::domain::verdict::Light::Red,
+                                        );
+                                        ui.end_row();
+                                    }
+                                });
+                        }
+                        if !report.cantilevers.beams.is_empty() {
+                            ui.add_space(4.0);
+                            egui::Grid::new("structure_cantilever_beams")
+                                .striped(true)
+                                .spacing([12.0, 5.0])
+                                .show(ui, |ui| {
+                                    titles(
+                                        ui,
+                                        &[
+                                            "Viga em balanço",
+                                            "Balanço",
+                                            "Seção",
+                                            "Md− (kN·m)",
+                                            "As sup.",
+                                            "Flecha / L/125",
+                                            "Contravão",
+                                            "Situação",
+                                        ],
+                                    );
+                                    for cb in &report.cantilevers.beams {
+                                        ui.label(RichText::new(&cb.label).font(strong(12.0)));
+                                        ui.label(format!("{} m", decimal(cb.span_m, 2)));
+                                        ui.label(section_cm(cb.width_m, cb.height_m));
+                                        ui.label(decimal(cb.moment_d_neg_knm, 1));
+                                        ui.label(format!("{} cm²", decimal(cb.as_top_cm2, 2)));
+                                        ui.label(format!(
+                                            "{} / {} mm",
+                                            decimal(cb.deflection_mm, 1),
+                                            decimal(cb.limit_mm, 1)
+                                        ));
+                                        ui.label(format!(
+                                            "{} / {} m",
+                                            decimal(cb.back_span_m, 2),
+                                            decimal(cb.required_back_span_m, 2)
+                                        ));
+                                        status(
+                                            ui,
+                                            cb.light != crate::domain::verdict::Light::Red,
+                                        );
+                                        ui.end_row();
+                                    }
+                                });
+                        }
+                    }
                     if !report.columns.is_empty() {
                         heading(ui, "Pilares");
                         egui::Grid::new("structure_columns").striped(true).spacing([14.0, 6.0]).show(ui, |ui| {

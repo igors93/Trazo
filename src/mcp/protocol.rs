@@ -842,7 +842,7 @@ fn catalogue() -> Vec<Tool> {
             properties: merge(
                 merge(
                     json!({
-                            "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "configurar_sobreposicao", "simular_whatif", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "gerar_fundacao_paredes", "definir_fundacao_parede", "remover_fundacao_paredes", "definir_sondagem", "remover_sondagem", "simular_fundacoes", "definir_telhado", "remover_telhado", "ajustar_paredes_telhado", "inserir_mourao", "configurar_vento", "vista"], "description": "O que fazer." },
+                            "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "configurar_sobreposicao", "simular_whatif", "definir_balanco", "remover_balanco", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "gerar_fundacao_paredes", "definir_fundacao_parede", "remover_fundacao_paredes", "definir_sondagem", "remover_sondagem", "simular_fundacoes", "definir_telhado", "remover_telhado", "ajustar_paredes_telhado", "inserir_mourao", "configurar_vento", "vista"], "description": "O que fazer." },
                         "x": number("Para inserir pilar, sapata, mourão ou carga, ou o canto do telhado: posição x, em metros."),
                         "y": number("Para inserir pilar, sapata, mourão ou carga, ou o canto do telhado: posição y, em metros."),
                         "largura_cm": number("Largura do pilar, da sapata ou da viga, em cm."),
@@ -940,6 +940,10 @@ fn catalogue() -> Vec<Tool> {
                 "espessura_laje_cm": number("Para simular_whatif: espessura das lajes em cm (8 a 25)."),
                 "vento_v0_ms": number("Para simular_whatif: velocidade básica V0 (m/s)."),
                 "aplicar": boolean("Para simular_whatif: true aplica seções/cargas/materiais simulados ao projeto (padrão false)."),
+                "balanco_m": number("Para definir_balanco: projeção livre em balanço, em metros."),
+                "contravao_m": number("Para definir_balanco: comprimento do vão adjacente de ancoragem/contrapeso, em metros."),
+                "carga_ponta_kn_m": number("Para definir_balanco (laje): carga linear de guarda-corpo/peitoril na ponta, kN/m (padrão 1,50)."),
+                "carga_distribuida_kn_m": number("Para definir_balanco (viga): carga distribuída adicional na viga em balanço, kN/m."),
                 }),
             ),
             required: &["acao"],

@@ -399,6 +399,9 @@ pub struct ProjectStructure {
         skip_serializing_if = "crate::domain::plan_results::SimulationOverlay::is_empty"
     )]
     pub overlay: crate::domain::plan_results::SimulationOverlay,
+    /// Explicit cantilever balcony slabs and cantilever beams (#115).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cantilevers: Vec<crate::domain::cantilevers::CantileverSpec>,
 }
 
 impl Default for ProjectStructure {
@@ -415,6 +418,7 @@ impl Default for ProjectStructure {
             post_treated: true,
             wind: crate::domain::wind::WindSettings::default(),
             overlay: crate::domain::plan_results::SimulationOverlay::default(),
+            cantilevers: Vec::new(),
         }
     }
 }
@@ -448,6 +452,7 @@ impl ProjectStructure {
             && self.post_treated
             && is_default_wind(&self.wind)
             && self.overlay.is_empty()
+            && self.cantilevers.is_empty()
     }
 }
 

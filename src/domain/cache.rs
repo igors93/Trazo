@@ -324,6 +324,63 @@ pub fn structure_fingerprint(project: &Project) -> u64 {
         beam.anchor.hash(&mut h);
         hash_f64(&mut h, beam.width_m);
     }
+    project.structure.cantilevers.len().hash(&mut h);
+    for c in &project.structure.cantilevers {
+        c.id().hash(&mut h);
+        match c {
+            super::cantilevers::CantileverSpec::Slab {
+                span_m,
+                width_m,
+                thickness_m,
+                back_span_m,
+                tip_load_kn_m,
+                ..
+            } => {
+                0u8.hash(&mut h);
+                for v in [span_m, width_m, thickness_m, back_span_m, tip_load_kn_m] {
+                    hash_f64(&mut h, *v);
+                }
+            }
+            super::cantilevers::CantileverSpec::Beam {
+                span_m,
+                width_m,
+                height_m,
+                distributed_kn_m,
+                tip_point_load_kn,
+                back_span_m,
+                ..
+            } => {
+                1u8.hash(&mut h);
+                for v in [
+                    span_m,
+                    width_m,
+                    height_m,
+                    distributed_kn_m,
+                    tip_point_load_kn,
+                    back_span_m,
+                ] {
+                    hash_f64(&mut h, *v);
+                }
+            }
+        }
+    }
+    project.circulations.len().hash(&mut h);
+    for circ in &project.circulations {
+        circ.id.hash(&mut h);
+        if let super::circulation::CirculationKind::Stair {
+            shape,
+            width_m,
+            total_rise_m,
+            tread_m,
+            landing_depth_m,
+        } = circ.kind
+        {
+            (shape as u8).hash(&mut h);
+            for v in [width_m, total_rise_m, tread_m, landing_depth_m] {
+                hash_f64(&mut h, v);
+            }
+        }
+    }
     // Include upper floors in the fingerprint so multi-storey load-path
     // caches invalidate when an upper storey changes.
     project.floors.active_floor_id.hash(&mut h);

@@ -3,6 +3,7 @@ pub mod areas;
 pub mod background;
 pub mod blocks;
 pub mod cache;
+pub mod cantilevers;
 pub mod circulation;
 pub mod compare;
 pub mod conduits;

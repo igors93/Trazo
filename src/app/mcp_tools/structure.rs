@@ -480,6 +480,81 @@ fn round1(value: f64) -> f64 {
     (value * 10.0).round() / 10.0
 }
 
+fn cantilevers_json(rep: &crate::domain::cantilevers::CantileverReport) -> Value {
+    let round2 = |v: f64| (v * 100.0).round() / 100.0;
+    let stairs: Vec<Value> = rep
+        .stairs
+        .iter()
+        .map(|s| {
+            json!({
+                "id": s.id,
+                "rotulo": s.label,
+                "nome": s.name,
+                "lance_m": round2(s.flight_span_m),
+                "espessura_cm": round1(s.waist_m * 100.0),
+                "md_knm_m": round2(s.moment_design_knm_m),
+                "as_inferior_cm2_m": round2(s.as_bottom_cm2_m),
+                "as_superior_cm2_m": round2(s.as_top_cm2_m),
+                "flecha_mm": round1(s.deflection_mm),
+                "limite_mm": round1(s.limit_mm),
+                "reacao_total_kn": round1(s.reaction_total_kn),
+                "semaforo": s.light.key(),
+            })
+        })
+        .collect();
+    let balconies: Vec<Value> = rep
+        .balconies
+        .iter()
+        .map(|b| {
+            json!({
+                "id": b.id,
+                "rotulo": b.label,
+                "origem": b.source,
+                "balanco_m": round2(b.span_m),
+                "espessura_cm": round1(b.thickness_m * 100.0),
+                "espessura_minima_cm": round1(b.thickness_min_m * 100.0),
+                "gamma_n": round2(b.gamma_n),
+                "mk_neg_knm_m": round2(b.moment_k_neg_knm_m),
+                "md_neg_knm_m": round2(b.moment_d_neg_knm_m),
+                "as_superior_cm2_m": round2(b.as_top_cm2_m),
+                "flecha_mm": round1(b.deflection_mm),
+                "limite_l125_mm": round1(b.limit_mm),
+                "contravao_m": round2(b.back_span_m),
+                "contravao_minimo_m": round2(b.required_back_span_m),
+                "contravao_ok": b.back_span_ok,
+                "alerta_trelicada": b.is_ribbed_warning,
+                "semaforo": b.light.key(),
+            })
+        })
+        .collect();
+    let beams: Vec<Value> = rep
+        .beams
+        .iter()
+        .map(|cb| {
+            json!({
+                "id": cb.id,
+                "rotulo": cb.label,
+                "balanco_m": round2(cb.span_m),
+                "secao_cm": section_cm(cb.width_m, cb.height_m),
+                "altura_minima_cm": round1(cb.height_min_m * 100.0),
+                "mk_neg_knm": round2(cb.moment_k_neg_knm),
+                "md_neg_knm": round2(cb.moment_d_neg_knm),
+                "cortante_kn": round1(cb.shear_k_kn),
+                "as_superior_cm2": round2(cb.as_top_cm2),
+                "flecha_mm": round1(cb.deflection_mm),
+                "limite_l125_mm": round1(cb.limit_mm),
+                "contravao_ok": cb.back_span_ok,
+                "semaforo": cb.light.key(),
+            })
+        })
+        .collect();
+    json!({
+        "escadas": stairs,
+        "sacadas_lajes_balanco": balconies,
+        "vigas_balanco": beams,
+    })
+}
+
 fn grid_analysis_json(grid: &crate::domain::grid_analysis::GridAnalysisReport) -> Value {
     let slabs: Vec<Value> = grid
         .slabs
@@ -1386,8 +1461,68 @@ impl FloorPlanApp {
                     Ok(ToolOutput::ok(result.advice).with_structured(payload))
                 }
             }
+            "definir_balanco" => {
+                use crate::domain::cantilevers::CantileverSpec;
+                let kind = text(args, "tipo")
+                    .unwrap_or_else(|| "laje".to_owned())
+                    .to_lowercase();
+                let span_m = required_number(args, "balanco_m")?;
+                let back_span_m = number(args, "contravao_m")?.unwrap_or(0.0);
+                let label = text(args, "nome").unwrap_or_default();
+                let spec = match kind.as_str() {
+                    "laje" | "sacada" | "marquise" => {
+                        let width_m = number(args, "largura_m")?.unwrap_or(3.0);
+                        let thickness_m = number(args, "espessura_cm")?.unwrap_or(14.0) / 100.0;
+                        let tip_load_kn_m = number(args, "carga_ponta_kn_m")?.unwrap_or(1.50);
+                        CantileverSpec::Slab {
+                            id: 0,
+                            label,
+                            span_m,
+                            width_m,
+                            thickness_m,
+                            back_span_m,
+                            tip_load_kn_m,
+                        }
+                    }
+                    "viga" => {
+                        let width_m = number(args, "largura_cm")?.unwrap_or(14.0) / 100.0;
+                        let height_m = number(args, "altura_cm")?.unwrap_or(40.0) / 100.0;
+                        let distributed_kn_m = number(args, "carga_distribuida_kn_m")?.unwrap_or(8.0);
+                        let tip_point_load_kn = number(args, "carga_kn")?.unwrap_or(0.0);
+                        CantileverSpec::Beam {
+                            id: 0,
+                            label,
+                            span_m,
+                            width_m,
+                            height_m,
+                            distributed_kn_m,
+                            tip_point_load_kn,
+                            back_span_m,
+                        }
+                    }
+                    _ => return Err("'tipo' para definir_balanco deve ser laje ou viga.".to_owned()),
+                };
+                self.apply_change(None, |project| {
+                    let id = project.add_cantilever(spec)?;
+                    let report = project.analyse_cantilevers();
+                    Ok(Change::new(format!("Balanço #{id} registrado e verificado."))
+                        .data(json!({
+                            "id": id,
+                            "escadas_e_balancos": cantilevers_json(&report),
+                        })))
+                })
+            }
+            "remover_balanco" => {
+                let id = element_id(args, "id")?;
+                self.apply_change(None, |project| {
+                    if !project.remove_cantilever(id) {
+                        return Err("Balanço não encontrado.".to_owned());
+                    }
+                    Ok(Change::new(format!("Balanço #{id} removido.")))
+                })
+            }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, configurar_sobreposicao, simular_whatif, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao, configurar_vento, ajustar_paredes_telhado ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, configurar_sobreposicao, simular_whatif, definir_balanco, remover_balanco, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao, configurar_vento, ajustar_paredes_telhado ou vista.".to_owned(),
             ),
         }
     }
@@ -1949,6 +2084,7 @@ impl FloorPlanApp {
             "cargas_e_combinacoes": loads_json,
             "sobreposicao_planta": overlay_json,
             "grelha_lajes_vigas": grid_json,
+            "escadas_e_balancos": cantilevers_json(&report.cantilevers),
             "lajes": slabs,
             "vigas": beams,
             "porticos_2d": frames_2d,

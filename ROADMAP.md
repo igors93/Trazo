@@ -172,6 +172,14 @@ Recorded while working through the [implementation log](#implementation-log), an
 
 ## Implementation log
 
+### #115 Stairs, balconies and cantilevers — ✅ Done
+
+- **Changes:** added `src/domain/cantilevers.rs` integrated with `StructureReport`, `verdict::structure`, `domain::cache`, `src/app/ui/structure.rs` (*Escadas, sacadas e balanços*) and MCP (`projeto_estrutural` → `definir_balanco`/`remover_balanco`, `pre_dimensionamento.escadas_e_balancos`):
+  - **Concrete stairs** automatically derived from drawn `CirculationKind::Stair`: equivalent vertical thickness `h_waist/cos(α) + riser/2`, NBR 6120 Table 10 live load (2.5 / 3.0 kN/m²), one-way `Md = 1.4·q·L²/8`, bottom/top CA-50 steel, support reactions and long-term `L/250` deflection;
+  - **Balconies & cantilever slabs** (automatically detected from balcony room names or 1-edge-supported slabs, plus explicit `CantileverSpec::Slab`): mandatory solid-slab check (flags ribbed cantilevers red), **ABNT NBR 6118:2023 §13.2.4.1 Table 13.2 `γ_n = 1.95 − 0.05·h_cm`** additional safety factor, NBR 6120 ≥ 2.5 kN/m² live load + parapet line load + `0.80 kN/m × 1.10 m` guardrail thrust, top negative CA-50 steel, strict **`L/125`** cantilever deflection (NBR 6118 Table 13.3) and **`1.5 · L_bal`** back-span overturning/anchorage check;
+  - **Cantilever beams** (`CantileverSpec::Beam`): `L/5` minimum depth, root negative moment & shear, top CA-50 steel, `L/125` long-term deflection and `1.5 · L_bal` back-span check.
+- **Tests:** `cantilever_balcony_matches_nbr6118_table13_2_gamma_n_and_l125_deflection` and `stair_and_cantilever_beam_match_worked_hand_calculations`.
+
 ### #114 Roof structure (gable, hip, trusses, wall plates, overhangs & uplift) — ✅ Done
 
 - **Changes:** extended `src/domain/roof/` (`mod.rs`, `sizing.rs`, `analysis.rs`, `marks.rs`, `tests.rs`), `src/domain/verdict/structure.rs`, `src/app/ui/roof.rs`, `src/app/mcp_tools/structure.rs` and `src/mcp/protocol.rs` to support **gable (*duas águas*)** and **hip (*quatro águas*)** timber roofs alongside mono-pitch (*meia-água*), configurable perimeter **overhangs (*beirais*, 0–1.50 m)** with cantilever bending checks, **wall plates (*frechais*)**, 4-panel **Howe pitched timber trusses (*tesouras*)** sized by exact Method of Joints equilibrium + NBR 7190 compression/buckling and tension checks, 4 diagonal **hip rafters (*espigões*)**, integrated **NBR 6123 wind uplift** (including overhang edge suction `Cpe = −1.50` and support anchor forces), ridge/hip/overhang plan marks, traffic lights, UI controls and MCP (`definir_telhado` with `estilo`, `beiral_m`, `tesouras`).
@@ -553,7 +561,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 112 | Foundations: soil from a survey (SPT) or a soil-type table; footing, raft (*radier*) and bored-pile (*broca*) options; eccentricity, punching and overturning checks (B11) | P1 | L | M5 | ✅ |
 | 113 | Point loads on the structure: water tank (*caixa d'água*) and heavy equipment, checked on the slab or beam below | P0 | S | M5 | ✅ |
 | 114 | Roof structure: mono-pitch (*meia-água*), gable and hip roofs in timber, with rafters (*caibros*), purlins (*terças*), battens (*ripas*), wall plates (*frechais*) and trusses, an exposed-ceiling option, the minimum slope of each tile, tile weights, live load and wind uplift (NBR 7190, NBR 6120, NBR 6123), and the roof loads delivered to the walls, beams, posts and footings, from the roof plan (#71) | P1 | XL | M5 | ✅ |
-| 115 | Stairs, balconies and cantilevers: slab and beam checks with the extra care cantilevers need | P1 | M | M5 | ⬜ |
+| 115 | Stairs, balconies and cantilevers: slab and beam checks with the extra care cantilevers need | P1 | M | M5 | ✅ |
 | 116 | Two-way slab moments and deflections by tables (Czerny, Marcus), and L-shaped rooms split into rectangular panels (B06) | P1 | M | M5 | ✅ |
 | 117 | Columns at any angle and beams supported on beams (B07) | P2 | M | M5 | ✅ |
 | 143 | Ground beams (*vigas baldrame*) and wall foundations: a ground beam under every wall, resting on the footings, or a strip footing (*sapata corrida*) where there are no columns; the wall weight carried down to them; interior walls (bathrooms, pantry) included; beams and footings sized with that load | P0 | L | M5 | ✅ Ground beams between columns and strip footings elsewhere, wall load to the footings (and to balance beams), sizing with steel, plan drawing, MCP and traffic light; overhang moments enter the continuous spans and signed reactions flag uplift; secondary beams transfer point reactions through supported beam chains to columns and footings; unsupported cycles fall back to strip footings |

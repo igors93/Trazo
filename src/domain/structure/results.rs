@@ -307,6 +307,8 @@ pub struct StructureReport {
     pub wind: crate::domain::wind::WindReport,
     /// Lintels, sills and masonry wall-panel checks (#111).
     pub masonry: crate::domain::masonry_structure::MasonryStructureReport,
+    /// Concrete stairs, balconies and cantilever slabs/beams (#115).
+    pub cantilevers: crate::domain::cantilevers::CantileverReport,
     /// NBR 6120 load cases, NBR 6123 building wind and NBR 8681 combinations (#105).
     pub loads: crate::domain::loads::LoadAnalysisReport,
     /// 2D plane-frame analysis per continuous beam line (#94).

@@ -1462,6 +1462,34 @@ impl Project {
                 }
             }
         }
+        report.cantilevers = self.analyse_cantilevers();
+        for b in &report.cantilevers.balconies {
+            if b.is_ribbed_warning {
+                report.warnings.push(format!(
+                    "{} ({}): laje treliçada em balanço exige projeto específico ou troca por laje maciça com armadura negativa superior.",
+                    b.label, b.source
+                ));
+            }
+            if !b.back_span_ok {
+                report.warnings.push(format!(
+                    "{} ({}): contravão ({} m) inferior a 1,5 × balanço ({} m); risco de tombamento ou necessidade de engaste torcional.",
+                    b.label,
+                    b.source,
+                    decimal(b.back_span_m, 2),
+                    decimal(b.required_back_span_m, 2)
+                ));
+            }
+        }
+        for cb in &report.cantilevers.beams {
+            if !cb.back_span_ok {
+                report.warnings.push(format!(
+                    "{}: viga em balanço com contravão ({} m) < 1,5 × balanço ({} m); verifique ancoragem negativa e tombamento.",
+                    cb.label,
+                    decimal(cb.back_span_m, 2),
+                    decimal(cb.required_back_span_m, 2)
+                ));
+            }
+        }
         let frame_analysis = crate::domain::frame2d::analyze_project_frames(self, &report);
         report.frames = frame_analysis.frames;
         report.frame_failures = frame_analysis.failures;
