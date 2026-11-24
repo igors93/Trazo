@@ -50,6 +50,18 @@ impl Project {
     /// The drawing whose line passes within `tolerance` of `point`, the
     /// closest one (the last drawn when tied, as it is on top).
     pub fn drawing_at(&self, point: Point, tolerance: f64) -> Option<u64> {
+        if self.drawings.len() >= 16 {
+            let spatial = self.cached_spatial_index();
+            return spatial
+                .drawing_candidates_near(point, tolerance)
+                .into_iter()
+                .rev()
+                .filter_map(|i| self.drawings.get(i))
+                .map(|drawing| (drawing.id, drawing.shape.distance_to(point)))
+                .filter(|(_, distance)| *distance <= tolerance)
+                .min_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(id, _)| id);
+        }
         self.drawings
             .iter()
             .rev()

@@ -970,6 +970,16 @@ impl Project {
         discipline: super::discipline::Discipline,
     ) -> Option<u64> {
         // The last placed is drawn on top, so it is picked first.
+        if self.fixtures.len() >= 16 {
+            let spatial = self.cached_spatial_index();
+            let candidates = spatial.fixture_candidates_near(point, 0.05);
+            return candidates
+                .into_iter()
+                .rev()
+                .filter_map(|i| self.fixtures.get(i))
+                .find(|fixture| discipline.allows_fixture(fixture.kind) && fixture.contains(point))
+                .map(|fixture| fixture.id);
+        }
         self.fixtures
             .iter()
             .rev()
@@ -2202,7 +2212,7 @@ impl Project {
     }
 
     pub fn room_at(&self, point: Point) -> Option<u64> {
-        self.rooms.iter().rev().find_map(|room| {
+        let hit = |room: &Room| {
             if let Some(poly) = self.room_polygon(room) {
                 if super::geometry::polygon_contains_point(&poly, point) {
                     return Some(room.id);
@@ -2215,9 +2225,18 @@ impl Project {
             {
                 return Some(room.id);
             }
-
             None
-        })
+        };
+        if self.rooms.len() >= 16 {
+            let spatial = self.cached_spatial_index();
+            return spatial
+                .room_candidates_at(point)
+                .into_iter()
+                .rev()
+                .filter_map(|i| self.rooms.get(i))
+                .find_map(hit);
+        }
+        self.rooms.iter().rev().find_map(hit)
     }
 
     pub fn delete_room(&mut self, id: u64) -> bool {

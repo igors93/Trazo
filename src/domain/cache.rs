@@ -556,6 +556,50 @@ impl Project {
         guard.get_or_insert(key, || self.grid_analysis())
     }
 
+    /// Cached [`super::spatial::SpatialIndex`] keyed by geometry fingerprint so
+    /// picking, OSNAP and incremental validation reuse the XY grid across frames.
+    pub fn cached_spatial_index(&self) -> Arc<super::spatial::SpatialIndex> {
+        static CACHE: CacheSlot<super::spatial::SpatialIndex> = OnceLock::new();
+        let mut h = DefaultHasher::new();
+        self.walls.len().hash(&mut h);
+        for w in &self.walls {
+            w.id.hash(&mut h);
+            hash_point(&mut h, w.start);
+            hash_point(&mut h, w.end);
+            hash_f64(&mut h, w.thickness());
+        }
+        self.openings.len().hash(&mut h);
+        for o in &self.openings {
+            o.id.hash(&mut h);
+            o.wall_id.hash(&mut h);
+        }
+        self.fixtures.len().hash(&mut h);
+        for f in &self.fixtures {
+            f.id.hash(&mut h);
+            hash_point(&mut h, f.center);
+            hash_f64(&mut h, f.width);
+            hash_f64(&mut h, f.depth);
+            f.quarter_turns.hash(&mut h);
+            hash_f64(&mut h, f.angle_rad);
+        }
+        self.drawings.len().hash(&mut h);
+        for d in &self.drawings {
+            d.id.hash(&mut h);
+            let (min, max) = d.shape.bounds();
+            hash_point(&mut h, min);
+            hash_point(&mut h, max);
+        }
+        self.rooms.len().hash(&mut h);
+        for r in &self.rooms {
+            r.id.hash(&mut h);
+            r.wall_ids.hash(&mut h);
+        }
+        let key = h.finish();
+        let cache = CACHE.get_or_init(|| Mutex::new(RingCache::new()));
+        let mut guard = cache.lock().unwrap_or_else(|e| e.into_inner());
+        guard.get_or_insert(key, || super::spatial::SpatialIndex::build(self))
+    }
+
     /// Cached [`Project::audit_dependencies`], reused across frames until
     /// geometry, openings, electrical or structural inputs change.
     pub fn cached_dependency_audit(&self) -> Arc<super::dependencies::DependencyAudit> {

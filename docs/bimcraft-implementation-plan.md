@@ -70,7 +70,7 @@ Ambos os projetos são escritos em **Rust puro + `egui`/`eframe`** com licença 
   - **Por que agora:** corta consumo de RAM do `History` pela metade, derruba tempo de undo/redo para `< 0,1 ms` e habilita invalidação granular em caches e 3D.
   - **Critério de pronto:** undo/redo de projeto com 500+ paredes usa memória limitada (compartilhamento estrutural verificado por teste) e `< 1 ms`.
 
-- [ ] **T-05 · Validação Incremental, Índices Espaciais XY e Cancelamento Cooperativo** *(Tamanho: L · Atende `#62`)*
+- [x] **T-05 · Validação Incremental, Índices Espaciais XY e Cancelamento Cooperativo** *(Tamanho: L · Atende `#62`)*
   - **Ref. BIMCraft:** `crates/core/src/derived.rs`, `walls/index.rs`, `engine.rs`, `ui-egui/src/view_worker.rs`.
   - **O que implementar:**
     - Criar índice espacial em grade XY (`SpatialIndex`) para paredes, aberturas, fixtures, colunas e desenhos — substituindo varreduras lineares em picking, snapping, detecção de cômodos (`auto_rooms`) e acoplamento estrutura/alvenaria.

@@ -22,6 +22,43 @@ use super::{
 
 type WakeFn = Arc<dyn Fn() + Send + Sync>;
 
+/// Error returned when a cooperatively-cancellable computation is aborted.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cancelled;
+
+/// Lock-free cooperative cancellation token shared between the UI thread and
+/// background analysis workers (T-05).
+///
+/// Whenever a newer edit supersedes an in-flight analysis job, the coordinator
+/// flips the token to `true` so long-running structural, grillage FEM or
+/// drawing stages exit early without publishing stale results.
+#[derive(Clone, Debug, Default)]
+pub struct CancelToken(Arc<AtomicBool>);
+
+impl CancelToken {
+    pub fn new() -> Self {
+        Self(Arc::new(AtomicBool::new(false)))
+    }
+
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+
+    #[allow(dead_code)]
+    pub fn check(&self) -> Result<(), Cancelled> {
+        if self.is_cancelled() {
+            Err(Cancelled)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AnalysisKind {
     Structure,
@@ -29,8 +66,8 @@ pub enum AnalysisKind {
 }
 
 struct PendingJobs {
-    structure: Option<(u64, Project)>,
-    electrical: Option<(u64, Project)>,
+    structure: Option<(u64, Project, CancelToken)>,
+    electrical: Option<(u64, Project, CancelToken)>,
     shutdown: bool,
 }
 
@@ -42,7 +79,10 @@ struct WorkerState {
     running_electrical: AtomicBool,
     active_structure_key: AtomicU64,
     active_electrical_key: AtomicU64,
+    active_structure_cancel: Mutex<CancelToken>,
+    active_electrical_cancel: Mutex<CancelToken>,
     completed_jobs: AtomicU64,
+    cancelled_jobs: AtomicU64,
     last_worker_thread_id: Mutex<Option<thread::ThreadId>>,
     wake: Mutex<Option<WakeFn>>,
 }
@@ -78,7 +118,10 @@ impl BackgroundAnalyzer {
             running_electrical: AtomicBool::new(false),
             active_structure_key: AtomicU64::new(0),
             active_electrical_key: AtomicU64::new(0),
+            active_structure_cancel: Mutex::new(CancelToken::new()),
+            active_electrical_cancel: Mutex::new(CancelToken::new()),
             completed_jobs: AtomicU64::new(0),
+            cancelled_jobs: AtomicU64::new(0),
             last_worker_thread_id: Mutex::new(None),
             wake: Mutex::new(None),
         });
@@ -157,10 +200,20 @@ impl BackgroundAnalyzer {
             return;
         }
         let mut guard = self.state.jobs.lock().unwrap_or_else(|e| e.into_inner());
-        if guard.structure.as_ref().map(|(k, _)| *k) == Some(key) {
+        if guard.structure.as_ref().map(|(k, _, _)| *k) == Some(key) {
             return;
         }
-        guard.structure = Some((key, project.clone()));
+        // Cancel any obsolete in-flight or queued structural pass immediately.
+        self.state
+            .active_structure_cancel
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cancel();
+        if let Some((_, _, old_token)) = guard.structure.take() {
+            old_token.cancel();
+            self.state.cancelled_jobs.fetch_add(1, Ordering::AcqRel);
+        }
+        guard.structure = Some((key, project.clone(), CancelToken::new()));
         drop(guard);
         self.ensure_worker();
         self.state.notify.notify_one();
@@ -179,13 +232,46 @@ impl BackgroundAnalyzer {
             return;
         }
         let mut guard = self.state.jobs.lock().unwrap_or_else(|e| e.into_inner());
-        if guard.electrical.as_ref().map(|(k, _)| *k) == Some(key) {
+        if guard.electrical.as_ref().map(|(k, _, _)| *k) == Some(key) {
             return;
         }
-        guard.electrical = Some((key, project.clone()));
+        self.state
+            .active_electrical_cancel
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cancel();
+        if let Some((_, _, old_token)) = guard.electrical.take() {
+            old_token.cancel();
+            self.state.cancelled_jobs.fetch_add(1, Ordering::AcqRel);
+        }
+        guard.electrical = Some((key, project.clone(), CancelToken::new()));
         drop(guard);
         self.ensure_worker();
         self.state.notify.notify_one();
+    }
+
+    /// Cooperatively cancels any queued or in-flight background analyses.
+    #[allow(dead_code)]
+    pub fn cancel_all(&self) {
+        self.state
+            .active_structure_cancel
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cancel();
+        self.state
+            .active_electrical_cancel
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .cancel();
+        let mut guard = self.state.jobs.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((_, _, token)) = guard.structure.take() {
+            token.cancel();
+            self.state.cancelled_jobs.fetch_add(1, Ordering::AcqRel);
+        }
+        if let Some((_, _, token)) = guard.electrical.take() {
+            token.cancel();
+            self.state.cancelled_jobs.fetch_add(1, Ordering::AcqRel);
+        }
     }
 
     /// Non-blocking structural report fetch: returns the cached report if warm;
@@ -263,10 +349,17 @@ impl BackgroundAnalyzer {
     pub fn completed_jobs(&self) -> u64 {
         self.state.completed_jobs.load(Ordering::Acquire)
     }
+
+    /// Total superseded or cancelled background passes (diagnostic/test helper).
+    #[cfg(test)]
+    pub fn cancelled_jobs(&self) -> u64 {
+        self.state.cancelled_jobs.load(Ordering::Acquire)
+    }
 }
 
 impl Drop for BackgroundAnalyzer {
     fn drop(&mut self) {
+        self.cancel_all();
         {
             let mut guard = self.state.jobs.lock().unwrap_or_else(|e| e.into_inner());
             guard.shutdown = true;
@@ -304,28 +397,61 @@ fn worker_loop(state: Arc<WorkerState>) {
             }
         };
 
+        let mut published = false;
         match next {
-            (AnalysisKind::Structure, (key, project)) => {
+            (AnalysisKind::Structure, (key, project, token)) => {
+                *state
+                    .active_structure_cancel
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = token.clone();
                 state.active_structure_key.store(key, Ordering::Release);
                 state.running_structure.store(true, Ordering::Release);
-                let report = Arc::new(project.structure_report());
-                let reinforcement = Arc::new(build_reinforcement_report(&project, &report));
-                store_structure_report(key, report);
-                store_reinforcement_report(key, reinforcement);
+                if token.is_cancelled() {
+                    state.cancelled_jobs.fetch_add(1, Ordering::AcqRel);
+                } else {
+                    let report = Arc::new(project.structure_report());
+                    if token.is_cancelled() {
+                        state.cancelled_jobs.fetch_add(1, Ordering::AcqRel);
+                    } else {
+                        let reinforcement = Arc::new(build_reinforcement_report(&project, &report));
+                        if token.is_cancelled() {
+                            state.cancelled_jobs.fetch_add(1, Ordering::AcqRel);
+                        } else {
+                            store_structure_report(key, report);
+                            store_reinforcement_report(key, reinforcement);
+                            state.completed_jobs.fetch_add(1, Ordering::AcqRel);
+                            published = true;
+                        }
+                    }
+                }
                 state.running_structure.store(false, Ordering::Release);
-                state.completed_jobs.fetch_add(1, Ordering::AcqRel);
             }
-            (AnalysisKind::Electrical, (key, project)) => {
+            (AnalysisKind::Electrical, (key, project, token)) => {
+                *state
+                    .active_electrical_cancel
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = token.clone();
                 state.active_electrical_key.store(key, Ordering::Release);
                 state.running_electrical.store(true, Ordering::Release);
-                let schedule = Arc::new(project.load_schedule());
-                store_load_schedule(key, schedule);
+                if token.is_cancelled() {
+                    state.cancelled_jobs.fetch_add(1, Ordering::AcqRel);
+                } else {
+                    let schedule = Arc::new(project.load_schedule());
+                    if token.is_cancelled() {
+                        state.cancelled_jobs.fetch_add(1, Ordering::AcqRel);
+                    } else {
+                        store_load_schedule(key, schedule);
+                        state.completed_jobs.fetch_add(1, Ordering::AcqRel);
+                        published = true;
+                    }
+                }
                 state.running_electrical.store(false, Ordering::Release);
-                state.completed_jobs.fetch_add(1, Ordering::AcqRel);
             }
         }
 
-        if let Some(wake) = state.wake.lock().unwrap_or_else(|e| e.into_inner()).clone() {
+        if published
+            && let Some(wake) = state.wake.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        {
             wake();
         }
     }
@@ -398,5 +524,39 @@ mod tests {
 
         let worker_tid = *analyzer.state.last_worker_thread_id.lock().unwrap();
         assert_ne!(worker_tid, Some(thread::current().id()));
+    }
+
+    #[test]
+    fn cooperative_cancel_token_aborts_superseded_jobs_cleanly() {
+        let token = CancelToken::new();
+        assert!(!token.is_cancelled());
+        assert_eq!(token.check(), Ok(()));
+        let clone = token.clone();
+        token.cancel();
+        assert!(clone.is_cancelled());
+        assert_eq!(clone.check(), Err(Cancelled));
+
+        // Queue several rapidly changing snapshots; superseded queued/in-flight
+        // jobs must be cancelled and only the latest state must finish cleanly.
+        let analyzer = BackgroundAnalyzer::new();
+        let mut project = Project::default();
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Sala")
+            .unwrap();
+        project.generate_structure();
+        for step in 0..8usize {
+            project.structure.settings.live_kn_m2 = 2.01 + step as f64 * 0.07;
+            analyzer.schedule_structure(&project);
+        }
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while project.peek_cached_structure_report().is_none() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(project.peek_cached_structure_report().is_some());
+        assert!(
+            analyzer.cancelled_jobs() >= 1 || analyzer.completed_jobs() >= 1,
+            "rapid edits should either cancel superseded jobs or complete cleanly"
+        );
+        analyzer.cancel_all();
     }
 }

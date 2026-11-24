@@ -145,6 +145,9 @@ pub fn find_snap(
     collect_geometry(
         project,
         draft_points,
+        cursor,
+        start,
+        threshold,
         &mut segments,
         &mut endpoints,
         &mut midpoints,
@@ -273,20 +276,53 @@ pub fn find_snap(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn collect_geometry(
     project: &Project,
     draft_points: &[Point],
+    cursor: Point,
+    start: Option<Point>,
+    threshold: f64,
     segments: &mut Vec<(Point, Point)>,
     endpoints: &mut Vec<Point>,
     midpoints: &mut Vec<Point>,
     centers: &mut Vec<Point>,
     circles: &mut Vec<CircleRef>,
 ) {
-    for wall in &project.walls {
-        segments.push((wall.start, wall.end));
-        endpoints.push(wall.start);
-        endpoints.push(wall.end);
-        midpoints.push(wall.start.midpoint(wall.end));
+    let use_spatial = project.walls.len() + project.drawings.len() + project.rooms.len() >= 24;
+    let (query_min, query_max) = {
+        let pad = threshold.abs().max(1.5) * 4.0;
+        let mut min = Point::new(cursor.x - pad, cursor.y - pad);
+        let mut max = Point::new(cursor.x + pad, cursor.y + pad);
+        if let Some(from) = start {
+            min.x = min.x.min(from.x - pad);
+            min.y = min.y.min(from.y - pad);
+            max.x = max.x.max(from.x + pad);
+            max.y = max.y.max(from.y + pad);
+        }
+        (min, max)
+    };
+    let spatial = use_spatial.then(|| project.cached_spatial_index());
+
+    let wall_indices: Option<Vec<usize>> = spatial
+        .as_ref()
+        .map(|idx| idx.wall_candidates_in_box(query_min, query_max));
+    if let Some(indices) = &wall_indices {
+        for &i in indices {
+            if let Some(wall) = project.walls.get(i) {
+                segments.push((wall.start, wall.end));
+                endpoints.push(wall.start);
+                endpoints.push(wall.end);
+                midpoints.push(wall.start.midpoint(wall.end));
+            }
+        }
+    } else {
+        for wall in &project.walls {
+            segments.push((wall.start, wall.end));
+            endpoints.push(wall.start);
+            endpoints.push(wall.end);
+            midpoints.push(wall.start.midpoint(wall.end));
+        }
     }
 
     if let Some(terrain) = &project.terrain {
@@ -300,7 +336,7 @@ fn collect_geometry(
         }
     }
 
-    for room in &project.rooms {
+    let push_room_center = |room: &super::model::Room, centers: &mut Vec<Point>| {
         if let Some(poly) = project.room_polygon(room)
             && !poly.is_empty()
         {
@@ -311,9 +347,30 @@ fn collect_geometry(
             }
             centers.push(Point::new(sx / poly.len() as f64, sy / poly.len() as f64));
         }
+    };
+    if let Some(idx) = &spatial {
+        for i in idx.room_candidates_in_box(query_min, query_max) {
+            if let Some(room) = project.rooms.get(i) {
+                push_room_center(room, centers);
+            }
+        }
+    } else {
+        for room in &project.rooms {
+            push_room_center(room, centers);
+        }
     }
 
-    for drawing in &project.drawings {
+    let drawing_indices: Option<Vec<usize>> = spatial
+        .as_ref()
+        .map(|idx| idx.drawing_candidates_in_box(query_min, query_max));
+    let drawing_iter: Vec<&super::drawing::Drawing> = match &drawing_indices {
+        Some(indices) => indices
+            .iter()
+            .filter_map(|&i| project.drawings.get(i))
+            .collect(),
+        None => project.drawings.iter().collect(),
+    };
+    for drawing in drawing_iter {
         match &drawing.shape {
             Shape::Line { start, end } => {
                 segments.push((*start, *end));
