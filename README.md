@@ -87,12 +87,20 @@
 
 ## Getting started
 
-### Requirements
+### Download and run
+
+Download a portable build from [GitHub Releases](https://github.com/igors93/Trazo/releases/latest). No Rust installation is needed.
+
+- **Windows 10/11 (x64):** download `trazo-<version>-x86_64-pc-windows-msvc.zip`, extract the entire ZIP, then open `trazo.exe` inside the extracted folder. No installer or administrator privileges are required.
+- **Linux (x64):** extract the `x86_64-unknown-linux-gnu.tar.gz` archive and run `./trazo`.
+- **macOS:** extract the `aarch64-apple-darwin.tar.gz` archive for Apple Silicon, or `x86_64-apple-darwin.tar.gz` for Intel, and run `./trazo`.
+
+The downloads are **unsigned community builds**. Windows SmartScreen or macOS Gatekeeper may warn or block execution. Compare the archive's SHA-256 hash with `SHA256SUMS.txt` from the same release using `Get-FileHash <archive> -Algorithm SHA256` (Windows), `sha256sum <archive>` (Linux) or `shasum -a 256 <archive>` (macOS). Checksums verify integrity, not publisher identity.
+
+### Build requirements
 
 - [Rust](https://rustup.rs) 1.85 or newer (stable).
 - Windows 10 or 11 is the main platform. Linux and macOS builds should work but are less tested. On Debian or Ubuntu, first install `libxkbcommon-dev libgl1-mesa-dev libgtk-3-dev`.
-
-Pre-built downloads are planned ([#77](ROADMAP.md#e-release-and-quality)).
 
 ### Build and run
 

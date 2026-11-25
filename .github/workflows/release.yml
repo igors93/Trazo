@@ -141,40 +141,16 @@ jobs:
           New-Item -ItemType Directory -Path $staging -Force | Out-Null
           Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" "$staging/"
           Copy-Item README.md, CHANGELOG.md, LICENSE-MIT, LICENSE-APACHE "$staging/"
-          Copy-Item installer/register-file-association.ps1 "$staging/"
           if (Test-Path examples) {
             Copy-Item examples "$staging/examples" -Recurse
           }
           Compress-Archive -Path $staging -DestinationPath "$staging.zip" -Force
-
-      - name: Build Windows installer (Inno Setup)
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        shell: pwsh
-        run: |
-          $version = "${{ needs.verify.outputs.version }}"
-          $exePath = (Resolve-Path "target/${{ matrix.target }}/release/${{ matrix.binary }}").Path
-          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
-          if (-not $iscc) {
-            $candidate = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-            if (Test-Path $candidate) { $iscc = $candidate } else { throw "Inno Setup (ISCC.exe) not found" }
-          } else {
-            $iscc = $iscc.Source
-          }
-          & $iscc "/DMyAppVersion=$version" "/DMyExePath=$exePath" "installer\trazo.iss"
 
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v7
         with:
           name: trazo-${{ matrix.target }}
           path: trazo-${{ needs.verify.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}
-          if-no-files-found: error
-
-      - name: Upload Windows installer
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        uses: actions/upload-artifact@v7
-        with:
-          name: trazo-windows-installer
-          path: dist/trazo-${{ needs.verify.outputs.version }}-x86_64-setup.exe
           if-no-files-found: error
 
   release:
@@ -205,12 +181,24 @@ jobs:
       - name: Extract changelog notes
         shell: bash
         run: |
-          python3 scripts/extract_release_notes.py "${{ needs.verify.outputs.tag }}" CHANGELOG.md > release-notes.md
+          cat > release-notes.md <<'NOTES'
+          ## Downloads
+
+          **Windows 10/11 (x64):** download `trazo-${{ needs.verify.outputs.version }}-x86_64-pc-windows-msvc.zip`, extract the entire archive and open `trazo.exe` inside the extracted folder. No installer or administrator privileges are required.
+
+          Linux and macOS archives are also available. On macOS, choose `aarch64` for Apple Silicon or `x86_64` for Intel.
+
+          These are unsigned community builds; no code-signing certificate is required to build or publish them. Windows SmartScreen or macOS Gatekeeper may display a warning or block execution. Check the source and the download's SHA-256 checksum before deciding whether to run it. SHA-256 checks integrity, not publisher identity.
+
+          ## Changes
+
+          NOTES
+          python3 scripts/extract_release_notes.py "${{ needs.verify.outputs.tag }}" CHANGELOG.md >> release-notes.md
           {
             echo ""
             echo "### Checksums"
             echo ""
-            echo 'Verify downloads with `sha256sum -c SHA256SUMS.txt` (Linux/macOS) or `Get-FileHash` (Windows).'
+            echo 'Compare the downloaded archive against `SHA256SUMS.txt` with `Get-FileHash <archive> -Algorithm SHA256` (Windows), `sha256sum <archive>` (Linux), or `shasum -a 256 <archive>` (macOS).'
           } >> release-notes.md
 
       - name: Create GitHub Release
