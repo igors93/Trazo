@@ -17,6 +17,9 @@ pub const CHUNK_SIZE: u64 = 1024;
 
 static REVISION_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+mod size;
+pub(crate) use size::approximate_value_bytes;
+
 /// Maps an entity `id` to its chunk key (`id / CHUNK_SIZE`).
 #[inline]
 pub const fn chunk_of(id: u64) -> u64 {
@@ -300,7 +303,10 @@ impl<T> ChunkedStore<T> {
 
     /// Approximate heap bytes owned exclusively or referenced by this store's
     /// chunks (counting only chunks NOT physically shared with `base`, when given).
-    pub fn incremental_bytes_over(&self, base: Option<&Self>) -> usize {
+    pub fn incremental_bytes_over(&self, base: Option<&Self>) -> usize
+    where
+        T: Serialize,
+    {
         let mut total = 0usize;
         for (key, chunk) in &self.chunks {
             let is_shared = base
@@ -308,7 +314,12 @@ impl<T> ChunkedStore<T> {
                 .is_some_and(|b_chunk| Arc::ptr_eq(chunk, b_chunk));
             if !is_shared {
                 total = total
-                    .saturating_add(chunk.len().saturating_mul(std::mem::size_of::<(u64, T)>()))
+                    .saturating_add(
+                        chunk
+                            .len()
+                            .saturating_mul(std::mem::size_of::<(u64, T)>())
+                            .max(approximate_value_bytes(chunk.as_ref())),
+                    )
                     .saturating_add(64);
             }
         }
@@ -501,6 +512,15 @@ impl<T: Clone + PartialEq> ChunkedStore<T> {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
+
+    #[test]
+    fn chunk_memory_estimates_include_nested_payloads_and_exclude_shared_chunks() {
+        let items = vec![(1_u64, "a".repeat(65_536))];
+        let first = ChunkedStore::from_slice_sharing(&items, |item| item.0, None);
+        assert!(first.incremental_bytes_over(None) >= 65_536);
+        let shared = ChunkedStore::from_slice_sharing(&items, |item| item.0, Some(&first));
+        assert_eq!(shared.incremental_bytes_over(Some(&first)), 0);
+    }
 
     #[test]
     fn shared_cow_and_weak_identity_detect_mutations_without_retaining_values() {

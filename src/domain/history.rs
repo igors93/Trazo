@@ -30,7 +30,7 @@ use super::{
     setbacks::Setbacks,
     sheet::SheetLayout,
     sheet_set::SheetSet,
-    storage::{ChunkedStore, Shared},
+    storage::{ChunkedStore, Shared, approximate_value_bytes},
     structure::ProjectStructure,
     underlay::ImageUnderlay,
     views::ProjectViews,
@@ -42,7 +42,7 @@ const MAX_HISTORY_STEPS: usize = 100;
 /// Soft incremental heap budget for retained undo snapshots (128 MiB).
 const MAX_HISTORY_BYTES: usize = 128 << 20;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 struct ProjectMetadata {
     version: u32,
     name: String,
@@ -137,12 +137,10 @@ impl ProjectMetadata {
     }
 
     fn approx_bytes(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + self.name.len()
-            + self.layers.len() * std::mem::size_of::<Layer>()
-            + self.floors.levels.len() * 512
-            + self.underlays.len() * 4096
-            + self.guids.elements.len() * 24
+        // Count nested floor data, embedded images and resources without
+        // allocating a second serialized copy of potentially large metadata.
+        // The multiplier allows for container and allocation overhead.
+        std::mem::size_of::<Self>().saturating_add(approximate_value_bytes(self))
     }
 }
 
@@ -163,6 +161,19 @@ pub struct ProjectSnapshot {
 }
 
 impl ProjectSnapshot {
+    fn retained_bytes(&self) -> usize {
+        self.walls.incremental_bytes_over(None)
+            + self.rooms.incremental_bytes_over(None)
+            + self.openings.incremental_bytes_over(None)
+            + self.fixtures.incremental_bytes_over(None)
+            + self.drawings.incremental_bytes_over(None)
+            + self.dimensions.incremental_bytes_over(None)
+            + self.notes.incremental_bytes_over(None)
+            + self.circulations.incremental_bytes_over(None)
+            + self.conduits.incremental_bytes_over(None)
+            + self.metadata.approx_bytes()
+    }
+
     /// Captures `project`, sharing every unchanged 1024-ID chunk and unchanged
     /// metadata block with `base` via O(1) `Arc::clone`.
     pub fn from_project_sharing(project: &Project, base: Option<&Self>) -> Self {
@@ -382,6 +393,13 @@ impl History {
         {
             let removed = self.undo.remove(0);
             self.undo_bytes = self.undo_bytes.saturating_sub(removed.incremental_bytes);
+            // Chunks shared with the evicted base are still retained by the new
+            // first snapshot. Charge that base in full before testing the budget.
+            if let Some(first) = self.undo.first_mut() {
+                self.undo_bytes = self.undo_bytes.saturating_sub(first.incremental_bytes);
+                first.incremental_bytes = first.retained_bytes();
+                self.undo_bytes = self.undo_bytes.saturating_add(first.incremental_bytes);
+            }
         }
         self.redo.clear();
     }
@@ -441,6 +459,56 @@ mod tests {
 
     use super::*;
     use crate::domain::geometry::Point;
+
+    #[test]
+    fn evicting_a_snapshot_keeps_shared_base_memory_charged() {
+        let mut project = Project::default();
+        project.name = "Project metadata".repeat(1000);
+        project.add_wall(Point::new(0.0, 0.0), Point::new(2.0, 0.0));
+        let retained = ProjectSnapshot::from_project_sharing(&project, None).retained_bytes();
+        let mut history = History::new();
+        history.max_steps = 2;
+        for _ in 0..6 {
+            history.record(project.clone());
+        }
+        assert_eq!(history.undo_len(), 2);
+        assert_eq!(history.estimated_bytes(), retained);
+        history.max_bytes = retained - 1;
+        history.record(project.clone());
+        assert_eq!(history.undo_len(), 1);
+        assert_eq!(history.estimated_bytes(), retained);
+        assert!(history.undo(&mut project));
+        assert!(history.redo(&mut project));
+    }
+
+    #[test]
+    fn history_accounts_for_embedded_image_payloads_in_metadata() {
+        let mut project = Project::default();
+        let payload = "a".repeat(65_536);
+        project.underlays.push(ImageUnderlay {
+            id: 1,
+            name: "Fundo".to_owned(),
+            source_path: String::new(),
+            page: 1,
+            pixel_width: 1,
+            pixel_height: 1,
+            origin: Point::new(0.0, 0.0),
+            width_m: 1.0,
+            rotation_deg: 0.0,
+            opacity: 0.5,
+            visible: true,
+            locked: false,
+            embedded_png_base64: Some(payload),
+        });
+        let mut history = History::new();
+        history.max_bytes = 200_000;
+        for i in 0..4 {
+            project.name = format!("Revision {i}");
+            history.record(project.clone());
+        }
+        assert_eq!(history.undo_len(), 1);
+        assert!(history.estimated_bytes() >= 65_536);
+    }
 
     #[test]
     fn history_structurally_shares_chunks_and_undoes_large_project_fast() {
