@@ -1468,6 +1468,10 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
             );
 
             if !reinforcement.beams.is_empty() {
+                pages.paragraph(
+                    "Vigas em pórticos: flexão e cortante pela envoltória ELU de cada viga, sem nova majoração. Superior contínua no vão inteiro; as colunas Sup. E/D indicam a mesma armadura. As combinações governantes constam nas verificações e na prancha de armaduras.",
+                    2.7, INK,
+                );
                 let rows: Vec<_> = reinforcement
                     .beams
                     .iter()
@@ -1477,8 +1481,12 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                             vec![
                                 beam.label.clone(),
                                 beam.bottom.notation(),
-                                beam.top_left.notation(),
-                                beam.top_right.notation(),
+                                beam.top.left().notation(),
+                                if beam.frame_envelope.is_some() {
+                                    "contínua".to_owned()
+                                } else {
+                                    beam.top.right().notation()
+                                },
                                 beam.stirrups.notation(),
                                 format!(
                                     "{:.0}/{:.0}",

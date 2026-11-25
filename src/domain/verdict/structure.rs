@@ -398,8 +398,20 @@ fn sized_structure_verdicts(
                 .find(|r| r.beam_id == span.beam && r.span_index == i + 1)
             {
                 let all_fit = reinf.bottom.fits_section
-                    && reinf.top_left.fits_section
-                    && reinf.top_right.fits_section;
+                    && reinf.top.left().fits_section
+                    && reinf.top.right().fits_section;
+                if let Some(e) = &reinf.frame_envelope {
+                    checks.push(Check::new(
+                        "Origem das armaduras", 0.5,
+                        "Envoltória ELU do próprio pórtico; armadura superior contínua em todo o vão.".to_owned(),
+                        format!(
+                            "Md+ = {} kN·m ({}), Md− = {} kN·m ({}), Vsd = {} kN ({}); esforços já majorados.",
+                            decimal(e.max_positive_moment_knm, 2), e.positive_combination,
+                            decimal(e.min_negative_moment_knm, 2), e.negative_combination,
+                            decimal(e.max_shear_kn, 2), e.shear_combination,
+                        ),
+                    ));
+                }
                 if !reinf.flexural_domain_ok {
                     checks.push(Check::fail(
                         "Armadura / Domínio",
@@ -408,8 +420,8 @@ fn sized_structure_verdicts(
                         format!(
                             "Flexão excede μ_lim = 0,2952 (x/d > 0,45); inferior {}, superiores {} / {} (NBR 6118 §14.6.4.3).",
                             reinf.bottom.notation(),
-                            reinf.top_left.notation(),
-                            reinf.top_right.notation()
+                            reinf.top.left().notation(),
+                            reinf.top.right().notation()
                         ),
                     ));
                 } else if !all_fit {
@@ -422,10 +434,10 @@ fn sized_structure_verdicts(
                             "Inferior {} ({}), superior esq. {} ({}), superior dir. {} ({}); espaçamento livre mínimo de 2 cm (NBR 6118 §18.3.2.2).",
                             reinf.bottom.notation(),
                             if reinf.bottom.fits_section { "cabe" } else { "não cabe" },
-                            reinf.top_left.notation(),
-                            if reinf.top_left.fits_section { "cabe" } else { "não cabe" },
-                            reinf.top_right.notation(),
-                            if reinf.top_right.fits_section { "cabe" } else { "não cabe" }
+                            reinf.top.left().notation(),
+                            if reinf.top.left().fits_section { "cabe" } else { "não cabe" },
+                            reinf.top.right().notation(),
+                            if reinf.top.right().fits_section { "cabe" } else { "não cabe" }
                         ),
                     ));
                 } else {
@@ -435,8 +447,8 @@ fn sized_structure_verdicts(
                         format!(
                             "Armadura preliminar OK: inferior {}, superiores {} / {}.",
                             reinf.bottom.notation(),
-                            reinf.top_left.notation(),
-                            reinf.top_right.notation()
+                            reinf.top.left().notation(),
+                            reinf.top.right().notation()
                         ),
                         format!(
                             "Domínio simples (x/d ≤ 0,45) e arranjo em 1 camada OK; ancoragem lb,nec = {:.0} cm (inf.) / {:.0} cm (sup.); massa {} kg (NBR 6118 §9.4).",

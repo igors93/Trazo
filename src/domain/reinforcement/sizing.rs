@@ -36,13 +36,24 @@ pub(super) fn flexural_demand(
     moment_k_knm: f64,
     fck_mpa: f64,
 ) -> FlexuralDemand {
+    flexural_design_demand(width_m, height_m, cover_m, 1.4 * moment_k_knm, fck_mpa)
+}
+
+/// Singly reinforced section using an already factored ELU moment.
+pub(super) fn flexural_design_demand(
+    width_m: f64,
+    height_m: f64,
+    cover_m: f64,
+    moment_d_knm: f64,
+    fck_mpa: f64,
+) -> FlexuralDemand {
     let b = width_m.max(0.10);
     let h = height_m.max(0.08);
     let d = (h - cover_m).max(0.60 * h);
     let fck = fck_mpa.max(20.0);
     let fcd_kn_m2 = (fck / 1.4) * 1000.0;
     let fyd_kn_m2 = (STEEL_FYK_MPA / 1.15) * 1000.0;
-    let md = 1.4 * moment_k_knm.abs();
+    let md = moment_d_knm.abs();
     let raw_mu = md / (b * d * d * 0.85 * fcd_kn_m2).max(1e-9);
     let mu = raw_mu.min(0.295);
     let xi = ((1.0 - (1.0 - 2.0 * mu).max(0.0).sqrt()) / 0.8).clamp(0.0, 0.45);
@@ -165,6 +176,17 @@ pub(super) fn beam_stirrups(
     shear_k_n: f64,
     fck_mpa: f64,
 ) -> TransverseBars {
+    beam_design_stirrups(length_m, width_m, height_m, 1.4 * shear_k_n, fck_mpa)
+}
+
+/// Model I stirrups using an already factored ELU shear force.
+pub(super) fn beam_design_stirrups(
+    length_m: f64,
+    width_m: f64,
+    height_m: f64,
+    shear_d_kn: f64,
+    fck_mpa: f64,
+) -> TransverseBars {
     let b = width_m.max(0.10);
     let h = height_m.max(0.15);
     let d = (h - 0.04).max(0.60 * h);
@@ -172,7 +194,7 @@ pub(super) fn beam_stirrups(
     let fctm_mpa = 0.3 * fck.powf(2.0 / 3.0);
     let fctd_kn_m2 = 0.7 * fctm_mpa / 1.4 * 1000.0;
     let fyd_kn_m2 = STEEL_FYK_MPA / 1.15 * 1000.0;
-    let vsd = 1.4 * shear_k_n.abs();
+    let vsd = shear_d_kn.abs();
     let vc = 0.60 * fctd_kn_m2 * b * d;
     let minimum_m2_m = 0.20 * fctm_mpa / STEEL_FYK_MPA * b;
     let needed_m2_m = ((vsd - vc).max(0.0) / (0.9 * d * fyd_kn_m2)).max(minimum_m2_m);

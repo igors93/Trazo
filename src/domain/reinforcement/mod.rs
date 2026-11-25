@@ -11,7 +11,7 @@ mod svg;
 #[cfg(test)]
 mod tests;
 
-use crate::domain::structure::SlabKind;
+use crate::domain::{frame2d::builder::FrameBeamEnvelope, structure::SlabKind};
 
 pub use bond::{BondZone, bar_area_cm2, bar_mass_kg_m, lap_splice_m};
 pub use csv::steel_schedule_csv;
@@ -107,6 +107,35 @@ impl MeshBars {
     }
 }
 
+/// Frame wind can reverse moments anywhere along the span. A continuous top
+/// run avoids assuming that the negative-moment zone ends at 0.30 L.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BeamTopBars {
+    Continuous(BarSet),
+    Supports { left: BarSet, right: BarSet },
+}
+
+impl BeamTopBars {
+    pub fn left(&self) -> &BarSet {
+        match self {
+            Self::Continuous(bars) | Self::Supports { left: bars, .. } => bars,
+        }
+    }
+
+    pub fn right(&self) -> &BarSet {
+        match self {
+            Self::Continuous(bars) | Self::Supports { right: bars, .. } => bars,
+        }
+    }
+
+    pub fn mass_kg(&self) -> f64 {
+        match self {
+            Self::Continuous(bars) => bars.mass_kg,
+            Self::Supports { left, right } => left.mass_kg + right.mass_kg,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct BeamReinforcement {
     pub beam_id: u64,
@@ -116,8 +145,13 @@ pub struct BeamReinforcement {
     pub width_m: f64,
     pub height_m: f64,
     pub bottom: BarSet,
-    pub top_left: BarSet,
-    pub top_right: BarSet,
+    pub top: BeamTopBars,
+    /// Present for beams designed directly from their own frame ELU envelope.
+    /// None denotes the traditional characteristic continuous-beam analysis.
+    pub frame_envelope: Option<FrameBeamEnvelope>,
+    /// Steel assumed in the existing Branson service stiffness, retained as a
+    /// lower bound independently of the frame's ultimate flexural demand.
+    pub service_minimum_cm2: f64,
     pub stirrups: TransverseBars,
     /// Required hooked anchorage length (metres) for bottom (good bond) and
     /// top (poor bond when h ≥ 30 cm) longitudinal bars (NBR 6118 §9.4.2.5).

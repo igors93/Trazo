@@ -78,6 +78,25 @@ flowchart LR
 | `mcp/events.rs` | Broadcasts plan-change notifications to open streams |
 | `mcp/clients.rs`, `mcp/tunnel.rs` | Claude Desktop setup; Cloudflare quick tunnel with a per-session token |
 
+## Frame forces and beam reinforcement
+
+`domain/frame2d/builder.rs` retains an ELU envelope for each physical beam ID,
+including the governing positive moment, negative moment and shear combinations.
+`domain/reinforcement/design.rs` consumes these already factored forces directly;
+it does not apply a second load factor or substitute the traditional beam moments.
+The steel assumed by the existing Branson service deflection check remains an
+explicit lower bound, exposed separately from the ultimate demand.
+Frame-designed beams use continuous top bars for the full negative envelope, and
+the schedule counts that run once. The UI, MCP and reinforcement sheet expose the
+force source and governing combinations. Beams outside a column-supported frame
+retain the characteristic continuous-beam sizing path. Other reinforcement types
+retain their existing preliminary methods.
+
+An unresolved frame prevents reinforcement issuance. An eligible beam missing its
+frame envelope cannot silently fall back to the traditional analysis. Pinned joints
+with pinned bases are rejected as a lateral mechanism: roof or masonry checks alone
+do not add a physical bracing restraint to the frame model.
+
 ## Coordinates and units
 
 - The model stores metres in `f64`, with **Y growing downwards** (screen orientation).

@@ -22,7 +22,19 @@ use super::{
     solver::{FrameSolution, MemberSample, solve_frame},
 };
 
-/// Internal forces in one beam span from the 2D plane-frame analysis.
+/// Ultimate force envelope of one physical beam span from the 2D frame analysis.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FrameBeamEnvelope {
+    /// Already factored design forces, enveloped over all ELU combinations.
+    pub max_positive_moment_knm: f64,
+    pub positive_combination: String,
+    pub min_negative_moment_knm: f64,
+    pub negative_combination: String,
+    pub max_shear_kn: f64,
+    pub shear_combination: String,
+}
+
+/// Internal service forces and ultimate envelope of one physical beam span.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FrameBeamForces {
     pub beam_id: u64,
@@ -40,6 +52,7 @@ pub struct FrameBeamForces {
     pub axial_kn: f64,
     /// Elastic local deflection of the span from the 2D frame solution, mm.
     pub elastic_deflection_mm: f64,
+    pub ultimate: FrameBeamEnvelope,
 }
 
 /// Internal forces and base reactions in one column of a 2D plane frame.
@@ -814,6 +827,7 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
 
         // Evaluate every NBR 8681 combination via exact linear superposition.
         let mut combinations = Vec::with_capacity(combo_specs.len());
+        let mut beam_envelopes = vec![FrameBeamEnvelope::default(); beam_meta.len()];
         let mut primary_service_sol: Option<FrameSolution> = None;
         let mut envelope = FrameEnvelope {
             elu_min_column_axial_kn: f64::NEG_INFINITY,
@@ -824,11 +838,27 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
             let combined = combine_solutions(&sol_g1, &sol_g2, &sol_q, &sol_w, factors, &geom);
             let summary = summarize_combination(factors, &combined, &top_nodes);
 
-            if factors.code == "ELS-R1" {
-                primary_service_sol = Some(combined);
-            }
-
             if factors.category.is_ultimate() {
+                for (beam_envelope, (mid, ..)) in beam_envelopes.iter_mut().zip(&beam_meta) {
+                    let member = &combined.members[*mid];
+                    if member.max_sagging_knm >= beam_envelope.max_positive_moment_knm {
+                        beam_envelope.max_positive_moment_knm = member.max_sagging_knm;
+                        beam_envelope.positive_combination = factors.code.to_owned();
+                    }
+                    let negative = member
+                        .samples
+                        .iter()
+                        .map(|s| s.moment_knm)
+                        .fold(0.0, f64::min);
+                    if negative <= beam_envelope.min_negative_moment_knm {
+                        beam_envelope.min_negative_moment_knm = negative;
+                        beam_envelope.negative_combination = factors.code.to_owned();
+                    }
+                    if member.max_abs_shear_kn >= beam_envelope.max_shear_kn {
+                        beam_envelope.max_shear_kn = member.max_abs_shear_kn;
+                        beam_envelope.shear_combination = factors.code.to_owned();
+                    }
+                }
                 if summary.max_beam_pos_knm >= envelope.elu_max_beam_pos_knm {
                     envelope.elu_max_beam_pos_knm = summary.max_beam_pos_knm;
                     envelope.elu_max_beam_pos_combo = factors.code.to_owned();
@@ -862,6 +892,9 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
                 envelope.els_f_drift_combo = factors.code.to_owned();
             }
 
+            if factors.code == "ELS-R1" {
+                primary_service_sol = Some(combined);
+            }
             combinations.push(summary);
         }
         if !envelope.elu_min_column_axial_kn.is_finite() {
@@ -882,7 +915,8 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
 
         let beams: Vec<FrameBeamForces> = beam_meta
             .iter()
-            .map(|(mid, beam_id, label, len, q, point_loads)| {
+            .zip(beam_envelopes)
+            .map(|((mid, beam_id, label, len, q, point_loads), ultimate)| {
                 let m = &sol.members[*mid];
                 FrameBeamForces {
                     beam_id: *beam_id,
@@ -896,6 +930,7 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
                     max_shear_kn: m.max_abs_shear_kn,
                     axial_kn: m.axial_kn,
                     elastic_deflection_mm: m.max_local_deflection_mm,
+                    ultimate,
                 }
             })
             .collect();

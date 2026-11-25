@@ -11,6 +11,17 @@ use crate::domain::fixtures::FixtureKind;
 use crate::domain::model::Project;
 use crate::domain::structure::{BeamSupport, OccupancyClass, SlabKind, SoilClass, section_cm};
 
+fn beam_ultimate_envelope_json(e: &crate::domain::frame2d::builder::FrameBeamEnvelope) -> Value {
+    json!({
+        "momento_positivo_knm": e.max_positive_moment_knm,
+        "combinacao_momento_positivo": e.positive_combination,
+        "momento_negativo_knm": e.min_negative_moment_knm,
+        "combinacao_momento_negativo": e.negative_combination,
+        "cortante_kn": e.max_shear_kn,
+        "combinacao_cortante": e.shear_combination,
+    })
+}
+
 fn parse_soil_class(raw: &str) -> Option<SoilClass> {
     match raw.trim().to_lowercase().as_str() {
         "argila_mole" | "soft_clay" => Some(SoilClass::SoftClay),
@@ -1776,17 +1787,21 @@ impl FloorPlanApp {
                     "vao": beam.span_index,
                     "comprimento_m": round1(beam.length_m * 10.0) / 10.0,
                     "inferior": beam.bottom.notation(),
-                    "superior_esquerda": beam.top_left.notation(),
-                    "superior_direita": beam.top_right.notation(),
+                    "superior_esquerda": beam.top.left().notation(),
+                    "superior_direita": beam.top.right().notation(),
+                    "superior_continua": matches!(&beam.top, crate::domain::reinforcement::BeamTopBars::Continuous(_)),
+                    "origem_esforcos": if beam.frame_envelope.is_some() { "portico_2d_elu" } else { "viga_continua_caracteristica" },
+                    "envoltoria_elu": beam.frame_envelope.as_ref().map(beam_ultimate_envelope_json),
                     "estribos": beam.stirrups.notation(),
                     "as_inferior_necessaria_cm2": round1(beam.bottom.required_cm2),
+                    "as_inferior_minima_els_cm2": beam.service_minimum_cm2,
                     "as_inferior_fornecida_cm2": round1(beam.bottom.provided_cm2),
                     "ancoragem_inf_cm": (beam.bottom_anchorage_m * 100.0).round(),
                     "ancoragem_sup_cm": (beam.top_anchorage_m * 100.0).round(),
                     "dominio_ok": beam.flexural_domain_ok,
                     "barras_cabem_na_secao": beam.bottom.fits_section
-                        && beam.top_left.fits_section
-                        && beam.top_right.fits_section,
+                        && beam.top.left().fits_section
+                        && beam.top.right().fits_section,
                     "cortante_atende": beam.stirrups.shear_capacity_ok,
                     "massa_kg": round1(beam.mass_kg),
                 })
@@ -1959,6 +1974,7 @@ impl FloorPlanApp {
                             "cortante_kn": round1(b.max_shear_kn),
                             "axial_kn": round1(b.axial_kn),
                             "flecha_elastica_mm": (b.elastic_deflection_mm * 100.0).round() / 100.0,
+                            "envoltoria_elu": beam_ultimate_envelope_json(&b.ultimate),
                         })
                     })
                     .collect();
@@ -2793,6 +2809,22 @@ mod tests {
         assert_eq!(frames[0]["nos_rigidos"], true);
         assert_eq!(frames[0]["bases_engastadas"], true);
         assert!(frames[0]["residuo_equilibrio_kn"].as_f64().unwrap() < 1e-6);
+        for beam in rigid["armaduras"]["vigas"].as_array().unwrap() {
+            let frame_beam = frames
+                .iter()
+                .flat_map(|f| f["vigas"].as_array().unwrap())
+                .find(|b| b["id"] == beam["id"])
+                .unwrap();
+            assert_eq!(beam["origem_esforcos"], "portico_2d_elu");
+            assert_eq!(beam["superior_continua"], true);
+            assert_eq!(beam["envoltoria_elu"], frame_beam["envoltoria_elu"]);
+            assert!(
+                beam["envoltoria_elu"]["combinacao_momento_positivo"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("ELU")
+            );
+        }
 
         // Switch to pinned column-top joints via MCP configurar.
         let cfg = app.run_mcp_tool(
@@ -2822,6 +2854,19 @@ mod tests {
             .structured
             .unwrap();
         assert!(unbraced["porticos_2d"].as_array().unwrap().is_empty());
+        assert!(
+            unbraced["armaduras"]["tabela_aco"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            unbraced["armaduras"]["avisos"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|w| w.as_str().unwrap().contains("análise do pórtico falhou"))
+        );
         assert!(
             unbraced["falhas_porticos_2d"]
                 .as_array()

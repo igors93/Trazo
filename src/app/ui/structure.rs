@@ -115,10 +115,25 @@ fn reinforcement_tab(ui: &mut Ui, report: &ReinforcementReport) {
                     ],
                 );
                 for beam in &report.beams {
-                    ui.label(RichText::new(&beam.label).font(strong(12.5)));
+                    let source = if let Some(e) = &beam.frame_envelope {
+                        format!(
+                            "Pórtico 2D · ELU\nMd+ = {:.2} kN·m ({})\nMd− = {:.2} kN·m ({})\nVsd = {:.2} kN ({})\nAs mínima para rigidez de serviço: {:.2} cm²\nArmadura superior contínua em todo o vão.",
+                            e.max_positive_moment_knm, e.positive_combination,
+                            e.min_negative_moment_knm, e.negative_combination,
+                            e.max_shear_kn, e.shear_combination,
+                            beam.service_minimum_cm2,
+                        )
+                    } else {
+                        "Viga contínua · esforços característicos majorados em 1,4.".to_owned()
+                    };
+                    ui.label(RichText::new(&beam.label).font(strong(12.5))).on_hover_text(source);
                     ui.label(bars(&beam.bottom));
-                    ui.label(bars(&beam.top_left));
-                    ui.label(bars(&beam.top_right));
+                    ui.label(bars(beam.top.left()));
+                    if matches!(&beam.top, crate::domain::reinforcement::BeamTopBars::Continuous(_)) {
+                        ui.label("mesma superior contínua");
+                    } else {
+                        ui.label(bars(beam.top.right()));
+                    }
                     ui.label(beam.stirrups.notation());
                     ui.label(format!(
                         "{:.0} / {:.0} cm",

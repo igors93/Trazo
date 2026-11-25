@@ -5,7 +5,7 @@ use crate::domain::{
     structure::{SlabKind, StructureReport},
 };
 
-use super::{ReinforcementReport, decimal, diameter_text};
+use super::{BeamTopBars, ReinforcementReport, decimal, diameter_text};
 
 fn escape_xml(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -190,7 +190,7 @@ pub fn reinforcement_detail_svg(
             }
         };
         draw_bar_row(&mut svg, beam.bottom.count, sy + sh - cov - 1.4, "bar-dot");
-        let top_count = beam.top_left.count.max(beam.top_right.count);
+        let top_count = beam.top.left().count.max(beam.top.right().count);
         draw_bar_row(&mut svg, top_count, sy + cov + 1.4, "bar-dot-top");
 
         // Dimensions for cross section
@@ -268,34 +268,56 @@ pub fn reinforcement_detail_svg(
             ex + ew + 6.5,
             by - 6.0
         );
-        // Top negative bars (left & right supports, 0.30*L + 90-degree hooks)
+        // Top bars follow the actual schedule: continuous in frame-designed beams.
         let ty = ey + 4.0;
+        let continuous_top = matches!(&beam.top, BeamTopBars::Continuous(_));
         let neg_len = ew * 0.30;
-        let _ = writeln!(
-            svg,
-            r#"  <polyline class="bar-neg" points="{:.1},{:.1} {:.1},{ty:.1} {:.1},{ty:.1}"/>"#,
-            ex - 6.5,
-            ty + 6.0,
-            ex - 6.5,
-            ex + neg_len
-        );
-        let _ = writeln!(
-            svg,
-            r#"  <polyline class="bar-neg" points="{:.1},{ty:.1} {:.1},{ty:.1} {:.1},{:.1}"/>"#,
-            ex + ew - neg_len,
-            ex + ew + 6.5,
-            ex + ew + 6.5,
-            ty + 6.0
-        );
+        if continuous_top {
+            let _ = writeln!(
+                svg,
+                r#"  <polyline class="bar-neg" points="{:.1},{:.1} {:.1},{ty:.1} {:.1},{ty:.1} {:.1},{:.1}"/>"#,
+                ex - 6.5,
+                ty + 6.0,
+                ex - 6.5,
+                ex + ew + 6.5,
+                ex + ew + 6.5,
+                ty + 6.0
+            );
+        } else {
+            let _ = writeln!(
+                svg,
+                r#"  <polyline class="bar-neg" points="{:.1},{:.1} {:.1},{ty:.1} {:.1},{ty:.1}"/>"#,
+                ex - 6.5,
+                ty + 6.0,
+                ex - 6.5,
+                ex + neg_len
+            );
+            let _ = writeln!(
+                svg,
+                r#"  <polyline class="bar-neg" points="{:.1},{ty:.1} {:.1},{ty:.1} {:.1},{:.1}"/>"#,
+                ex + ew - neg_len,
+                ex + ew + 6.5,
+                ex + ew + 6.5,
+                ty + 6.0
+            );
+        }
 
         // Callouts on elevation
+        let top_description = if continuous_top {
+            format!("Superior contínua: {}", beam.top.left().notation())
+        } else {
+            format!(
+                "Superior esq.: {} · dir.: {}",
+                beam.top.left().notation(),
+                beam.top.right().notation()
+            )
+        };
         let _ = writeln!(
             svg,
-            r#"  <text class="lbl" x="{:.1}" y="{:.1}" text-anchor="middle">Superior esq.: {} · dir.: {} (lb,nec = {:.0} cm, zona {})</text>"#,
+            r#"  <text class="lbl" x="{:.1}" y="{:.1}" text-anchor="middle">{} (lb,nec = {:.0} cm, zona {})</text>"#,
             ex + ew * 0.5,
             ey - 4.0,
-            escape_xml(&beam.top_left.notation()),
-            escape_xml(&beam.top_right.notation()),
+            escape_xml(&top_description),
             beam.top_anchorage_m * 100.0,
             if beam.height_m >= 0.30 { "má" } else { "boa" }
         );
@@ -307,13 +329,21 @@ pub fn reinforcement_detail_svg(
             escape_xml(&beam.bottom.notation()),
             beam.bottom_anchorage_m * 100.0
         );
+        let top_length_description = if continuous_top {
+            "Superior em todo o vão + ancoragem nas duas extremidades".to_owned()
+        } else {
+            format!(
+                "Negativo = 0,30·L ({} m) + ancoragem",
+                decimal((0.30 * beam.length_m).max(0.60), 2)
+            )
+        };
         let _ = writeln!(
             svg,
-            r#"  <text class="dim" x="{:.1}" y="{:.1}" text-anchor="middle">Vão L = {} m  ·  Negativo = 0,30·L ({} m) + ancoragem</text>"#,
+            r#"  <text class="dim" x="{:.1}" y="{:.1}" text-anchor="middle">Vão L = {} m  ·  {}</text>"#,
             ex + ew * 0.5,
             ey + eh + 14.5,
             decimal(beam.length_m, 2),
-            decimal((0.30 * beam.length_m).max(0.60), 2)
+            escape_xml(&top_length_description)
         );
 
         // Branson B12 cracked-section box
@@ -369,6 +399,18 @@ pub fn reinforcement_detail_svg(
                 "EXCEDIDA"
             }
         );
+        if let Some(e) = &beam.frame_envelope {
+            let _ = writeln!(
+                svg,
+                r#"  <text class="muted" x="21" y="156">Pórtico 2D · ELU: Md+ = {} ({}) · Md− = {} ({}) kN·m · Vsd = {} kN ({})</text>"#,
+                decimal(e.max_positive_moment_knm, 2),
+                escape_xml(&e.positive_combination),
+                decimal(e.min_negative_moment_knm, 2),
+                escape_xml(&e.negative_combination),
+                decimal(e.max_shear_kn, 2),
+                escape_xml(&e.shear_combination),
+            );
+        }
     } else {
         let _ = writeln!(
             svg,

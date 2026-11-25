@@ -1,21 +1,24 @@
 //! Preliminary reinforcement report builder across beams, columns, slabs and footings.
 
+use std::collections::{HashMap, HashSet};
+
 use crate::domain::{
     fixtures::FixtureKind,
     limits,
     model::Project,
-    structure::{FootingResult, SlabKind, StructureReport, effective_beam_stiffness},
+    structure::{BeamSupport, FootingResult, SlabKind, StructureReport},
 };
 
 use super::{
-    BarSet, BeamReinforcement, BondZone, COMMERCIAL_BAR_LENGTH_M, ColumnReinforcement,
+    BarSet, BeamReinforcement, BeamTopBars, BondZone, COMMERCIAL_BAR_LENGTH_M, ColumnReinforcement,
     FootingReinforcement, MeshBars, ReinforcementReport, STEEL_FYK_MPA, STEEL_WASTE_FACTOR,
     STIRRUP_DIAMETERS_MM, SlabReinforcement, SteelDiameterSummary, SteelScheduleRow,
     TransverseBars, bar_mass_kg_m,
     bond::required_anchorage_with_cover_m,
     lap_splice_m,
     sizing::{
-        bar_set, beam_stirrups, choose_beam_bars, choose_column_bars, choose_mesh, flexural_demand,
+        bar_set, beam_design_stirrups, beam_stirrups, choose_beam_bars, choose_column_bars,
+        choose_mesh, flexural_demand, flexural_design_demand,
     },
 };
 
@@ -134,11 +137,48 @@ pub fn build_reinforcement_report(
         out.warnings.push(refusal);
         return out;
     }
+    if !structure.frame_failures.is_empty() {
+        for failure in &structure.frame_failures {
+            out.warnings.push(format!(
+                "{}: armaduras não emitidas porque a análise do pórtico falhou — {}.",
+                failure.label, failure.reason
+            ));
+        }
+        return out;
+    }
     let fck = project.structure.settings.fck_mpa;
-    let modulus = project.structure.settings.modulus_kn_m2();
+    let frame_beams: HashMap<_, _> = structure
+        .frames
+        .iter()
+        .flat_map(|frame| {
+            frame
+                .beams
+                .iter()
+                .map(|beam| (beam.beam_id, &beam.ultimate))
+        })
+        .collect();
+    let framed_beam_ids: HashSet<_> = project
+        .beam_lines()
+        .into_iter()
+        .filter(|line| {
+            line.supports
+                .iter()
+                .any(|s| matches!(s, BeamSupport::Column { .. }))
+        })
+        .flat_map(|line| line.spans)
+        .collect();
 
     for line in &structure.beams {
         for (index, span) in line.spans.iter().enumerate() {
+            let frame_envelope = frame_beams.get(&span.beam).copied();
+            if framed_beam_ids.contains(&span.beam) && frame_envelope.is_none() {
+                out.warnings.push(format!(
+                    "{} vão {}: armadura não emitida porque falta a envoltória ELU do pórtico.",
+                    line.label,
+                    index + 1
+                ));
+                continue;
+            }
             if span.length_m > limits::MAX_BEAM_SPAN_M + 1e-9 {
                 out.warnings.push(format!(
                     "{} vão {}: armadura recusada para vão acima de {:.1} m.",
@@ -153,35 +193,42 @@ pub fn build_reinforcement_report(
             // matching `beam_stirrups`.
             let d_prime = 0.04;
             let nominal_cover = 0.03;
+            let (md_positive, md_left, md_right) = if let Some(envelope) = frame_envelope {
+                (
+                    envelope.max_positive_moment_knm,
+                    envelope.min_negative_moment_knm.abs(),
+                    envelope.min_negative_moment_knm.abs(),
+                )
+            } else {
+                (
+                    1.4 * span.moment_span,
+                    1.4 * span.moment_left.abs(),
+                    1.4 * span.moment_right.abs(),
+                )
+            };
             let bottom_demand =
-                flexural_demand(span.width_m, span.height_m, d_prime, span.moment_span, fck);
-            let left_demand = flexural_demand(
-                span.width_m,
-                span.height_m,
-                d_prime,
-                span.moment_left.abs(),
-                fck,
-            );
-            let right_demand = flexural_demand(
-                span.width_m,
-                span.height_m,
-                d_prime,
-                span.moment_right.abs(),
-                fck,
-            );
-            // Keep the positive steel aligned with the steel already used for
-            // Branson stiffness; both paths must describe the same section.
-            let stiffness = effective_beam_stiffness(
-                span.width_m,
-                span.height_m,
-                fck,
-                modulus,
-                span.moment_span,
-                span.moment_span,
-            );
-            let stirrups =
-                beam_stirrups(span.length_m, span.width_m, span.height_m, span.shear, fck);
-            let bottom_required = bottom_demand.required_cm2.max(stiffness.as_cm2);
+                flexural_design_demand(span.width_m, span.height_m, d_prime, md_positive, fck);
+            let left_demand =
+                flexural_design_demand(span.width_m, span.height_m, d_prime, md_left, fck);
+            let right_demand =
+                flexural_design_demand(span.width_m, span.height_m, d_prime, md_right, fck);
+            // ELU demands are already factored. Preserve the steel assumed by
+            // the existing service deflection check as an explicit lower bound;
+            // otherwise a stiffer frame could suggest less steel than Branson
+            // relied on and invalidate the displayed service deflection.
+            let service_minimum_cm2 = span.branson_as_cm2;
+            let bottom_required = bottom_demand.required_cm2.max(service_minimum_cm2);
+            let stirrups = if let Some(envelope) = frame_envelope {
+                beam_design_stirrups(
+                    span.length_m,
+                    span.width_m,
+                    span.height_m,
+                    envelope.max_shear_kn,
+                    fck,
+                )
+            } else {
+                beam_stirrups(span.length_m, span.width_m, span.height_m, span.shear, fck)
+            };
             let bottom_choice = choose_beam_bars(
                 bottom_required,
                 span.width_m,
@@ -238,17 +285,27 @@ pub fn build_reinforcement_report(
                 bottom_required,
                 span.length_m + 2.0 * bottom_anchorage_m,
             );
-            let support_length = (0.30 * span.length_m).max(0.60);
-            let top_left = bar_set(
-                left_choice,
-                left_demand.required_cm2,
-                support_length + left_anchorage_m,
-            );
-            let top_right = bar_set(
-                right_choice,
-                right_demand.required_cm2,
-                support_length + right_anchorage_m,
-            );
+            let top = if frame_envelope.is_some() {
+                BeamTopBars::Continuous(bar_set(
+                    left_choice,
+                    left_demand.required_cm2,
+                    span.length_m + left_anchorage_m + right_anchorage_m,
+                ))
+            } else {
+                let support_length = (0.30 * span.length_m).max(0.60);
+                BeamTopBars::Supports {
+                    left: bar_set(
+                        left_choice,
+                        left_demand.required_cm2,
+                        support_length + left_anchorage_m,
+                    ),
+                    right: bar_set(
+                        right_choice,
+                        right_demand.required_cm2,
+                        support_length + right_anchorage_m,
+                    ),
+                }
+            };
             let label = if line.spans.len() > 1 {
                 format!("{} v{}", line.label, index + 1)
             } else {
@@ -258,7 +315,7 @@ pub fn build_reinforcement_report(
                 bottom_demand.domain_ok && left_demand.domain_ok && right_demand.domain_ok;
             let ac_beam_cm2 = span.width_m * span.height_m * 10_000.0;
             let max_long_cm2 =
-                bottom.provided_cm2 + top_left.provided_cm2.max(top_right.provided_cm2);
+                bottom.provided_cm2 + top.left().provided_cm2.max(top.right().provided_cm2);
             if max_long_cm2 > 0.04 * ac_beam_cm2 + 1e-6 {
                 out.warnings.push(format!(
                     "{label}: taxa longitudinal ({:.1}%) excede 4% da seção (NBR 6118 §17.3.5.2.4); aumente a seção.",
@@ -270,7 +327,7 @@ pub fn build_reinforcement_report(
                     "{label}: momento acima do domínio de armadura simples; aumente a seção e revise com engenheiro."
                 ));
             }
-            if !bottom.fits_section || !top_left.fits_section || !top_right.fits_section {
+            if !bottom.fits_section || !top.left().fits_section || !top.right().fits_section {
                 out.warnings.push(format!(
                     "{label}: as barras não cabem em uma camada com cobrimento nominal de 3 cm (CAA II); aumente a largura ou detalhe em camadas."
                 ));
@@ -280,7 +337,7 @@ pub fn build_reinforcement_report(
                     "{label}: compressão diagonal excedida; estribos sozinhos não resolvem, aumente a seção."
                 ));
             }
-            let mass_kg = bottom.mass_kg + top_left.mass_kg + top_right.mass_kg + stirrups.mass_kg;
+            let mass_kg = bottom.mass_kg + top.mass_kg() + stirrups.mass_kg;
             schedule_bar_set(
                 &mut out.schedule,
                 format!("{label}-INF"),
@@ -289,22 +346,34 @@ pub fn build_reinforcement_report(
                 "reta + 2 ganchos 90°",
                 &bottom,
             );
-            schedule_bar_set(
-                &mut out.schedule,
-                format!("{label}-SUP-E"),
-                &label,
-                "superior apoio esquerdo",
-                "reta + gancho 90°",
-                &top_left,
-            );
-            schedule_bar_set(
-                &mut out.schedule,
-                format!("{label}-SUP-D"),
-                &label,
-                "superior apoio direito",
-                "reta + gancho 90°",
-                &top_right,
-            );
+            match &top {
+                BeamTopBars::Continuous(bars) => schedule_bar_set(
+                    &mut out.schedule,
+                    format!("{label}-SUP"),
+                    &label,
+                    "superior contínua",
+                    "reta + 2 ganchos 90°",
+                    bars,
+                ),
+                BeamTopBars::Supports { left, right } => {
+                    schedule_bar_set(
+                        &mut out.schedule,
+                        format!("{label}-SUP-E"),
+                        &label,
+                        "superior apoio esquerdo",
+                        "reta + gancho 90°",
+                        left,
+                    );
+                    schedule_bar_set(
+                        &mut out.schedule,
+                        format!("{label}-SUP-D"),
+                        &label,
+                        "superior apoio direito",
+                        "reta + gancho 90°",
+                        right,
+                    );
+                }
+            }
             schedule_transverse(
                 &mut out.schedule,
                 format!("{label}-E"),
@@ -321,8 +390,9 @@ pub fn build_reinforcement_report(
                 height_m: span.height_m,
                 length_m: span.length_m,
                 bottom,
-                top_left,
-                top_right,
+                top,
+                frame_envelope: frame_envelope.cloned(),
+                service_minimum_cm2,
                 bottom_anchorage_m,
                 top_anchorage_m,
                 stirrups,
