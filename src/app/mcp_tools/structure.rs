@@ -2797,7 +2797,7 @@ mod tests {
         // Switch to pinned column-top joints via MCP configurar.
         let cfg = app.run_mcp_tool(
             "projeto_estrutural",
-            &json!({ "acao": "configurar", "portico_nos_rigidos": false, "portico_bases_engastadas": false }),
+            &json!({ "acao": "configurar", "portico_nos_rigidos": false, "portico_bases_engastadas": true }),
         );
         assert!(!cfg.is_error, "{}", cfg.text);
         let pinned = app
@@ -2806,11 +2806,40 @@ mod tests {
             .unwrap();
         let p_frame = &pinned["porticos_2d"][0];
         assert_eq!(p_frame["nos_rigidos"], false);
-        assert_eq!(p_frame["bases_engastadas"], false);
-        assert_eq!(p_frame["contraventado"], true);
+        assert_eq!(p_frame["bases_engastadas"], true);
+        assert_eq!(p_frame["contraventado"], false);
         for col in p_frame["pilares"].as_array().unwrap() {
             assert!(col["momento_topo_knm"].as_f64().unwrap().abs() < 1e-3);
         }
+
+        let cfg = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({ "acao": "configurar", "portico_bases_engastadas": false }),
+        );
+        assert!(!cfg.is_error, "{}", cfg.text);
+        let unbraced = app
+            .run_mcp_tool("pre_dimensionamento", &json!({}))
+            .structured
+            .unwrap();
+        assert!(unbraced["porticos_2d"].as_array().unwrap().is_empty());
+        assert!(
+            unbraced["falhas_porticos_2d"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|f| {
+                    f["motivo"]
+                        .as_str()
+                        .unwrap()
+                        .contains("sem contraventamento físico modelado")
+                })
+        );
+
+        let cfg = app.run_mcp_tool(
+            "projeto_estrutural",
+            &json!({ "acao": "configurar", "portico_nos_rigidos": true, "portico_bases_engastadas": true }),
+        );
+        assert!(!cfg.is_error, "{}", cfg.text);
 
         // Export 2D frame diagram SVG.
         let dir = std::env::temp_dir().join("trazo_test_porticos_94");

@@ -586,6 +586,55 @@ fn solver_and_project_report_expose_an_unstable_frame() {
     assert!(svg.contains(&failure.reason));
 }
 
+#[test]
+fn project_frame_does_not_assume_bracing_for_pinned_joints_and_bases() {
+    let mut project = Project::default();
+    project.set_terrain(Point::new(-2.0, -2.0), Point::new(8.0, 5.0));
+    let c1 = project
+        .add_fixture(FixtureKind::Column, Point::new(0.0, 0.0), 0.20, 0.30, 0)
+        .unwrap();
+    let c2 = project
+        .add_fixture(FixtureKind::Column, Point::new(5.0, 0.0), 0.20, 0.30, 0)
+        .unwrap();
+    project.add_beam(c1, c2, 0.14, 0.40).unwrap();
+
+    for (rigid_joints, fixed_bases) in [(true, true), (true, false), (false, true)] {
+        project.structure.settings.frame_rigid_joints = rigid_joints;
+        project.structure.settings.frame_fixed_bases = fixed_bases;
+        let report = project.structure_report();
+        assert!(
+            report.frame_failures.is_empty(),
+            "{:#?}",
+            report.frame_failures
+        );
+        assert_eq!(report.frames.len(), 1);
+        let frame = &report.frames[0];
+        assert!(!frame.braced_sway);
+        assert!(frame.reactions.iter().all(|r| r.y_m.abs() < 1e-9));
+    }
+
+    project.structure.settings.frame_rigid_joints = false;
+    project.structure.settings.frame_fixed_bases = false;
+    let report = project.structure_report();
+    assert!(report.frames.is_empty());
+    assert_eq!(report.frame_failures.len(), 1);
+    let failure = &report.frame_failures[0];
+    assert!(
+        failure
+            .reason
+            .contains("sem contraventamento físico modelado")
+    );
+    assert!(report.warnings.iter().any(|w| w.contains(&failure.label)));
+    let verdict = crate::domain::verdict::structure_verdicts(&project, &report)
+        .into_iter()
+        .find(|v| v.element == failure.label)
+        .unwrap();
+    assert_eq!(verdict.light(), crate::domain::verdict::Light::Red);
+    let svg = frame_diagrams_svg(&project);
+    assert!(svg.contains("Nenhum pórtico 2D foi resolvido"));
+    assert!(!svg.contains("Contraventado"));
+}
+
 /// Validation #4 (ROADMAP #94): Global equilibrium, rigid vs pinned joints,
 /// and A3 vector SVG generation on a real generated house project.
 #[test]

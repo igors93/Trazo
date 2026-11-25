@@ -12,6 +12,7 @@ pub enum SupportKind {
     /// Vertical roller (`v = 0`, `u` and `θ` free).
     RollerY,
     /// Horizontal restraint / lateral brace (`u = 0`, `v` and `θ` free).
+    #[cfg_attr(not(test), allow(dead_code))]
     RollerX,
 }
 

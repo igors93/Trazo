@@ -150,8 +150,8 @@ pub struct FrameLineResult {
     pub label: String,
     pub rigid_joints: bool,
     pub fixed_bases: bool,
-    /// True when both joints and bases are pinned, requiring lateral bracing
-    /// (e.g. masonry shear walls) to stabilize horizontal sway.
+    /// True only when a verified physical bracing system is included in the model.
+    /// The current builder does not model such a system and leaves this false.
     pub braced_sway: bool,
     pub total_length_m: f64,
     pub story_height_m: f64,
@@ -585,6 +585,18 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
             continue;
         }
 
+        // This topology has a lateral mechanism regardless of the applied load.
+        // Reject it explicitly: roundoff in a singular stiffness matrix must not
+        // make an unmodelled bracing system appear to exist.
+        if !rigid_joints && !fixed_bases {
+            analysis.failures.push(FrameAnalysisFailure {
+                label: frame_label,
+                reason: "pórtico hipostático: bases e ligações articuladas, sem contraventamento físico modelado"
+                    .to_owned(),
+            });
+            continue;
+        }
+
         let along_x = line_along_x[line_idx];
 
         // Gather span lengths & stations.
@@ -637,8 +649,6 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
         let mut geom = Frame2D::default();
         let mut top_nodes = Vec::with_capacity(line.supports.len());
         let mut column_meta: Vec<(usize, u64, String, usize, f64, f64, f64)> = Vec::new();
-        let braced_sway = !rigid_joints && !fixed_bases;
-        let mut sway_brace_placed = false;
 
         for (idx, sup) in line.supports.iter().enumerate() {
             let x = stations[idx];
@@ -648,14 +658,10 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
                         .get(&id)
                         .cloned()
                         .unwrap_or_else(|| format!("P{}", idx + 1));
-                    let top_support = if braced_sway && !sway_brace_placed {
-                        sway_brace_placed = true;
-                        SupportKind::RollerX
-                    } else {
-                        SupportKind::Free
-                    };
+                    // Roof/masonry checks do not supply a physical frame restraint.
+                    // Keep sway free so an unbraced mechanism reaches the solver.
                     let top_id =
-                        geom.add_node(format!("{col_label}t"), x, story_height, top_support);
+                        geom.add_node(format!("{col_label}t"), x, story_height, SupportKind::Free);
                     let base_support = if fixed_bases {
                         SupportKind::Fixed
                     } else {
@@ -954,7 +960,7 @@ pub fn analyze_project_frames(project: &Project, report: &StructureReport) -> Pr
             label: frame_label,
             rigid_joints,
             fixed_bases,
-            braced_sway,
+            braced_sway: false,
             total_length_m: cursor,
             story_height_m: story_height,
             lateral_wind_kn,
