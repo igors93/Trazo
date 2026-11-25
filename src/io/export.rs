@@ -1297,6 +1297,30 @@ pub fn svg2pdf_options() -> svg2pdf::usvg::Options<'static> {
     }
 }
 
+/// Reproducible text metrics for layout tests, including fontless CI runners.
+/// Keep host fonts out of this database so installed fonts cannot change it.
+#[cfg(test)]
+pub(crate) fn svg2pdf_options_with_bundled_font() -> svg2pdf::usvg::Options<'static> {
+    let mut fontdb = svg2pdf::usvg::fontdb::Database::new();
+    if let Some(font) = eframe::egui::FontDefinitions::default()
+        .font_data
+        .get("Ubuntu-Light")
+    {
+        fontdb.load_font_data(font.bytes().to_vec());
+    }
+    // Read the actual family name from the font rather than its egui key.
+    let family = fontdb
+        .faces()
+        .find_map(|face| face.families.first().map(|(name, _)| name.clone()));
+    if let Some(family) = family {
+        fontdb.set_sans_serif_family(family);
+    }
+    svg2pdf::usvg::Options {
+        fontdb: Arc::new(fontdb),
+        ..svg2pdf::usvg::Options::default()
+    }
+}
+
 /// Rasterizes an SVG document, scaled down so that its longer side is at most
 /// `max_side` pixels (never up).
 fn render_document(

@@ -350,7 +350,7 @@ mod tests {
                 }
             }
         }
-        let options = crate::io::export::svg2pdf_options();
+        let options = crate::io::export::svg2pdf_options_with_bundled_font();
         for (page, markup) in pages.iter().enumerate() {
             let tree = svg2pdf::usvg::Tree::from_str(markup, &options).unwrap();
             let scale = tree.size().width() / WIDTH as f32;
