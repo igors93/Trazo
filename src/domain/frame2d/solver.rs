@@ -484,9 +484,47 @@ fn sample_member(
 /// Solves a 2D plane frame by the Direct Stiffness Method.
 pub fn solve_frame(frame: &Frame2D) -> Result<FrameSolution, String> {
     let n_nodes = frame.nodes.len();
-    let n_dof = n_nodes * 3;
     if n_nodes == 0 || frame.members.is_empty() {
         return Err("Pórtico sem nós ou barras.".to_owned());
+    }
+    let n_dof = n_nodes
+        .checked_mul(3)
+        .ok_or("Pórtico excede o limite de memória da análise.")?;
+    if n_dof
+        .checked_mul(n_dof)
+        .and_then(|cells| cells.checked_mul(8))
+        .is_none_or(|bytes| bytes > 128 << 20)
+    {
+        return Err(
+            "Pórtico excede o limite de memória da análise; divida o modelo em pórticos menores."
+                .to_owned(),
+        );
+    }
+    if frame
+        .nodes
+        .iter()
+        .enumerate()
+        .any(|(index, node)| node.id != index || !node.x.is_finite() || !node.y.is_finite())
+    {
+        return Err("Pórtico contém identificação ou coordenadas de nó inválidas.".to_owned());
+    }
+    if frame
+        .nodal_loads
+        .iter()
+        .any(|load| !load.fx_kn.is_finite() || !load.fy_kn.is_finite() || !load.mz_knm.is_finite())
+        || frame.member_loads.iter().any(|load| match load {
+            MemberLoad::Uniform { q_perp, .. } => !q_perp.is_finite(),
+            MemberLoad::Point { a_m, p_perp, .. } => !a_m.is_finite() || !p_perp.is_finite(),
+        })
+    {
+        return Err("Pórtico contém cargas não finitas.".to_owned());
+    }
+    if frame.members.iter().any(|member| {
+        [member.area_m2, member.inertia_m4, member.modulus_kn_m2]
+            .iter()
+            .any(|value| !value.is_finite() || *value <= 0.0)
+    }) {
+        return Err("Pórtico contém seção ou rigidez inválida.".to_owned());
     }
 
     let mut k_global = vec![vec![0.0; n_dof]; n_dof];
@@ -526,8 +564,8 @@ pub fn solve_frame(frame: &Frame2D) -> Result<FrameSolution, String> {
         let dx = nj.x - ni.x;
         let dy = nj.y - ni.y;
         let l = dx.hypot(dy);
-        if l < 1e-9 {
-            return Err(format!("Barra '{}' tem comprimento nulo.", m.label));
+        if !l.is_finite() || l < 1e-9 {
+            return Err(format!("Barra '{}' tem comprimento inválido.", m.label));
         }
         let c = dx / l;
         let s = dy / l;

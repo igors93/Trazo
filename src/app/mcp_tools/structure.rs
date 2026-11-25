@@ -2841,7 +2841,7 @@ mod tests {
                 .is_some_and(|label| !label.is_empty())
                 && failure["motivo"]
                     .as_str()
-                    .is_some_and(|reason| reason.contains("singular"))
+                    .is_some_and(|reason| reason.contains("rigidez inválida"))
                 && failure["atende"] == false
         }));
         let lights = failed["semaforo"].as_array().unwrap();

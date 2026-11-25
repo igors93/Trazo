@@ -296,6 +296,17 @@ pub fn analyse_project_grid(project: &Project) -> GridAnalysisReport {
     if xs.len() < 2 || ys.len() < 2 {
         return report;
     }
+    if xs
+        .len()
+        .checked_mul(ys.len())
+        .is_none_or(|nodes| nodes > super::solver::MAX_GRID_NODES)
+    {
+        report.error = Some(
+            "Grelha excede o limite de nós da análise; divida o modelo em grelhas menores."
+                .to_owned(),
+        );
+        return report;
+    }
     let nx = xs.len() - 1;
     let ny = ys.len() - 1;
 

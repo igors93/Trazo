@@ -7,6 +7,8 @@
 
 use crate::domain::geometry::Point;
 
+pub(super) const MAX_GRID_NODES: usize = 10_000;
+
 /// A node in the 2D structural grillage.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GridNode {
@@ -232,6 +234,30 @@ pub fn solve_grid(nodes: &[GridNode], members: &[GridMember]) -> Result<GridSolv
         return Err("Grelha vazia.".to_owned());
     }
     let n_nodes = nodes.len();
+    if n_nodes > MAX_GRID_NODES {
+        return Err("Grelha excede o limite de nós da análise.".to_owned());
+    }
+    if nodes
+        .iter()
+        .any(|node| !node.point.is_finite() || !node.point_load_kn.is_finite())
+    {
+        return Err("Grelha contém coordenadas ou cargas inválidas.".to_owned());
+    }
+    for member in members {
+        if member.start >= n_nodes || member.end >= n_nodes || member.start == member.end {
+            return Err("Barra da grelha referencia nós inválidos.".to_owned());
+        }
+        if !member.ei_knm2.is_finite()
+            || member.ei_knm2 <= 0.0
+            || !member.gj_knm2.is_finite()
+            || member.gj_knm2 < 0.0
+            || !member.q_kn_m.is_finite()
+            || !member.strip_width_m.is_finite()
+            || member.strip_width_m <= 0.0
+        {
+            return Err("Barra da grelha contém rigidez, largura ou carga inválida.".to_owned());
+        }
+    }
     let total_dofs = n_nodes * 3;
 
     // Map free DOFs to compact indices `0..n_free`.
@@ -281,6 +307,16 @@ pub fn solve_grid(nodes: &[GridNode], members: &[GridMember]) -> Result<GridSolv
     }
 
     let stride = bw + 1;
+    if n_free
+        .checked_mul(stride)
+        .and_then(|cells| cells.checked_mul(8))
+        .is_none_or(|bytes| bytes > 128 << 20)
+    {
+        return Err(
+            "Grelha excede o limite de memória da análise; divida o modelo em grelhas menores."
+                .to_owned(),
+        );
+    }
     let mut k_band = vec![0.0_f64; n_free * stride];
     let mut f_total = vec![0.0_f64; total_dofs];
     let mut total_applied_kn = 0.0;

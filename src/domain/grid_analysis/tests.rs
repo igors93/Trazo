@@ -3,6 +3,62 @@ use crate::domain::geometry::Point;
 use crate::domain::model::Project;
 
 #[test]
+fn grid_solver_rejects_invalid_indices_and_oversized_stiffness_before_allocating() {
+    use super::solver::{GridMember, GridNode, solve_grid};
+    let node = GridNode {
+        id: 0,
+        point: Point::new(0.0, 0.0),
+        fix_w: false,
+        fix_rx: false,
+        fix_ry: false,
+        point_load_kn: 0.0,
+    };
+    let mut nodes = vec![node; 10_000];
+    nodes[9999].point = Point::new(4.0, 0.0);
+    let mut member = GridMember {
+        id: 0,
+        start: 0,
+        end: usize::MAX,
+        kind: GridMemberKind::Beam { beam_id: 1 },
+        ei_knm2: 1.0,
+        gj_knm2: 1.0,
+        strip_width_m: 1.0,
+        q_kn_m: 1.0,
+    };
+    assert!(solve_grid(&nodes[..2], &[member]).is_err());
+    member.end = 9999;
+    assert!(
+        solve_grid(&nodes, &[member])
+            .unwrap_err()
+            .contains("memória")
+    );
+}
+
+#[test]
+fn oversized_project_grid_stops_before_creating_all_mesh_cells() {
+    use crate::domain::fixtures::FixtureKind;
+    let mut project = Project::default();
+    project
+        .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Sala")
+        .unwrap();
+    project.generate_structure();
+    for i in 1..=150 {
+        let coord = i as f64;
+        project
+            .add_fixture(FixtureKind::Column, Point::new(coord, coord), 0.2, 0.2, 0)
+            .unwrap();
+    }
+    let report = project.grid_analysis();
+    assert!(
+        report
+            .error
+            .as_ref()
+            .is_some_and(|error| error.contains("limite de nós"))
+    );
+    assert!(report.slabs.is_empty());
+}
+
+#[test]
 fn simply_supported_square_plate_matches_timoshenko_theory() {
     // Timoshenko & Woinowsky-Krieger, "Theory of Plates and Shells", Table 8:
     // Simply supported square plate (a = b = 4.0 m), q = 10 kN/m², h = 0.12 m,

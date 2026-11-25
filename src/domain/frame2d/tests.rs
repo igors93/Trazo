@@ -5,6 +5,41 @@ use super::{
 };
 use crate::domain::{fixtures::FixtureKind, geometry::Point, model::Project};
 
+#[test]
+fn frame_solver_rejects_invalid_inputs_and_oversized_matrices() {
+    let mut frame = Frame2D::default();
+    frame.add_node("A", 0.0, 0.0, SupportKind::Fixed);
+    frame.add_node("B", 4.0, 0.0, SupportKind::Free);
+    frame.add_member(
+        "V1",
+        MemberKind::Beam,
+        0,
+        1,
+        0.1,
+        0.001,
+        25_000_000.0,
+        EndRelease::Rigid,
+    );
+    frame.nodal_loads.push(super::model::NodalLoad {
+        node: 1,
+        fx_kn: f64::NAN,
+        fy_kn: 0.0,
+        mz_knm: 0.0,
+    });
+    assert!(solve_frame(&frame).is_err());
+    frame.nodal_loads.clear();
+    frame.members[0].modulus_kn_m2 = -1.0;
+    assert!(solve_frame(&frame).is_err());
+    frame.members[0].modulus_kn_m2 = 25_000_000.0;
+    frame.nodes[1].id = usize::MAX;
+    assert!(solve_frame(&frame).is_err());
+    frame.nodes[1].id = 1;
+    for _ in 2..2000 {
+        frame.add_node("N", 0.0, 0.0, SupportKind::Free);
+    }
+    assert!(solve_frame(&frame).unwrap_err().contains("memória"));
+}
+
 /// Validation #1 (ROADMAP #94): Cantilever column under lateral tip load `P`.
 /// Exact Euler–Bernoulli solution:
 /// - Base moment: `M_base = P · h`
@@ -535,7 +570,7 @@ fn solver_and_project_report_expose_an_unstable_frame() {
         report.frame_failures
     );
     let failure = &report.frame_failures[0];
-    assert!(failure.reason.contains("hipostático") || failure.reason.contains("singular"));
+    assert!(failure.reason.contains("rigidez inválida"));
     assert!(report.warnings.iter().any(|warning| {
         warning.contains(&failure.label) && warning.contains("análise 2D não concluída")
     }));
