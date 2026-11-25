@@ -5,6 +5,7 @@ use eframe::egui::{self, Key, Ui};
 
 use super::{caption, chip, divider};
 use crate::app::FloorPlanApp;
+use crate::app::theme::DANGER;
 use crate::app::tools::ModifyKind;
 use crate::app::ui::widgets::{tip, toggle_pill};
 use crate::domain::geometry::format_meters;
@@ -54,7 +55,11 @@ impl FloorPlanApp {
                     }
                 }
                 None => {
-                    caption(ui, "informe um valor maior que zero");
+                    ui.label(
+                        egui::RichText::new("informe um valor maior que zero")
+                            .size(12.0)
+                            .color(DANGER),
+                    );
                 }
             }
             divider(ui);

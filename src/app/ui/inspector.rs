@@ -26,11 +26,54 @@ fn area(value: f64) -> String {
 }
 
 fn grid(ui: &mut Ui, id: &str, body: impl FnOnce(&mut Ui)) {
+    let min_col = (ui.available_width() * 0.36).clamp(72.0, 92.0);
     egui::Grid::new(id)
         .num_columns(2)
-        .spacing([12.0, 8.0])
-        .min_col_width(96.0)
+        .spacing([8.0, 6.0])
+        .min_col_width(min_col)
         .show(ui, body);
+}
+
+fn field_width(ui: &Ui) -> f32 {
+    ui.available_width().clamp(80.0, 148.0)
+}
+
+/// Compact contextual button used inside the Element Action Bar.
+fn action_bar_icon_button(ui: &mut Ui, icon: Icon, tooltip: &str, danger: bool) -> Response {
+    let (rect, response) = ui.allocate_exact_size(vec2(26.0, 26.0), Sense::click());
+    let painter = ui.painter();
+    let hovered = response.hovered();
+    let pressed = response.is_pointer_button_down_on();
+    let (bg, border, ink, accent) = if danger {
+        if pressed || hovered {
+            (DANGER_HOVER, DANGER, DANGER, DANGER)
+        } else {
+            (DANGER_SOFT, DANGER_BORDER, DANGER, DANGER)
+        }
+    } else if pressed {
+        (ACCENT_SOFT, ACCENT_RING, ACCENT_TEXT, ACCENT)
+    } else if hovered {
+        (ACCENT_SOFTER, ACCENT_RING, TEXT, ACCENT)
+    } else {
+        (CONTROL, BORDER_STRONG, TEXT_2, ACCENT)
+    };
+    painter.rect(
+        rect,
+        6,
+        bg,
+        Stroke::new(1.0, border),
+        egui::StrokeKind::Inside,
+    );
+    icons::paint(
+        painter,
+        Rect::from_center_size(rect.center(), vec2(15.0, 15.0)),
+        icon,
+        ink,
+        accent,
+    );
+    response
+        .on_hover_text(tooltip)
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// A text field for metres, aligned right, with its unit.
@@ -84,7 +127,11 @@ pub(super) fn type_card(ui: &mut Ui, icon: Icon, title: &str, subtitle: &str) {
                                 )
                                 .truncate(),
                             );
-                            ui.label(RichText::new(subtitle).size(12.0).color(MUTED));
+                            ui.add(
+                                egui::Label::new(RichText::new(subtitle).size(12.0).color(MUTED))
+                                    .truncate(),
+                            )
+                            .on_hover_text(subtitle);
                         });
                     });
                 });
@@ -119,8 +166,8 @@ impl FloorPlanApp {
         ui.spacing_mut().item_spacing = vec2(8.0, 0.0);
         let header = panel_header(ui, "Propriedades", "");
         let close = Rect::from_center_size(
-            Pos2::new(header.right() - 20.0, header.center().y),
-            vec2(24.0, 24.0),
+            Pos2::new(header.right() - 18.0, header.center().y),
+            vec2(22.0, 22.0),
         );
         if ui
             .put(close, |ui: &mut Ui| {
@@ -134,7 +181,7 @@ impl FloorPlanApp {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
+                ui.spacing_mut().item_spacing = vec2(8.0, 0.0);
                 if self.is_multi_selection() {
                     self.multi_selection_inspector(ui);
                     return;
@@ -161,6 +208,128 @@ impl FloorPlanApp {
             });
     }
 
+    /// Contextual quick-action bar rendered directly under the selection's `type_card`
+    /// (CreaBIM-inspired): zoom, rotate/flip, duplicate, and right-pinned delete.
+    pub(super) fn element_action_bar(&mut self, ui: &mut Ui, selection: Selection) {
+        let mut do_zoom = false;
+        let mut do_duplicate = false;
+        let mut do_rotate = false;
+        let mut do_flip_side = false;
+        let mut do_flip_hinge = false;
+        let mut do_delete = false;
+
+        let opening_kind = match selection {
+            Selection::Opening(id) => self
+                .project
+                .openings
+                .iter()
+                .find(|o| o.id == id)
+                .map(|o| o.kind),
+            _ => None,
+        };
+
+        egui::Frame::new()
+            .inner_margin(Margin {
+                left: 12,
+                right: 12,
+                top: 0,
+                bottom: 8,
+            })
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    if action_bar_icon_button(ui, Icon::ZoomFit, "Aproximar elemento", false)
+                        .clicked()
+                    {
+                        do_zoom = true;
+                    }
+                    match selection {
+                        Selection::Fixture(_) => {
+                            if action_bar_icon_button(
+                                ui,
+                                Icon::Glyph(super::Glyph::Rotate),
+                                "Girar 90° (G)",
+                                false,
+                            )
+                            .clicked()
+                            {
+                                do_rotate = true;
+                            }
+                            if action_bar_icon_button(
+                                ui,
+                                Icon::Glyph(super::Glyph::Duplicate),
+                                "Duplicar (Ctrl+D)",
+                                false,
+                            )
+                            .clicked()
+                            {
+                                do_duplicate = true;
+                            }
+                        }
+                        Selection::Opening(_) => {
+                            if opening_kind.is_some_and(OpeningKind::is_door) {
+                                if action_bar_icon_button(
+                                    ui,
+                                    Icon::Glyph(super::Glyph::Mirror),
+                                    "Inverter lado da folha (I)",
+                                    false,
+                                )
+                                .clicked()
+                                {
+                                    do_flip_side = true;
+                                }
+                                if matches!(
+                                    opening_kind,
+                                    Some(OpeningKind::Door | OpeningKind::Gate)
+                                ) && action_bar_icon_button(
+                                    ui,
+                                    Icon::Glyph(super::Glyph::Rotate),
+                                    "Trocar lado da dobradiça (Shift+I)",
+                                    false,
+                                )
+                                .clicked()
+                                {
+                                    do_flip_hinge = true;
+                                }
+                            }
+                        }
+                        Selection::Wall(_) | Selection::Room(_) | Selection::Drawing(_) => {
+                            if action_bar_icon_button(
+                                ui,
+                                Icon::Glyph(super::Glyph::Duplicate),
+                                "Duplicar (Ctrl+D)",
+                                false,
+                            )
+                            .clicked()
+                            {
+                                do_duplicate = true;
+                            }
+                        }
+                        Selection::Terrain(_) => {}
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if action_bar_icon_button(ui, Icon::Delete, "Excluir (Delete)", true)
+                            .clicked()
+                        {
+                            do_delete = true;
+                        }
+                    });
+                });
+            });
+
+        if do_zoom {
+            self.zoom_to_selection(selection);
+        } else if do_rotate {
+            self.rotate_fixture_or_next();
+        } else if do_flip_side || do_flip_hinge {
+            self.flip_selected_door(do_flip_side, do_flip_hinge);
+        } else if do_duplicate {
+            self.duplicate_selection();
+        } else if do_delete {
+            self.delete_selection();
+        }
+    }
+
     fn element_identity_section(&self, ui: &mut Ui, id: u64) {
         let Some(guid) = self.project.guid_of(id) else {
             return;
@@ -174,7 +343,7 @@ impl FloorPlanApp {
                 ui.end_row();
 
                 property_label(ui, "GUID");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.label(
                         RichText::new(guid.short_label())
                             .monospace()
@@ -182,10 +351,15 @@ impl FloorPlanApp {
                             .color(MUTED),
                     )
                     .on_hover_text(&uuid_str);
-                    if ui
-                        .small_button("Copiar")
-                        .on_hover_text("Copiar GUID completo (UUID v4)")
-                        .clicked()
+                    if icon_button_sized(
+                        ui,
+                        Icon::Glyph(super::Glyph::Copy),
+                        "Copiar GUID completo (UUID v4)",
+                        false,
+                        22.0,
+                        13.0,
+                    )
+                    .clicked()
                     {
                         ui.ctx().copy_text(uuid_str.clone());
                     }
@@ -194,7 +368,25 @@ impl FloorPlanApp {
 
                 property_label(ui, "IFC GlobalId");
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(&ifc_id).monospace().size(10.5).color(MUTED));
+                    ui.add(
+                        egui::Label::new(
+                            RichText::new(&ifc_id).monospace().size(10.5).color(MUTED),
+                        )
+                        .truncate(),
+                    )
+                    .on_hover_text(&ifc_id);
+                    if icon_button_sized(
+                        ui,
+                        Icon::Glyph(super::Glyph::Copy),
+                        "Copiar IFC GlobalId",
+                        false,
+                        22.0,
+                        13.0,
+                    )
+                    .clicked()
+                    {
+                        ui.ctx().copy_text(ifc_id.clone());
+                    }
                 });
                 ui.end_row();
             });
@@ -254,6 +446,7 @@ impl FloorPlanApp {
                 "Objeto · equipamento"
             },
         );
+        self.element_action_bar(ui, Selection::Fixture(id));
         self.electrical_device_section(ui, &fixture);
         let mut submit = false;
         section(ui, "fixture_dimensions", "Dimensões", |ui| {
@@ -291,7 +484,7 @@ impl FloorPlanApp {
                 property_value(ui, &format_point(fixture.center));
                 ui.end_row();
                 property_label(ui, "Rotação");
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     let angle = fixture.rotation_rad().to_degrees().rem_euclid(360.0);
                     property_value(ui, &format!("{angle:.1}°").replace('.', ","));
                     rotate = secondary_button(ui, "Girar 90° (G)").clicked();
@@ -333,6 +526,7 @@ impl FloorPlanApp {
                 .map(|material| material.label())
                 .unwrap_or_else(|| "Parede de 12 cm (sem material definido)".to_owned()),
         );
+        self.element_action_bar(ui, Selection::Wall(id));
 
         let mut submit = false;
         section(ui, "wall_dimensions", "Dimensões", |ui| {
@@ -532,7 +726,7 @@ impl FloorPlanApp {
                 ui.end_row();
             });
             ui.add_space(4.0);
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 submit |= secondary_button(ui, "Aplicar altura").clicked();
                 if wall.has_own_height()
                     && secondary_button(ui, "Seguir o pé-direito")
@@ -608,13 +802,15 @@ impl FloorPlanApp {
                 "Cômodo de forma livre"
             },
         );
+        self.element_action_bar(ui, Selection::Room(id));
 
         let mut submit = false;
         section(ui, "room_identity", "Identificação", |ui| {
             grid(ui, "room_identity_grid", |ui| {
                 property_label(ui, "Nome");
-                let edit = ui
-                    .add(egui::TextEdit::singleline(&mut self.room_name_text).desired_width(150.0));
+                let w = field_width(ui);
+                let edit =
+                    ui.add(egui::TextEdit::singleline(&mut self.room_name_text).desired_width(w));
                 submit |= edit.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
                 ui.end_row();
             });
@@ -673,8 +869,9 @@ impl FloorPlanApp {
         section(ui, "room_hatch", "Hachura e material", |ui| {
             grid(ui, "room_hatch_grid", |ui| {
                 property_label(ui, "Padrão");
+                let w = field_width(ui);
                 egui::ComboBox::from_id_salt(("room_hatch_combo", id))
-                    .width(152.0)
+                    .width(w)
                     .selected_text(RichText::new(current_hatch.label()).size(12.0))
                     .show_ui(ui, |ui| {
                         for pattern in crate::domain::hatch::HatchPattern::ALL {
@@ -714,37 +911,41 @@ impl FloorPlanApp {
             ui.add_space(6.0);
             grid(ui, "room_finishes_grid", |ui| {
                 property_label(ui, "Piso");
+                let w = field_width(ui);
                 finishes_edited |= ui
                     .add(
                         egui::TextEdit::singleline(&mut updated_finishes.floor)
-                            .desired_width(148.0)
+                            .desired_width(w)
                             .hint_text("Porcelanato 60×60"),
                     )
                     .changed();
                 ui.end_row();
                 property_label(ui, "Parede");
+                let w = field_width(ui);
                 finishes_edited |= ui
                     .add(
                         egui::TextEdit::singleline(&mut updated_finishes.wall)
-                            .desired_width(148.0)
+                            .desired_width(w)
                             .hint_text("Pintura acrílica"),
                     )
                     .changed();
                 ui.end_row();
                 property_label(ui, "Teto");
+                let w = field_width(ui);
                 finishes_edited |= ui
                     .add(
                         egui::TextEdit::singleline(&mut updated_finishes.ceiling)
-                            .desired_width(148.0)
+                            .desired_width(w)
                             .hint_text("Forro de gesso"),
                     )
                     .changed();
                 ui.end_row();
                 property_label(ui, "Rodapé");
+                let w = field_width(ui);
                 finishes_edited |= ui
                     .add(
                         egui::TextEdit::singleline(&mut updated_finishes.baseboard)
-                            .desired_width(148.0)
+                            .desired_width(w)
                             .hint_text("Poliestireno"),
                     )
                     .changed();
@@ -760,10 +961,11 @@ impl FloorPlanApp {
                     .changed();
                 ui.end_row();
                 property_label(ui, "Notas");
+                let w = field_width(ui);
                 finishes_edited |= ui
                     .add(
                         egui::TextEdit::singleline(&mut updated_finishes.notes)
-                            .desired_width(148.0)
+                            .desired_width(w)
                             .hint_text("Especificações técnicas"),
                     )
                     .changed();
@@ -859,6 +1061,7 @@ impl FloorPlanApp {
             OpeningKind::Gap => (Icon::Gap, "Vão livre", "Trecho aberto da parede, sem porta"),
         };
         type_card(ui, icon, title, subtitle);
+        self.element_action_bar(ui, Selection::Opening(id));
 
         if matches!(opening.kind, OpeningKind::Door | OpeningKind::Gate) {
             let mut chosen_door_type = None;
@@ -991,7 +1194,7 @@ impl FloorPlanApp {
             section(ui, "opening_swing", "Abertura da folha", |ui| {
                 grid(ui, "opening_swing_grid", |ui| {
                     property_label(ui, "Lado");
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         property_value(
                             ui,
                             if opening.flip_side {
@@ -1005,7 +1208,7 @@ impl FloorPlanApp {
                     ui.end_row();
                     if matches!(opening.kind, OpeningKind::Door | OpeningKind::Gate) {
                         property_label(ui, "Dobradiça");
-                        ui.horizontal(|ui| {
+                        ui.horizontal_wrapped(|ui| {
                             property_value(
                                 ui,
                                 if opening.flip_hinge {
@@ -1267,21 +1470,22 @@ impl FloorPlanApp {
     }
 
     fn project_inspector(&mut self, ui: &mut Ui) {
-        type_card(
-            ui,
-            Icon::Plan,
-            "Planta baixa · Térreo",
-            "Propriedades do projeto",
-        );
+        let floor_title = self
+            .project
+            .active_floor()
+            .map(|floor| format!("Planta baixa · {}", floor.name))
+            .unwrap_or_else(|| "Planta baixa · Térreo".to_owned());
+        type_card(ui, Icon::Plan, &floor_title, "Propriedades do projeto");
 
         section(ui, "project_identity", "Identificação", |ui| {
             grid(ui, "project_identity_grid", |ui| {
                 property_label(ui, "Nome");
+                let w = field_width(ui);
                 if ui
                     .add(
                         egui::TextEdit::singleline(&mut self.project.name)
                             .hint_text("Nome do projeto")
-                            .desired_width(150.0),
+                            .desired_width(w),
                     )
                     .changed()
                 {
@@ -1364,9 +1568,14 @@ impl FloorPlanApp {
             .project
             .openings
             .iter()
-            .filter(|o| matches!(o.kind, OpeningKind::Door | OpeningKind::Gate))
+            .filter(|o| o.kind.is_door())
             .count();
-        let windows = self.project.openings.len() - doors;
+        let windows = self
+            .project
+            .openings
+            .iter()
+            .filter(|o| o.kind == OpeningKind::Window)
+            .count();
         let (wall_area, blocks) = self.project.masonry_estimate();
         let mut apply_all = false;
         let mut height_submit = false;

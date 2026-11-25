@@ -34,6 +34,7 @@ impl FloorPlanApp {
             Shape::Spline { .. } => crate::app::ui::Glyph::Spline,
         };
         type_card(ui, Icon::Glyph(glyph), shape.label(), "Desenho 2D");
+        self.element_action_bar(ui, crate::app::Selection::Drawing(id));
 
         let mut submit = false;
         section(ui, "drawing_geometry", "Geometria", |ui| {

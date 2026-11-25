@@ -77,152 +77,195 @@ fn chip(ui: &mut Ui, text: &str) -> egui::Response {
 impl FloorPlanApp {
     pub(super) fn options_bar(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
+            // Fixed 26 px height across ALL tools so switching tools never shifts the canvas.
             ui.set_min_height(26.0);
+            ui.set_max_height(26.0);
             ui.spacing_mut().item_spacing.x = 6.0;
 
-            // The active tool, as in CAD option bars.
             let tool = self.tool;
-            let name = tool_name(tool);
-            let galley = ui
-                .painter()
-                .layout_no_wrap(name.to_owned(), strong(13.0), ACCENT_TEXT);
-            let (rect, _) =
-                ui.allocate_exact_size(vec2(galley.size().x + 32.0, 24.0), Sense::hover());
-            let painter = ui.painter();
-            painter.rect_filled(rect, 5, ACCENT_SOFT);
-            icons::paint(
-                painter,
-                Rect::from_center_size(Pos2::new(rect.left() + 13.0, rect.center().y), vec2(16.0, 16.0)),
-                tool_icon(tool),
-                ACCENT_TEXT,
-                ACCENT,
+            let aided = matches!(
+                tool,
+                Tool::Wall
+                    | Tool::Room
+                    | Tool::RoomPolygon
+                    | Tool::Terrain
+                    | Tool::Measure
+                    | Tool::Draw(_)
+            ) || matches!(tool, Tool::Modify(kind) if kind.uses_selection());
+
+            // Reserve exact right-hand width for drafting aids so left tool options
+            // scroll cleanly instead of ever colliding on 1000–1280 px viewports.
+            let right_reserve = if aided { 268.0 } else { 0.0 };
+            let left_max_w = (ui.available_width() - right_reserve).max(160.0);
+
+            ui.allocate_ui_with_layout(
+                vec2(left_max_w, 26.0),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.spacing_mut().scroll = egui::style::ScrollStyle::thin();
+                    egui::ScrollArea::horizontal()
+                        .id_salt("options_bar_left")
+                        .scroll_bar_visibility(
+                            egui::scroll_area::ScrollBarVisibility::AlwaysHidden,
+                        )
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.set_min_height(26.0);
+                                ui.spacing_mut().item_spacing.x = 6.0;
+
+                                // Active tool pill
+                                let name = tool_name(tool);
+                                let galley = ui.painter().layout_no_wrap(
+                                    name.to_owned(),
+                                    strong(12.5),
+                                    ACCENT_TEXT,
+                                );
+                                let (rect, _) = ui.allocate_exact_size(
+                                    vec2(galley.size().x + 30.0, 24.0),
+                                    Sense::hover(),
+                                );
+                                let painter = ui.painter();
+                                painter.rect_filled(rect, 5, ACCENT_SOFT);
+                                icons::paint(
+                                    painter,
+                                    Rect::from_center_size(
+                                        Pos2::new(rect.left() + 13.0, rect.center().y),
+                                        vec2(15.0, 15.0),
+                                    ),
+                                    tool_icon(tool),
+                                    ACCENT_TEXT,
+                                    ACCENT,
+                                );
+                                painter.galley(
+                                    Pos2::new(
+                                        rect.left() + 25.0,
+                                        rect.center().y - galley.size().y / 2.0,
+                                    ),
+                                    galley,
+                                    ACCENT_TEXT,
+                                );
+                                divider(ui);
+
+                                if self.project.floors.levels.len() > 1 {
+                                    let mut switch_to = None;
+                                    let active_id = self.project.floors.active_floor_id;
+                                    for level in &self.project.floors.levels {
+                                        if toggle_pill(
+                                            ui,
+                                            &level.name,
+                                            Some(level.id) == active_id,
+                                            &level.label_with_elevation(),
+                                        )
+                                        .clicked()
+                                        {
+                                            switch_to = Some(level.id);
+                                        }
+                                    }
+                                    if let Some(id) = switch_to
+                                        && self.project.switch_floor(id).is_ok()
+                                    {
+                                        self.active_tab_floor_id =
+                                            self.project.floors.active_floor_id;
+                                        self.clear_selection();
+                                        self.sync_inspector_fields();
+                                    }
+                                    divider(ui);
+                                }
+
+                                match tool {
+                                    Tool::Terrain => self.terrain_options(ui),
+                                    Tool::Wall | Tool::Room => self.masonry_options(ui),
+                                    Tool::Draw(kind) => self.draw_options(ui, kind),
+                                    Tool::Modify(kind) => self.modify_options(ui, kind),
+                                    Tool::Constrain(kind) => self.constrain_options(ui, kind),
+                                    Tool::RoomPolygon => {
+                                        self.masonry_options(ui);
+                                        divider(ui);
+                                        let corners = self.polygon_draft.len();
+                                        chip(
+                                            ui,
+                                            &match corners {
+                                                0 => "nenhum canto".to_owned(),
+                                                1 => "1 canto".to_owned(),
+                                                count => format!("{count} cantos"),
+                                            },
+                                        );
+                                        caption(
+                                            ui,
+                                            "Feche no 1º canto ou Enter · Backspace desfaz",
+                                        );
+                                    }
+                                    Tool::Opening(kind) => {
+                                        caption(ui, "Largura padrão");
+                                        chip(ui, &format_meters(kind.default_width()));
+                                        caption(ui, "Limites");
+                                        chip(
+                                            ui,
+                                            &format!(
+                                                "{} – {}",
+                                                format_meters(kind.min_width()),
+                                                format_meters(kind.max_width())
+                                            ),
+                                        );
+                                        divider(ui);
+                                        caption(ui, "Clique numa parede para inserir.");
+                                    }
+                                    Tool::Fixture(kind) => {
+                                        let (width, depth) = kind.default_size();
+                                        caption(ui, "Tamanho");
+                                        chip(
+                                            ui,
+                                            &format!("{width:.2} × {depth:.2} m").replace('.', ","),
+                                        );
+                                        caption(ui, "Giro");
+                                        chip(ui, &format!("{}°", self.fixture_turns as u32 * 90));
+                                        if tip(
+                                            secondary_button(ui, "Girar (G)"),
+                                            "Gira o próximo objeto colocado longe das paredes",
+                                        )
+                                        .clicked()
+                                        {
+                                            self.fixture_turns = (self.fixture_turns + 1) % 4;
+                                        }
+                                        divider(ui);
+                                        let wall_cm =
+                                            (self.project.masonry.thickness() * 100.0).round()
+                                                as i32;
+                                        caption(
+                                            ui,
+                                            &format!(
+                                                "Encosta automaticamente na face da parede ({wall_cm} cm)."
+                                            ),
+                                        );
+                                    }
+                                    Tool::Move => self.selection_options(ui),
+                                    Tool::Measure => {
+                                        caption(ui, "Medidas");
+                                        chip(ui, &self.measurements.len().to_string());
+                                        if ui
+                                            .add_enabled_ui(!self.measurements.is_empty(), |ui| {
+                                                secondary_button(ui, "Limpar")
+                                            })
+                                            .inner
+                                            .clicked()
+                                        {
+                                            self.measurements.clear();
+                                        }
+                                        divider(ui);
+                                        caption(
+                                            ui,
+                                            "Clique em dois pontos · F8 orto · Esc limpa.",
+                                        );
+                                    }
+                                }
+                            });
+                        });
+                },
             );
-            painter.galley(
-                Pos2::new(rect.left() + 26.0, rect.center().y - galley.size().y / 2.0),
-                galley,
-                ACCENT_TEXT,
-            );
-            divider(ui);
 
-            if self.project.floors.levels.len() > 1 {
-                let mut switch_to = None;
-                let active_id = self.project.floors.active_floor_id;
-                for level in &self.project.floors.levels {
-                    if toggle_pill(
-                        ui,
-                        &level.name,
-                        Some(level.id) == active_id,
-                        &level.label_with_elevation(),
-                    )
-                    .clicked()
-                    {
-                        switch_to = Some(level.id);
-                    }
-                }
-                if let Some(id) = switch_to
-                    && self.project.switch_floor(id).is_ok()
-                {
-                    self.active_tab_floor_id = self.project.floors.active_floor_id;
-                    self.clear_selection();
-                    self.sync_inspector_fields();
-                }
-                divider(ui);
-            }
-
-            match tool {
-                Tool::Terrain => self.terrain_options(ui),
-                Tool::Wall | Tool::Room => self.masonry_options(ui),
-                Tool::Draw(kind) => self.draw_options(ui, kind),
-                Tool::Modify(kind) => self.modify_options(ui, kind),
-                Tool::Constrain(kind) => self.constrain_options(ui, kind),
-                Tool::RoomPolygon => {
-                    self.masonry_options(ui);
-                    divider(ui);
-                    let corners = self.polygon_draft.len();
-                    chip(
-                        ui,
-                        &match corners {
-                            0 => "nenhum canto".to_owned(),
-                            1 => "1 canto".to_owned(),
-                            count => format!("{count} cantos"),
-                        },
-                    );
-                    caption(
-                        ui,
-                        "Feche no 1º canto, duplo clique ou Enter · Backspace desfaz o último canto",
-                    );
-                }
-                Tool::Opening(kind) => {
-                    caption(ui, "Largura padrão");
-                    chip(ui, &format_meters(kind.default_width()));
-                    caption(ui, "Limites");
-                    chip(
-                        ui,
-                        &format!(
-                            "{} – {}",
-                            format_meters(kind.min_width()),
-                            format_meters(kind.max_width())
-                        ),
-                    );
-                    divider(ui);
-                    caption(ui, "Clique numa parede para inserir.");
-                }
-                Tool::Fixture(kind) => {
-                    let (width, depth) = kind.default_size();
-                    caption(ui, "Tamanho");
-                    chip(
-                        ui,
-                        &format!("{width:.2} × {depth:.2} m").replace('.', ","),
-                    );
-                    caption(ui, "Giro livre");
-                    chip(ui, &format!("{}°", self.fixture_turns as u32 * 90));
-                    if tip(
-                        secondary_button(ui, "Girar (G)"),
-                        "Gira o próximo objeto colocado longe das paredes",
-                    )
-                    .clicked()
-                    {
-                        self.fixture_turns = (self.fixture_turns + 1) % 4;
-                    }
-                    divider(ui);
-                    caption(
-                        ui,
-                        "Perto de uma parede, ele encosta na face dos tijolos (parede de 12 cm).",
-                    );
-                }
-                Tool::Move => self.selection_options(ui),
-                Tool::Measure => {
-                    caption(ui, "Medidas");
-                    chip(ui, &self.measurements.len().to_string());
-                    if ui
-                        .add_enabled_ui(!self.measurements.is_empty(), |ui| {
-                            secondary_button(ui, "Limpar medidas")
-                        })
-                        .inner
-                        .clicked()
-                    {
-                        self.measurements.clear();
-                    }
-                    divider(ui);
-                    caption(
-                        ui,
-                        "Clique em dois pontos. Encaixa em cantos, faces e batentes. F8 trava na horizontal/vertical; Esc limpa.",
-                    );
-                }
-            }
-
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                let aided = matches!(
-                    tool,
-                    Tool::Wall
-                        | Tool::Room
-                        | Tool::RoomPolygon
-                        | Tool::Terrain
-                        | Tool::Measure
-                        | Tool::Draw(_)
-                ) || matches!(tool, Tool::Modify(kind) if kind.uses_selection());
-                if aided {
+            if aided {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
                     if matches!(tool, Tool::Wall | Tool::Room | Tool::RoomPolygon)
                         && toggle_pill(
                             ui,
@@ -241,14 +284,13 @@ impl FloorPlanApp {
                             | Tool::Measure
                             | Tool::Draw(_)
                             | Tool::Modify(_)
+                    ) && toggle_pill(
+                        ui,
+                        "Orto",
+                        self.ortho_enabled,
+                        "Restringe a parede à horizontal ou vertical (F8)",
                     )
-                        && toggle_pill(
-                            ui,
-                            "Orto",
-                            self.ortho_enabled,
-                            "Restringe a parede à horizontal ou vertical (F8)",
-                        )
-                        .clicked()
+                    .clicked()
                     {
                         self.toggle_ortho();
                     }
@@ -271,9 +313,8 @@ impl FloorPlanApp {
                     {
                         self.toggle_snap();
                     }
-                    caption(ui, "Auxílios:");
-                }
-            });
+                });
+            }
         });
     }
 

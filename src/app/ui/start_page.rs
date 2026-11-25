@@ -5,10 +5,14 @@
 
 use std::path::{Path, PathBuf};
 
-use eframe::egui::{self, ColorImage, Margin, RichText, Stroke, TextureOptions, Ui, vec2};
+use eframe::egui::{
+    self, ColorImage, CornerRadius, Margin, RichText, Sense, Stroke, StrokeKind, TextureOptions,
+    Ui, vec2,
+};
 
 use super::super::{DocDialog, FloorPlanApp, theme::*};
-use super::widgets::{danger_button, primary_button, secondary_button};
+use super::icons::{self, Icon};
+use super::widgets::{danger_button, icon_button_sized, primary_button, secondary_button};
 
 enum StartAction {
     NewBlank,
@@ -50,10 +54,18 @@ impl FloorPlanApp {
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                let avail = ui.available_width();
+                let content_w = (avail - 64.0).clamp(320.0, 960.0);
+                let side_margin = ((avail - content_w) * 0.5).max(16.0).round() as i8;
                 egui::Frame::new()
-                    .inner_margin(Margin::symmetric(36, 28))
+                    .inner_margin(Margin {
+                        left: side_margin,
+                        right: side_margin,
+                        top: 28,
+                        bottom: 32,
+                    })
                     .show(ui, |ui| {
-                        ui.set_max_width(940.0);
+                        ui.set_width(content_w);
 
                         // Header
                         ui.horizontal(|ui| {
@@ -96,13 +108,16 @@ impl FloorPlanApp {
                                 draft.rooms.len()
                             );
                             egui::Frame::new()
-                                .fill(egui::Color32::from_rgb(255, 248, 232))
+                                .fill(WARNING_SOFT)
                                 .stroke(Stroke::new(1.0, WARNING))
                                 .corner_radius(10)
                                 .inner_margin(Margin::same(14))
                                 .show(ui, |ui| {
-                                    ui.horizontal(|ui| {
+                                    ui.set_width(ui.available_width());
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.spacing_mut().item_spacing = vec2(12.0, 8.0);
                                         ui.vertical(|ui| {
+                                            ui.set_max_width((content_w - 310.0).max(220.0));
                                             ui.label(
                                                 RichText::new(
                                                     "Rascunho automático encontrado da última sessão",
@@ -110,13 +125,20 @@ impl FloorPlanApp {
                                                 .font(strong(13.5))
                                                 .color(TEXT),
                                             );
-                                            ui.label(
-                                                RichText::new(summary).size(12.0).color(TEXT_2),
-                                            );
+                                            ui.add(
+                                                egui::Label::new(
+                                                    RichText::new(&summary)
+                                                        .size(12.0)
+                                                        .color(TEXT_2),
+                                                )
+                                                .truncate(),
+                                            )
+                                            .on_hover_text(&summary);
                                         });
                                         ui.with_layout(
                                             egui::Layout::right_to_left(egui::Align::Center),
                                             |ui| {
+                                                ui.spacing_mut().item_spacing.x = 6.0;
                                                 if secondary_button(ui, "Adiar").clicked() {
                                                     action = Some(StartAction::DeferDraft);
                                                 }
@@ -134,8 +156,8 @@ impl FloorPlanApp {
                         }
 
                         // Primary action bar
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 10.0;
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().item_spacing = vec2(10.0, 8.0);
                             if primary_button(ui, "Nova planta").clicked() {
                                 action = Some(StartAction::NewBlank);
                             }
@@ -178,7 +200,7 @@ impl FloorPlanApp {
                             });
                         }
 
-                        // Recent files grid with PNG thumbnails
+                        // Recent files grid with PNG thumbnails (responsive 1 / 2 / 3 columns)
                         ui.add_space(22.0);
                         ui.label(
                             RichText::new("PROJETOS RECENTES")
@@ -195,6 +217,7 @@ impl FloorPlanApp {
                                 .corner_radius(10)
                                 .inner_margin(Margin::same(18))
                                 .show(ui, |ui| {
+                                    ui.set_width(ui.available_width());
                                     ui.label(
                                         RichText::new(
                                             "Nenhum projeto recente ainda. Crie uma nova planta ou abra um projeto pronto em \"Modelos e exemplos...\".",
@@ -205,70 +228,155 @@ impl FloorPlanApp {
                                 });
                         } else {
                             let ctx = ui.ctx().clone();
+                            let cols = if content_w >= 840.0 {
+                                3
+                            } else if content_w >= 540.0 {
+                                2
+                            } else {
+                                1
+                            };
+                            let gap = 14.0;
+                            let card_outer_w =
+                                ((content_w - (cols as f32 - 1.0) * gap) / cols as f32)
+                                    .floor()
+                                    .max(220.0);
+                            let inner_w = (card_outer_w - 22.0).max(180.0);
+                            let thumb_h = (inner_w * 0.625).round();
+
                             egui::Grid::new("start_page_recent_grid")
-                                .num_columns(3)
-                                .spacing([14.0, 14.0])
+                                .num_columns(cols)
+                                .spacing([gap, gap])
                                 .show(ui, |ui| {
                                     for (idx, entry) in recents.iter().enumerate() {
                                         let thumb_id = self.thumbnail_texture(&ctx, &entry.path);
-                                        egui::Frame::new()
-                                            .fill(PANEL)
-                                            .stroke(Stroke::new(1.0, BORDER))
+                                        let card_id = ui.make_persistent_id(("recent_card", idx));
+                                        let card_hovered = ui
+                                            .ctx()
+                                            .data(|d| d.get_temp::<bool>(card_id))
+                                            .unwrap_or(false);
+                                        let frame_resp = egui::Frame::new()
+                                            .fill(if card_hovered { CONTROL } else { PANEL })
+                                            .stroke(Stroke::new(
+                                                1.0,
+                                                if card_hovered { ACCENT_RING } else { BORDER },
+                                            ))
                                             .corner_radius(10)
                                             .inner_margin(Margin::same(10))
                                             .show(ui, |ui| {
-                                                ui.set_width(270.0);
-                                                if let Some(tex_id) = thumb_id {
-                                                    ui.image(egui::load::SizedTexture::new(
-                                                        tex_id,
-                                                        vec2(250.0, 150.0),
-                                                    ));
+                                                ui.set_width(inner_w);
+                                                let thumb_size = vec2(inner_w, thumb_h);
+                                                let thumb_resp = if let Some(tex_id) = thumb_id {
+                                                    ui.add(
+                                                        egui::Image::new(
+                                                            egui::load::SizedTexture::new(
+                                                                tex_id, thumb_size,
+                                                            ),
+                                                        )
+                                                        .corner_radius(CornerRadius::same(6))
+                                                        .sense(Sense::click()),
+                                                    )
                                                 } else {
-                                                    let (rect, _) = ui.allocate_exact_size(
-                                                        vec2(250.0, 150.0),
-                                                        egui::Sense::hover(),
+                                                    let (rect, resp) = ui.allocate_exact_size(
+                                                        thumb_size,
+                                                        Sense::click(),
                                                     );
-                                                    ui.painter().rect_filled(rect, 6, PANEL_ALT);
+                                                    ui.painter().rect(
+                                                        rect,
+                                                        6,
+                                                        PANEL_ALT,
+                                                        Stroke::new(1.0, BORDER),
+                                                        StrokeKind::Inside,
+                                                    );
+                                                    icons::paint(
+                                                        ui.painter(),
+                                                        egui::Rect::from_center_size(
+                                                            rect.center() - vec2(0.0, 10.0),
+                                                            vec2(26.0, 26.0),
+                                                        ),
+                                                        Icon::Plan,
+                                                        MUTED,
+                                                        ACCENT,
+                                                    );
                                                     ui.painter().text(
-                                                        rect.center(),
+                                                        rect.center() + vec2(0.0, 14.0),
                                                         egui::Align2::CENTER_CENTER,
                                                         "Prévia indisponível",
                                                         regular(11.5),
                                                         MUTED,
                                                     );
+                                                    resp
+                                                };
+                                                let thumb_resp = thumb_resp
+                                                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                                                    .on_hover_text(format!(
+                                                        "Abrir {}",
+                                                        entry.path.display()
+                                                    ));
+                                                if thumb_resp.clicked() {
+                                                    action = Some(StartAction::OpenPath(
+                                                        entry.path.clone(),
+                                                    ));
                                                 }
                                                 ui.add_space(8.0);
-                                                ui.add(
-                                                    egui::Label::new(
-                                                        RichText::new(&entry.title)
-                                                            .font(strong(13.0))
-                                                            .color(TEXT),
-                                                    )
-                                                    .truncate(),
-                                                );
-                                                ui.label(
-                                                    RichText::new(format!(
-                                                        "{} parede(s) · {} cômodo(s)",
-                                                        entry.wall_count, entry.room_count
-                                                    ))
-                                                    .size(11.0)
-                                                    .color(MUTED),
-                                                );
-                                                ui.add_space(6.0);
                                                 ui.horizontal(|ui| {
-                                                    if primary_button(ui, "Abrir").clicked() {
-                                                        action = Some(StartAction::OpenPath(
-                                                            entry.path.clone(),
-                                                        ));
-                                                    }
-                                                    if secondary_button(ui, "Remover").clicked() {
-                                                        action = Some(StartAction::RemoveRecent(
-                                                            entry.path.clone(),
-                                                        ));
-                                                    }
+                                                    ui.vertical(|ui| {
+                                                        ui.set_max_width((inner_w - 30.0).max(80.0));
+                                                        let title_resp = ui
+                                                            .add(
+                                                                egui::Label::new(
+                                                                    RichText::new(&entry.title)
+                                                                        .font(strong(13.0))
+                                                                        .color(TEXT),
+                                                                )
+                                                                .truncate()
+                                                                .sense(Sense::click()),
+                                                            )
+                                                            .on_hover_cursor(
+                                                                egui::CursorIcon::PointingHand,
+                                                            );
+                                                        if title_resp.clicked() {
+                                                            action = Some(StartAction::OpenPath(
+                                                                entry.path.clone(),
+                                                            ));
+                                                        }
+                                                        ui.label(
+                                                            RichText::new(format!(
+                                                                "{} parede(s) · {} cômodo(s)",
+                                                                entry.wall_count, entry.room_count
+                                                            ))
+                                                            .size(11.0)
+                                                            .color(MUTED),
+                                                        );
+                                                    });
+                                                    ui.with_layout(
+                                                        egui::Layout::right_to_left(
+                                                            egui::Align::Center,
+                                                        ),
+                                                        |ui| {
+                                                            if icon_button_sized(
+                                                                ui,
+                                                                Icon::Close,
+                                                                "Remover dos recentes",
+                                                                false,
+                                                                22.0,
+                                                                12.0,
+                                                            )
+                                                            .clicked()
+                                                            {
+                                                                action =
+                                                                    Some(StartAction::RemoveRecent(
+                                                                        entry.path.clone(),
+                                                                    ));
+                                                            }
+                                                        },
+                                                    );
                                                 });
-                                            });
-                                        if idx % 3 == 2 {
+                                            })
+                                            .response;
+                                        ui.ctx().data_mut(|d| {
+                                            d.insert_temp(card_id, frame_resp.hovered());
+                                        });
+                                        if idx % cols == cols - 1 {
                                             ui.end_row();
                                         }
                                     }

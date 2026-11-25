@@ -1,6 +1,6 @@
 use super::super::{FloorPlanApp, theme::*};
 use super::icons::{self, Icon};
-use super::widgets::{icon_button_sized, key_cap, primary_button, secondary_button};
+use super::widgets::{danger_button, icon_button_sized, key_cap, primary_button, secondary_button};
 use eframe::egui::{self, Key, Margin, RichText, Sense, Stroke, Ui, vec2};
 
 pub(super) fn dialog_frame() -> egui::Frame {
@@ -50,7 +50,7 @@ impl FloorPlanApp {
         }
         let mut confirm = false;
         let mut cancel = false;
-        egui::Modal::new(egui::Id::unique("room_name_dialog"))
+        let response = egui::Modal::new(egui::Id::unique("room_name_dialog"))
             .frame(dialog_frame())
             .backdrop_color(backdrop())
             .show(ui.ctx(), |ui| {
@@ -106,13 +106,15 @@ impl FloorPlanApp {
                         cancel = true;
                     }
                 });
-                if ui.input(|input| input.key_pressed(Key::Enter))
+                if ui.input(|input| input.key_pressed(Key::Escape)) {
+                    cancel = true;
+                } else if ui.input(|input| input.key_pressed(Key::Enter))
                     && !self.room_name.trim().is_empty()
                 {
                     confirm = true;
                 }
             });
-        if cancel {
+        if cancel || response.should_close() {
             self.pending_room = None;
             self.message = "Criação do cômodo cancelada.".to_owned();
         } else if confirm && let Some(corners) = self.pending_room.take() {
@@ -160,7 +162,7 @@ impl FloorPlanApp {
                     if primary_button(ui, "Salvar").clicked() {
                         save = true;
                     }
-                    if secondary_button(ui, "Descartar").clicked() {
+                    if danger_button(ui, "Descartar").clicked() {
                         discard = true;
                     }
                     if secondary_button(ui, "Cancelar").clicked() {
@@ -189,11 +191,14 @@ impl FloorPlanApp {
             return;
         }
         let mut close = false;
+        let viewport = ctx.content_rect();
+        let dialog_w = (viewport.width() - 80.0).clamp(480.0, 680.0);
+        let body_max_h = (viewport.height() - 180.0).clamp(240.0, 560.0);
         let response = egui::Modal::new(egui::Id::unique("help_dialog"))
             .frame(dialog_frame())
             .backdrop_color(backdrop())
             .show(ctx, |ui| {
-                ui.set_width(640.0);
+                ui.set_width(dialog_w);
                 let close_rect = egui::Rect::from_min_size(
                     egui::pos2(ui.max_rect().right() - 26.0, ui.max_rect().top()),
                     vec2(26.0, 26.0),
@@ -210,119 +215,128 @@ impl FloorPlanApp {
                     ui,
                     Icon::Keyboard,
                     "Atalhos e guia rápido",
-                    "Trabalhe mais rápido com o teclado.",
+                    "Trabalhe mais rápido com o teclado · pressione Ctrl+K para buscar qualquer comando.",
                 );
-                ui.columns(2, |columns| {
-                    shortcut_group(
-                        &mut columns[0],
-                        "Ferramentas",
-                        &[
-                            (&["V"], "Selecionar e mover"),
-                            (&["T"], "Terreno"),
-                            (&["P"], "Parede"),
-                            (&["C"], "Cômodo"),
-                            (&["L"], "Cômodo livre (L, U...)"),
-                            (&["R"], "Porta"),
-                            (&["J"], "Janela"),
-                            (&["M"], "Medir (régua)"),
-                        ],
-                    );
-                    shortcut_group(
-                        &mut columns[0],
-                        "Desenho 2D",
-                        &[
-                            (&["Shift", "L"], "Linha"),
-                            (&["Shift", "P"], "Polilinha"),
-                            (&["Shift", "R"], "Retângulo"),
-                            (&["Shift", "A"], "Arco (3 pontos)"),
-                            (&["Shift", "C"], "Círculo"),
-                            (&["Shift", "S"], "Spline"),
-                            (&["Enter"], "Terminar polilinha ou spline"),
-                            (&["Backspace"], "Desfazer o último ponto"),
-                        ],
-                    );
-                    shortcut_group(
-                        &mut columns[0],
-                        "Modificar",
-                        &[
-                            (&["Ctrl", "C"], "Copiar seleção"),
-                            (&["Ctrl", "X"], "Recortar seleção"),
-                            (&["Ctrl", "V"], "Colar no cursor"),
-                            (&["Ctrl", "D"], "Duplicar seleção"),
-                            (&["G"], "Girar seleção 90° ↻ (Shift: ↺)"),
-                            (&["H"], "Espelhar ↔ (Shift: ↕)"),
-                            (&["O"], "Deslocar (offset)"),
-                            (&["A"], "Aparar"),
-                            (&["E"], "Estender"),
-                            (&["D"], "Dividir (no ponto ou em partes)"),
-                            (&["U"], "Unir paredes ou desenhos"),
-                            (&["Ctrl", "G"], "Agrupar (Shift: desagrupar)"),
-                            (&["Ctrl", "Clique"], "Um elemento só de um grupo"),
-                        ],
-                    );
-                    shortcut_group(
-                        &mut columns[0],
-                        "Arquivo",
-                        &[
-                            (&["Ctrl", "N"], "Nova planta"),
-                            (&["Ctrl", "O"], "Abrir projeto"),
-                            (&["Ctrl", "S"], "Salvar"),
-                        ],
-                    );
-                    shortcut_group(
-                        &mut columns[1],
-                        "Edição",
-                        &[
-                            (&["Ctrl", "Z"], "Desfazer"),
-                            (&["Ctrl", "Y"], "Refazer"),
-                            (&["Ctrl", "A"], "Selecionar tudo (segue o filtro)"),
-                            (&["Shift", "Clique"], "Somar ou retirar da seleção"),
-                            (&["Arrastar →"], "Seleção por janela (inteiros dentro)"),
-                            (&["Arrastar ←"], "Seleção por cruzamento (o que tocar)"),
-                            (&["Delete"], "Excluir seleção"),
-                            (&["Setas"], "Mover seleção 0,25 m"),
-                            (&["Shift", "Setas"], "Mover seleção 1 m"),
-                            (&["I"], "Porta: abrir para o outro lado"),
-                            (&["Shift", "I"], "Porta: trocar a dobradiça"),
-                            (&["Esc"], "Cancelar ação ou limpar seleção"),
-                        ],
-                    );
-                    shortcut_group(
-                        &mut columns[1],
-                        "Vista e precisão",
-                        &[
-                            (&["F"], "Enquadrar tudo"),
-                            (&["F3"], "Encaixe magnético (OSNAP)"),
-                            (&["F7"], "Mostrar grade"),
-                            (&["F8"], "Modo orto"),
-                            (&["3,47"], "Digitar distância, ângulo (3<45), medidas (3x4) ou X;Y"),
-                            (&["F1"], "Esta ajuda"),
-                        ],
-                    );
-                });
-                ui.add_space(8.0);
-                egui::Frame::new()
-                    .fill(PANEL_ALT)
-                    .stroke(Stroke::new(1.0, BORDER))
-                    .corner_radius(8)
-                    .inner_margin(Margin::same(12))
+                egui::ScrollArea::vertical()
+                    .max_height(body_max_h)
+                    .auto_shrink([false, true])
                     .show(ui, |ui| {
-                        ui.set_width(ui.available_width());
-                        ui.label(RichText::new("Como usar").font(strong(13.0)).color(TEXT));
-                        ui.add_space(4.0);
-                        for tip in [
-                            "Terreno, Parede e Cômodo: arraste, ou clique no primeiro e no segundo ponto.",
-                            "Porta e Janela: clique numa parede, ou arraste o botão do ribbon até ela.",
-                            "Roda do mouse: zoom no cursor · botão do meio: mover a vista · botão direito: menu de contexto.",
-                            "Navegador do projeto: clique para selecionar, duplo clique para aproximar.",
-                            "Restrições (aba Editar): paralelas, perpendiculares, pontos coincidentes e distâncias fixas são mantidas a cada edição.",
-                            "Valores numéricos aceitam vírgula decimal (ex.: 3,50).",
-                        ] {
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(RichText::new("•").color(ACCENT));
-                                ui.label(RichText::new(tip).color(TEXT_2));
+                        ui.columns(2, |columns| {
+                            shortcut_group(
+                                &mut columns[0],
+                                "Ferramentas",
+                                &[
+                                    (&["V"], "Selecionar e mover"),
+                                    (&["T"], "Terreno"),
+                                    (&["P"], "Parede"),
+                                    (&["C"], "Cômodo"),
+                                    (&["L"], "Cômodo livre (L, U...)"),
+                                    (&["R"], "Porta"),
+                                    (&["J"], "Janela"),
+                                    (&["M"], "Medir (régua)"),
+                                ],
+                            );
+                            shortcut_group(
+                                &mut columns[0],
+                                "Desenho 2D",
+                                &[
+                                    (&["Shift", "L"], "Linha"),
+                                    (&["Shift", "P"], "Polilinha"),
+                                    (&["Shift", "R"], "Retângulo"),
+                                    (&["Shift", "A"], "Arco (3 pontos)"),
+                                    (&["Shift", "C"], "Círculo"),
+                                    (&["Shift", "S"], "Spline"),
+                                    (&["Enter"], "Terminar polilinha ou spline"),
+                                    (&["Backspace"], "Desfazer o último ponto"),
+                                ],
+                            );
+                            shortcut_group(
+                                &mut columns[0],
+                                "Modificar",
+                                &[
+                                    (&["Ctrl", "C"], "Copiar seleção"),
+                                    (&["Ctrl", "X"], "Recortar seleção"),
+                                    (&["Ctrl", "V"], "Colar no cursor"),
+                                    (&["Ctrl", "D"], "Duplicar seleção"),
+                                    (&["G"], "Girar seleção 90° ↻ (Shift: ↺)"),
+                                    (&["H"], "Espelhar ↔ (Shift: ↕)"),
+                                    (&["O"], "Deslocar (offset)"),
+                                    (&["A"], "Aparar"),
+                                    (&["E"], "Estender"),
+                                    (&["D"], "Dividir (no ponto ou em partes)"),
+                                    (&["U"], "Unir paredes ou desenhos"),
+                                    (&["Ctrl", "G"], "Agrupar (Shift: desagrupar)"),
+                                    (&["Ctrl", "Clique"], "Um elemento só de um grupo"),
+                                ],
+                            );
+                            shortcut_group(
+                                &mut columns[0],
+                                "Arquivo",
+                                &[
+                                    (&["Ctrl", "N"], "Nova planta"),
+                                    (&["Ctrl", "O"], "Abrir projeto"),
+                                    (&["Ctrl", "S"], "Salvar"),
+                                ],
+                            );
+                            shortcut_group(
+                                &mut columns[1],
+                                "Edição",
+                                &[
+                                    (&["Ctrl", "Z"], "Desfazer"),
+                                    (&["Ctrl", "Y"], "Refazer"),
+                                    (&["Ctrl", "A"], "Selecionar tudo (segue o filtro)"),
+                                    (&["Shift", "Clique"], "Somar ou retirar da seleção"),
+                                    (&["Arrastar →"], "Seleção por janela (inteiros dentro)"),
+                                    (&["Arrastar ←"], "Seleção por cruzamento (o que tocar)"),
+                                    (&["Delete"], "Excluir seleção"),
+                                    (&["Setas"], "Mover seleção 0,25 m"),
+                                    (&["Shift", "Setas"], "Mover seleção 1 m"),
+                                    (&["I"], "Porta: abrir para o outro lado"),
+                                    (&["Shift", "I"], "Porta: trocar a dobradiça"),
+                                    (&["Esc"], "Cancelar ação ou limpar seleção"),
+                                ],
+                            );
+                            shortcut_group(
+                                &mut columns[1],
+                                "Vista e precisão",
+                                &[
+                                    (&["Ctrl", "K"], "Buscar comandos, cômodos e pavimentos"),
+                                    (&["F"], "Enquadrar tudo"),
+                                    (&["F3"], "Encaixe magnético (OSNAP)"),
+                                    (&["F7"], "Mostrar grade"),
+                                    (&["F8"], "Modo orto"),
+                                    (
+                                        &["3,47"],
+                                        "Digitar distância, ângulo (3<45), medidas (3x4) ou X;Y",
+                                    ),
+                                    (&["F1"], "Esta ajuda"),
+                                ],
+                            );
+                        });
+                        ui.add_space(8.0);
+                        egui::Frame::new()
+                            .fill(PANEL_ALT)
+                            .stroke(Stroke::new(1.0, BORDER))
+                            .corner_radius(8)
+                            .inner_margin(Margin::same(12))
+                            .show(ui, |ui| {
+                                ui.set_width(ui.available_width());
+                                ui.label(RichText::new("Como usar").font(strong(13.0)).color(TEXT));
+                                ui.add_space(4.0);
+                                for tip in [
+                                    "Terreno, Parede e Cômodo: arraste, ou clique no primeiro e no segundo ponto.",
+                                    "Porta e Janela: clique numa parede, ou arraste o botão do ribbon até ela.",
+                                    "Roda do mouse: zoom no cursor · botão do meio: mover a vista · botão direito: menu de contexto.",
+                                    "Navegador do projeto: clique para selecionar, duplo clique para aproximar.",
+                                    "Restrições (aba Editar): paralelas, perpendiculares, pontos coincidentes e distâncias fixas são mantidas a cada edição.",
+                                    "Valores numéricos aceitam vírgula decimal (ex.: 3,50).",
+                                ] {
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.label(RichText::new("•").color(ACCENT));
+                                        ui.label(RichText::new(tip).color(TEXT_2));
+                                    });
+                                }
                             });
-                        }
                     });
             });
         if close || response.should_close() {
@@ -336,20 +350,20 @@ fn shortcut_group(ui: &mut Ui, title: &str, entries: &[(&[&str], &str)]) {
     ui.add_space(4.0);
     egui::Grid::new(("shortcut_group", title))
         .num_columns(2)
-        .spacing([14.0, 6.0])
-        .min_col_width(90.0)
+        .spacing([10.0, 6.0])
+        .min_col_width(78.0)
         .show(ui, |ui| {
             for (keys, action) in entries {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 3.0;
                     for (index, key) in keys.iter().enumerate() {
                         if index > 0 {
-                            ui.label(RichText::new("+").color(FAINT).size(11.0));
+                            ui.label(RichText::new("+").color(MUTED).size(11.0));
                         }
                         key_cap(ui, key);
                     }
                 });
-                ui.label(RichText::new(*action).color(TEXT_2));
+                ui.add(egui::Label::new(RichText::new(*action).color(TEXT_2)).wrap());
                 ui.end_row();
             }
         });

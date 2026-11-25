@@ -1,8 +1,8 @@
 use super::super::{FloorPlanApp, RibbonTab, Selection, Tool, theme::*};
 use super::icons::Icon;
 use super::widgets::{
-    icon_button_sized, ribbon_button, ribbon_panel, ribbon_small, ribbon_stack, tip,
-    vertical_divider,
+    RIBBON_PANEL_HEIGHT, icon_button_sized, ribbon_button, ribbon_panel, ribbon_small,
+    ribbon_stack, tip, vertical_divider,
 };
 use crate::domain::fixtures::FixtureKind;
 use crate::domain::model::OpeningKind;
@@ -27,7 +27,7 @@ const TABS: [(RibbonTab, &str); 8] = [
 impl FloorPlanApp {
     pub(super) fn ribbon(&mut self, ui: &mut Ui) {
         ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-        self.ribbon_tabs(ui);
+        let active_tab_span = self.ribbon_tabs(ui);
         if self.ribbon_collapsed {
             let rect = ui.min_rect();
             ui.painter().line_segment(
@@ -36,6 +36,7 @@ impl FloorPlanApp {
             );
             return;
         }
+        let body_h = ui.available_height().max(RIBBON_PANEL_HEIGHT + 8.0);
         let body = egui::Frame::new()
             .fill(PANEL_ALT)
             .inner_margin(Margin {
@@ -46,12 +47,8 @@ impl FloorPlanApp {
             })
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                // Too narrow a window scrolls the ribbon sideways instead of
-                // cutting its last groups off. Dragging stays free for doors
-                // and windows dragged from the ribbon onto a wall.
-                // A solid bar, shown only when the groups do not fit, so it is
-                // clear there is more to the side.
-                ui.spacing_mut().scroll = egui::style::ScrollStyle::solid();
+                ui.set_min_height((body_h - 7.0).max(RIBBON_PANEL_HEIGHT));
+                ui.spacing_mut().scroll = egui::style::ScrollStyle::thin();
                 egui::ScrollArea::horizontal()
                     .id_salt("ribbon_body")
                     .scroll_source(egui::scroll_area::ScrollSource {
@@ -80,29 +77,64 @@ impl FloorPlanApp {
             });
         let rect = body.response.rect;
         let painter = ui.painter();
-        for y in [rect.top(), rect.bottom()] {
+        // Top hairline breaks cleanly under the active tab so tab and body visually merge.
+        if let Some((tab_l, tab_r)) = active_tab_span {
+            if tab_l > rect.left() {
+                painter.line_segment(
+                    [
+                        Pos2::new(rect.left(), rect.top()),
+                        Pos2::new(tab_l, rect.top()),
+                    ],
+                    Stroke::new(1.0, BORDER),
+                );
+            }
+            if tab_r < rect.right() {
+                painter.line_segment(
+                    [
+                        Pos2::new(tab_r, rect.top()),
+                        Pos2::new(rect.right(), rect.top()),
+                    ],
+                    Stroke::new(1.0, BORDER),
+                );
+            }
+        } else {
             painter.line_segment(
-                [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+                [
+                    Pos2::new(rect.left(), rect.top()),
+                    Pos2::new(rect.right(), rect.top()),
+                ],
                 Stroke::new(1.0, BORDER),
             );
         }
+        painter.line_segment(
+            [
+                Pos2::new(rect.left(), rect.bottom()),
+                Pos2::new(rect.right(), rect.bottom()),
+            ],
+            Stroke::new(1.0, BORDER),
+        );
     }
 
-    fn ribbon_tabs(&mut self, ui: &mut Ui) {
+    fn ribbon_tabs(&mut self, ui: &mut Ui) -> Option<(f32, f32)> {
+        let mut active_span = None;
         ui.horizontal(|ui| {
             ui.set_min_height(27.0);
             ui.add_space(10.0);
             for (tab, label) in TABS {
                 let active = self.ribbon_tab == tab;
-                let font = if active { strong(13.0) } else { regular(13.0) };
+                let font = if active { strong(12.5) } else { regular(12.5) };
                 let color = if active { ACCENT_TEXT } else { TEXT_2 };
                 let galley = ui.painter().layout_no_wrap(label.to_owned(), font, color);
                 let (rect, response) =
-                    ui.allocate_exact_size(vec2(galley.size().x + 30.0, 27.0), Sense::click());
+                    ui.allocate_exact_size(vec2(galley.size().x + 26.0, 27.0), Sense::click());
                 let painter = ui.painter();
                 if active && !self.ribbon_collapsed {
+                    let tab_rect = egui::Rect::from_min_max(
+                        Pos2::new(rect.left(), rect.top() + 2.0),
+                        rect.right_bottom(),
+                    );
                     painter.rect_filled(
-                        rect.shrink2(vec2(0.0, 2.0)),
+                        tab_rect,
                         egui::CornerRadius {
                             nw: 6,
                             ne: 6,
@@ -111,21 +143,37 @@ impl FloorPlanApp {
                         },
                         PANEL_ALT,
                     );
+                    // Subtle left/top/right hairline + crisp top accent bar
+                    painter.line_segment(
+                        [
+                            Pos2::new(tab_rect.left(), tab_rect.top() + 3.0),
+                            tab_rect.left_bottom(),
+                        ],
+                        Stroke::new(1.0, BORDER),
+                    );
+                    painter.line_segment(
+                        [
+                            Pos2::new(tab_rect.right(), tab_rect.top() + 3.0),
+                            tab_rect.right_bottom(),
+                        ],
+                        Stroke::new(1.0, BORDER),
+                    );
                     painter.rect_filled(
                         egui::Rect::from_min_max(
-                            Pos2::new(rect.left() + 8.0, rect.bottom() - 2.5),
-                            Pos2::new(rect.right() - 8.0, rect.bottom()),
+                            Pos2::new(tab_rect.left() + 6.0, tab_rect.top()),
+                            Pos2::new(tab_rect.right() - 6.0, tab_rect.top() + 2.5),
                         ),
                         1.0,
                         ACCENT,
                     );
+                    active_span = Some((tab_rect.left(), tab_rect.right()));
                 } else if response.hovered() {
-                    painter.rect_filled(rect.shrink2(vec2(0.0, 3.0)), 6, ACCENT_SOFTER);
+                    painter.rect_filled(rect.shrink2(vec2(1.0, 3.0)), 6, ACCENT_SOFTER);
                 }
                 painter.galley(
                     Pos2::new(
                         rect.center().x - galley.size().x / 2.0,
-                        rect.center().y - galley.size().y / 2.0,
+                        rect.center().y - galley.size().y / 2.0 + 1.0,
                     ),
                     galley,
                     color,
@@ -133,7 +181,7 @@ impl FloorPlanApp {
                 let response = tip(
                     response.on_hover_cursor(egui::CursorIcon::PointingHand),
                     if active {
-                        "Clique de novo para recolher ou expandir o ribbon"
+                        "Clique de novo para recolher ou expandir a faixa de opções"
                     } else {
                         label
                     },
@@ -162,6 +210,7 @@ impl FloorPlanApp {
                 }
             });
         });
+        active_span
     }
 
     fn tool_button(&mut self, ui: &mut Ui, tool: Tool, icon: Icon, label: &str, hint: &str) {
@@ -194,15 +243,8 @@ impl FloorPlanApp {
                 "Régua: mede entre dois pontos sem alterar nada (M)",
             );
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Construir", |ui| {
-            self.tool_button(
-                ui,
-                Tool::Terrain,
-                Icon::Terrain,
-                "Terreno",
-                "Criar ou dimensionar o terreno: arraste ou clique em dois cantos (T)",
-            );
             self.tool_button(
                 ui,
                 Tool::Wall,
@@ -224,146 +266,123 @@ impl FloorPlanApp {
                 "Cômodo livre",
                 "Cômodo em L, U ou de qualquer forma: clique em cada canto e feche no primeiro (L)",
             );
-            if tip(
-                ribbon_button(
-                    ui,
-                    Icon::Stairs,
-                    "Escadas",
-                    self.active_doc_dialog == super::super::DocDialog::Circulation,
-                    false,
-                ),
-                "Escadas, rampas NBR 9050, patamares, guarda-corpos e desníveis",
-            )
-            .clicked()
-            {
-                self.active_doc_dialog = super::super::DocDialog::Circulation;
-            }
-            if tip(
-                ribbon_button(
-                    ui,
-                    Icon::Floors,
-                    "Pavimentos",
-                    self.active_doc_dialog == super::super::DocDialog::Floors,
-                    false,
-                ),
-                "Gerenciar pavimentos (subsolo, térreo, superior), níveis, pé-direito e underlay",
-            )
-            .clicked()
-            {
-                self.active_doc_dialog = super::super::DocDialog::Floors;
-            }
+            self.tool_button(
+                ui,
+                Tool::Terrain,
+                Icon::Terrain,
+                "Terreno",
+                "Criar ou dimensionar o terreno: arraste ou clique em dois cantos (T)",
+            );
+            ribbon_stack(ui, |ui| {
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::Stairs,
+                        "Escadas",
+                        self.active_doc_dialog == super::super::DocDialog::Circulation,
+                    ),
+                    "Escadas, rampas NBR 9050, patamares, guarda-corpos e desníveis",
+                )
+                .clicked()
+                {
+                    self.active_doc_dialog = super::super::DocDialog::Circulation;
+                }
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::Floors,
+                        "Pavimentos",
+                        self.active_doc_dialog == super::super::DocDialog::Floors,
+                    ),
+                    "Gerenciar pavimentos (subsolo, térreo, superior), níveis, pé-direito e underlay",
+                )
+                .clicked()
+                {
+                    self.active_doc_dialog = super::super::DocDialog::Floors;
+                }
+            });
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Aberturas", |ui| {
             self.opening_tile(ui, OpeningKind::Door, "Porta", Icon::Door);
             self.opening_tile(ui, OpeningKind::Window, "Janela", Icon::Window);
-            self.opening_tile(ui, OpeningKind::SaloonDoor, "Vai-e-vem", Icon::SaloonDoor);
-            self.opening_tile(ui, OpeningKind::Gap, "Vão livre", Icon::Gap);
-            self.opening_tile(ui, OpeningKind::Gate, "Portão", Icon::Gate);
-        });
-        vertical_divider(ui, 72.0);
-        ribbon_panel(ui, "Modificar", |ui| {
             ribbon_stack(ui, |ui| {
-                if ui
-                    .add_enabled_ui(self.history.can_undo(), |ui| {
-                        tip(
-                            ribbon_small(ui, Icon::Undo, "Desfazer", false),
-                            "Desfazer (Ctrl+Z)",
-                        )
-                    })
-                    .inner
-                    .clicked()
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::Gate,
+                        "Portão",
+                        self.tool == Tool::Opening(OpeningKind::Gate),
+                    ),
+                    "Inserir portão: clique numa parede para colocar",
+                )
+                .clicked()
                 {
-                    self.undo();
+                    self.set_tool(Tool::Opening(OpeningKind::Gate));
                 }
-                if ui
-                    .add_enabled_ui(self.history.can_redo(), |ui| {
-                        tip(
-                            ribbon_small(ui, Icon::Redo, "Refazer", false),
-                            "Refazer (Ctrl+Y)",
-                        )
-                    })
-                    .inner
-                    .clicked()
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::Gap,
+                        "Vão livre",
+                        self.tool == Tool::Opening(OpeningKind::Gap),
+                    ),
+                    "Inserir vão livre: clique numa parede para colocar",
+                )
+                .clicked()
                 {
-                    self.redo();
+                    self.set_tool(Tool::Opening(OpeningKind::Gap));
                 }
-                if ui
-                    .add_enabled_ui(self.selection.is_some(), |ui| {
-                        tip(
-                            ribbon_small(ui, Icon::Delete, "Excluir", false),
-                            "Excluir o elemento selecionado (Delete)",
-                        )
-                    })
-                    .inner
-                    .clicked()
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::SaloonDoor,
+                        "Vai-e-vem",
+                        self.tool == Tool::Opening(OpeningKind::SaloonDoor),
+                    ),
+                    "Inserir porta vai-e-vem: clique numa parede para colocar",
+                )
+                .clicked()
                 {
-                    self.delete_selection();
+                    self.set_tool(Tool::Opening(OpeningKind::SaloonDoor));
                 }
             });
         });
-        vertical_divider(ui, 72.0);
-        ribbon_panel(ui, "Precisão", |ui| {
-            ribbon_stack(ui, |ui| {
-                if tip(
-                    ribbon_small(ui, Icon::Snap, "Encaixe", self.snap_enabled),
-                    "Encaixe magnético na grade de 0,25 m e nas extremidades das paredes (F3)",
-                )
-                .clicked()
-                {
-                    self.toggle_snap();
-                }
-                if tip(
-                    ribbon_small(ui, Icon::Ortho, "Orto", self.ortho_enabled),
-                    "Restringe paredes à horizontal ou vertical (F8)",
-                )
-                .clicked()
-                {
-                    self.toggle_ortho();
-                }
-                if tip(
-                    ribbon_small(ui, Icon::Grid, "Grade", self.show_grid),
-                    "Mostrar ou ocultar a grade (F7)",
-                )
-                .clicked()
-                {
-                    self.toggle_grid();
-                }
-            });
-        });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Planta", |ui| {
             let can_center = self.project.terrain.is_some()
                 && !self.project.walls.is_empty()
                 && self.project.content_fits_terrain();
-            if ui
-                .add_enabled_ui(can_center, |ui| {
-                    tip(
-                        ribbon_button(ui, Icon::Center, "Centralizar", false, false),
-                        "Centralizar a planta dentro do terreno",
-                    )
-                })
-                .inner
+            ribbon_stack(ui, |ui| {
+                if ui
+                    .add_enabled_ui(can_center, |ui| {
+                        tip(
+                            ribbon_small(ui, Icon::Center, "Centralizar", false),
+                            "Centralizar a planta dentro do terreno",
+                        )
+                    })
+                    .inner
+                    .clicked()
+                {
+                    self.center_content_on_terrain();
+                }
+                if tip(
+                    ribbon_small(ui, Icon::Room, "Detectar cômodos", false),
+                    "Criar ambientes automaticamente a partir de paredes fechadas",
+                )
                 .clicked()
-            {
-                self.center_content_on_terrain();
-            }
-            if tip(
-                ribbon_button(ui, Icon::Room, "Detectar", false, false),
-                "Criar ambientes automaticamente a partir de paredes fechadas",
-            )
-            .clicked()
-            {
-                self.detect_enclosed_rooms();
-            }
-            if tip(
-                ribbon_button(ui, Icon::ZoomFit, "Enquadrar", false, false),
-                "Ajustar toda a planta na janela (F)",
-            )
-            .clicked()
-            {
-                self.fit_view_requested();
-            }
+                {
+                    self.detect_enclosed_rooms();
+                }
+                if tip(
+                    ribbon_small(ui, Icon::ZoomFit, "Enquadrar tudo", false),
+                    "Ajustar toda a planta na janela (F)",
+                )
+                .clicked()
+                {
+                    self.fit_view_requested();
+                }
+            });
         });
     }
 
@@ -399,13 +418,13 @@ impl FloorPlanApp {
             self.fixture_button(ui, FixtureKind::Grill, "Churrasqueira");
             self.fixture_button(ui, FixtureKind::Fridge, "Geladeira");
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Banheiro", |ui| {
             self.fixture_button(ui, FixtureKind::Washbasin, "Lavatório");
             self.fixture_button(ui, FixtureKind::Toilet, "Vaso");
             self.fixture_button(ui, FixtureKind::Shower, "Chuveiro");
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Mobiliário", |ui| {
             self.fixture_button(ui, FixtureKind::Sofa, "Sofá");
             self.fixture_button(ui, FixtureKind::BedDouble, "Cama");
@@ -445,13 +464,13 @@ impl FloorPlanApp {
                 self.active_doc_dialog = super::super::DocDialog::Ergonomics;
             }
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Garagem e lazer", |ui| {
             self.fixture_button(ui, FixtureKind::Car, "Carro");
             self.fixture_button(ui, FixtureKind::Umbrella, "Guarda-sol");
             self.fixture_button(ui, FixtureKind::SunLounger, "Cadeira de sol");
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Ajustar", |ui| {
             ribbon_stack(ui, |ui| {
                 let can_rotate = matches!(self.selection, Some(Selection::Fixture(_)))
@@ -538,7 +557,7 @@ impl FloorPlanApp {
                 self.zoom_to_selection(selection);
             }
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Exibição", |ui| {
             if tip(
                 ribbon_button(ui, Icon::Grid, "Grade", self.show_grid, false),
@@ -614,7 +633,7 @@ impl FloorPlanApp {
                 self.active_doc_dialog = super::super::DocDialog::Compare;
             }
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Janelas", |ui| {
             if tip(
                 ribbon_button(ui, Icon::PanelLeft, "Navegador", self.show_browser, false),
@@ -639,7 +658,7 @@ impl FloorPlanApp {
                 self.show_properties = !self.show_properties;
             }
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Ajuda", |ui| {
             if tip(
                 ribbon_button(ui, Icon::Keyboard, "Atalhos", self.show_help, false),
@@ -653,125 +672,29 @@ impl FloorPlanApp {
     }
 
     fn output_tab(&mut self, ui: &mut Ui) {
-        ribbon_panel(ui, "Inteligência artificial", |ui| {
-            if tip(
-                ribbon_button(ui, Icon::Ai, "Conectar IA", self.show_mcp_dialog, false),
-                "Usar o Trazo pelo ChatGPT, Claude ou outro assistente (MCP)",
-            )
-            .clicked()
-            {
-                self.show_mcp_dialog = true;
-            }
-        });
-        vertical_divider(ui, 72.0);
-        ribbon_panel(ui, "Projeto", |ui| {
-            if tip(
-                ribbon_button(ui, Icon::New, "Novo", false, false),
-                "Nova planta (Ctrl+N)",
-            )
-            .clicked()
-            {
-                self.request_new_project();
-            }
-            if tip(
-                ribbon_button(
-                    ui,
-                    Icon::Plan,
-                    "Modelos",
-                    self.active_doc_dialog == super::super::DocDialog::Templates,
-                    false,
-                ),
-                "Criar projeto a partir de modelos de planta baixa, implantação ou detalhamento",
-            )
-            .clicked()
-            {
-                self.active_doc_dialog = super::super::DocDialog::Templates;
-            }
-            if tip(
-                ribbon_button(ui, Icon::Open, "Abrir", false, false),
-                "Abrir projeto (Ctrl+O)",
-            )
-            .clicked()
-            {
-                self.request_open();
-            }
-            if tip(
-                ribbon_button(ui, Icon::Save, "Salvar", false, false),
-                "Salvar projeto (Ctrl+S)",
-            )
-            .clicked()
-            {
-                self.save();
-            }
-        });
-        vertical_divider(ui, 72.0);
         ribbon_panel(ui, "Exportar", |ui| {
-            if tip(
-                ribbon_button(ui, Icon::ExportImage, "Imagem PNG", false, false),
-                "Exportar a planta como imagem PNG em alta resolução",
-            )
-            .clicked()
-            {
-                self.export_png();
-            }
             let multi_tab = self.project_tab_count(self.active_project_id) > 1;
             let pdf_tip = if multi_tab {
-                "Exportar todas as abas abertas deste projeto em um único PDF (1 página por aba, igual à visualização na tela)"
+                "Exportar todas as abas abertas deste projeto em um único PDF"
             } else {
                 "Exportar a planta da aba atual como PDF vetorial"
             };
             if tip(
-                ribbon_button(ui, Icon::ExportPdf, "Documento PDF", false, false),
+                ribbon_button(ui, Icon::ExportPdf, "PDF", false, false),
                 pdf_tip,
             )
             .clicked()
             {
                 self.export_pdf();
             }
-            if multi_tab
-                && tip(
-                    ribbon_button(ui, Icon::ExportPdf, "PDF aba atual", false, false),
-                    "Exportar somente a aba ativa como PDF vetorial",
-                )
-                .clicked()
-            {
-                self.export_active_tab_pdf();
-            }
             if tip(
-                ribbon_button(ui, Icon::Export, "SVG editável", false, false),
-                "Exportar textos e formas como elementos SVG editáveis",
+                ribbon_button(ui, Icon::ExportImage, "PNG", false, false),
+                "Exportar a planta como imagem PNG em alta resolução",
             )
             .clicked()
             {
-                self.export_svg();
+                self.export_png();
             }
-            if tip(
-                ribbon_button(ui, Icon::Export, "Desenho DXF", false, false),
-                "Exportar a planta em formato AutoCAD DXF (camadas, cotas e unidades em metros)",
-            )
-            .clicked()
-            {
-                self.export_dxf();
-            }
-            if tip(
-                ribbon_button(ui, Icon::Export, "Desenho DWG", false, false),
-                "Exportar a planta em formato AutoCAD DWG (via ODA File Converter ou LibreDWG)",
-            )
-            .clicked()
-            {
-                self.export_dwg();
-            }
-            if tip(
-                ribbon_button(ui, Icon::Table, "Planilha CSV", false, false),
-                "Exportar áreas, esquadrias e quantitativos para planilha",
-            )
-            .clicked()
-            {
-                self.export_csv();
-            }
-        });
-        vertical_divider(ui, 72.0);
-        ribbon_panel(ui, "Documentação", |ui| {
             if tip(
                 ribbon_button(
                     ui,
@@ -780,16 +703,64 @@ impl FloorPlanApp {
                     self.active_doc_dialog == super::super::DocDialog::Print,
                     false,
                 ),
-                "Imprimir prancha em escala exata com pré-visualização e diálogo do sistema (Ctrl+P)",
+                "Imprimir prancha em escala exata com pré-visualização (Ctrl+P)",
             )
             .clicked()
             {
                 self.open_print_dialog();
             }
+            ribbon_stack(ui, |ui| {
+                if tip(
+                    ribbon_small(ui, Icon::Export, "SVG editável", false),
+                    "Exportar textos e formas como elementos SVG editáveis",
+                )
+                .clicked()
+                {
+                    self.export_svg();
+                }
+                if tip(
+                    ribbon_small(ui, Icon::Export, "AutoCAD DXF", false),
+                    "Exportar a planta em formato AutoCAD DXF",
+                )
+                .clicked()
+                {
+                    self.export_dxf();
+                }
+                if tip(
+                    ribbon_small(ui, Icon::Export, "AutoCAD DWG", false),
+                    "Exportar a planta em formato AutoCAD DWG",
+                )
+                .clicked()
+                {
+                    self.export_dwg();
+                }
+            });
+            ribbon_stack(ui, |ui| {
+                if tip(
+                    ribbon_small(ui, Icon::Table, "Planilha CSV", false),
+                    "Exportar áreas, esquadrias e quantitativos para planilha CSV",
+                )
+                .clicked()
+                {
+                    self.export_csv();
+                }
+                if multi_tab
+                    && tip(
+                        ribbon_small(ui, Icon::ExportPdf, "PDF aba atual", false),
+                        "Exportar somente a aba ativa como PDF vetorial",
+                    )
+                    .clicked()
+                {
+                    self.export_active_tab_pdf();
+                }
+            });
+        });
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
+        ribbon_panel(ui, "Documentação ABNT", |ui| {
             if tip(
                 ribbon_button(
                     ui,
-                    Icon::ExportPdf,
+                    Icon::Plan,
                     "Prancha",
                     self.active_doc_dialog == super::super::DocDialog::Sheet,
                     false,
@@ -804,57 +775,122 @@ impl FloorPlanApp {
                 ribbon_button(
                     ui,
                     Icon::Table,
-                    "Quadros",
-                    self.active_doc_dialog == super::super::DocDialog::Schedules,
-                    false,
-                ),
-                "Configurar e visualizar quadros de áreas, esquadrias, ambientes e materiais",
-            )
-            .clicked()
-            {
-                self.active_doc_dialog = super::super::DocDialog::Schedules;
-            }
-            if tip(
-                ribbon_button(
-                    ui,
-                    Icon::Table,
                     "Quantitativos",
                     self.active_doc_dialog == super::super::DocDialog::Quantities,
                     false,
                 ),
-                "Blocos, meios-blocos, canaletas, vergas, argamassa, reboco e acabamentos por ambiente, para a lista de compras",
+                "Blocos, meios-blocos, canaletas, vergas, argamassa, reboco e acabamentos por ambiente",
             )
             .clicked()
             {
                 self.active_doc_dialog = super::super::DocDialog::Quantities;
             }
-            if tip(
-                ribbon_button(
-                    ui,
-                    Icon::SectionView,
-                    "Vistas",
-                    self.active_doc_dialog == super::super::DocDialog::Views,
-                    false,
-                ),
-                "Criar e exportar cortes, fachadas e chamadas de detalhe com referências",
-            )
-            .clicked()
-            {
-                self.active_doc_dialog = super::super::DocDialog::Views;
-            }
+            ribbon_stack(ui, |ui| {
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::SectionView,
+                        "Cortes e fachadas",
+                        self.active_doc_dialog == super::super::DocDialog::Views,
+                    ),
+                    "Criar e exportar cortes, fachadas e chamadas de detalhe",
+                )
+                .clicked()
+                {
+                    self.active_doc_dialog = super::super::DocDialog::Views;
+                }
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::Table,
+                        "Quadros técnicos",
+                        self.active_doc_dialog == super::super::DocDialog::Schedules,
+                    ),
+                    "Configurar quadros de áreas, esquadrias e ambientes",
+                )
+                .clicked()
+                {
+                    self.active_doc_dialog = super::super::DocDialog::Schedules;
+                }
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::ExportPdf,
+                        "Conjunto de pranchas",
+                        self.active_doc_dialog == super::super::DocDialog::SheetSet,
+                    ),
+                    "Gerenciar conjunto de pranchas, paginação e revisões",
+                )
+                .clicked()
+                {
+                    self.active_doc_dialog = super::super::DocDialog::SheetSet;
+                }
+            });
+            ribbon_stack(ui, |ui| {
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::Ruler,
+                        "Cotas associativas",
+                        self.active_doc_dialog == super::super::DocDialog::Dimensions,
+                    ),
+                    "Gerenciar cotas associativas na planta",
+                )
+                .clicked()
+                {
+                    self.active_doc_dialog = super::super::DocDialog::Dimensions;
+                }
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::TextNote,
+                        "Notas e símbolos",
+                        self.active_doc_dialog == super::super::DocDialog::Notes,
+                    ),
+                    "Inserir textos, chamadas e símbolos técnicos",
+                )
+                .clicked()
+                {
+                    self.active_doc_dialog = super::super::DocDialog::Notes;
+                }
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::Layers,
+                        "Camadas",
+                        self.active_doc_dialog == super::super::DocDialog::Layers,
+                    ),
+                    "Gerenciar camadas CAD, cores e penas",
+                )
+                .clicked()
+                {
+                    self.active_doc_dialog = super::super::DocDialog::Layers;
+                }
+            });
+        });
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
+        ribbon_panel(ui, "Modelos e IA", |ui| {
             if tip(
                 ribbon_button(
                     ui,
                     Icon::Plan,
-                    "Pranchas",
-                    self.active_doc_dialog == super::super::DocDialog::SheetSet,
+                    "Modelos",
+                    self.active_doc_dialog == super::super::DocDialog::Templates,
                     false,
                 ),
-                "Gerenciar conjunto de pranchas, paginação, revisões e lista mestra",
+                "Criar projeto a partir de modelos ou exemplos prontos",
             )
             .clicked()
             {
-                self.active_doc_dialog = super::super::DocDialog::SheetSet;
+                self.active_doc_dialog = super::super::DocDialog::Templates;
+            }
+            if tip(
+                ribbon_button(ui, Icon::Ai, "Conectar IA", self.show_mcp_dialog, false),
+                "Usar o Trazo pelo ChatGPT, Claude ou outro assistente (MCP)",
+            )
+            .clicked()
+            {
+                self.show_mcp_dialog = true;
             }
         });
     }

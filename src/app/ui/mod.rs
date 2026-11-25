@@ -2,6 +2,7 @@ use eframe::egui::{self, Margin, Ui};
 
 mod browser;
 mod circulation;
+mod command_palette;
 mod compare;
 pub(in crate::app) use compare::CompareUiState;
 mod connect;
@@ -72,49 +73,55 @@ impl FloorPlanApp {
             .show_separator_line(false)
             .frame(
                 egui::Frame::new()
-                    .fill(theme::PANEL)
-                    .inner_margin(Margin::symmetric(10, 3)),
+                    .fill(theme::APP_BAR)
+                    .inner_margin(Margin::symmetric(10, 4)),
             )
             .show(ui, |ui| self.menu_bar(ui));
 
-        self.show_ribbon_panel(ui);
+        if !self.show_start_page {
+            self.show_ribbon_panel(ui);
 
-        egui::Panel::top("options_bar")
-            .frame(
-                egui::Frame::new()
-                    .fill(theme::PANEL)
-                    .inner_margin(Margin::symmetric(10, 3)),
-            )
-            .show(ui, |ui| self.options_bar(ui));
+            egui::Panel::top("options_bar")
+                .frame(
+                    egui::Frame::new()
+                        .fill(theme::PANEL)
+                        .inner_margin(Margin::symmetric(10, 3)),
+                )
+                .show(ui, |ui| self.options_bar(ui));
 
-        egui::Panel::bottom("status")
-            .frame(
-                egui::Frame::new()
-                    .fill(theme::BAND)
-                    .inner_margin(Margin::symmetric(10, 2)),
-            )
-            .show(ui, |ui| self.status_bar(ui));
+            egui::Panel::bottom("status")
+                .frame(
+                    egui::Frame::new()
+                        .fill(theme::BAND)
+                        .inner_margin(Margin::symmetric(10, 2)),
+                )
+                .show(ui, |ui| self.status_bar(ui));
 
-        if self.show_browser && !self.show_start_page {
-            egui::Panel::left("project_browser")
-                .resizable(true)
-                .default_size(232.0)
-                .size_range(190.0..=420.0)
-                .frame(egui::Frame::new().fill(theme::PANEL))
-                .show(ui, |ui| self.project_browser(ui));
-        }
+            if self.show_browser {
+                egui::Panel::left("project_browser")
+                    .resizable(true)
+                    .default_size(232.0)
+                    .size_range(190.0..=420.0)
+                    .frame(egui::Frame::new().fill(theme::PANEL))
+                    .show(ui, |ui| self.project_browser(ui));
+            }
 
-        if self.show_properties && !self.show_start_page {
-            egui::Panel::right("properties")
-                .resizable(true)
-                .default_size(288.0)
-                .size_range(250.0..=480.0)
-                .frame(egui::Frame::new().fill(theme::PANEL))
-                .show(ui, |ui| self.show_inspector(ui));
+            if self.show_properties {
+                egui::Panel::right("properties")
+                    .resizable(true)
+                    .default_size(292.0)
+                    .size_range(250.0..=480.0)
+                    .frame(egui::Frame::new().fill(theme::PANEL))
+                    .show(ui, |ui| self.show_inspector(ui));
+            }
         }
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::new().fill(theme::BAND))
+            .frame(egui::Frame::new().fill(if self.show_start_page {
+                theme::PANEL_ALT
+            } else {
+                theme::BAND
+            }))
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
                 if self.show_start_page {
@@ -123,6 +130,7 @@ impl FloorPlanApp {
                     self.plan_area(ui);
                 }
             });
+        self.command_palette(&context);
         self.room_name_dialog(ui);
         self.unsaved_changes_dialog(&context);
         self.help_dialog(&context);
@@ -155,9 +163,9 @@ impl FloorPlanApp {
 
     fn show_ribbon_panel(&mut self, ui: &mut Ui) -> egui::InnerResponse<()> {
         egui::Panel::top("ribbon")
-            // Reserve room for the tallest group and the horizontal scroll bar.
-            // Otherwise switching tabs moves the canvas when that bar appears.
-            .exact_size(if self.ribbon_collapsed { 27.0 } else { 120.0 })
+            // Reserve room for the tab strip, 82 px ribbon groups and thin scroll bar.
+            // Constant height guarantees zero canvas jump when switching tabs.
+            .exact_size(if self.ribbon_collapsed { 27.0 } else { 122.0 })
             .show_separator_line(false)
             .frame(egui::Frame::new().fill(theme::PANEL))
             .show(ui, |ui| self.ribbon(ui))
@@ -200,7 +208,7 @@ mod tests {
                     height = app.show_ribbon_panel(ui).response.rect.height();
                 });
                 context.end_pass().textures_delta.clear();
-                assert_eq!(height, 120.0, "tab {tab:?} at width {width}");
+                assert_eq!(height, 122.0, "tab {tab:?} at width {width}");
             }
         }
 

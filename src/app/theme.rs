@@ -15,34 +15,49 @@ const fn rgb(v: u32) -> Color32 {
 
 // ---------- interface surfaces ----------
 
-/// Panels, menus, dialogs.
-pub const PANEL: Color32 = rgb(0xFFFFFF);
-/// The ribbon body and section headers: a breath of blue over white.
-pub const PANEL_ALT: Color32 = rgb(0xF5F9FE);
-/// Bands that frame the work area: tab strip, view header, status bar.
-pub const BAND: Color32 = rgb(0xEDF4FC);
+/// Top dark application chrome bar anchoring the light studio workspace.
+pub const APP_BAR: Color32 = rgb(0x1E242E);
+pub const APP_BAR_HOVER: Color32 = rgb(0x2B3340);
+pub const APP_BAR_ACTIVE: Color32 = rgb(0x364152);
+pub const APP_BAR_BORDER: Color32 = rgb(0x333C4B);
+pub const APP_BAR_TEXT: Color32 = rgb(0xEEF2F7);
+pub const APP_BAR_MUTED: Color32 = rgb(0xA6B3C4);
+
+/// Panels, menus, dialogs (distinct off-white from pure-white drafting paper).
+pub const PANEL: Color32 = rgb(0xFAFBFC);
+/// The ribbon body, section headers and elevated cards.
+pub const PANEL_ALT: Color32 = rgb(0xF3F5F8);
+/// Bands that frame the work area: tab strip, status bar, recessed chrome.
+pub const BAND: Color32 = rgb(0xECF0F5);
+/// Crisp interactive fields & buttons standing cleanly over panels.
+pub const CONTROL: Color32 = rgb(0xFFFFFF);
 /// Lines between panels.
-pub const BORDER: Color32 = rgb(0xDCE6F1);
+pub const BORDER: Color32 = rgb(0xD8E0EA);
 /// Outlines of controls (fields, buttons), stronger than panel lines.
-pub const BORDER_STRONG: Color32 = rgb(0xBFD0E3);
+pub const BORDER_STRONG: Color32 = rgb(0xBCC8D8);
 
-pub const TEXT: Color32 = rgb(0x1C2B3C);
-pub const TEXT_2: Color32 = rgb(0x3B4E63);
-pub const MUTED: Color32 = rgb(0x627489);
-pub const FAINT: Color32 = rgb(0xA3B2C2);
+pub const TEXT: Color32 = rgb(0x182230);
+pub const TEXT_2: Color32 = rgb(0x37475B);
+pub const MUTED: Color32 = rgb(0x526275);
+pub const FAINT: Color32 = rgb(0x8D9CAE);
 
-pub const ACCENT: Color32 = rgb(0x1E6FD9);
-pub const ACCENT_STRONG: Color32 = rgb(0x175CB8);
-pub const ACCENT_TEXT: Color32 = rgb(0x1659B0);
+pub const ACCENT: Color32 = rgb(0x216BD6);
+pub const ACCENT_HOVER: Color32 = rgb(0x1B5BB8);
+pub const ACCENT_STRONG: Color32 = rgb(0x144A99);
+pub const ACCENT_TEXT: Color32 = rgb(0x1651A8);
 /// Selected rows and tools.
-pub const ACCENT_SOFT: Color32 = rgb(0xDDEBFC);
+pub const ACCENT_SOFT: Color32 = rgb(0xDAE9FC);
 /// Hovered rows and tools.
-pub const ACCENT_SOFTER: Color32 = rgb(0xEEF5FE);
-pub const ACCENT_RING: Color32 = rgb(0x93BDF0);
+pub const ACCENT_SOFTER: Color32 = rgb(0xECF3FD);
+pub const ACCENT_RING: Color32 = rgb(0x89B6F0);
 
-pub const SUCCESS: Color32 = rgb(0x22925F);
-pub const WARNING: Color32 = rgb(0xD5841B);
-pub const DANGER: Color32 = rgb(0xCC3F33);
+pub const SUCCESS: Color32 = rgb(0x1F8A5B);
+pub const WARNING: Color32 = rgb(0xC97A16);
+pub const WARNING_SOFT: Color32 = rgb(0xFEF7E8);
+pub const DANGER: Color32 = rgb(0xC9362B);
+pub const DANGER_SOFT: Color32 = rgb(0xFDF1F0);
+pub const DANGER_HOVER: Color32 = rgb(0xFADBD8);
+pub const DANGER_BORDER: Color32 = rgb(0xE8B4B0);
 
 // ---------- drawing canvas ----------
 
@@ -225,16 +240,17 @@ fn style() -> egui::Style {
     .into();
 
     let spacing = &mut style.spacing;
-    spacing.item_spacing = Vec2::new(8.0, 6.0);
-    spacing.button_padding = Vec2::new(10.0, 4.0);
-    spacing.interact_size = Vec2::new(36.0, 24.0);
+    spacing.item_spacing = Vec2::new(6.0, 5.0);
+    spacing.button_padding = Vec2::new(9.0, 4.0);
+    spacing.interact_size = Vec2::new(34.0, 24.0);
     spacing.menu_margin = Margin::same(6);
     spacing.window_margin = Margin::same(18);
     spacing.indent = 16.0;
-    spacing.menu_width = 230.0;
-    spacing.tooltip_width = 320.0;
+    spacing.menu_width = 286.0;
+    spacing.tooltip_width = 340.0;
     spacing.icon_width = 15.0;
     spacing.icon_width_inner = 9.0;
+    spacing.scroll = egui::style::ScrollStyle::thin();
 
     let visuals = &mut style.visuals;
     visuals.dark_mode = false;
@@ -242,8 +258,8 @@ fn style() -> egui::Style {
     visuals.panel_fill = PANEL;
     visuals.window_fill = PANEL;
     visuals.faint_bg_color = PANEL_ALT;
-    visuals.extreme_bg_color = PANEL;
-    visuals.text_edit_bg_color = Some(PANEL);
+    visuals.extreme_bg_color = CONTROL;
+    visuals.text_edit_bg_color = Some(CONTROL);
     visuals.code_bg_color = BAND;
     visuals.hyperlink_color = ACCENT_TEXT;
     visuals.warn_fg_color = WARNING;
@@ -255,24 +271,25 @@ fn style() -> egui::Style {
         offset: [0, 8],
         blur: 28,
         spread: 0,
-        color: Color32::from_rgba_unmultiplied(22, 50, 92, 46),
+        color: Color32::from_rgba_unmultiplied(15, 23, 42, 42),
     };
     visuals.popup_shadow = Shadow {
         offset: [0, 4],
         blur: 16,
         spread: 0,
-        color: Color32::from_rgba_unmultiplied(22, 50, 92, 38),
+        color: Color32::from_rgba_unmultiplied(15, 23, 42, 34),
     };
     visuals.selection.bg_fill = rgb(0xC9DFFA);
     visuals.selection.stroke = Stroke::new(1.0, ACCENT_TEXT);
     visuals.text_cursor.stroke = Stroke::new(1.5, ACCENT);
+    visuals.text_cursor.blink = false;
     visuals.slider_trailing_fill = true;
     visuals.striped = false;
     visuals.indent_has_left_vline = false;
 
     let widgets = &mut visuals.widgets;
     widgets.noninteractive = widget(PANEL, Stroke::new(1.0, BORDER), TEXT, 0.0);
-    widgets.inactive = widget(rgb(0xF7FAFE), Stroke::new(1.0, BORDER_STRONG), TEXT, 0.0);
+    widgets.inactive = widget(CONTROL, Stroke::new(1.0, BORDER_STRONG), TEXT, 0.0);
     widgets.hovered = widget(ACCENT_SOFTER, Stroke::new(1.0, ACCENT_RING), TEXT, 0.0);
     widgets.active = widget(ACCENT_SOFT, Stroke::new(1.0, ACCENT), ACCENT_TEXT, 0.0);
     widgets.open = widget(ACCENT_SOFTER, Stroke::new(1.0, ACCENT_RING), TEXT, 0.0);
@@ -303,12 +320,14 @@ mod tests {
 
     #[test]
     fn text_colours_are_legible_on_every_surface() {
-        for surface in [PANEL, PANEL_ALT, BAND, ACCENT_SOFT, ACCENT_SOFTER] {
+        for surface in [PANEL, PANEL_ALT, BAND, CONTROL, ACCENT_SOFT, ACCENT_SOFTER] {
             assert!(contrast(TEXT, surface) >= 7.0);
             assert!(contrast(TEXT_2, surface) >= 4.5);
             assert!(contrast(ACCENT_TEXT, surface) >= 4.5);
-            assert!(contrast(MUTED, surface) >= 3.5);
+            assert!(contrast(MUTED, surface) >= 4.2);
         }
+        assert!(contrast(APP_BAR_TEXT, APP_BAR) >= 10.0);
+        assert!(contrast(APP_BAR_MUTED, APP_BAR) >= 5.0);
     }
 
     #[test]

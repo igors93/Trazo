@@ -11,8 +11,40 @@ use eframe::egui::{
 use super::icons::{self, Icon};
 use crate::app::theme::{self, *};
 
-pub const MENU_WIDTH: f32 = 272.0;
-const RIBBON_ROW: f32 = 54.0;
+pub const MENU_WIDTH: f32 = 286.0;
+pub const RIBBON_ROW: f32 = 66.0;
+pub const RIBBON_PANEL_HEIGHT: f32 = RIBBON_ROW + 16.0;
+
+/// Lays out `text` on a single line, truncating cleanly with `…` when wider than `max_width`.
+pub fn truncated_galley(
+    painter: &Painter,
+    text: &str,
+    font: egui::FontId,
+    color: Color32,
+    max_width: f32,
+) -> Arc<Galley> {
+    let max_w = max_width.max(12.0);
+    let full = painter.layout_no_wrap(text.to_owned(), font.clone(), color);
+    if full.size().x <= max_w {
+        return full;
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let mut lo = 0usize;
+    let mut hi = chars.len();
+    while lo < hi {
+        let mid = (lo + hi).div_ceil(2);
+        let mut cand: String = chars[..mid].iter().collect();
+        cand.push('…');
+        if painter.layout_no_wrap(cand, font.clone(), color).size().x <= max_w {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    let mut out: String = chars[..lo].iter().collect();
+    out.push('…');
+    painter.layout_no_wrap(out, font, color)
+}
 
 /// The tooltip shows whether or not the widget is enabled.
 pub fn tip(response: Response, text: &str) -> Response {
@@ -74,11 +106,6 @@ pub fn caps_galley(painter: &Painter, text: &str, size: f32, color: Color32) -> 
     painter.layout_job(job)
 }
 
-/// A square icon-only button.
-pub fn icon_button(ui: &mut Ui, icon: Icon, tooltip: &str, active: bool) -> Response {
-    icon_button_sized(ui, icon, tooltip, active, 28.0, 18.0)
-}
-
 pub fn icon_button_sized(
     ui: &mut Ui,
     icon: Icon,
@@ -126,7 +153,7 @@ pub fn ribbon_button(
     let galley = ui
         .painter()
         .layout_no_wrap(label.to_owned(), regular(12.0), color);
-    let width = (galley.size().x + 20.0).max(56.0);
+    let width = (galley.size().x + 18.0).max(54.0);
     let sense = if draggable {
         Sense::click_and_drag()
     } else {
@@ -149,8 +176,8 @@ pub fn ribbon_button(
     icons::paint(
         painter,
         Rect::from_center_size(
-            Pos2::new(rect.center().x, rect.top() + 19.0),
-            vec2(25.0, 25.0),
+            Pos2::new(rect.center().x, rect.top() + 23.0),
+            vec2(24.0, 24.0),
         ),
         icon,
         ink,
@@ -159,7 +186,7 @@ pub fn ribbon_button(
     painter.galley(
         Pos2::new(
             rect.center().x - galley.size().x / 2.0,
-            rect.bottom() - 11.0 - galley.size().y / 2.0,
+            rect.bottom() - 13.0 - galley.size().y / 2.0,
         ),
         galley,
         color,
@@ -175,7 +202,8 @@ pub fn ribbon_button(
     }
 }
 
-/// A compact ribbon row: small icon and label, stacked three high.
+/// A compact ribbon row: crisp 14 px icon and label, stacked up to three high
+/// with comfortable vertical room (`20.67 px` per row) and uniform stack width.
 pub fn ribbon_small(ui: &mut Ui, icon: Icon, label: &str, selected: bool) -> Response {
     let enabled = ui.is_enabled();
     let color = if !enabled {
@@ -188,10 +216,10 @@ pub fn ribbon_small(ui: &mut Ui, icon: Icon, label: &str, selected: bool) -> Res
     let galley = ui
         .painter()
         .layout_no_wrap(label.to_owned(), regular(12.0), color);
-    let (rect, response) = ui.allocate_exact_size(
-        vec2(galley.size().x + 42.0, (RIBBON_ROW - 4.0) / 3.0),
-        Sense::click(),
-    );
+    let row_height = (RIBBON_ROW - 4.0) / 3.0;
+    let natural_w = galley.size().x + 34.0;
+    let width = ui.min_rect().width().max(natural_w);
+    let (rect, response) = ui.allocate_exact_size(vec2(width, row_height), Sense::click());
     let painter = ui.painter();
     paint_control_background(painter, rect, 5, &response, enabled, selected);
     let (ink, accent) = tones(enabled, selected);
@@ -199,14 +227,14 @@ pub fn ribbon_small(ui: &mut Ui, icon: Icon, label: &str, selected: bool) -> Res
         painter,
         Rect::from_center_size(
             Pos2::new(rect.left() + 13.0, rect.center().y),
-            vec2(16.0, 16.0),
+            vec2(14.0, 14.0),
         ),
         icon,
         ink,
         accent,
     );
     painter.galley(
-        Pos2::new(rect.left() + 27.0, rect.center().y - galley.size().y / 2.0),
+        Pos2::new(rect.left() + 25.0, rect.center().y - galley.size().y / 2.0),
         galley,
         color,
     );
@@ -217,20 +245,20 @@ pub fn ribbon_small(ui: &mut Ui, icon: Icon, label: &str, selected: bool) -> Res
     }
 }
 
-/// A ribbon group: its buttons, with its title underneath.
+/// A ribbon group: its buttons, with its subtle title underneath.
 pub fn ribbon_panel<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R) -> R {
     let title_galley = ui
         .painter()
-        .layout_no_wrap(title.to_owned(), regular(11.0), MUTED);
+        .layout_no_wrap(title.to_owned(), regular(10.5), MUTED);
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing = vec2(3.0, 0.0);
-        ui.set_min_width(title_galley.size().x + 16.0);
-        let row = ui.horizontal(|ui| {
+        ui.set_min_width(title_galley.size().x + 14.0);
+        let row = ui.horizontal_top(|ui| {
             ui.set_min_height(RIBBON_ROW);
             add(ui)
         });
-        let width = row.response.rect.width().max(title_galley.size().x + 16.0);
-        let (rect, _) = ui.allocate_exact_size(vec2(width, 17.0), Sense::hover());
+        let width = row.response.rect.width().max(title_galley.size().x + 14.0);
+        let (rect, _) = ui.allocate_exact_size(vec2(width, 16.0), Sense::hover());
         ui.painter().galley(
             Pos2::new(
                 rect.center().x - title_galley.size().x / 2.0,
@@ -244,9 +272,11 @@ pub fn ribbon_panel<R>(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui) -> R)
     .inner
 }
 
-/// A column of `ribbon_small` rows inside a ribbon panel.
+/// A column of `ribbon_small` rows inside a ribbon panel, top-aligned to match
+/// full-height ribbon buttons even when containing 1 or 2 entries.
 pub fn ribbon_stack<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
     ui.vertical(|ui| {
+        ui.set_min_height(RIBBON_ROW);
         ui.spacing_mut().item_spacing = vec2(0.0, 2.0);
         add(ui)
     })
@@ -254,11 +284,11 @@ pub fn ribbon_stack<R>(ui: &mut Ui, add: impl FnOnce(&mut Ui) -> R) -> R {
 }
 
 pub fn vertical_divider(ui: &mut Ui, height: f32) {
-    let (rect, _) = ui.allocate_exact_size(vec2(17.0, height), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(13.0, height), Sense::hover());
     ui.painter().line_segment(
         [
-            Pos2::new(rect.center().x, rect.top() + 4.0),
-            Pos2::new(rect.center().x, rect.bottom() - 4.0),
+            Pos2::new(rect.center().x, rect.top() + 5.0),
+            Pos2::new(rect.center().x, rect.bottom() - 5.0),
         ],
         Stroke::new(1.0, BORDER),
     );
@@ -268,10 +298,11 @@ fn menu_row(
     ui: &mut Ui,
     label: &str,
     shortcut: &str,
+    has_submenu_arrow: bool,
     paint_slot: impl FnOnce(&Painter, Rect, bool),
 ) -> Response {
     let enabled = ui.is_enabled();
-    let (rect, response) = ui.allocate_exact_size(vec2(MENU_WIDTH, 27.0), Sense::click());
+    let (rect, response) = ui.allocate_exact_size(vec2(MENU_WIDTH, 26.0), Sense::click());
     let painter = ui.painter();
     if enabled && response.hovered() {
         painter.rect_filled(rect, 5, ACCENT_SOFT);
@@ -280,7 +311,7 @@ fn menu_row(
         painter,
         Rect::from_center_size(
             Pos2::new(rect.left() + 15.0, rect.center().y),
-            vec2(16.0, 16.0),
+            vec2(15.0, 15.0),
         ),
         enabled,
     );
@@ -292,16 +323,14 @@ fn menu_row(
             if enabled { MUTED } else { FAINT },
         )
     });
-    let label_right = match &shortcut_galley {
-        Some(galley) => (rect.right() - 10.0 - galley.size().x - 10.0).max(rect.left() + 34.0),
-        None => rect.right() - 24.0,
+    let right_reserve = match &shortcut_galley {
+        Some(galley) => galley.size().x + 20.0,
+        None if has_submenu_arrow => 24.0,
+        None => 10.0,
     };
-    let label_clip = Rect::from_min_max(
-        Pos2::new(rect.left() + 34.0, rect.top()),
-        Pos2::new(label_right, rect.bottom()),
-    );
-    let label_galley = painter.layout_no_wrap(label.to_owned(), regular(13.0), label_color);
-    painter.with_clip_rect(label_clip).galley(
+    let max_label_w = (rect.width() - 34.0 - right_reserve).max(24.0);
+    let label_galley = truncated_galley(painter, label, regular(12.5), label_color, max_label_w);
+    painter.galley(
         Pos2::new(
             rect.left() + 34.0,
             rect.center().y - label_galley.size().y / 2.0,
@@ -320,12 +349,16 @@ fn menu_row(
             color,
         );
     }
-    response
+    if enabled {
+        response.on_hover_cursor(egui::CursorIcon::PointingHand)
+    } else {
+        response
+    }
 }
 
 /// A menu entry with an icon and its shortcut on the right.
 pub fn menu_item(ui: &mut Ui, icon: Option<Icon>, label: &str, shortcut: &str) -> Response {
-    menu_row(ui, label, shortcut, |painter, slot, enabled| {
+    menu_row(ui, label, shortcut, false, |painter, slot, enabled| {
         if let Some(icon) = icon {
             let (ink, accent) = tones(enabled, false);
             icons::paint(painter, slot, icon, ink, accent);
@@ -336,7 +369,7 @@ pub fn menu_item(ui: &mut Ui, icon: Option<Icon>, label: &str, shortcut: &str) -
 /// A menu entry that opens a submenu, marked with an arrow.
 pub fn menu_submenu(ui: &mut Ui, icon: Icon, label: &str) -> Response {
     let enabled = ui.is_enabled();
-    let response = menu_row(ui, label, "", |painter, slot, enabled| {
+    let response = menu_row(ui, label, "", true, |painter, slot, enabled| {
         let (ink, accent) = tones(enabled, false);
         icons::paint(painter, slot, icon, ink, accent);
     });
@@ -368,7 +401,7 @@ pub fn submenu(ui: &mut Ui, icon: Icon, label: &str, add_contents: impl FnOnce(&
 
 /// A menu entry that shows a check mark while `checked`.
 pub fn menu_check(ui: &mut Ui, label: &str, shortcut: &str, checked: bool) -> Response {
-    menu_row(ui, label, shortcut, |painter, slot, enabled| {
+    menu_row(ui, label, shortcut, false, |painter, slot, enabled| {
         if checked {
             painter.rect_filled(slot.expand(1.0), 4, ACCENT_SOFT);
             let (_, accent) = tones(enabled, true);
@@ -385,7 +418,7 @@ pub fn menu_check(ui: &mut Ui, label: &str, shortcut: &str, checked: bool) -> Re
 }
 
 pub fn menu_separator(ui: &mut Ui) {
-    let (rect, _) = ui.allocate_exact_size(vec2(MENU_WIDTH, 9.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(MENU_WIDTH, 8.0), Sense::hover());
     ui.painter().line_segment(
         [
             Pos2::new(rect.left() + 6.0, rect.center().y),
@@ -395,22 +428,76 @@ pub fn menu_separator(ui: &mut Ui) {
     );
 }
 
-pub fn primary_button(ui: &mut Ui, label: &str) -> Response {
-    let enabled = ui.is_enabled();
-    let response = ui.add(
-        egui::Button::new(RichText::new(label).font(strong(13.0)).color(if enabled {
-            Color32::WHITE
-        } else {
-            FAINT
-        }))
-        .fill(if enabled { ACCENT } else { BAND })
-        .stroke(Stroke::new(
-            1.0,
-            if enabled { ACCENT_STRONG } else { BORDER },
-        ))
-        .corner_radius(6)
-        .min_size(vec2(0.0, 28.0)),
+/// Subtle uppercase section label inside menus for clear scannability.
+pub fn menu_section_label(ui: &mut Ui, label: &str) {
+    let (rect, _) = ui.allocate_exact_size(vec2(MENU_WIDTH, 20.0), Sense::hover());
+    let painter = ui.painter();
+    let galley = caps_galley(painter, label, 9.5, MUTED);
+    painter.galley(
+        Pos2::new(
+            rect.left() + 10.0,
+            rect.center().y - galley.size().y / 2.0 + 1.0,
+        ),
+        galley,
+        MUTED,
     );
+}
+
+struct ActionButtonStyle {
+    bold: bool,
+    text: Color32,
+    fill: Color32,
+    hover_fill: Color32,
+    active_fill: Color32,
+    border: Color32,
+    hover_border: Color32,
+}
+
+fn styled_action_button(ui: &mut Ui, label: &str, style: ActionButtonStyle) -> Response {
+    let enabled = ui.is_enabled();
+    let fg = if enabled { style.text } else { FAINT };
+    let font = if style.bold {
+        strong(12.5)
+    } else {
+        regular(12.5)
+    };
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), font, fg);
+    let width = (galley.size().x + 22.0).max(48.0);
+    let (rect, response) = ui.allocate_exact_size(vec2(width, 26.0), Sense::click());
+    let painter = ui.painter();
+    let (bg, stroke_col) = if !enabled {
+        (BAND, BORDER)
+    } else if response.is_pointer_button_down_on() {
+        (style.active_fill, style.hover_border)
+    } else if response.hovered() {
+        (style.hover_fill, style.hover_border)
+    } else {
+        (style.fill, style.border)
+    };
+    painter.rect(
+        rect,
+        6,
+        bg,
+        Stroke::new(1.0, stroke_col),
+        StrokeKind::Inside,
+    );
+    if response.has_focus() {
+        painter.rect_stroke(
+            rect.shrink(1.0),
+            5,
+            Stroke::new(1.5, ACCENT_RING),
+            StrokeKind::Inside,
+        );
+    }
+    painter.galley(
+        Pos2::new(
+            rect.center().x - galley.size().x / 2.0,
+            rect.center().y - galley.size().y / 2.0,
+        ),
+        galley,
+        fg,
+    );
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     if enabled {
         response.on_hover_cursor(egui::CursorIcon::PointingHand)
     } else {
@@ -418,29 +505,78 @@ pub fn primary_button(ui: &mut Ui, label: &str) -> Response {
     }
 }
 
+pub fn primary_button(ui: &mut Ui, label: &str) -> Response {
+    styled_action_button(
+        ui,
+        label,
+        ActionButtonStyle {
+            bold: true,
+            text: Color32::WHITE,
+            fill: ACCENT,
+            hover_fill: ACCENT_HOVER,
+            active_fill: ACCENT_STRONG,
+            border: ACCENT_STRONG,
+            hover_border: ACCENT_STRONG,
+        },
+    )
+}
+
 pub fn secondary_button(ui: &mut Ui, label: &str) -> Response {
-    ui.add(
-        egui::Button::new(RichText::new(label).color(TEXT_2))
-            .corner_radius(6)
-            .min_size(vec2(0.0, 28.0)),
+    styled_action_button(
+        ui,
+        label,
+        ActionButtonStyle {
+            bold: false,
+            text: TEXT_2,
+            fill: CONTROL,
+            hover_fill: ACCENT_SOFTER,
+            active_fill: ACCENT_SOFT,
+            border: BORDER_STRONG,
+            hover_border: ACCENT_RING,
+        },
     )
 }
 
 pub fn danger_button(ui: &mut Ui, label: &str) -> Response {
-    ui.add(
-        egui::Button::new(RichText::new(label).color(DANGER))
-            .fill(Color32::from_rgb(0xFF, 0xF6, 0xF5))
-            .stroke(Stroke::new(1.0, Color32::from_rgb(0xF0, 0xC4, 0xBF)))
-            .corner_radius(6)
-            .min_size(vec2(0.0, 28.0)),
+    styled_action_button(
+        ui,
+        label,
+        ActionButtonStyle {
+            bold: false,
+            text: DANGER,
+            fill: DANGER_SOFT,
+            hover_fill: DANGER_HOVER,
+            active_fill: DANGER_HOVER,
+            border: DANGER_BORDER,
+            hover_border: DANGER,
+        },
     )
 }
 
-/// The title row of a side panel: caps title and an optional count.
+/// The title row of a side panel: caps title truncated safely clear of the
+/// right-side close button, with an optional muted count.
 pub fn panel_header(ui: &mut Ui, title: &str, trailing: &str) -> Rect {
-    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 36.0), Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 34.0), Sense::hover());
     let painter = ui.painter();
-    let galley = caps_galley(painter, title, 11.0, MUTED);
+    painter.line_segment(
+        [
+            Pos2::new(rect.left(), rect.bottom()),
+            Pos2::new(rect.right(), rect.bottom()),
+        ],
+        Stroke::new(1.0, BORDER),
+    );
+    let trailing_w = if trailing.is_empty() {
+        0.0
+    } else {
+        painter
+            .layout_no_wrap(trailing.to_owned(), regular(11.0), MUTED)
+            .size()
+            .x
+            + 8.0
+    };
+    let max_title_w = (rect.width() - 14.0 - 38.0 - trailing_w).max(32.0);
+    let title_text = title.to_uppercase();
+    let galley = truncated_galley(painter, &title_text, strong(10.5), MUTED, max_title_w);
     painter.galley(
         Pos2::new(rect.left() + 14.0, rect.center().y - galley.size().y / 2.0),
         galley,
@@ -448,17 +584,18 @@ pub fn panel_header(ui: &mut Ui, title: &str, trailing: &str) -> Rect {
     );
     if !trailing.is_empty() {
         painter.text(
-            Pos2::new(rect.right() - 44.0, rect.center().y),
+            Pos2::new(rect.right() - 38.0, rect.center().y),
             Align2::RIGHT_CENTER,
             trailing,
-            regular(11.5),
-            FAINT,
+            regular(11.0),
+            MUTED,
         );
     }
     rect
 }
 
-/// A full-width collapsible section of the properties panel.
+/// A full-width collapsible section of the properties panel with a single clean
+/// top hairline (no double borders or white gaps between collapsed sections).
 pub fn section(ui: &mut Ui, id_salt: &str, title: &str, body: impl FnOnce(&mut Ui)) {
     let id = ui.make_persistent_id(("property_section", id_salt));
     let mut open = ui.data_mut(|data| *data.get_temp_mut_or(id, true));
@@ -478,9 +615,19 @@ pub fn section(ui: &mut Ui, id_salt: &str, title: &str, body: impl FnOnce(&mut U
             PANEL_ALT
         },
     );
-    for y in [rect.top(), rect.bottom()] {
+    painter.line_segment(
+        [
+            Pos2::new(rect.left(), rect.top()),
+            Pos2::new(rect.right(), rect.top()),
+        ],
+        Stroke::new(1.0, BORDER),
+    );
+    if open {
         painter.line_segment(
-            [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+            [
+                Pos2::new(rect.left(), rect.bottom()),
+                Pos2::new(rect.right(), rect.bottom()),
+            ],
             Stroke::new(1.0, BORDER),
         );
     }
@@ -488,7 +635,7 @@ pub fn section(ui: &mut Ui, id_salt: &str, title: &str, body: impl FnOnce(&mut U
         painter,
         Rect::from_center_size(
             Pos2::new(rect.left() + 14.0, rect.center().y),
-            vec2(13.0, 13.0),
+            vec2(12.0, 12.0),
         ),
         if open {
             Icon::ChevronDown
@@ -502,13 +649,14 @@ pub fn section(ui: &mut Ui, id_salt: &str, title: &str, body: impl FnOnce(&mut U
         Pos2::new(rect.left() + 26.0, rect.center().y),
         Align2::LEFT_CENTER,
         title,
-        strong(12.5),
+        strong(12.0),
         TEXT,
     );
     if open {
         egui::Frame::new()
+            .fill(PANEL)
             .inner_margin(Margin {
-                left: 14,
+                left: 12,
                 right: 12,
                 top: 8,
                 bottom: 10,

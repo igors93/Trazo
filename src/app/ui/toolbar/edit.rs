@@ -7,7 +7,8 @@ use crate::app::tools::{ConstraintTool, ModifyKind};
 use crate::app::ui::Glyph;
 use crate::app::ui::icons::Icon;
 use crate::app::ui::widgets::{
-    ribbon_button, ribbon_panel, ribbon_small, ribbon_stack, tip, vertical_divider,
+    RIBBON_PANEL_HEIGHT, ribbon_button, ribbon_panel, ribbon_small, ribbon_stack, tip,
+    vertical_divider,
 };
 use crate::app::{FloorPlanApp, Tool};
 
@@ -93,7 +94,7 @@ impl FloorPlanApp {
                 self.duplicate_selection();
             }
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Transformar", |ui| {
             for kind in [
                 ModifyKind::Move,
@@ -140,13 +141,13 @@ impl FloorPlanApp {
                 }
             });
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Geometria", |ui| {
             for kind in [ModifyKind::Offset, ModifyKind::Trim, ModifyKind::Extend] {
                 self.modify_button(ui, kind);
             }
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Organizar", |ui| {
             self.modify_button(ui, ModifyKind::Split);
             let several = self.is_multi_selection();
@@ -225,7 +226,7 @@ impl FloorPlanApp {
                 }
             });
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Restrições", |ui| {
             for kind in ConstraintTool::ALL {
                 if tip(
@@ -259,7 +260,7 @@ impl FloorPlanApp {
                 }
             });
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Seleção", |ui| {
             ribbon_stack(ui, |ui| {
                 if tip(

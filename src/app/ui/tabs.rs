@@ -7,7 +7,9 @@ use super::super::canvas::{self, PaintOptions, ViewTransform, overlay};
 use super::super::tabs::{TabInfo, TabPane};
 use super::super::{FloorPlanApp, theme::*};
 use super::icons::Icon;
-use super::widgets::{icon_button_sized, tip};
+use super::widgets::{
+    icon_button_sized, menu_check, menu_item, menu_separator, submenu, tip, truncated_galley,
+};
 
 /// Height of the tab strip.
 const STRIP: f32 = 31.0;
@@ -197,7 +199,8 @@ impl FloorPlanApp {
                 strip.bottom(),
             ),
         );
-        let actions_rect = Rect::from_min_max(Pos2::new(tabs_rect.right(), strip.top()), strip.max);
+        let actions_rect =
+            Rect::from_min_max(Pos2::new(tabs_rect.right(), strip.top() + 5.0), strip.max);
 
         let mut action = None;
         let mut shown_span: Option<(f32, f32)> = None;
@@ -224,7 +227,7 @@ impl FloorPlanApp {
                     drag: egui::scroll_area::DragScroll::Never,
                     ..Default::default()
                 })
-                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
                 .show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing = vec2(1.0, 0.0);
@@ -245,7 +248,8 @@ impl FloorPlanApp {
                             } else {
                                 MUTED
                             };
-                            let label = ui.painter().layout_no_wrap(info.title.clone(), font, ink);
+                            let label =
+                                truncated_galley(ui.painter(), &info.title, font, ink, max_title_w);
                             let text_width = label.size().x.min(max_title_w);
                             let (slot, response) = ui
                                 .push_id(("tab_item", info.tab_id), |ui| {
@@ -321,8 +325,8 @@ impl FloorPlanApp {
                                     ],
                                     Stroke::new(2.0, CANVAS),
                                 );
-                                // Subtle accent top indicator on the focused pane's active tab.
-                                if info.active && pane_focused && split {
+                                // Clean accent top bar on the active tab (single or split pane).
+                                if info.active && pane_focused {
                                     painter.line_segment(
                                         [
                                             Pos2::new(tab.left() + 6.0, tab.top() + 1.0),
@@ -340,11 +344,7 @@ impl FloorPlanApp {
                             }
 
                             let x = tab.left() + 13.0;
-                            let clip = Rect::from_min_max(
-                                Pos2::new(x, tab.top()),
-                                Pos2::new(x + text_width, tab.bottom()),
-                            );
-                            painter.with_clip_rect(clip).galley(
+                            painter.galley(
                                 Pos2::new(x, y - label.size().y / 2.0),
                                 label,
                                 ink,
@@ -367,11 +367,7 @@ impl FloorPlanApp {
                                     stroke,
                                 );
                             } else if info.dirty {
-                                painter.circle_filled(
-                                    close.center(),
-                                    3.5,
-                                    if is_shown { TEXT_2 } else { MUTED },
-                                );
+                                painter.circle_filled(close.center(), 3.5, WARNING);
                             }
 
                             let next_shown = visible_tabs.get(pos + 1).is_some_and(|(_, next)| {
@@ -423,24 +419,28 @@ impl FloorPlanApp {
                             }
                             response.context_menu(|ui| {
                                 use crate::domain::discipline::Discipline;
-                                ui.menu_button("Nova visão vinculada (mesmo projeto)", |ui| {
-                                    for discipline in Discipline::ALL {
-                                        if ui.button(discipline.label()).clicked() {
-                                            action = Some(TabAction::NewLinked(
-                                                index,
-                                                discipline,
-                                                target_pane,
-                                            ));
-                                            ui.close();
+                                submenu(
+                                    ui,
+                                    Icon::DuplicateTab,
+                                    "Nova visão vinculada (mesmo projeto)",
+                                    |ui| {
+                                        for discipline in Discipline::ALL {
+                                            if menu_item(ui, None, discipline.label(), "").clicked()
+                                            {
+                                                action = Some(TabAction::NewLinked(
+                                                    index,
+                                                    discipline,
+                                                    target_pane,
+                                                ));
+                                                ui.close();
+                                            }
                                         }
-                                    }
-                                });
-                                ui.menu_button("Disciplina desta aba", |ui| {
+                                    },
+                                );
+                                submenu(ui, Icon::Layers, "Disciplina desta aba", |ui| {
                                     for discipline in Discipline::ALL {
                                         let checked = info.discipline == discipline;
-                                        if ui
-                                            .selectable_label(checked, discipline.label())
-                                            .clicked()
+                                        if menu_check(ui, discipline.label(), "", checked).clicked()
                                         {
                                             action =
                                                 Some(TabAction::SetDiscipline(index, discipline));
@@ -448,28 +448,47 @@ impl FloorPlanApp {
                                         }
                                     }
                                 });
-                                ui.separator();
+                                menu_separator(ui);
                                 if split {
                                     let move_label = match target_pane {
                                         TabPane::Left => "Mover para a direita",
                                         TabPane::Right => "Mover para a esquerda",
                                     };
-                                    if ui.button(move_label).clicked() {
+                                    if menu_item(ui, Some(Icon::SplitView), move_label, "").clicked()
+                                    {
                                         action = Some(TabAction::MoveToPane(
                                             index,
                                             target_pane.opposite(),
                                         ));
                                         ui.close();
                                     }
-                                } else if !info.active && ui.button("Mostrar ao lado").clicked() {
+                                } else if !info.active
+                                    && menu_item(
+                                        ui,
+                                        Some(Icon::SplitView),
+                                        "Mostrar ao lado",
+                                        "",
+                                    )
+                                    .clicked()
+                                {
                                     action = Some(TabAction::SideBySide(Some(index)));
                                     ui.close();
                                 }
-                                if ui.button("Duplicar como cópia independente").clicked() {
+                                if menu_item(
+                                    ui,
+                                    Some(Icon::DuplicateTab),
+                                    "Duplicar como cópia independente",
+                                    "",
+                                )
+                                .clicked()
+                                {
                                     action = Some(TabAction::Duplicate(index, target_pane));
                                     ui.close();
                                 }
-                                if ui.button("Fechar aba").clicked() {
+                                menu_separator(ui);
+                                if menu_item(ui, Some(Icon::Close), "Fechar aba", "Ctrl+W")
+                                    .clicked()
+                                {
                                     action = Some(TabAction::Close(index));
                                     ui.close();
                                 }

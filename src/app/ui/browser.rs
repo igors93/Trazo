@@ -1,6 +1,6 @@
 use super::super::{FloorPlanApp, Selection, theme::*};
 use super::icons::{self, Icon};
-use super::widgets::{icon_button_sized, panel_header};
+use super::widgets::{icon_button_sized, panel_header, truncated_galley};
 use crate::domain::{geometry::format_meters, model::OpeningKind};
 use eframe::egui::{self, Align2, Margin, Pos2, Rect, Sense, Stroke, Ui, vec2};
 
@@ -185,8 +185,8 @@ impl FloorPlanApp {
         ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
         let header = panel_header(ui, "Navegador do projeto", "");
         let close = Rect::from_center_size(
-            Pos2::new(header.right() - 20.0, header.center().y),
-            vec2(24.0, 24.0),
+            Pos2::new(header.right() - 18.0, header.center().y),
+            vec2(22.0, 22.0),
         );
         if ui
             .put(close, |ui: &mut Ui| {
@@ -279,17 +279,18 @@ impl FloorPlanApp {
 
     fn browser_search(&mut self, ui: &mut Ui) {
         let frame = egui::Frame::new()
-            .fill(PANEL_ALT)
-            .stroke(Stroke::new(1.0, BORDER))
+            .fill(CONTROL)
+            .stroke(Stroke::new(1.0, BORDER_STRONG))
             .corner_radius(6)
-            .inner_margin(Margin::symmetric(8, 3));
+            .inner_margin(Margin::symmetric(8, 2));
         frame.show(ui, |ui| {
             ui.horizontal(|ui| {
+                ui.set_min_height(22.0);
                 ui.spacing_mut().item_spacing.x = 6.0;
-                let (rect, _) = ui.allocate_exact_size(vec2(15.0, 15.0), Sense::hover());
+                let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
                 icons::paint(ui.painter(), rect, Icon::Search, MUTED, MUTED);
                 let has_text = !self.browser_filter.is_empty();
-                let width = ui.available_width() - if has_text { 22.0 } else { 0.0 };
+                let width = (ui.available_width() - if has_text { 28.0 } else { 0.0 }).max(32.0);
                 ui.add(
                     egui::TextEdit::singleline(&mut self.browser_filter)
                         .hint_text("Filtrar elementos")
@@ -303,7 +304,7 @@ impl FloorPlanApp {
         });
     }
 
-    /// The views of the project: one floor plan for now.
+    /// The views of the project: active floor plan view.
     fn views_group(&mut self, ui: &mut Ui) {
         if self.group_header(ui, "views", "Vistas", Icon::Plan, 1) {
             let (rect, _) =
@@ -324,19 +325,31 @@ impl FloorPlanApp {
                 TEXT_2,
                 ACCENT,
             );
-            painter.text(
-                Pos2::new(rect.left() + 60.0, rect.center().y),
-                Align2::LEFT_CENTER,
-                "Planta baixa · Térreo",
-                strong(12.5),
-                TEXT,
+            let badge = painter.layout_no_wrap("aberta".to_owned(), regular(11.0), MUTED);
+            let badge_w = badge.size().x;
+            painter.galley(
+                Pos2::new(
+                    rect.right() - 12.0 - badge_w,
+                    rect.center().y - badge.size().y / 2.0,
+                ),
+                badge,
+                MUTED,
             );
-            painter.text(
-                Pos2::new(rect.right() - 12.0, rect.center().y),
-                Align2::RIGHT_CENTER,
-                "aberta",
-                regular(11.0),
-                FAINT,
+            let view_title = self
+                .project
+                .active_floor()
+                .map(|floor| format!("Planta baixa · {}", floor.name))
+                .unwrap_or_else(|| "Planta baixa · Térreo".to_owned());
+            let max_title_w = (rect.width() - 60.0 - badge_w - 20.0).max(24.0);
+            let title_galley =
+                truncated_galley(painter, &view_title, strong(12.5), TEXT, max_title_w);
+            painter.galley(
+                Pos2::new(
+                    rect.left() + 60.0,
+                    rect.center().y - title_galley.size().y / 2.0,
+                ),
+                title_galley,
+                TEXT,
             );
         }
         ui.add_space(2.0);
@@ -410,7 +423,7 @@ impl FloorPlanApp {
             title_ink,
         );
         let count_text = count.to_string();
-        let count_ink = if empty { FAINT } else { MUTED };
+        let count_ink = MUTED;
         let galley = painter.layout_no_wrap(count_text, regular(11.0), count_ink);
         let pill = Rect::from_center_size(
             Pos2::new(rect.right() - 14.0 - galley.size().x / 2.0, rect.center().y),

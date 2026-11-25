@@ -45,11 +45,21 @@ Clique para ver como conectar uma IA."
     }
 
     pub(super) fn status_bar(&mut self, ui: &mut Ui) {
+        let total_width = ui.available_width();
+        let is_alert = self.message.starts_with("Não ")
+            || self.message.starts_with("Erro")
+            || self.message.starts_with("Informe ")
+            || self.message.contains("inválid")
+            || self.message.contains("fora do");
         ui.horizontal(|ui| {
             ui.set_min_height(22.0);
             ui.spacing_mut().item_spacing.x = 4.0;
-            let (rect, _) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
-            icons::paint(ui.painter(), rect, Icon::Info, MUTED, ACCENT);
+            let (rect, _) = ui.allocate_exact_size(vec2(15.0, 15.0), Sense::hover());
+            if is_alert {
+                icons::paint(ui.painter(), rect, Icon::Warning, DANGER, WARNING);
+            } else {
+                icons::paint(ui.painter(), rect, Icon::Info, MUTED, ACCENT);
+            }
             ui.add_space(2.0);
 
             ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
@@ -60,16 +70,18 @@ Clique para ver como conectar uma IA."
                 }
                 let total = self.project.elements().len();
                 let selected = self.selection_count();
-                let count = if selected > 0 {
-                    format!(
-                        "{selected} de {total} selecionado{}",
-                        if selected == 1 { "" } else { "s" }
-                    )
-                } else {
-                    format!("{total} elemento{}", if total == 1 { "" } else { "s" })
-                };
-                ui.label(RichText::new(count).size(12.0).color(MUTED));
-                divider(ui);
+                if total_width >= 1120.0 || selected > 0 {
+                    let count = if selected > 0 {
+                        format!(
+                            "{selected} de {total} selecionado{}",
+                            if selected == 1 { "" } else { "s" }
+                        )
+                    } else {
+                        format!("{total} elemento{}", if total == 1 { "" } else { "s" })
+                    };
+                    ui.label(RichText::new(count).size(12.0).color(MUTED));
+                    divider(ui);
+                }
 
                 if icon_button_sized(ui, Icon::ZoomFit, "Enquadrar tudo (F)", false, 22.0, 15.0)
                     .clicked()
@@ -125,7 +137,7 @@ Clique para ver como conectar uma IA."
                     .map(|point| format!("{} m", format_point(point)))
                     .unwrap_or_else(|| "X —  Y —".to_owned());
                 let galley = ui.painter().layout_no_wrap(coordinates, mono(12.0), TEXT_2);
-                let width = galley.size().x.max(178.0);
+                let width = galley.size().x.max(146.0);
                 let (rect, response) =
                     ui.allocate_exact_size(vec2(width + 8.0, 20.0), Sense::hover());
                 ui.painter().galley(
@@ -139,15 +151,18 @@ Clique para ver como conectar uma IA."
                 tip(response, "Coordenadas do cursor (Y para cima, em metros)");
                 divider(ui);
 
-                // The message takes whatever room is left, cut short if need be.
-                let room = ui.available_width();
+                // The message takes whatever room is left, cleanly truncated with full hover tooltip.
+                let room = ui.available_width().max(40.0);
+                let msg_color = if is_alert { DANGER } else { TEXT_2 };
                 ui.allocate_ui_with_layout(
                     vec2(room, 20.0),
                     egui::Layout::left_to_right(Align::Center),
                     |ui| {
                         ui.add(
-                            egui::Label::new(RichText::new(&self.message).color(TEXT_2)).truncate(),
-                        );
+                            egui::Label::new(RichText::new(&self.message).color(msg_color))
+                                .truncate(),
+                        )
+                        .on_hover_text(&self.message);
                     },
                 );
             });

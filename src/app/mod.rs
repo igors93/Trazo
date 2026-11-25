@@ -356,6 +356,10 @@ pub struct FloorPlanApp {
     recent_files: crate::io::templates::RecentFiles,
     /// Lazily decoded PNG thumbnails extracted from recent `.trazo` ZIP files.
     thumbnail_cache: std::collections::HashMap<PathBuf, Option<egui::TextureHandle>>,
+    /// Quick command palette (`Ctrl+K`) state.
+    show_command_palette: bool,
+    command_palette_query: String,
+    command_palette_selected: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -566,6 +570,9 @@ impl FloorPlanApp {
             user_templates,
             recent_files,
             thumbnail_cache: std::collections::HashMap::new(),
+            show_command_palette: false,
+            command_palette_query: String::new(),
+            command_palette_selected: 0,
         };
         if restored {
             app.restore_tab_drafts();
@@ -2603,6 +2610,33 @@ impl FloorPlanApp {
     }
 
     fn handle_shortcuts(&mut self, context: &egui::Context) {
+        let blocking_dialog = self.pending_room.is_some()
+            || self.pending_action.is_some()
+            || self.repeat_form.is_some();
+        let toggle_palette = !blocking_dialog
+            && context.input(|input| {
+                input.events.iter().any(|event| {
+                    matches!(
+                        event,
+                        egui::Event::Key {
+                            key: Key::K,
+                            pressed: true,
+                            repeat: false,
+                            modifiers,
+                            ..
+                        } if (modifiers.command || modifiers.ctrl) && !modifiers.shift
+                    )
+                })
+            });
+        if toggle_palette {
+            if self.show_command_palette {
+                self.show_command_palette = false;
+            } else {
+                self.open_command_palette();
+            }
+            return;
+        }
+
         // Canvas and toolbar widgets can hold focus without editing text.
         let editing_text = context.text_edit_focused();
         // While a dialog is open, editing commands must not act on the
@@ -2611,10 +2645,8 @@ impl FloorPlanApp {
             || self.pending_action.is_some()
             || self.show_help
             || self.show_mcp_dialog
+            || self.show_command_palette
             || self.active_doc_dialog != DocDialog::None
-            || self.repeat_form.is_some();
-        let blocking_dialog = self.pending_room.is_some()
-            || self.pending_action.is_some()
             || self.repeat_form.is_some();
 
         // Capture direct CAD numeric input typed while a drawing tool is active.

@@ -6,7 +6,8 @@ use eframe::egui::{self, Ui};
 
 use crate::app::ui::icons::{Glyph, Icon};
 use crate::app::ui::widgets::{
-    ribbon_button, ribbon_panel, ribbon_small, ribbon_stack, tip, vertical_divider,
+    RIBBON_PANEL_HEIGHT, ribbon_button, ribbon_panel, ribbon_small, ribbon_stack, tip,
+    vertical_divider,
 };
 use crate::app::{DocDialog, FloorPlanApp};
 use crate::domain::discipline::Discipline;
@@ -19,13 +20,13 @@ impl FloorPlanApp {
             self.fixture_button(ui, FixtureKind::Column, "Pilar");
             self.fixture_button(ui, FixtureKind::Footing, "Sapata");
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Cargas", |ui| {
             self.fixture_button(ui, FixtureKind::WaterTank, "Caixa-d'água");
             self.fixture_button(ui, FixtureKind::HeavyEquipment, "Equipamento");
             self.fixture_button(ui, FixtureKind::TimberPost, "Mourão");
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Vigas", |ui| {
             if tip(
                 ribbon_button(ui, Icon::Glyph(Glyph::Join), "Ligar pilares", false, false),
@@ -44,7 +45,7 @@ impl FloorPlanApp {
                 self.remove_selected_beams();
             }
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Projeto (NBR 6118)", |ui| {
             if tip(
                 ribbon_button(ui, Icon::Glyph(Glyph::Rectangle), "Gerar estrutura", false, false),
@@ -120,7 +121,7 @@ impl FloorPlanApp {
                 self.active_doc_dialog = DocDialog::Safety;
             }
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Simulação na planta", |ui| {
             if tip(
                 ribbon_button(ui, Icon::SplitView, "E se?", false, false),
@@ -211,7 +212,7 @@ impl FloorPlanApp {
                 }
             });
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Exibição", |ui| {
             ribbon_stack(ui, |ui| {
                 let only = self.discipline == Discipline::Structure;

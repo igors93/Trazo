@@ -6,7 +6,8 @@ use eframe::egui::{self, Ui};
 
 use crate::app::ui::icons::{Glyph, Icon};
 use crate::app::ui::widgets::{
-    ribbon_button, ribbon_panel, ribbon_small, ribbon_stack, tip, vertical_divider,
+    RIBBON_PANEL_HEIGHT, ribbon_button, ribbon_panel, ribbon_small, ribbon_stack, tip,
+    vertical_divider,
 };
 use crate::app::{DocDialog, FloorPlanApp};
 use crate::domain::fixtures::FixtureKind;
@@ -20,7 +21,7 @@ impl FloorPlanApp {
             self.fixture_button(ui, FixtureKind::OutletHigh, "Alta");
             self.fixture_button(ui, FixtureKind::OutletSpecific, "TUE");
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Iluminação e comando", |ui| {
             self.fixture_button(ui, FixtureKind::CeilingLight, "Luz teto");
             self.fixture_button(ui, FixtureKind::WallLight, "Arandela");
@@ -28,12 +29,12 @@ impl FloorPlanApp {
             self.fixture_button(ui, FixtureKind::SwitchTwoWay, "Paralelo");
             self.fixture_button(ui, FixtureKind::SwitchIntermediate, "Intermediário");
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Quadro e dados", |ui| {
             self.fixture_button(ui, FixtureKind::Panel, "Quadro");
             self.fixture_button(ui, FixtureKind::DataPoint, "Dados/TV");
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Projeto (NBR 5410)", |ui| {
             if tip(
                 ribbon_button(ui, Icon::Bolt, "Gerar pontos", false, false),
@@ -90,7 +91,7 @@ impl FloorPlanApp {
                 self.active_doc_dialog = DocDialog::Safety;
             }
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Eletrodutos", |ui| {
             if tip(
                 ribbon_button(ui, Icon::Glyph(Glyph::Spline), "Gerar", false, false),
@@ -127,7 +128,7 @@ impl FloorPlanApp {
                 }
             });
         });
-        vertical_divider(ui, 72.0);
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Exibição", |ui| {
             ribbon_stack(ui, |ui| {
                 // One toggle, so the group keeps the ribbon's three rows.

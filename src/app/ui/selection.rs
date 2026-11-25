@@ -179,10 +179,11 @@ impl FloorPlanApp {
             "Seleção múltipla",
         );
         section(ui, "multi_selection_counts", "Na seleção", |ui| {
+            let min_col = (ui.available_width() * 0.36).clamp(72.0, 92.0);
             eframe::egui::Grid::new("multi_selection_grid")
                 .num_columns(2)
-                .spacing([12.0, 8.0])
-                .min_col_width(96.0)
+                .spacing([8.0, 6.0])
+                .min_col_width(min_col)
                 .show(ui, |ui| {
                     for kind in ElementKind::ALL {
                         let count = all.iter().filter(|item| item.kind() == kind).count();
@@ -215,10 +216,11 @@ impl FloorPlanApp {
             let mut rename = false;
             let mut ungroup = false;
             section(ui, "multi_selection_group", "Grupo", |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
+                    let w = (ui.available_width() - 96.0).clamp(80.0, 148.0);
                     let field = ui.add(
                         eframe::egui::TextEdit::singleline(&mut self.group_name_text)
-                            .desired_width(150.0)
+                            .desired_width(w)
                             .hint_text("Nome do grupo"),
                     );
                     rename = field.lost_focus()

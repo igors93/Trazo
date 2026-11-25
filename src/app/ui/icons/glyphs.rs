@@ -146,7 +146,8 @@ pub(super) fn paint(pen: &Pen, glyph: Glyph, soft: Color32, thin: Stroke) {
             pen.polyline(&[(5.0, 19.0), (14.5, 7.5)], ink);
             vertex(5.0, 19.0);
             pen.arc(5.0, 19.0, 9.0, -0.05, -0.85, accent);
-            pen.polyline(&[(11.0, 12.0), (11.6, 14.6), (14.2, 14.2)], accent);
+            // Arrowhead tip seated cleanly at arc endpoint (10.94, 12.24) along CCW tangent.
+            pen.polyline(&[(13.7, 11.8), (10.94, 12.24), (11.5, 15.0)], accent);
         }
         Glyph::RotateCw => {
             // 270° clockwise circular arrow around a centre pivot.
@@ -299,11 +300,9 @@ pub(super) fn paint(pen: &Pen, glyph: Glyph, soft: Color32, thin: Stroke) {
             pen.fill(&[(3.5, 4.0), (10.5, 4.0), (10.5, 11.0), (3.5, 11.0)], soft);
             pen.rect(3.5, 4.0, 10.5, 11.0, accent);
             pen.circle(7.0, 17.0, 3.2, thin);
-            // Selection pointer targeting the matching kind.
-            pen.fill(
-                &[(13.0, 7.0), (21.0, 13.0), (16.5, 14.0), (13.0, 19.5)],
-                soft,
-            );
+            // Selection pointer split into two convex triangles for clean fill.
+            pen.fill(&[(13.0, 7.0), (21.0, 13.0), (16.5, 14.0)], soft);
+            pen.fill(&[(13.0, 7.0), (16.5, 14.0), (13.0, 19.5)], soft);
             pen.closed(
                 &[(13.0, 7.0), (21.0, 13.0), (16.5, 14.0), (13.0, 19.5)],
                 ink,
@@ -335,7 +334,12 @@ pub(super) fn paint(pen: &Pen, glyph: Glyph, soft: Color32, thin: Stroke) {
                 (10.0, 17.5),
                 (10.0, 12.5),
             ];
-            pen.fill(&funnel, soft);
+            // Split funnel into convex upper trapezoid + convex neck quad.
+            pen.fill(&[(3.5, 4.5), (20.5, 4.5), (14.0, 12.5), (10.0, 12.5)], soft);
+            pen.fill(
+                &[(10.0, 12.5), (14.0, 12.5), (14.0, 19.5), (10.0, 17.5)],
+                soft,
+            );
             pen.closed(&funnel, ink);
             pen.polyline(&[(3.5, 4.5), (20.5, 4.5)], accent);
         }
