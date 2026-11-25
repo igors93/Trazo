@@ -1003,9 +1003,15 @@ impl Project {
     }
 
     pub(crate) fn id(&mut self) -> u64 {
+        // Imported counters may reach u64::MAX. Wrap safely and skip reserved
+        // identities rather than panicking or assigning an existing GUID again.
+        self.next_id = self.next_id.max(1);
+        while self.guids.elements.contains_key(&self.next_id) {
+            self.next_id = self.next_id.wrapping_add(1).max(1);
+        }
         let id = self.next_id;
 
-        self.next_id += 1;
+        self.next_id = self.next_id.wrapping_add(1).max(1);
 
         self.guids.register_new_element(id);
 
@@ -1652,8 +1658,47 @@ impl Project {
         for slab in &self.structure.slabs {
             max_id = max_id.max(slab.id);
         }
+        macro_rules! include_ids {
+            ($($items:expr),+ $(,)?) => {
+                $(for item in $items {
+                    max_id = max_id.max(item.id);
+                })+
+            };
+        }
+        include_ids!(
+            &self.dimensions,
+            &self.notes,
+            &self.circulations,
+            &self.structure.balance_beams,
+            &self.structure.wall_foundations,
+            &self.structure.roofs,
+        );
+        for cantilever in &self.structure.cantilevers {
+            max_id = max_id.max(cantilever.id());
+        }
+        // Inactive floors still own their element IDs. Reusing one after loading
+        // corrupts references when that floor is activated later.
+        for floor in &self.floors.levels {
+            max_id = max_id.max(floor.id);
+            include_ids!(
+                &floor.data.walls,
+                &floor.data.rooms,
+                &floor.data.openings,
+                &floor.data.fixtures,
+                &floor.data.drawings,
+                &floor.data.dimensions,
+                &floor.data.notes,
+                &floor.data.circulations,
+                &floor.data.conduits,
+                &floor.data.beams,
+                &floor.data.slabs,
+                &floor.data.balance_beams,
+                &floor.data.wall_foundations,
+                &floor.data.roofs,
+            );
+        }
         if self.next_id <= max_id {
-            self.next_id = max_id + 1;
+            self.next_id = max_id.checked_add(1).unwrap_or(1);
         }
 
         // 4. Deduplicate shared walls
@@ -1692,6 +1737,7 @@ impl Project {
             ));
         }
 
+        self.ensure_all_guids();
         Ok(warnings)
     }
 
@@ -2383,6 +2429,58 @@ impl Project {
 mod tests {
 
     use super::*;
+
+    #[test]
+    fn loaded_ids_include_notes_and_inactive_floor_contents() {
+        let mut project = Project::default();
+        project.add_wall(Point::new(0.0, 0.0), Point::new(2.0, 0.0));
+        project.notes.push(
+            serde_json::from_value(serde_json::json!({
+                "id": 80, "position": {"x": 0.0, "y": 0.0}, "text": "Nota", "kind": {"kind": "text"}
+            }))
+            .unwrap(),
+        );
+        project.next_id = 1;
+        project.validate_and_repair().unwrap();
+        assert!(project.id() > 80);
+
+        let mut wall = project.walls[0].clone();
+        wall.id = 900;
+        project
+            .floors
+            .levels
+            .push(super::super::floors::FloorLevel {
+                id: 100,
+                name: "Superior".to_owned(),
+                elevation_m: 3.0,
+                ceiling_height_m: 2.8,
+                slab_thickness_m: 0.15,
+                data: super::super::floors::FloorPlanData {
+                    walls: vec![wall],
+                    ..Default::default()
+                },
+            });
+        project.next_id = 1;
+        project.validate_and_repair().unwrap();
+        assert!(project.id() > 900);
+    }
+
+    #[test]
+    fn imported_maximum_ids_wrap_without_panics_or_reusing_guids() {
+        let mut project = Project::default();
+        project.add_wall(Point::new(0.0, 0.0), Point::new(2.0, 0.0));
+        let first_guid = project.guid_of(1);
+        project.next_id = u64::MAX;
+        assert_eq!(project.id(), u64::MAX);
+        assert_eq!(project.id(), 2);
+        assert_eq!(project.guid_of(1), first_guid);
+
+        project.walls[0].id = u64::MAX;
+        project.validate_and_repair().unwrap();
+        let id = project.id();
+        assert_ne!(id, 1);
+        assert_ne!(id, u64::MAX);
+    }
 
     #[test]
 

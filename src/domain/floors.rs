@@ -132,7 +132,7 @@ impl Project {
             self.floors.active_floor_id = Some(id);
             return id;
         }
-        let id = 1;
+        let id = self.id();
         self.floors.levels.push(FloorLevel {
             id,
             name: "Térreo".to_owned(),
@@ -257,12 +257,16 @@ impl Project {
         };
 
         let copied_walls = if copy_walls_from_current {
-            self.walls.clone()
+            let mut walls = self.walls.clone();
+            for wall in &mut walls {
+                wall.id = self.id();
+            }
+            walls
         } else {
             Vec::new()
         };
 
-        let next_id = self.floors.levels.iter().map(|l| l.id).max().unwrap_or(0) + 1;
+        let next_id = self.id();
         let clean_name = if name.trim().is_empty() {
             if above {
                 let upper_count = self
@@ -387,6 +391,29 @@ impl Project {
 mod tests {
     use super::*;
     use crate::domain::geometry::Point;
+
+    #[test]
+    fn floors_and_copied_walls_have_distinct_project_ids_and_guids() {
+        let mut project = Project::default();
+        let wall_id = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(3.0, 0.0))
+            .unwrap();
+        let wall_guid = project.guid_of(wall_id);
+        let ground = project.ensure_default_floor();
+        assert_ne!(ground, wall_id);
+        assert_ne!(project.guid_of(ground), wall_guid);
+        let upper = project.add_floor("Superior", true, true);
+        let copied = project.walls[0].id;
+        assert_ne!(copied, wall_id);
+        assert_ne!(copied, ground);
+        assert_ne!(copied, upper);
+        assert_ne!(project.guid_of(copied), wall_guid);
+        project.switch_floor(ground).unwrap();
+        assert_eq!(project.walls[0].id, wall_id);
+        assert_eq!(project.guid_of(wall_id), wall_guid);
+        project.switch_floor(upper).unwrap();
+        assert_eq!(project.walls[0].id, copied);
+    }
 
     #[test]
     fn multistorey_floors_switch_cleanly_preserve_geometry_and_expose_underlay() {
