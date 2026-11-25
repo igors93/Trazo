@@ -30,9 +30,9 @@ fn round2(value: f64) -> f64 {
     (value * 100.0).round() / 100.0 + 0.0
 }
 
-fn parse_hex_color(raw: &str) -> Result<[u8; 3], String> {
+pub(super) fn parse_hex_color(raw: &str) -> Result<[u8; 3], String> {
     let hex = raw.trim().trim_start_matches('#');
-    if hex.len() != 6 {
+    if hex.len() != 6 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("Cor inválida: use hexadecimal #RRGGBB (ex.: #c62828).".to_owned());
     }
     let r = u8::from_str_radix(&hex[0..2], 16)
@@ -63,7 +63,7 @@ fn line_type_key(lt: LineType) -> &'static str {
     }
 }
 
-fn parse_scale(raw: &str) -> Option<DrawingScale> {
+pub(super) fn parse_scale(raw: &str) -> Option<DrawingScale> {
     let clean = raw.trim().to_lowercase().replace(' ', "");
     match clean.as_str() {
         "1:25" | "25" => Some(DrawingScale::S1_25),
@@ -93,7 +93,7 @@ fn parse_elevation_side(raw: &str) -> Option<ElevationSide> {
     }
 }
 
-fn parse_railing_side(raw: &str) -> Option<RailingSide> {
+pub(super) fn parse_railing_side(raw: &str) -> Option<RailingSide> {
     match raw.trim().to_lowercase().as_str() {
         "nenhum" | "none" | "sem" => Some(RailingSide::None),
         "esquerda" | "left" => Some(RailingSide::Left),
@@ -103,7 +103,7 @@ fn parse_railing_side(raw: &str) -> Option<RailingSide> {
     }
 }
 
-fn parse_stair_shape(raw: &str) -> Option<StairShape> {
+pub(super) fn parse_stair_shape(raw: &str) -> Option<StairShape> {
     match raw.trim().to_lowercase().replace(['-', ' '], "_").as_str() {
         "reta" | "lance_reto" | "straight" => Some(StairShape::Straight),
         "l" | "em_l" | "l_shaped" => Some(StairShape::LShaped),
@@ -802,6 +802,9 @@ impl FloorPlanApp {
 
     /// Vertical circulation & level transitions (`circulacao`).
     pub(super) fn tool_circulation(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        if text(args, "acao").as_deref() == Some("editar") {
+            return self.tool_edit_circulation(args);
+        }
         let action = text(args, "acao")
             .unwrap_or_else(|| "listar".to_owned())
             .to_lowercase();
@@ -992,6 +995,9 @@ impl FloorPlanApp {
 
     /// Architectural sections, facade elevations and detail callouts (`vistas_tecnicas`).
     pub(super) fn tool_views(&mut self, args: &Value) -> Result<ToolOutput, String> {
+        if text(args, "acao").as_deref() == Some("editar") {
+            return self.tool_edit_view(args);
+        }
         let action = text(args, "acao")
             .unwrap_or_else(|| "listar".to_owned())
             .to_lowercase();

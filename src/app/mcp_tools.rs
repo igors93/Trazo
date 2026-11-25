@@ -17,7 +17,9 @@ mod batch;
 mod drawings;
 mod editing;
 mod electrical;
+mod markups;
 mod project_docs;
+mod resources;
 mod shapes;
 mod structure;
 mod tabs;
@@ -257,6 +259,7 @@ impl FloorPlanApp {
     /// Runs one tool for the assistant. A panic inside a tool leaves the
     /// plan as it was instead of taking the app down.
     pub(super) fn run_mcp_tool(&mut self, name: &str, args: &Value) -> ToolOutput {
+        self.sync_markup_context();
         self.commit_item_drag();
         let before = self.project.clone();
         let before_selection = self.selected();
@@ -328,7 +331,12 @@ impl FloorPlanApp {
                 } else {
                     export::ExportView::for_discipline(&self.project, discipline)
                 };
-                let png = export::png_preview_for_view(&self.project, &view, side as u32)?;
+                let mut preview_project = self.project.clone();
+                preview_project.markup_settings.export = args
+                    .get("incluir_marcacoes")
+                    .map(|_| flag(args, "incluir_marcacoes"))
+                    .unwrap_or(true);
+                let png = export::png_preview_for_view(&preview_project, &view, side as u32)?;
                 Ok(ToolOutput::ok(format!(
                     "Imagem da planta \"{}\" (vista {}) com {} cômodos, {} paredes e {} aberturas.",
                     self.project.name,
@@ -426,6 +434,15 @@ impl FloorPlanApp {
             "ergonomia" => self.tool_ergonomics(args),
             "camadas" => self.tool_layers(args),
             "anotacoes" => self.tool_notes(args),
+            "obter_marcacoes" => self.tool_read_markups(args),
+            "marcacoes" => self.tool_markups(args),
+            "biblioteca" => self.tool_library(args),
+            "blocos" => self.tool_blocks(args),
+            "referencias" => self.tool_references(args),
+            "documentacao" => self.tool_documentation(args),
+            "modelos" => self.tool_templates(args),
+            "acabamentos" => self.tool_finishes(args),
+            "terreno" => self.tool_site(args),
             "cotas" => self.tool_dimensions(args),
             "circulacao" => self.tool_circulation(args),
             "vistas_tecnicas" => self.tool_views(args),
@@ -1842,6 +1859,9 @@ impl FloorPlanApp {
                 "bloqueados": self.sync_report.blocked_updates.len(),
             },
             "objetos": fixtures,
+            "marcacoes": self.markup_summary(),
+            "marcacao_selecionada": self.current_markup_selection(),
+            "recursos": {"biblioteca":project.library.len(),"blocos":project.blocks.len(),"instancias_blocos":project.block_instances.len(),"referencias":self.references_summary(),"lotes":project.lots.len()},
             "desenhos": drawings::drawings_summary(project),
             "estrutura_resumo": {
                 "pilares": project.fixtures.iter().filter(|f| f.kind == FixtureKind::Column).count(),

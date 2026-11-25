@@ -57,7 +57,7 @@ Create a connector with that address and no authentication; in ChatGPT this is d
 
 ## Tools
 
-Trazo exposes 53 tools. Their names and messages are in Portuguese, like the interface.
+Trazo exposes 62 tools. Their names and messages are in Portuguese, like the interface.
 
 | Group | Tools |
 | --- | --- |
@@ -76,7 +76,39 @@ Trazo exposes 53 tools. Their names and messages are in Portuguese, like the int
 | **Synced views, floors & dependencies** | `abas` (list projects and linked tabs, switch, open linked discipline views `nova_visao`, configure view, split side-by-side, close, duplicate), `pavimentos` (list, add or switch floors), `dependencias` (cross-discipline dependency graph, last auto-sync report and manual-review items) |
 | **Files & exports** | `novo_projeto`, `abrir_projeto`, `salvar_projeto`, `exportar_planta` (`pdf`, `pdf_abas`, `png`, `dxf`, `svg`, `prancha_pdf`/`prancha_pdf_abas`/`prancha_svg`, `memorial_pdf`, `unifilar_svg`/`unifilar_pdf`, `esforcos_svg`/`esforcos_pdf`, `porticos_svg`/`porticos_pdf`, `grelha_svg`/`grelha_pdf`, `armaduras_svg`/`armaduras_pdf`, `quantitativos_csv`/`quantitativos_svg`/`quantitativos_pdf` with optional `todos_pavimentos`, `tabela_aco_csv`, `csv`), `importar_dxf` |
 
-Tools that read are marked read-only and tools that delete are marked destructive, so clients can ask before running them. `executar_lote` cannot contain file or history tools.
+Tools that only read are marked read-only. Tools that mix reads and edits are marked as mutations. `executar_lote` cannot contain file/history tools, `biblioteca`, `blocos`, `referencias`, `documentacao` or `modelos`, because these groups can also change files or the shared personal library. Project mark edits, `acabamentos` and `terreno` can participate in atomic batches.
+
+### Review marks and project resources
+
+| Tool | Coverage |
+| --- | --- |
+| `obter_marcacoes` | Read-only mark query, including hidden/resolved marks; filter by numeric id, exact colour, resolved state and floor, or use `todos_pavimentos`. Returns `referencia` (`M12`), colour, comment, geometry in metres with Y up, bounds, floor, explicit references and geometrically related elements. |
+| `marcacoes` | `criar`, `editar`, `mover`, `excluir`, `resolver`, `reabrir`, `selecionar`, `configurar`, or `listar`. A rectangle uses two corners, a circle uses centre/radius point, an arrow uses its ends and freehand uses 2–2048 points. Comments allow 4000 characters. Mutations apply to the active floor; optional `pavimento_id` protects against editing another floor. |
+| `biblioteca` | Search/list built-in, project and personal models; create/edit/delete custom models, insert with their real dimensions/rotation, or share to the personal library. Always pair `origem` with `id`. |
+| `blocos` | List project/personal definitions and placed instances; define a block from selected ids, insert with attribute overrides, edit instance attributes, share or delete a definition. |
+| `referencias` | Images/PDF/SVG underlays with import, geometry, opacity, visibility, locking and two-point calibration; external Trazo/DXF references with reload; compare against a file or tab, show/clear the visual overlay and export the comparison SVG. |
+| `documentacao` | Read actual schedule tables/style settings; configure pens, font, units, dimension ticks, schedule visibility and waste; add revisions, update/remove/reorder sheets and export the CSV transmittal. Updating a released sheet invalidates its previous release review. |
+| `modelos` | List built-in templates, examples and personal `.trazot` templates; apply with an unsaved-changes guard or save a new template without rebinding the current project file. |
+| `acabamentos` | List/apply room hatches, spacing, angle and colour; list/apply/clear wall assembly presets or define explicit layers with roles, thicknesses and colours. |
+| `terreno` | Read polygon boundaries/lots, define a polygonal site, subdivide by a line, rename/remove lots. Rectangular sites and setbacks remain available through `definir_terreno`. |
+
+The existing `pavimentos` tool also edits/removes floor metadata and controls the floor-below reference. `circulacao` and `vistas_tecnicas` accept `acao: "editar"` to update placed elements without deleting/recreating their ids. All tools are listed by `tools/list` with their arguments.
+
+Example mark creation:
+
+```json
+{
+  "acao": "criar",
+  "tipo": "retangulo",
+  "cor": "vermelho",
+  "comentario": "Rever a disposição dos armários",
+  "pontos": [{"x": 1, "y": 2}, {"x": 4, "y": 5}]
+}
+```
+
+`obter_planta` includes the active floor's marks, `marcacao_selecionada` and a resource summary. `mudancas_desde` includes `marcacoes_adicionadas`, `marcacoes_removidas` and `marcacoes_alteradas`. `imagem_da_planta` includes visible marks by default; use `incluir_marcacoes: false` for a clean preview. File exports follow the saved mark export setting instead.
+
+Project changes use undo/recovery and linked views. Personal-library and file writes are persistent external operations and do not belong to project undo. Comments are project data; creating a mark does not execute its text or authorize an assistant to change the referenced elements.
 
 `pre_dimensionamento` now includes `alvenaria.paineis[].vento_fora_plano` with wind demand/capacity, proposed intermediate/crown ties and `jambas_aberturas[]` (grouted vertical concrete jambs beside openings in tall walls), and `fundacao_paredes[]` with signed reactions to columns and receiving ground beams. `projeto_estrutural` with `configurar_vento` also returns the tall masonry-panel effects under `paineis_alvenaria`. A missing support path is exposed as `apoios_insuficientes` and a red verdict.
 

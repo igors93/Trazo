@@ -4,7 +4,7 @@
 //! Assistants ask `mudancas_desde` for what happened since they last
 //! looked, and subscribers to `trazo://planta` are told at once.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use serde_json::{Value, json};
 
@@ -36,6 +36,9 @@ pub(super) struct PlanChange {
     pub auto_updated: usize,
     /// Number of blocked/flagged elements requiring manual review after this edit.
     pub manual_review: usize,
+    pub markups_added: Vec<u64>,
+    pub markups_removed: Vec<u64>,
+    pub markups_changed: Vec<u64>,
 }
 
 /// An element as the assistant reads it: its id and kind.
@@ -59,6 +62,9 @@ impl PlanChange {
             "alterados": list(&self.changed),
             "atualizados_automaticamente": self.auto_updated,
             "revisao_manual": self.manual_review,
+            "marcacoes_adicionadas": self.markups_added,
+            "marcacoes_removidas": self.markups_removed,
+            "marcacoes_alteradas": self.markups_changed,
         })
     }
 }
@@ -97,6 +103,8 @@ impl FloorPlanApp {
         let tab = self.active_tab + 1;
         let discipline = self.discipline;
         let tool = self.mcp_running.clone();
+        let previous_marks: HashMap<_, _> = before.markups.iter().map(|m| (m.id, m)).collect();
+        let current_marks: HashMap<_, _> = self.project.markups.iter().map(|m| (m.id, m)).collect();
         let log = &mut self.plan_log;
         log.revision += 1;
         log.changes.push_back(PlanChange {
@@ -111,6 +119,26 @@ impl FloorPlanApp {
             changed: changes.changed,
             auto_updated,
             manual_review,
+            markups_added: self
+                .project
+                .markups
+                .iter()
+                .filter(|m| !previous_marks.contains_key(&m.id))
+                .map(|m| m.id)
+                .collect(),
+            markups_removed: before
+                .markups
+                .iter()
+                .filter(|m| !current_marks.contains_key(&m.id))
+                .map(|m| m.id)
+                .collect(),
+            markups_changed: self
+                .project
+                .markups
+                .iter()
+                .filter(|m| previous_marks.get(&m.id).is_some_and(|b| **b != **m))
+                .map(|m| m.id)
+                .collect(),
         });
         while log.changes.len() > LOG_SIZE {
             log.changes.pop_front();

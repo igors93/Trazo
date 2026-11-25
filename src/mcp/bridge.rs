@@ -292,7 +292,11 @@ mod tests {
             .unwrap(),
         )
         .unwrap();
-        assert_eq!(tools["result"]["tools"].as_array().unwrap().len(), 53);
+        // HTTP and stdio expose the same complete catalogue before opening a window.
+        assert_eq!(
+            tools["result"]["tools"].as_array().unwrap(),
+            &crate::mcp::protocol::tools()
+        );
     }
 
     #[test]

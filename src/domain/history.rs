@@ -23,6 +23,7 @@ use super::{
     guid::GuidRegistry,
     layers::Layer,
     library::LibraryItem,
+    markups::Markup,
     masonry::Masonry,
     model::{Constraint, Group, Lot, Opening, Project, Room, Terrain, Wall},
     notes::AnnotationNote,
@@ -71,6 +72,7 @@ struct ProjectMetadata {
     workspace_tabs: Vec<WorkspaceTab>,
     guids: GuidRegistry,
     next_id: u64,
+    markup_settings: super::markups::MarkupSettings,
 }
 
 impl ProjectMetadata {
@@ -103,6 +105,7 @@ impl ProjectMetadata {
             workspace_tabs: project.workspace_tabs.clone(),
             guids: project.guids.clone(),
             next_id: project.next_id(),
+            markup_settings: project.markup_settings,
         }
     }
 
@@ -134,6 +137,7 @@ impl ProjectMetadata {
             && self.xrefs == project.xrefs
             && self.workspace_tabs == project.workspace_tabs
             && self.guids == project.guids
+            && self.markup_settings == project.markup_settings
     }
 
     fn approx_bytes(&self) -> usize {
@@ -154,6 +158,7 @@ pub struct ProjectSnapshot {
     drawings: ChunkedStore<Drawing>,
     dimensions: ChunkedStore<DimensionEntity>,
     notes: ChunkedStore<AnnotationNote>,
+    markups: ChunkedStore<Markup>,
     circulations: ChunkedStore<CirculationElement>,
     conduits: ChunkedStore<Conduit>,
     metadata: Shared<ProjectMetadata>,
@@ -169,6 +174,7 @@ impl ProjectSnapshot {
             + self.drawings.incremental_bytes_over(None)
             + self.dimensions.incremental_bytes_over(None)
             + self.notes.incremental_bytes_over(None)
+            + self.markups.incremental_bytes_over(None)
             + self.circulations.incremental_bytes_over(None)
             + self.conduits.incremental_bytes_over(None)
             + self.metadata.approx_bytes()
@@ -203,6 +209,8 @@ impl ProjectSnapshot {
         );
         let notes =
             ChunkedStore::from_slice_sharing(&project.notes, |n| n.id, base.map(|b| &b.notes));
+        let markups =
+            ChunkedStore::from_slice_sharing(&project.markups, |m| m.id, base.map(|b| &b.markups));
         let circulations = ChunkedStore::from_slice_sharing(
             &project.circulations,
             |c| c.id,
@@ -230,6 +238,7 @@ impl ProjectSnapshot {
             + drawings.incremental_bytes_over(base.map(|b| &b.drawings))
             + dimensions.incremental_bytes_over(base.map(|b| &b.dimensions))
             + notes.incremental_bytes_over(base.map(|b| &b.notes))
+            + markups.incremental_bytes_over(base.map(|b| &b.markups))
             + circulations.incremental_bytes_over(base.map(|b| &b.circulations))
             + conduits.incremental_bytes_over(base.map(|b| &b.conduits))
             + meta_bytes;
@@ -242,6 +251,7 @@ impl ProjectSnapshot {
             drawings,
             dimensions,
             notes,
+            markups,
             circulations,
             conduits,
             metadata,
@@ -269,6 +279,8 @@ impl ProjectSnapshot {
         project.active_layer_id = meta.active_layer_id;
         project.dimensions = self.dimensions.to_vec();
         project.notes = self.notes.to_vec();
+        project.markups = self.markups.to_vec();
+        project.markup_settings = meta.markup_settings;
         project.sheet = meta.sheet.clone();
         project.schedules = meta.schedules.clone();
         project.doc_style = meta.doc_style.clone();
@@ -333,6 +345,11 @@ impl ProjectSnapshot {
                 .changed_since(before.notes.revisions()),
         );
         out.extend(
+            self.markups
+                .revisions()
+                .changed_since(before.markups.revisions()),
+        );
+        out.extend(
             self.circulations
                 .revisions()
                 .changed_since(before.circulations.revisions()),
@@ -355,6 +372,7 @@ impl ProjectSnapshot {
             + self.drawings.shared_chunks_with(&other.drawings)
             + self.dimensions.shared_chunks_with(&other.dimensions)
             + self.notes.shared_chunks_with(&other.notes)
+            + self.markups.shared_chunks_with(&other.markups)
             + self.circulations.shared_chunks_with(&other.circulations)
             + self.conduits.shared_chunks_with(&other.conduits)
     }

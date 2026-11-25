@@ -346,6 +346,12 @@ impl FloorPlanApp {
             return;
         }
 
+        if matches!(self.tool, Tool::Markup(_)) {
+            self.markup_canvas(ui, &response, &painter, view, world);
+            self.canvas_navigation(ui, navigation);
+            return;
+        }
+
         let hovered_grip = if self.tool == Tool::Move && self.item_drag.is_none() {
             world.and_then(|point| self.grip_at(point))
         } else {
@@ -482,6 +488,7 @@ impl FloorPlanApp {
                     }
                 }
                 Tool::Move => {}
+                Tool::Markup(_) => {}
             }
         }
 
@@ -629,6 +636,9 @@ impl FloorPlanApp {
         }
         // What the connected assistant just did.
         self.paint_ai_activity(&painter, view);
+        if focused {
+            canvas::paint_markups(&painter, view, &self.project);
+        }
         // Selected groups show their extent and name.
         for group in &self.project.groups {
             if group.members.iter().all(|member| self.is_selected(*member))

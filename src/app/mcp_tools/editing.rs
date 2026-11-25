@@ -53,7 +53,7 @@ fn entity_of(selection: Selection, id: u64) -> Result<Entity, String> {
 
 impl FloorPlanApp {
     /// The elements named by `ids`.
-    fn elements_of(&self, args: &Value) -> Result<Vec<Selection>, String> {
+    pub(super) fn elements_of(&self, args: &Value) -> Result<Vec<Selection>, String> {
         ids_of(args)?
             .into_iter()
             .map(|id| self.find_element(id))

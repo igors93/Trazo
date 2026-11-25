@@ -22,6 +22,7 @@ pub(super) fn tool_icon(tool: Tool) -> Icon {
         Tool::Fixture(kind) => Icon::Fixture(kind),
         Tool::Measure => Icon::Ruler,
         Tool::Draw(kind) => Icon::Glyph(kind.glyph()),
+        Tool::Markup(_) => Icon::TextNote,
         Tool::Modify(kind) => Icon::Glyph(kind.glyph()),
         Tool::Constrain(kind) => Icon::Glyph(kind.glyph()),
     }
@@ -42,6 +43,7 @@ pub(super) fn tool_name(tool: Tool) -> &'static str {
         Tool::Fixture(kind) => kind.label(),
         Tool::Measure => "Medir",
         Tool::Draw(kind) => kind.label(),
+        Tool::Markup(_) => "Marcações",
         Tool::Modify(kind) => kind.label(),
         Tool::Constrain(kind) => kind.label(),
     }
@@ -176,6 +178,7 @@ impl FloorPlanApp {
                                     Tool::Terrain => self.terrain_options(ui),
                                     Tool::Wall | Tool::Room => self.masonry_options(ui),
                                     Tool::Draw(kind) => self.draw_options(ui, kind),
+                                    Tool::Markup(_) => { ui.label("Marque, comente e acompanhe as pendências da planta."); },
                                     Tool::Modify(kind) => self.modify_options(ui, kind),
                                     Tool::Constrain(kind) => self.constrain_options(ui, kind),
                                     Tool::RoomPolygon => {

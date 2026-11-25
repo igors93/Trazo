@@ -160,6 +160,7 @@ pub fn ribbon_button(
         Sense::click()
     };
     let (rect, response) = ui.allocate_exact_size(vec2(width, RIBBON_ROW), sense);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     let painter = ui.painter();
     paint_control_background(painter, rect, 7, &response, enabled, selected);
     if selected {
@@ -220,6 +221,7 @@ pub fn ribbon_small(ui: &mut Ui, icon: Icon, label: &str, selected: bool) -> Res
     let natural_w = galley.size().x + 34.0;
     let width = ui.min_rect().width().max(natural_w);
     let (rect, response) = ui.allocate_exact_size(vec2(width, row_height), Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, enabled, label));
     let painter = ui.painter();
     paint_control_background(painter, rect, 5, &response, enabled, selected);
     let (ink, accent) = tones(enabled, selected);

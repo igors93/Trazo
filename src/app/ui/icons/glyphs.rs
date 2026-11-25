@@ -10,6 +10,7 @@ use super::Pen;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Glyph {
     Line,
+    Arrow,
     Polyline,
     Rectangle,
     Arc,
@@ -54,6 +55,10 @@ pub(super) fn paint(pen: &Pen, glyph: Glyph, soft: Color32, thin: Stroke) {
     let accent = pen.accent;
     let vertex = |x: f32, y: f32| pen.dot(x, y, 1.9, accent.color);
     match glyph {
+        Glyph::Arrow => {
+            pen.polyline(&[(4.0, 20.0), (20.0, 4.0)], ink);
+            pen.polyline(&[(11.0, 4.0), (20.0, 4.0), (20.0, 13.0)], accent);
+        }
         Glyph::Line => {
             pen.polyline(&[(4.0, 19.0), (20.0, 5.0)], ink);
             vertex(4.0, 19.0);

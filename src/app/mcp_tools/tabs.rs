@@ -296,7 +296,16 @@ impl FloorPlanApp {
                     .unwrap_or_else(|| format!("Pavimento {target_id}"));
                 Some(format!("Pavimento ativo nesta aba: {label}."))
             }
-            _ => return Err("Informe 'acao': listar, adicionar ou trocar.".to_owned()),
+            "editar" | "remover" | "configurar" => {
+                self.edit_floor(args)?;
+                Some("Configuração dos pavimentos atualizada.".to_owned())
+            }
+            _ => {
+                return Err(
+                    "Informe 'acao': listar, adicionar, trocar, editar, remover ou configurar."
+                        .to_owned(),
+                );
+            }
         };
 
         let active_id = self.project.floors.active_floor_id;

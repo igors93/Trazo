@@ -12,7 +12,7 @@ const MAX_ACTIONS: usize = 200;
 
 /// Tools that act on files, history or the whole project, which a batch
 /// cannot undo as one step.
-const OUTSIDE_BATCH: [&str; 9] = [
+const OUTSIDE_BATCH: [&str; 14] = [
     "executar_lote",
     "abas",
     "pavimentos",
@@ -22,6 +22,11 @@ const OUTSIDE_BATCH: [&str; 9] = [
     "exportar_planta",
     "desfazer",
     "refazer",
+    "biblioteca",
+    "blocos",
+    "referencias",
+    "documentacao",
+    "modelos",
 ];
 
 impl FloorPlanApp {

@@ -297,9 +297,8 @@ fn scaled_sheet_svg_with_overlay(
     let mm_per_m = layout.scale.mm_per_meter();
 
     let bounds_source = focused_overlay.map_or(project, |(overlay, _)| overlay);
-    let (min, max) = bounds_source
-        .bounds()
-        .or_else(|| project.bounds())
+    let (min, max) = super::markups::bounds(bounds_source)
+        .or_else(|| super::markups::bounds(project))
         .unwrap_or((Point::new(0.0, 0.0), Point::new(8.0, 6.0)));
     let plan_w_m = (max.x - min.x).max(0.5);
     let plan_h_m = (max.y - min.y).max(0.5);
@@ -1080,6 +1079,7 @@ fn scaled_sheet_svg_with_overlay(
 
     svg.push_str("</g>\n");
 
+    super::markups::write(&mut svg, bounds_source, pt, 3.0);
     let tb = &layout.title_block;
     if tb.show_title_block {
         write_title_block(

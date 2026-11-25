@@ -2,6 +2,7 @@ mod ai_activity;
 pub mod app_icon;
 mod canvas;
 mod interaction;
+mod markups;
 mod mcp_tools;
 pub(crate) mod pacing;
 mod plan_sync;
@@ -48,6 +49,7 @@ enum DocDialog {
     Layers,
     Dimensions,
     Notes,
+    Markups,
     Sheet,
     Print,
     Schedules,
@@ -85,6 +87,7 @@ enum RibbonTab {
     Electrical,
     Structure,
     Drafting,
+    Markups,
     View,
     Output,
 }
@@ -104,6 +107,8 @@ enum Tool {
     Measure,
     /// Draws lines, polylines, rectangles, arcs, circles and splines.
     Draw(tools::DrawKind),
+    /// Review shapes; None selects and moves existing marks.
+    Markup(Option<crate::domain::markups::MarkupKind>),
     /// Copy, move, turn, mirror, offset, trim and extend.
     Modify(tools::ModifyKind),
     /// Keeps lines parallel or perpendicular, points together or distances fixed.
@@ -146,6 +151,7 @@ pub enum CreationState {
 
 pub struct FloorPlanApp {
     project: Project,
+    markup_state: markups::MarkupUiState,
     history: History,
     file_path: Option<PathBuf>,
     dirty: bool,
@@ -419,6 +425,7 @@ impl FloorPlanApp {
             recovery_pending: false,
             pending_action: None,
             tool: Tool::Move,
+            markup_state: markups::MarkupUiState::default(),
             creation_state: CreationState::Idle,
             selection: None,
             selection_extra: Vec::new(),
@@ -730,6 +737,7 @@ impl FloorPlanApp {
     }
 
     pub fn cancel_creation(&mut self) {
+        self.markup_state.cancel_draft();
         self.creation_state = CreationState::Idle;
         self.polygon_draft.clear();
         self.draw_points.clear();
@@ -757,10 +765,15 @@ impl FloorPlanApp {
     }
 
     fn set_tool(&mut self, tool: Tool) {
+        self.sync_markup_context();
+        if matches!(tool, Tool::Markup(_)) && !matches!(self.tool, Tool::Markup(_)) {
+            self.markup_state.context_elements = self.selected();
+        }
         self.commit_item_drag();
         self.tool = tool;
         self.fixture_preset = None;
         self.cancel_creation();
+        self.markup_state.cancel_draft();
         // Moving, copying, turning and mirroring act on the selection.
         if !matches!(tool, Tool::Modify(kind) if kind.uses_selection()) {
             self.clear_selection();
@@ -793,6 +806,9 @@ impl FloorPlanApp {
                 "Clique para posicionar. Perto de uma parede o objeto encosta nela; G gira."
             }
             Tool::Draw(kind) => kind.hint(),
+            Tool::Markup(None) => "Clique em uma marcação para selecionar; arraste para mover. Abra Lista e comentários para editar.",
+            Tool::Markup(Some(crate::domain::markups::MarkupKind::Freehand)) => "Arraste sobre a planta para desenhar uma marcação. Esc cancela.",
+            Tool::Markup(Some(_)) => "Clique em dois pontos ou arraste para criar uma marcação. Esc cancela.",
             Tool::Modify(kind) => kind.hint(),
             Tool::Constrain(kind) => kind.hint(),
             Tool::Measure => {
@@ -953,6 +969,7 @@ impl FloorPlanApp {
     /// Drops everything in progress on the plan (drafts, drags, the
     /// selection) when another project takes its place.
     fn reset_editing_state(&mut self) {
+        self.markup_state = markups::MarkupUiState::default();
         self.ai_activity.forget_highlight();
         self.cancel_creation();
         self.clear_selection();

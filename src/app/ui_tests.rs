@@ -59,6 +59,63 @@ fn harness_with_app(configure: impl FnOnce(&mut FloorPlanApp)) -> Harness<'stati
 }
 
 #[test]
+fn markup_ribbon_and_comment_dialog_work_at_different_window_sizes() {
+    use crate::domain::markups::{Markup, MarkupKind};
+    for size in [[960.0, 720.0], [1440.0, 900.0]] {
+        let mut harness = harness_with_size(size, |app| {
+            app.project = Project::default();
+            app.show_start_page = false;
+            app.ribbon_tab = RibbonTab::Markups;
+            app.ribbon_collapsed = false;
+            app.set_tool(Tool::Markup(None));
+            let id = app
+                .project
+                .add_markup(Markup {
+                    id: 0,
+                    kind: MarkupKind::Rectangle,
+                    points: vec![Point::ORIGIN, Point::new(2.0, 2.0)],
+                    color: [220, 65, 65],
+                    comment: "Revisar armário".into(),
+                    resolved: false,
+                    linked_elements: vec![],
+                })
+                .unwrap();
+            app.sync_markup_context();
+            app.markup_state.selected = Some(id);
+        });
+        assert!(harness.query_by_label("Lista e comentários").is_some());
+        harness.get_by_label("Lista e comentários").click();
+        harness.step();
+        harness.step();
+        assert_eq!(harness.state().active_doc_dialog, DocDialog::Markups);
+        assert!(harness.query_by_label("Salvar comentário").is_some());
+        harness
+            .state_mut()
+            .markup_state
+            .edit
+            .as_mut()
+            .unwrap()
+            .comment = "Aumentar o armário".into();
+        harness.get_by_label("Salvar comentário").click();
+        harness.step();
+        harness.step();
+        assert_eq!(
+            harness.state().project.markups[0].comment,
+            "Aumentar o armário"
+        );
+        harness.get_by_label("Fechar").click();
+        harness.step();
+        harness.step();
+        assert_eq!(harness.state().active_doc_dialog, DocDialog::None);
+        harness.state_mut().undo();
+        assert_eq!(
+            harness.state().project.markups[0].comment,
+            "Revisar armário"
+        );
+    }
+}
+
+#[test]
 fn library_pointer_placement_preserves_model_dimensions_and_free_rotation() {
     use crate::domain::library::LibraryItem;
     let mut app = FloorPlanApp::new(&egui::Context::default());

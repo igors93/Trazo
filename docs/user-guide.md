@@ -8,6 +8,7 @@ This guide walks through Trazo's interface and workflow. The application interfa
 - [CAD modify tools](#cad-modify-tools)
 - [Architecture tools](#architecture-tools)
 - [Interiors](#interiors)
+- [Review marks](#review-marks)
 - [Electrical design](#electrical-design)
 - [Structure](#structure)
 - [Discipline views](#discipline-views)
@@ -24,7 +25,7 @@ Conventions: lengths are in metres, Portuguese decimal commas are accepted in ev
 | Area | What it holds |
 | --- | --- |
 | **Menu bar** | *Arquivo* (File), *Editar* (Edit), *Exibir* (View), *Desenhar* (Draw) and *Ajuda* (Help), each entry with its icon and shortcut; quick buttons for new, open, save, undo and redo; the project name with a dot that marks unsaved changes; and **Exportar** (Export). |
-| **Ribbon** | Six tabs: *Arquitetura* (architecture), *Editar* (edit), *Interiores* (interiors), *Desenho* (2D drafting), *Vista* (view) and *Saída* (output). Click the active tab, or the arrow at the right, to fold the ribbon and gain drawing space. |
+| **Ribbon** | Nine tabs: *Arquitetura* (architecture), *Editar* (edit), *Interiores* (interiors), *Elétrica* (electrical), *Estrutura* (structure), *Desenho* (2D drafting), *Marcações* (review marks), *Vista* (view) and *Saída* (output). Click the active tab, or the arrow at the right, to fold the ribbon and gain drawing space. |
 | **Options bar** | The active tool and its settings: the lot's exact width and length, the wall material and block size, the modulation switch, the default door width, the selection filter, and so on. |
 | **Project browser** (left) | Views, lot, rooms, walls, doors, windows, open spans, fixtures, drawings, groups and constraints, with areas and lengths. A text filter, foldable groups, click to select, double-click to zoom to an element. Empty categories stay as quiet one-line rows. |
 | **Properties** (right) | Foldable sections for the selected element (dimensions, masonry, frame type, finishes, location, relations). With nothing selected: the area schedule, the door and window schedule, the masonry estimate, the occupancy rate and the view settings. |
@@ -131,6 +132,18 @@ selection and display extents. Width and depth still describe the furniture body
 Near a straight wall, wall-backed furniture turns its back to the wall and stands against the face of the bricks. Dining tables, cars and poolside objects remain freestanding where you click. Fixtures drag in 5 cm steps, nudge with the arrows, turn with `G` and resize in Properties. A washbasin 0.90 m or wider becomes a double sink.
 
 Room names and sizes find the free spot nearest the middle of each room, clear of furniture and door swings, both on screen and in exported drawings.
+
+## Review marks
+
+Use **Marcações** for reminders, questions and design reviews. These marks are saved in the `.trazo` project, belong to their floor and do not change construction geometry, loads or quantities.
+
+- Choose **Retângulo**, **Círculo**, **Seta** or **Traço livre**, then a colour. Rectangles use opposite corners; circles use a centre and a point on the circumference; arrows use a start and a tip. Click twice or drag. Freehand marks are drawn by dragging; Esc cancels the draft.
+- Every mark receives a stable **M** identifier. **Selecionar** lets you drag a mark, drag its blue control points to resize it, or press Delete to remove it. Hover to read its comment.
+- Select elements before opening the tab, then choose **Marcar seleção** to enclose them and keep explicit references to those elements.
+- **Lista e comentários** searches identifiers/comments, locates marks and edits colour, comment, coordinates and resolved state. **Salvar comentário** applies an undoable change. You can also set a comment for subsequent marks.
+- **Mostrar marcações** hides the overlay; **Mostrar resolvidas** includes completed marks. **Incluir na exportação** is off by default and adds the visible marks to plan/sheet SVG, PDF, PNG and DXF exports when enabled. DXF uses its supported indexed colour palette.
+
+Connected clients can read the same identifiers, colours, comments, floor and real coordinates through MCP. A request such as “Move the cabinet in the red mark M12” therefore refers to the same part of the drawing for both people and connected tools. See [MCP review marks and resources](mcp.md#review-marks-and-project-resources).
 
 ## Electrical design
 

@@ -32,6 +32,8 @@ pub struct FloorPlanData {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<AnnotationNote>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub markups: Vec<super::markups::Markup>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub circulations: Vec<CirculationElement>,
     /// Conduits, beams and slabs name devices, columns and rooms of their
     /// own floor, so they travel with it.
@@ -154,6 +156,7 @@ impl Project {
             drawings: std::mem::take(&mut self.drawings),
             dimensions: std::mem::take(&mut self.dimensions),
             notes: std::mem::take(&mut self.notes),
+            markups: std::mem::take(&mut self.markups),
             circulations: std::mem::take(&mut self.circulations),
             conduits: std::mem::take(&mut self.conduits),
             beams: std::mem::take(&mut self.structure.beams),
@@ -172,6 +175,7 @@ impl Project {
         self.drawings = data.drawings;
         self.dimensions = data.dimensions;
         self.notes = data.notes;
+        self.markups = data.markups;
         self.circulations = data.circulations;
         self.conduits = data.conduits;
         self.structure.beams = data.beams;

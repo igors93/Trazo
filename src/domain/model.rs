@@ -84,6 +84,12 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<super::notes::AnnotationNote>,
 
+    /// Personal and collaborative review marks on the active floor.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub markups: Vec<super::markups::Markup>,
+    #[serde(default)]
+    pub markup_settings: super::markups::MarkupSettings,
+
     /// Technical sheet format (A4–A0 or custom), orientation and margins.
     #[serde(default)]
     pub sheet: super::sheet::SheetLayout,
@@ -211,6 +217,8 @@ impl Default for Project {
             dimensions: Vec::new(),
 
             notes: Vec::new(),
+            markups: Vec::new(),
+            markup_settings: super::markups::MarkupSettings::default(),
 
             sheet: super::sheet::SheetLayout::default(),
 
@@ -1118,6 +1126,9 @@ impl Project {
         for n in &self.notes {
             self.guids.ensure_element(n.id, seed);
         }
+        for m in &self.markups {
+            self.guids.ensure_element(m.id, seed);
+        }
         for circ in &self.circulations {
             self.guids.ensure_element(circ.id, seed);
         }
@@ -1166,6 +1177,9 @@ impl Project {
             }
             for n in &floor.data.notes {
                 self.guids.ensure_element(n.id, seed);
+            }
+            for m in &floor.data.markups {
+                self.guids.ensure_element(m.id, seed);
             }
             for circ in &floor.data.circulations {
                 self.guids.ensure_element(circ.id, seed);
@@ -1499,6 +1513,13 @@ impl Project {
     }
 
     pub fn validate_and_repair(&mut self) -> Result<Vec<String>, String> {
+        for markup in self
+            .markups
+            .iter()
+            .chain(self.floors.levels.iter().flat_map(|f| &f.data.markups))
+        {
+            markup.validate()?;
+        }
         let mut warnings = Vec::new();
 
         // 1. Validate coordinates
@@ -1668,6 +1689,7 @@ impl Project {
         include_ids!(
             &self.dimensions,
             &self.notes,
+            &self.markups,
             &self.circulations,
             &self.structure.balance_beams,
             &self.structure.wall_foundations,
@@ -1688,6 +1710,7 @@ impl Project {
                 &floor.data.drawings,
                 &floor.data.dimensions,
                 &floor.data.notes,
+                &floor.data.markups,
                 &floor.data.circulations,
                 &floor.data.conduits,
                 &floor.data.beams,
@@ -2384,6 +2407,7 @@ impl Project {
             && self.drawings.is_empty()
             && self.terrain.is_none()
             && !has_visible_underlay
+            && !self.markups.iter().any(|m| self.markup_shown(m))
         {
             return None;
         }
@@ -2434,6 +2458,13 @@ impl Project {
             max.y = max.y.max(u_max.y);
         }
 
+        for m in &self.markups {
+            if self.markup_shown(m) {
+                let (a, b) = m.bounds();
+                min = Point::new(min.x.min(a.x), min.y.min(a.y));
+                max = Point::new(max.x.max(b.x), max.y.max(b.y));
+            }
+        }
         Some((min, max))
     }
 }

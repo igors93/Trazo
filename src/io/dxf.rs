@@ -488,10 +488,70 @@ pub fn to_dxf_string(project: &Project) -> String {
         bounds.include(note.position);
     }
 
+    let mut export_layers = project.layers.clone();
+    if project.markup_settings.export {
+        for m in &project.markups {
+            if !project.markup_shown(m) || m.validate().is_err() {
+                continue;
+            }
+            let name = format!(
+                "Marcacoes_{:02X}{:02X}{:02X}",
+                m.color[0], m.color[1], m.color[2]
+            );
+            if !export_layers.iter().any(|l| l.name == name) {
+                export_layers.push(Layer {
+                    id: 0,
+                    name: name.clone(),
+                    color: m.color,
+                    line_weight_mm: 0.25,
+                    line_type: LineType::Solid,
+                    visible: true,
+                    locked: false,
+                    category: None,
+                });
+            }
+            let path = m.shape().outline();
+            write_polyline(&mut entities_buf, &name, &path, m.shape().is_closed(), None);
+            bounds.include_slice(&path);
+            if m.kind == crate::domain::markups::MarkupKind::Arrow {
+                let a = m.points[0];
+                let b = m.points[1];
+                let along = b.minus(a).normalized().unwrap_or(Point::ORIGIN);
+                let normal = Point::new(-along.y, along.x);
+                let base = b.translated(along.scaled(-0.20));
+                write_polyline(
+                    &mut entities_buf,
+                    &name,
+                    &[
+                        base.translated(normal.scaled(0.08)),
+                        b,
+                        base.translated(normal.scaled(-0.08)),
+                    ],
+                    false,
+                    None,
+                );
+            }
+            let label = if m.comment.is_empty() {
+                m.label()
+            } else {
+                format!("{}: {}", m.label(), m.comment)
+            };
+            write_text(
+                &mut entities_buf,
+                &name,
+                m.points[0],
+                0.16,
+                0.0,
+                &label,
+                None,
+            );
+        }
+    }
+
     // Assemble complete DXF document.
     let mut out = String::with_capacity(blocks_buf.len() + entities_buf.len() + 4096);
     write_header(&mut out, bounds);
-    write_tables(&mut out, &project.layers, has_hatches);
+    write_tables(&mut out, &export_layers, has_hatches);
     write_blocks(&mut out, &blocks_buf);
     write_pair(&mut out, 0, "SECTION");
     write_pair(&mut out, 2, "ENTITIES");

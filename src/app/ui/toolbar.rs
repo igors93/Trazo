@@ -13,13 +13,14 @@ mod edit;
 mod electrical;
 mod structure;
 
-const TABS: [(RibbonTab, &str); 8] = [
+const TABS: [(RibbonTab, &str); 9] = [
     (RibbonTab::Architecture, "Arquitetura"),
     (RibbonTab::Edit, "Editar"),
     (RibbonTab::Interiors, "Interiores"),
     (RibbonTab::Electrical, "Elétrica"),
     (RibbonTab::Structure, "Estrutura"),
     (RibbonTab::Drafting, "Desenho"),
+    (RibbonTab::Markups, "Marcações"),
     (RibbonTab::View, "Vista"),
     (RibbonTab::Output, "Saída"),
 ];
@@ -69,6 +70,7 @@ impl FloorPlanApp {
                                 RibbonTab::Structure => self.structure_tab(ui),
                                 RibbonTab::Edit => self.edit_tab(ui),
                                 RibbonTab::Drafting => self.drafting_tab(ui),
+                                RibbonTab::Markups => self.markups_tab(ui),
                                 RibbonTab::View => self.view_tab(ui),
                                 RibbonTab::Output => self.output_tab(ui),
                             }
@@ -190,6 +192,11 @@ impl FloorPlanApp {
                     if active {
                         self.ribbon_collapsed = !self.ribbon_collapsed;
                     } else {
+                        if tab == RibbonTab::Markups {
+                            self.set_tool(Tool::Markup(None));
+                        } else if matches!(self.tool, Tool::Markup(_)) {
+                            self.set_tool(Tool::Move);
+                        }
                         self.ribbon_tab = tab;
                         self.ribbon_collapsed = false;
                     }
@@ -213,7 +220,14 @@ impl FloorPlanApp {
         active_span
     }
 
-    fn tool_button(&mut self, ui: &mut Ui, tool: Tool, icon: Icon, label: &str, hint: &str) {
+    pub(super) fn tool_button(
+        &mut self,
+        ui: &mut Ui,
+        tool: Tool,
+        icon: Icon,
+        label: &str,
+        hint: &str,
+    ) {
         let response = tip(
             ribbon_button(ui, icon, label, self.tool == tool, false),
             hint,

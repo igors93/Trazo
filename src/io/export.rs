@@ -30,6 +30,7 @@ mod labels;
 pub mod sheet;
 
 pub use sheet::{export_scaled_pdf_for_view, export_scaled_pdf_views, export_scaled_svg_for_view};
+mod markups;
 
 /// Visual configuration of one open view/tab to export, matching how Trazo
 /// displays synchronized workspace tabs on screen (discipline visibility,
@@ -308,9 +309,8 @@ fn document_with_options(
     subtitle: Option<&str>,
 ) -> SvgDocument {
     let bounds_source = focused_overlay.map_or(project, |(overlay, _)| overlay);
-    let (min, max) = bounds_source
-        .bounds()
-        .or_else(|| project.bounds())
+    let (min, max) = markups::bounds(bounds_source)
+        .or_else(|| markups::bounds(project))
         .unwrap_or((Point::new(0.0, 0.0), Point::new(9.0, 6.0)));
     let span_x = (max.x - min.x).max(6.0);
     let span_y = (max.y - min.y).max(4.0);
@@ -1255,6 +1255,7 @@ fn document_with_options(
             escaped(sub)
         );
     }
+    markups::write(&mut svg, bounds_source, point, 12.0);
     svg.push_str("</svg>");
     SvgDocument {
         markup: svg,

@@ -22,6 +22,7 @@ mod inspector;
 mod layers;
 mod library;
 mod loads;
+mod markups;
 mod modify_menu;
 mod notes;
 mod options_bar;
@@ -141,6 +142,7 @@ impl FloorPlanApp {
         self.layers_dialog(&context);
         self.dimensions_dialog(&context);
         self.notes_dialog(&context);
+        self.markups_dialog(&context);
         self.sheet_dialog(&context);
         self.print_dialog(&context);
         self.schedules_dialog(&context);
@@ -188,6 +190,7 @@ mod tests {
             RibbonTab::Electrical,
             RibbonTab::Structure,
             RibbonTab::Drafting,
+            RibbonTab::Markups,
             RibbonTab::View,
             RibbonTab::Output,
         ];

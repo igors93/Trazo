@@ -233,6 +233,22 @@ impl FloorPlanApp {
                 icon: Icon::Glyph(super::Glyph::Arc),
                 action: PaletteAction::Tool(Tool::Draw(DrawKind::Arc), RibbonTab::Drafting),
             },
+            PaletteItem {
+                category: "Marcações",
+                label: "Marcações e lembretes".to_owned(),
+                shortcut: "",
+                keywords: "marcar revisar comentario lembrete cores pendencia",
+                icon: Icon::TextNote,
+                action: PaletteAction::Tool(Tool::Markup(None), RibbonTab::Markups),
+            },
+            PaletteItem {
+                category: "Marcações",
+                label: "Lista de marcações".to_owned(),
+                shortcut: "",
+                keywords: "comentarios revisoes pendentes resolvidas",
+                icon: Icon::TextNote,
+                action: PaletteAction::Dialog(DocDialog::Markups),
+            },
             // --- Engenharia & Simulação ---
             PaletteItem {
                 category: "Engenharia",
