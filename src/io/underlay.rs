@@ -17,6 +17,30 @@ pub struct DecodedUnderlay {
 }
 
 const MAX_UNDERLAY_SIDE: u32 = 2400;
+const MAX_DECODE_SIDE: u32 = 16_384;
+const MAX_DECODE_BYTES: u64 = 256 << 20;
+
+fn decode_bounded_raster(bytes: &[u8]) -> Result<image::DynamicImage, String> {
+    let mut reader = image::ImageReader::new(Cursor::new(bytes))
+        .with_guessed_format()
+        .map_err(|error| format!("Formato de imagem inválido: {error}"))?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(MAX_DECODE_SIDE);
+    limits.max_image_height = Some(MAX_DECODE_SIDE);
+    limits.max_alloc = Some(MAX_DECODE_BYTES);
+    reader.limits(limits);
+    // Resizing happens after decoding. Bound the source allocation as well as
+    // the final texture so a tiny compressed image cannot exhaust the process.
+    let decoder = reader
+        .into_decoder()
+        .map_err(|error| format!("Formato de imagem não suportado ou corrompido: {error}"))?;
+    let (width, height) = image::ImageDecoder::dimensions(&decoder);
+    if u64::from(width) * u64::from(height) * 4 > MAX_DECODE_BYTES {
+        return Err("A imagem descomprimida excede o limite de memória para fundos.".to_owned());
+    }
+    image::DynamicImage::from_decoder(decoder)
+        .map_err(|error| format!("Não foi possível decodificar a imagem: {error}"))
+}
 
 /// Loads an image (PNG, JPEG, WebP, BMP), SVG, or PDF (specific 1-based page)
 /// from disk and returns straight RGBA pixels plus a compact embedded PNG.
@@ -50,9 +74,7 @@ pub fn decode_embedded_png(base64_str: &str) -> Result<(u32, u32, Vec<u8>), Stri
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(base64_str.trim())
         .map_err(|error| format!("Imagem embutida inválida: {error}"))?;
-    let img = image::load_from_memory(&bytes)
-        .map_err(|error| format!("Não foi possível decodificar a imagem embutida: {error}"))?
-        .to_rgba8();
+    let img = decode_bounded_raster(&bytes)?.to_rgba8();
     let (w, h) = img.dimensions();
     Ok((w, h, img.into_raw()))
 }
@@ -60,8 +82,7 @@ pub fn decode_embedded_png(base64_str: &str) -> Result<(u32, u32, Vec<u8>), Stri
 /// Decodes PNG, JPEG, WebP, or BMP bytes, downscaling gently if wider than
 /// `MAX_UNDERLAY_SIDE`, and produces a normalized embedded PNG representation.
 pub fn decode_raster_bytes(bytes: &[u8]) -> Result<DecodedUnderlay, String> {
-    let mut img = image::load_from_memory(bytes)
-        .map_err(|error| format!("Formato de imagem não suportado ou corrompido: {error}"))?;
+    let mut img = decode_bounded_raster(bytes)?;
     if img.width() > MAX_UNDERLAY_SIDE || img.height() > MAX_UNDERLAY_SIDE {
         img = img.resize(
             MAX_UNDERLAY_SIDE,
@@ -82,6 +103,44 @@ pub fn decode_raster_bytes(bytes: &[u8]) -> Result<DecodedUnderlay, String> {
         rgba: rgba_img.into_raw(),
         png_base64,
     })
+}
+
+#[cfg(test)]
+mod decode_tests {
+    use super::*;
+
+    #[test]
+    fn oversized_raster_headers_are_refused_before_pixel_allocation() {
+        let mut png = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(1, 1)
+            .write_to(&mut png, ImageFormat::Png)
+            .unwrap();
+        let mut bytes = png.into_inner();
+        for (width, height) in [(MAX_DECODE_SIDE + 1, 1_u32), (10_000_u32, 10_000_u32)] {
+            bytes[16..20].copy_from_slice(&width.to_be_bytes());
+            bytes[20..24].copy_from_slice(&height.to_be_bytes());
+            let mut crc = flate2::Crc::new();
+            crc.update(&bytes[12..29]);
+            bytes[29..33].copy_from_slice(&crc.sum().to_be_bytes());
+            assert_eq!(
+                image::ImageReader::with_format(Cursor::new(&bytes), ImageFormat::Png)
+                    .into_dimensions()
+                    .unwrap(),
+                (width, height)
+            );
+            let error = decode_raster_bytes(&bytes).err().unwrap();
+            assert!(
+                error.contains("limit"),
+                "expected refusal before decoding: {error}"
+            );
+            let embedded = base64::engine::general_purpose::STANDARD.encode(&bytes);
+            let error = decode_embedded_png(&embedded).unwrap_err();
+            assert!(
+                error.contains("limit"),
+                "expected refusal before decoding: {error}"
+            );
+        }
+    }
 }
 
 fn decode_svg_bytes(bytes: &[u8]) -> Result<DecodedUnderlay, String> {
