@@ -53,7 +53,7 @@ Engineering features follow these rules. They apply to everything in milestones 
 | --- | --- |
 | Drawing engine (#01–#10) | ✅ Complete: `f64` geometry, free-shape rooms, snaps, typed input, CAD modify tools, constraints, multiple selection |
 | Architecture (#11–#25) | ✅ Complete: junctions, shared walls, multilayer walls, door and window types, stairs, floors, library, finishes, circulation checks |
-| Documentation (#26–#37) | ✅ Complete: associative dimensions, layers, sheets, scales, title blocks, hatches, schedules, sections, sheet sets, ABNT styles |
+| Documentation (#26–#37, #71, #151–#155) | 🟡 Core complete (#26–#37: associative dimensions, layers, sheets, scales, title blocks, hatches, schedules, schematic sections, sheet sets, ABNT styles); multi-viewport mixed-scale sheet composer, executive sections, site/roof/location plans, urban occupancy/permeability tables and 3D sheet perspective remain (#71, #151–#155) |
 | Exchange (#38–#45, #70) | ✅ Complete: DXF and DWG, SVG and CSV, print to scale, image and PDF underlays, blocks with attributes, external references, version comparison |
 | Release (#58–#64, #77–#81) | 🟡 CI, licence, property tests, migrations, release binaries, crash reports, Windows installer and samples done; schema, signing and CI on Windows and macOS remain |
 | Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
@@ -513,6 +513,15 @@ Runs in parallel with the other milestones.
   - undo memory stays bounded;
   - exported PDFs are compared against reference images in CI.
 
+### M14: Executive & municipal architectural sheets
+
+Everything needed to assemble a complete Brazilian municipal permit / executive architectural sheet (*projeto legal / prancha de prefeitura*) inside Trazo without finishing in external CAD/BIM software.
+
+- **Items:** #71, #85, #151, #152, #153, #154, #155
+- **Done when:**
+  - from a residential project, Trazo composes a single A1/A0 ABNT sheet combining a `1:50` dimensioned floor plan, executive `1:50` cross-sections (`Corte AA` and `Corte BB` with foundations, earth fill, timber roof trusses, visible tile profile, water-tank enclosure, wet-area wall tile hatches, vertical dimensions and callout leaders), a `1:200` site & roof plan (*Implantação e Cobertura*), a `1:1000` city-block location plan (*Planta de Situação*), urban occupancy/permeability/openings/specification tables, a numbered schematic area/ridge-post breakdown and a clean architectural 3D exterior perspective above the ABNT title block;
+  - every viewport updates live from the model and exports identically to vector PDF, SVG and DXF.
+
 ### Exploratory
 
 Worth prototyping when the core is solid: #85, #86, #109, #139.
@@ -676,6 +685,16 @@ A chosen level must never be a wall. A newcomer can open an advanced tool when n
 | 85 | 3D massing preview: extruded walls, openings, slabs and the structure, orbit view | P2 | XL | ⬜ |
 | 86 | IFC export of walls, spaces, openings, floors and structural elements, for BIM workflows | P2 | L | ⬜ |
 
+### N. Executive & municipal architectural sheets
+
+| # | Item | Priority | Size | Milestone | Status |
+| --- | --- | --- | --- | --- | --- |
+| 151 | Multi-viewport sheet composer (*montador de prancha multi-escala*): free Paper Space / Sheet layout placing and resizing multiple live viewports at different scales (`1:50`, `1:200`, `1:1000`) alongside schedules, legends, callout diagrams and the ABNT title block on a single A1/A0/A2/A3 sheet, exported identically to SVG, PDF and DXF | P0 | XL | M14 | ⬜ |
+| 152 | Executive architectural sections & elevations (*cortes e fachadas executivos*): upgrade automatic `Corte AA` / `Corte BB` generation with foundation footings/ground beams, hatched earth fill and subfloor, detailed timber roof trusses/rafters/battens, visible roof-tile elevation profile, elevated water-tank (*caixa d'água*) enclosure and slab, wet-area wall tile hatches, interior doors/windows in section/elevation, vertical dimensions (floor-to-ceiling, sills, ridge) and automatic construction callout leaders | P0 | XL | M14 | 🟡 Schematic sections and elevations exist (#35) |
+| 153 | Site, roof & location plans (*Implantação/Cobertura 1:200 e Planta de Situação 1:1000*): dedicated *Implantação e Cobertura* viewport (lot, setback chains, roof tile hatch, slope arrows, gutters, sidewalk/curb, street name and north arrow, building on #71) plus a parametric *Planta de Situação* generator (city block grid, neighbouring lots, highlighted lot *IMÓVEL*, street names and corner distance) | P1 | L | M14 | 🟡 Lot, setbacks and roof geometry exist |
+| 154 | Urban occupancy parameters, technical specification schedule & schematic breakdown (*parâmetros urbanísticos e tabelas de prefeitura*): *Tabela de Parâmetros de Ocupação do Solo* with Floor Area Ratio (*Índice / Coeficiente de Aproveitamento*), Lot Coverage (*Taxa de Ocupação*) and explicit Permeable / Infiltration Area & Rate (*Taxa de Infiltração / Permeabilidade*), plus a *Tabela de Especificações Técnicas* by building system and numbered area / ridge-post height (*altura de pontaletes*) schematic breakdown | P1 | M | M14 | 🟡 Area, openings and finishes schedules exist |
+| 155 | Architectural 3D perspective for sheets (*perspectiva 3D arquitetônica*): clean hidden-line / technical shaded 3D exterior view generated from the model (extruded walls, openings, pitched roofs with overhangs, sun shadows and optional schematic entourage, extending #85) placeable directly as a viewport above the ABNT title block | P2 | XL | M14 | ⬜ |
+
 ## Definition of done
 
 An item is done when:
@@ -698,7 +717,7 @@ To stay an approachable tool that helps people build safely, these are not plann
 
 - signing, approving or replacing a licensed professional: Trazo never issues a final design, an ART or RRT, or a permit;
 - buildings beyond the limits of #102, such as more than three storeys, spans over 7 m, prestressed or special structures, or retaining walls taller than 1.5 m. These belong to professionals and dedicated software, and Trazo says so;
-- photorealistic 3D rendering (a simple massing view is exploratory, #85);
+- photorealistic 3D rendering (a simple massing view is #85 and clean technical 3D perspective for sheets is #155);
 - full BIM authoring (IFC export is exploratory, #86);
 - fire-safety, HVAC and gas-piping design (gas points are part of #72);
 - real-time cloud collaboration between people (AI collaboration is in scope).
