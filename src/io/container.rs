@@ -7,7 +7,7 @@
 //! the model. Plain UTF-8 JSON files remain transparently readable.
 
 use std::fs;
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 
 use flate2::{Compress, Compression, Crc, Decompress, FlushCompress, FlushDecompress, Status};
@@ -25,6 +25,8 @@ pub const THUMBNAIL_ENTRY: &str = "thumbnail.png";
 const PIECE_BYTES: usize = 1 << 20;
 const MAX_PIECES: usize = 1 << 16;
 const MAX_ENTRIES: usize = 64;
+const MAX_DIRECTORY_BYTES: usize = MAX_ENTRIES * (46 + 3 * 65_535);
+const MAX_THUMBNAIL_BYTES: u64 = 4 << 20;
 const LOCAL_SIG: &[u8; 4] = b"PK\x03\x04";
 const DAMAGED: &str = "O arquivo .trazo está corrompido (ZIP inválido).";
 
@@ -170,7 +172,7 @@ pub fn unpack_project(bytes: &[u8], max_inflated_bytes: u64) -> Result<String, S
         8 => {
             let pieces = entries
                 .iter()
-                .find(|e| e.name == PIECES_ENTRY)
+                .find(|e| e.name == PIECES_ENTRY && e.method == 0 && e.size <= (4 << 20))
                 .and_then(|e| e.data(bytes).ok())
                 .and_then(|slice| {
                     let parsed: Pieces = serde_json::from_slice(slice).ok()?;
@@ -204,29 +206,47 @@ pub fn unpack_project(bytes: &[u8], max_inflated_bytes: u64) -> Result<String, S
 /// Reads the embedded `thumbnail.png` from a `.trazo`/`.trazot` file without
 /// decompressing `project.json`. Returns `None` for plain JSON or missing thumbnails.
 pub fn read_thumbnail(path: &Path) -> Option<Vec<u8>> {
-    let bytes = fs::read(path).ok()?;
-    read_thumbnail_from_bytes(&bytes)
+    read_thumbnail_from_reader(&mut fs::File::open(path).ok()?)
 }
 
+#[cfg(test)]
 pub fn read_thumbnail_from_bytes(bytes: &[u8]) -> Option<Vec<u8>> {
-    if !is_zip(bytes) {
-        return None;
-    }
-    let entries = parse_entries(bytes).ok()?;
+    read_thumbnail_from_reader(&mut Cursor::new(bytes))
+}
+
+fn read_thumbnail_from_reader(reader: &mut (impl Read + Seek)) -> Option<Vec<u8>> {
+    let entries = parse_entries_reader(reader).ok()?;
     let entry = entries.into_iter().find(|e| e.name == THUMBNAIL_ENTRY)?;
     // Cap thumbnail to 4 MiB to protect Start Page rendering.
-    if entry.size == 0 || entry.size > (4 << 20) {
+    if entry.size == 0
+        || entry.size > MAX_THUMBNAIL_BYTES
+        || entry.packed > MAX_THUMBNAIL_BYTES + 65_536
+    {
         return None;
     }
-    let data = entry.data(bytes).ok()?;
+    reader.seek(SeekFrom::Start(entry.local_offset)).ok()?;
+    let mut header = [0; 30];
+    reader.read_exact(&mut header).ok()?;
+    let start = entry.data_start(&header).ok()?;
+    reader.seek(SeekFrom::Start(start)).ok()?;
+    let mut data = vec![0; usize::try_from(entry.packed).ok()?];
+    reader.read_exact(&mut data).ok()?;
     let raw = match entry.method {
-        0 => data.to_vec(),
-        8 => inflate_whole(data, entry.size).ok()?,
+        0 => data,
+        8 => inflate_whole(&data, entry.size).ok()?,
         _ => return None,
     };
     let mut crc = Crc::new();
     crc.update(&raw);
-    (raw.len() as u64 == entry.size && crc.sum() == entry.crc).then_some(raw)
+    if raw.len() as u64 != entry.size || crc.sum() != entry.crc {
+        return None;
+    }
+    // Compressed byte size does not bound pixel allocation. Check dimensions
+    // before the Start Page decoder allocates a texture for an external file.
+    let (width, height) = image::ImageReader::with_format(Cursor::new(&raw), ImageFormat::Png)
+        .into_dimensions()
+        .ok()?;
+    (width > 0 && height > 0 && width <= 1024 && height <= 1024).then_some(raw)
 }
 
 impl Pieces {
@@ -313,17 +333,25 @@ struct ZipEntry {
 }
 
 impl ZipEntry {
-    fn data<'a>(&self, bytes: &'a [u8]) -> Result<&'a [u8], String> {
-        let local = usize::try_from(self.local_offset).map_err(|_| DAMAGED.to_owned())?;
-        if bytes.get(local..local.saturating_add(4)) != Some(LOCAL_SIG.as_slice()) {
+    fn data_start(&self, header: &[u8]) -> Result<u64, String> {
+        if header.get(..4) != Some(LOCAL_SIG.as_slice())
+            || (self.method == 0 && self.packed != self.size)
+        {
             return Err(DAMAGED.to_owned());
         }
-        let name_len = read_u16(bytes, local + 26).ok_or_else(|| DAMAGED.to_owned())?;
-        let extra_len = read_u16(bytes, local + 28).ok_or_else(|| DAMAGED.to_owned())?;
-        let start = local
-            .saturating_add(30)
-            .saturating_add(name_len)
-            .saturating_add(extra_len);
+        let name_len = read_u16(header, 26).ok_or_else(|| DAMAGED.to_owned())?;
+        let extra_len = read_u16(header, 28).ok_or_else(|| DAMAGED.to_owned())?;
+        self.local_offset
+            .checked_add(30 + name_len as u64 + extra_len as u64)
+            .ok_or_else(|| DAMAGED.to_owned())
+    }
+
+    fn data<'a>(&self, bytes: &'a [u8]) -> Result<&'a [u8], String> {
+        let local = usize::try_from(self.local_offset).map_err(|_| DAMAGED.to_owned())?;
+        let header = bytes
+            .get(local..local.saturating_add(30))
+            .ok_or_else(|| DAMAGED.to_owned())?;
+        let start = usize::try_from(self.data_start(header)?).map_err(|_| DAMAGED.to_owned())?;
         let len = usize::try_from(self.packed).map_err(|_| DAMAGED.to_owned())?;
         bytes
             .get(start..start.saturating_add(len))
@@ -342,15 +370,47 @@ fn read_u32(b: &[u8], at: usize) -> Option<u32> {
 }
 
 fn parse_entries(b: &[u8]) -> Result<Vec<ZipEntry>, String> {
-    let from = b.len().saturating_sub(22 + 65_535);
-    let end = (from..b.len().saturating_sub(21))
+    parse_entries_reader(&mut Cursor::new(b))
+}
+
+/// Read only the ZIP tail and bounded central directory, even for multi-GB projects.
+fn parse_entries_reader(reader: &mut (impl Read + Seek)) -> Result<Vec<ZipEntry>, String> {
+    let damaged = || DAMAGED.to_owned();
+    let len = reader.seek(SeekFrom::End(0)).map_err(|_| damaged())?;
+    let tail_len = len.min(22 + 65_535) as usize;
+    reader
+        .seek(SeekFrom::End(-(tail_len as i64)))
+        .map_err(|_| damaged())?;
+    let mut tail = vec![0; tail_len];
+    reader.read_exact(&mut tail).map_err(|_| damaged())?;
+    let end = (0..tail.len().saturating_sub(21))
         .rev()
-        .find(|&i| b.get(i..i + 4) == Some(b"PK\x05\x06".as_slice()))
-        .ok_or_else(|| DAMAGED.to_owned())?;
-    let count = read_u16(b, end + 10).ok_or_else(|| DAMAGED.to_owned())?;
-    let mut at = read_u32(b, end + 16).ok_or_else(|| DAMAGED.to_owned())? as usize;
-    let mut out = Vec::with_capacity(count.min(MAX_ENTRIES));
-    for _ in 0..count.min(MAX_ENTRIES) {
+        .find(|&i| {
+            tail.get(i..i + 4) == Some(b"PK\x05\x06".as_slice())
+                && read_u16(&tail, i + 20).is_some_and(|comment| i + 22 + comment == tail.len())
+        })
+        .ok_or_else(damaged)?;
+    let count = read_u16(&tail, end + 10).ok_or_else(damaged)?;
+    let directory_len = read_u32(&tail, end + 12).ok_or_else(damaged)? as usize;
+    let offset = u64::from(read_u32(&tail, end + 16).ok_or_else(damaged)?);
+    if read_u16(&tail, end + 4) != Some(0)
+        || read_u16(&tail, end + 6) != Some(0)
+        || read_u16(&tail, end + 8) != Some(count)
+        || count > MAX_ENTRIES
+        || directory_len > MAX_DIRECTORY_BYTES
+        || offset + directory_len as u64 > len - tail_len as u64 + end as u64
+    {
+        return Err(damaged());
+    }
+    reader
+        .seek(SeekFrom::Start(offset))
+        .map_err(|_| damaged())?;
+    let mut directory = vec![0; directory_len];
+    reader.read_exact(&mut directory).map_err(|_| damaged())?;
+    let b = directory.as_slice();
+    let mut at = 0;
+    let mut out = Vec::with_capacity(count);
+    for _ in 0..count {
         if b.get(at..at + 4) != Some(b"PK\x01\x02".as_slice()) {
             return Err(DAMAGED.to_owned());
         }
@@ -362,6 +422,9 @@ fn parse_entries(b: &[u8]) -> Result<Vec<ZipEntry>, String> {
         let extra_len = read_u16(b, at + 30).ok_or_else(|| DAMAGED.to_owned())?;
         let comment_len = read_u16(b, at + 32).ok_or_else(|| DAMAGED.to_owned())?;
         let local_offset = u64::from(read_u32(b, at + 42).ok_or_else(|| DAMAGED.to_owned())?);
+        if read_u16(b, at + 8).is_none_or(|flags| flags & 1 != 0) || local_offset + 30 > offset {
+            return Err(damaged());
+        }
         let name_bytes = b
             .get(at + 46..at + 46 + name_len)
             .ok_or_else(|| DAMAGED.to_owned())?;
@@ -614,5 +677,72 @@ mod tests {
 
         // Zip-bomb limit refuses oversized declared size cleanly.
         assert!(unpack_project(&packed, 100).is_err());
+    }
+    #[test]
+    fn stored_entries_reject_forged_sizes_before_copying_data() {
+        for name in [PROJECT_ENTRY, THUMBNAIL_ENTRY] {
+            let mut zip = ZipWriter::default();
+            zip.add(name, 0, &[0; 1024], 0, 1).unwrap();
+            let bytes = zip.finish().unwrap();
+            let entry = parse_entries(&bytes).unwrap().remove(0);
+            assert!(entry.data(&bytes).is_err());
+            assert!(unpack_project(&bytes, 100).is_err());
+            assert!(read_thumbnail_from_bytes(&bytes).is_none());
+        }
+    }
+
+    #[test]
+    fn thumbnail_reads_only_directory_and_preview() {
+        struct CountedReader {
+            cursor: Cursor<Vec<u8>>,
+            read_bytes: usize,
+        }
+        impl Read for CountedReader {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                let count = self.cursor.read(buf)?;
+                self.read_bytes += count;
+                Ok(count)
+            }
+        }
+        impl Seek for CountedReader {
+            fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
+                self.cursor.seek(pos)
+            }
+        }
+
+        let mut png = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(1, 1)
+            .write_to(&mut png, ImageFormat::Png)
+            .unwrap();
+        let thumb = png.into_inner();
+        let mut crc = Crc::new();
+        crc.update(&thumb);
+        let mut zip = ZipWriter::default();
+        zip.add(PROJECT_ENTRY, 0, &vec![0; 2 << 20], 0, 2 << 20)
+            .unwrap();
+        zip.add(THUMBNAIL_ENTRY, 0, &thumb, crc.sum(), thumb.len() as u64)
+            .unwrap();
+        let mut reader = CountedReader {
+            cursor: Cursor::new(zip.finish().unwrap()),
+            read_bytes: 0,
+        };
+        assert_eq!(
+            read_thumbnail_from_reader(&mut reader).as_deref(),
+            Some(thumb.as_slice())
+        );
+        assert!(
+            reader.read_bytes < 70_000,
+            "project payload must not be read"
+        );
+    }
+
+    #[test]
+    fn thumbnail_rejects_oversized_pixel_dimensions() {
+        let mut png = Cursor::new(Vec::new());
+        image::DynamicImage::new_rgba8(1025, 1)
+            .write_to(&mut png, ImageFormat::Png)
+            .unwrap();
+        let bytes = pack_project("{}", Some(&png.into_inner()), 6).unwrap();
+        assert!(read_thumbnail_from_bytes(&bytes).is_none());
     }
 }
