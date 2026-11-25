@@ -28,7 +28,14 @@ pub const JOIN_TOLERANCE: f64 = 0.01;
 pub fn round_to_resolution(value: f64) -> f64 {
     // Dividing by a whole number gives the double nearest the decimal value
     // (4.12 and not 4.120000000000001).
-    let rounded = (value * STEPS_PER_METRE).round() / STEPS_PER_METRE;
+    let scaled = value * STEPS_PER_METRE;
+    // At this magnitude adjacent finite floats are already much farther apart
+    // than the stored resolution. Scaling must not turn a finite value into ∞.
+    let rounded = if scaled.is_finite() {
+        scaled.round() / STEPS_PER_METRE
+    } else {
+        value
+    };
     // Avoid "-0" in files and on screen.
     if rounded == 0.0 { 0.0 } else { rounded }
 }

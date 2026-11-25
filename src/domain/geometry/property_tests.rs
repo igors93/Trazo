@@ -14,6 +14,16 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(256))]
 
     #[test]
+    fn rounding_preserves_finite_values(bits in any::<u64>()) {
+        let value = f64::from_bits(bits);
+        if value.is_finite() {
+            prop_assert!(round_to_resolution(value).is_finite());
+        }
+        prop_assert_eq!(round_to_resolution(f64::MAX), f64::MAX);
+        prop_assert_eq!(round_to_resolution(-f64::MAX), -f64::MAX);
+    }
+
+    #[test]
     fn perpendicular_lines_intersect_at_their_shared_center(
         center_x in -10_000.0f64..10_000.0,
         center_y in -10_000.0f64..10_000.0,
