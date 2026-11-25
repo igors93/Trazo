@@ -753,3 +753,142 @@ fn multi_storey_multiplier_does_not_double_count_walls_quadratically() {
     let n3: f64 = r3.columns.iter().map(|c| c.load_kn).sum();
     assert!(n3 > n2 * 1.4 && n3 < n2 * 1.75, "n2={n2}, n3={n3}");
 }
+
+#[test]
+fn pile_cap_on_boundary_wall_sizes_broca_and_resolves_wind_uplift_verdict() {
+    use crate::domain::{
+        fixtures::PileCapSpec,
+        soil::{SoilKind, SoilSurvey, SptReading},
+        verdict::{Light, structure_verdicts},
+    };
+
+    let mut project = Project::default();
+    project.set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 10.0));
+    project.wall_height = 2.50;
+    let w = project
+        .add_wall(Point::new(0.075, 0.075), Point::new(9.925, 0.075))
+        .unwrap();
+    let _ = project.set_wall_height(w, Some(2.50), Some(2.50));
+    project.structure.soil_survey = Some(SoilSurvey {
+        name: "SP-01".to_owned(),
+        footing_depth_m: 1.0,
+        water_table_m: Some(8.0),
+        readings: vec![
+            SptReading {
+                depth_m: 1.0,
+                n: 5,
+                soil: SoilKind::ClayeySilt,
+            },
+            SptReading {
+                depth_m: 2.0,
+                n: 7,
+                soil: SoilKind::ClayeySilt,
+            },
+            SptReading {
+                depth_m: 3.0,
+                n: 9,
+                soil: SoilKind::Clay,
+            },
+            SptReading {
+                depth_m: 4.0,
+                n: 11,
+                soil: SoilKind::Clay,
+            },
+            SptReading {
+                depth_m: 5.0,
+                n: 13,
+                soil: SoilKind::SandySilt,
+            },
+        ],
+        extra_boreholes: Vec::new(),
+    });
+
+    let mut cols = Vec::new();
+    for x in [0.10, 3.35, 6.65, 9.90] {
+        let cid = project
+            .add_fixture(FixtureKind::Column, Point::new(x, 0.10), 0.20, 0.20, 0)
+            .unwrap();
+        cols.push(cid);
+        let (cap_center, turns, _) = project.structural_placement_fitted(
+            FixtureKind::PileCap,
+            Point::new(x, 0.10),
+            0.45,
+            0.45,
+        );
+        let bid = project
+            .add_fixture(FixtureKind::PileCap, cap_center, 0.45, 0.45, turns)
+            .unwrap();
+        project
+            .set_pile_cap_spec(
+                bid,
+                PileCapSpec {
+                    diameter_m: 0.25,
+                    depth_m: 4.0,
+                    count: 1,
+                    anchor_depth_m: 2.0,
+                },
+            )
+            .unwrap();
+    }
+    for pair in cols.windows(2) {
+        project.add_beam(pair[0], pair[1], 0.15, 0.30).unwrap();
+    }
+    let _ = project.generate_wall_foundations();
+
+    let report = project.structure_report();
+    assert_eq!(report.pile_caps.len(), 4);
+    assert!(report.footings.is_empty());
+    for cap in &report.pile_caps {
+        assert!(cap.uses_survey);
+        assert!(cap.above_water_table);
+        assert!(
+            cap.allowable_kn > 30.0,
+            "expected >30 kN, got {}",
+            cap.allowable_kn
+        );
+        assert!(
+            cap.uplift_capacity_kn > 15.0,
+            "expected shaft uplift capacity >15 kN"
+        );
+        assert!(cap.ok(), "pile cap {} should pass: {cap:?}", cap.label);
+    }
+
+    // Traffic lights: zero red verdicts on PileCaps and zero red frame uplift verdicts!
+    let verdicts = structure_verdicts(&project, &report);
+    for v in &verdicts {
+        if v.element.starts_with("Bloco sobre broca") {
+            assert_eq!(
+                v.light(),
+                Light::Green,
+                "expected green on {}: {v:?}",
+                v.element
+            );
+        }
+        if v.element.starts_with("Pórtico") {
+            assert_ne!(
+                v.light(),
+                Light::Red,
+                "anchored pile caps should resolve frame wind uplift red verdict: {v:?}"
+            );
+        }
+    }
+
+    // Shallow water table (2.0 m) must flag the 4.0 m manual broca as RED!
+    if let Some(survey) = &mut project.structure.soil_survey {
+        survey.water_table_m = Some(2.0);
+    }
+    let wet_report = project.structure_report();
+    assert!(
+        wet_report
+            .pile_caps
+            .iter()
+            .all(|c| !c.above_water_table && !c.ok())
+    );
+    let wet_verdicts = structure_verdicts(&project, &wet_report);
+    assert!(
+        wet_verdicts
+            .iter()
+            .filter(|v| v.element.starts_with("Bloco sobre broca"))
+            .all(|v| v.light() == Light::Red)
+    );
+}

@@ -1194,6 +1194,50 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
                 &rows,
             );
         }
+        if !report.pile_caps.is_empty() {
+            pages.subheading("Blocos sobre broca (estacas)");
+            let rows: Vec<_> = report
+                .pile_caps
+                .iter()
+                .map(|c| {
+                    let name = format!("Bloco sobre broca {}", c.label);
+                    (
+                        light_of.get(&name).copied(),
+                        vec![
+                            c.label.clone(),
+                            c.column.clone().unwrap_or_else(|| "—".into()),
+                            format!(
+                                "{}×{:.0}",
+                                section_cm(c.width_m, c.depth_m),
+                                c.height_m * 100.0
+                            ),
+                            format!(
+                                "{}×Ø{:.0}×{}m",
+                                c.pile_count,
+                                c.pile_diameter_m * 100.0,
+                                decimal(c.pile_depth_m, 1)
+                            ),
+                            decimal(c.load_kn, 1),
+                            decimal(c.allowable_kn, 1),
+                            format!("{} m", decimal(c.anchor_depth_m, 2)),
+                        ],
+                    )
+                })
+                .collect();
+            pages.table(
+                &[
+                    "Bloco",
+                    "Pilar",
+                    "B×L×H (cm)",
+                    "Brocas",
+                    "N (kN)",
+                    "Radm (kN)",
+                    "Arranque",
+                ],
+                &[1.1, 1.0, 1.7, 1.8, 1.1, 1.2, 1.2],
+                &rows,
+            );
+        }
         let foundation_study = project.foundation_study();
         if project.structure.soil_survey.is_some() || !foundation_study.options.is_empty() {
             pages.subheading("Sondagem (SPT) e estudo de fundações");

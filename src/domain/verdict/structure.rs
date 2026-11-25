@@ -135,19 +135,39 @@ fn sized_structure_verdicts(
             ),
         )];
         if frame.envelope.has_column_uplift {
-            checks.push(Check::fail(
-                "Arrancamento (ELU)",
-                format!(
-                    "Pilar em tração sob vento ({}, N = +{} kN): verifique ancoragem na fundação ou aumente a rigidez/contrapeso.",
-                    frame.envelope.elu_min_column_axial_combo,
-                    decimal(frame.envelope.elu_min_column_axial_kn, 1)
-                ),
-                format!(
-                    "Combinação {} (NBR 8681, G favorável + 1,40·W): esforço axial de tração de {} kN em pilar do pórtico.",
-                    frame.envelope.elu_min_column_axial_combo,
-                    decimal(frame.envelope.elu_min_column_axial_kn, 1)
-                ),
-            ));
+            if let Some(min_cap) = report.frame_uplift_anchored_by_piles(frame) {
+                let demand = frame.envelope.elu_min_column_axial_kn.max(0.0);
+                checks.push(Check::new(
+                    "Arrancamento ancorado (ELU)",
+                    demand / min_cap.max(1e-6),
+                    format!(
+                        "Tração sob vento ({}, N = +{} kN) ancorada nos blocos sobre broca (capacidade mín. {} kN por atrito lateral).",
+                        frame.envelope.elu_min_column_axial_combo,
+                        decimal(demand, 1),
+                        decimal(min_cap, 1)
+                    ),
+                    format!(
+                        "Combinação {} (NBR 8681 + NBR 6122 §8.2.2): tração de {} kN resistida pelo atrito lateral das brocas armadas (0,70·Q_lat / FS ≥ {} kN, arranque ≥ 1,50 m).",
+                        frame.envelope.elu_min_column_axial_combo,
+                        decimal(demand, 1),
+                        decimal(min_cap, 1)
+                    ),
+                ));
+            } else {
+                checks.push(Check::fail(
+                    "Arrancamento (ELU)",
+                    format!(
+                        "Pilar em tração sob vento ({}, N = +{} kN): verifique ancoragem na fundação (ex.: bloco sobre broca armada) ou aumente a rigidez/contrapeso.",
+                        frame.envelope.elu_min_column_axial_combo,
+                        decimal(frame.envelope.elu_min_column_axial_kn, 1)
+                    ),
+                    format!(
+                        "Combinação {} (NBR 8681, G favorável + 1,40·W): esforço axial de tração de {} kN em pilar do pórtico.",
+                        frame.envelope.elu_min_column_axial_combo,
+                        decimal(frame.envelope.elu_min_column_axial_kn, 1)
+                    ),
+                ));
+            }
         } else {
             checks.push(Check::new(
                 "Compressão sob vento (ELU)",
@@ -896,6 +916,124 @@ fn sized_structure_verdicts(
         verdicts.push(Verdict {
             discipline: Discipline::Structure,
             element: format!("Sapata {}", footing.label),
+            checks,
+        });
+    }
+    for cap in &report.pile_caps {
+        let mut checks = Vec::new();
+        if cap.column.is_none() {
+            checks.push(Check::fail(
+                "Pilar",
+                "Este bloco sobre broca não tem pilar em cima: mova-o para baixo de um pilar."
+                    .to_owned(),
+                "Bloco sobre broca sem pilar: não há carga para dimensionar.".to_owned(),
+            ));
+        } else {
+            checks.push(Check::new(
+                "Capacidade da broca (compressão)",
+                cap.load_kn / cap.allowable_kn.max(1e-9),
+                if cap.compression_ok() {
+                    format!(
+                        "{}× broca Ø{:.0} cm × {} m aguenta {} kN (capacidade {} kN).",
+                        cap.pile_count,
+                        cap.pile_diameter_m * 100.0,
+                        decimal(cap.pile_depth_m, 1),
+                        decimal(cap.load_kn, 1),
+                        decimal(cap.allowable_kn, 1)
+                    )
+                } else {
+                    format!(
+                        "Carga de {} kN acima da capacidade das brocas ({} kN): aumente o diâmetro, a profundidade ou use mais brocas.",
+                        decimal(cap.load_kn, 1),
+                        decimal(cap.allowable_kn, 1)
+                    )
+                },
+                format!(
+                    "Décourt-Quaresma (1996) / NBR 6122: {}× Ø{:.0} cm × {} m (ponta {} kN + atrito {} kN na ruptura → admissível {} kN; recalque est. {} mm); bloco {} × {} × {}.",
+                    cap.pile_count,
+                    cap.pile_diameter_m * 100.0,
+                    decimal(cap.pile_depth_m, 1),
+                    decimal(cap.tip_rupture_kn, 1),
+                    decimal(cap.shaft_rupture_kn, 1),
+                    decimal(cap.allowable_kn, 1),
+                    decimal(cap.settlement_mm, 1),
+                    cm(cap.width_m),
+                    cm(cap.depth_m),
+                    cm(cap.height_m)
+                ),
+            ));
+            if !cap.above_water_table {
+                checks.push(Check::fail(
+                    "Lençol freático",
+                    format!(
+                        "Broca de {} m atinge o lençol d'água ({} m): broca manual só funciona em solo seco — troque por estaca mecanizada.",
+                        decimal(cap.pile_depth_m, 1),
+                        decimal(cap.water_table_m.unwrap_or(0.0), 1)
+                    ),
+                    format!(
+                        "Profundidade da broca {} m > NA {} m (NBR 6122 exige perfuração seca para brocas manuais).",
+                        decimal(cap.pile_depth_m, 1),
+                        decimal(cap.water_table_m.unwrap_or(0.0), 1)
+                    ),
+                ));
+            }
+            if cap.uplift_kn > 1e-6 {
+                if !cap.uplift_anchored() {
+                    checks.push(Check::fail(
+                        "Arrancamento (vento)",
+                        format!(
+                            "Desça a ferragem do pilar por pelo menos 1,50 m dentro da broca (atual {} m) para resistir à tração de {} kN.",
+                            decimal(cap.anchor_depth_m, 2),
+                            decimal(cap.uplift_kn, 1)
+                        ),
+                        format!(
+                            "Arranque atual {} m < 1,50 m mínimo para mobilizar atrito lateral sob vento ELU-EQU ({} kN).",
+                            decimal(cap.anchor_depth_m, 2),
+                            decimal(cap.uplift_kn, 1)
+                        ),
+                    ));
+                } else {
+                    checks.push(Check::new(
+                        "Arrancamento (vento)",
+                        cap.uplift_kn / cap.uplift_capacity_kn.max(1e-9),
+                        if cap.uplift_ok() {
+                            format!(
+                                "Arranque de {} m na broca segura a tração de vento ({} kN ≤ {} kN).",
+                                decimal(cap.anchor_depth_m, 2),
+                                decimal(cap.uplift_kn, 1),
+                                decimal(cap.uplift_capacity_kn, 1)
+                            )
+                        } else {
+                            format!(
+                                "Tração de vento ({} kN) excede o atrito lateral admissível ({} kN): aumente a profundidade ou o diâmetro da broca.",
+                                decimal(cap.uplift_kn, 1),
+                                decimal(cap.uplift_capacity_kn, 1)
+                            )
+                        },
+                        format!(
+                            "NBR 6122 §8.2.2: R_tração,adm = 0,70·Q_lat / 2,0 = {} kN (atrito {} kN × {}, arranque {} m ≥ 1,50 m).",
+                            decimal(cap.uplift_capacity_kn, 1),
+                            decimal(cap.shaft_rupture_kn, 1),
+                            cap.pile_count,
+                            decimal(cap.anchor_depth_m, 2)
+                        ),
+                    ));
+                }
+            }
+            if !cap.uses_survey {
+                checks.push(Check::new(
+                    "Sondagem SPT",
+                    0.90,
+                    "Sem sondagem SPT cadastrada: confirme o tipo de solo e o lençol d'água antes de perfurar."
+                        .to_owned(),
+                    "Capacidade estimada conservadoramente a partir da tensão admissível configurada; informe o SPT para cálculo geotécnico completo."
+                        .to_owned(),
+                ));
+            }
+        }
+        verdicts.push(Verdict {
+            discipline: Discipline::Structure,
+            element: format!("Bloco sobre broca {}", cap.label),
             checks,
         });
     }

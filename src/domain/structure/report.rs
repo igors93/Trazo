@@ -12,10 +12,11 @@ use crate::domain::{
 
 use super::{
     Beam, BeamLine, BeamLineResult, BeamSupport, CONCRETE_KN_M3, ColumnPosition, ColumnResult,
-    ConcentratedLoadResult, FootingResult, MisalignedColumn, SlabKind, SlabResult, SpanPointLoad,
-    SpanResult, StructureReport, check_footing, continuous_beam_with_point_loads, decimal,
-    decompose_slab_panels, effective_beam_stiffness, natural, reading, room_live_load_kn_m2,
-    round_up, section_cm, span_deflection_with_point_loads, yield_line_shares,
+    ConcentratedLoadResult, FootingResult, MisalignedColumn, PileCapResult, SlabKind, SlabResult,
+    SpanPointLoad, SpanResult, StructureReport, check_footing, continuous_beam_with_point_loads,
+    decimal, decompose_slab_panels, effective_beam_stiffness, natural, reading,
+    room_live_load_kn_m2, round_up, section_cm, span_deflection_with_point_loads,
+    yield_line_shares,
 };
 
 /// Internal transfer record passed from an upper floor to the floor below.
@@ -1269,6 +1270,122 @@ impl Project {
             }
             report.footings.push(result);
         }
+
+        // Pile caps over bored piles (*blocos sobre broca / estacas*).
+        let mut pile_caps: Vec<&Fixture> = self
+            .fixtures
+            .iter()
+            .filter(|f| f.kind == FixtureKind::PileCap)
+            .collect();
+        pile_caps.sort_by(|a, b| reading(a.center, b.center));
+        for cap in pile_caps {
+            let spec = cap.pile.unwrap_or_default();
+            let col_fixture = report
+                .columns
+                .iter()
+                .filter_map(|c| Some((c, self.column(c.id)?)))
+                .find(|(_, col)| cap.contains(col.center));
+            let column = col_fixture.map(|(c, _)| c);
+            let load = column.map_or(0.0, |c| {
+                (c.load_kn + ground.at_column.get(&c.id).copied().unwrap_or(0.0)).max(0.0)
+            });
+            let height_m = round_up((spec.diameter_m + 0.15).max(0.35), 0.05);
+            let count_f = f64::from(spec.count.max(1));
+
+            let water_table_m = self
+                .structure
+                .soil_survey
+                .as_ref()
+                .and_then(|s| s.governing_water_table_m());
+            let above_water_table = water_table_m.is_none_or(|w| spec.depth_m <= w + 1e-6);
+
+            let (allowable_kn, shaft_rupture_kn, tip_rupture_kn, settlement_mm, uses_survey) =
+                if let Some((pc, _)) = self.structure.soil_survey.as_ref().and_then(|s| {
+                    s.pile_capacity_by_kind(
+                        crate::domain::soil::piles::PileKind::BoredBroca,
+                        spec.diameter_m,
+                        spec.depth_m,
+                    )
+                }) {
+                    (
+                        pc.allowable_kn * count_f,
+                        pc.shaft_kn,
+                        pc.tip_kn,
+                        pc.settlement_mm,
+                        true,
+                    )
+                } else {
+                    // Conservative Décourt-Quaresma (1996) indicative fallback from soil_kpa
+                    // when no SPT borehole has been entered yet.
+                    let n_eq = (settings.soil_kpa / 20.0).clamp(3.0, 20.0);
+                    let area = std::f64::consts::PI * (spec.diameter_m * 0.5).powi(2);
+                    let perim = std::f64::consts::PI * spec.diameter_m;
+                    let tip_kn = 0.85 * 120.0 * n_eq * area;
+                    let shaft_kn = 0.80 * 10.0 * (n_eq / 3.0 + 1.0) * perim * spec.depth_m;
+                    // NBR 6122 bored-pile tip cap (tip <= 20% of allowable load).
+                    let geotech = (tip_kn / 4.0 + shaft_kn / 1.3).min(1.25 * shaft_kn / 2.0);
+                    let structural = 5_000.0 * area;
+                    let allow = geotech.min(structural) * count_f;
+                    let s_mm = (load / allow.max(1.0) * 2.0).clamp(0.5, 15.0);
+                    (allow, shaft_kn, tip_kn, s_mm, false)
+                };
+
+            // NBR 6122 §8.2.2 tension/uplift capacity from shaft friction (0.70 / FS=2.0 = 0.35),
+            // valid only when starter bars descend >= 1.50 m inside the pile above water table.
+            let uplift_capacity_kn = if above_water_table
+                && spec.anchor_depth_m + 1e-6 >= PileCapResult::MIN_ANCHOR_FOR_UPLIFT_M
+            {
+                0.35 * shaft_rupture_kn * count_f
+            } else {
+                0.0
+            };
+
+            let result = PileCapResult {
+                id: cap.id,
+                label: label(cap.id),
+                column: column.map(|c| c.label.clone()),
+                column_id: column.map(|c| c.id),
+                width_m: cap.width,
+                depth_m: cap.depth,
+                height_m,
+                pile_diameter_m: spec.diameter_m,
+                pile_depth_m: spec.depth_m,
+                pile_count: spec.count.max(1),
+                anchor_depth_m: spec.anchor_depth_m,
+                load_kn: load,
+                allowable_kn,
+                shaft_rupture_kn,
+                tip_rupture_kn,
+                uplift_kn: 0.0,
+                uplift_capacity_kn,
+                settlement_mm,
+                uses_survey,
+                above_water_table,
+                water_table_m,
+            };
+            if result.column.is_none() {
+                report.warnings.push(format!(
+                    "{}: bloco sobre broca sem pilar em cima.",
+                    result.label
+                ));
+            } else {
+                if !result.above_water_table {
+                    report.warnings.push(format!(
+                        "{}: broca de {} m atinge o lençol freático ({} m); brocas manuais só operam em solo seco — avalie estaca mecanizada.",
+                        result.label,
+                        decimal(result.pile_depth_m, 1),
+                        decimal(result.water_table_m.unwrap_or(0.0), 1)
+                    ));
+                }
+                if !result.compression_ok() {
+                    report.warnings.push(format!(
+                        "{}: carga de {:.0} kN excede a capacidade admissível das brocas ({:.0} kN); aumente diâmetro, profundidade ou número de brocas.",
+                        result.label, result.load_kn, result.allowable_kn
+                    ));
+                }
+            }
+            report.pile_caps.push(result);
+        }
         for slab in &report.slabs {
             if !slab.supported {
                 report.warnings.push(format!(
@@ -1503,6 +1620,32 @@ impl Project {
                 failure.label, failure.reason
             ));
         }
+        // Propagate 2D-frame wind uplift tension onto anchored pile caps.
+        for frame in &report.frames {
+            if frame.envelope.has_column_uplift {
+                let demand = frame.envelope.elu_min_column_axial_kn.max(0.0);
+                for col in &frame.columns {
+                    if let Some(cap) = report
+                        .pile_caps
+                        .iter_mut()
+                        .find(|p| p.column_id == Some(col.column_id))
+                    {
+                        cap.uplift_kn = cap.uplift_kn.max(demand);
+                    }
+                }
+            }
+        }
+        for cap in &report.pile_caps {
+            if !cap.uplift_ok() {
+                report.warnings.push(format!(
+                    "{}: tração sob vento de {} kN não ancorada (capacidade ao arrancamento {} kN, arranque {} m); desça a armadura ≥ 1,50 m na broca ou aumente a profundidade.",
+                    cap.label,
+                    decimal(cap.uplift_kn, 1),
+                    decimal(cap.uplift_capacity_kn, 1),
+                    decimal(cap.anchor_depth_m, 2)
+                ));
+            }
+        }
         for frame in &report.frames {
             if !frame.drift_ok() {
                 report.warnings.push(format!(
@@ -1510,7 +1653,9 @@ impl Project {
                     frame.label, frame.max_lateral_drift_mm, frame.drift_limit_mm
                 ));
             }
-            if frame.envelope.has_column_uplift {
+            if frame.envelope.has_column_uplift
+                && report.frame_uplift_anchored_by_piles(frame).is_none()
+            {
                 report.warnings.push(format!(
                     "{}: tração/arrancamento em pilar sob vento ({}, N_mín = {} kN); verifique ancoragem e contrapeso na fundação.",
                     frame.label,

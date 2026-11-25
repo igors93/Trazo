@@ -1400,6 +1400,47 @@ impl FloorPlanApp {
                             }
                         });
                     }
+                    if !report.pile_caps.is_empty() {
+                        heading(ui, "Blocos sobre broca (estacas)");
+                        egui::Grid::new("structure_pile_caps")
+                            .striped(true)
+                            .spacing([14.0, 6.0])
+                            .show(ui, |ui| {
+                                titles(
+                                    ui,
+                                    &[
+                                        "Bloco",
+                                        "Pilar",
+                                        "Bloco (cm)",
+                                        "Brocas",
+                                        "Carga",
+                                        "Admissível",
+                                        "Arranque",
+                                        "Situação",
+                                    ],
+                                );
+                                for cap in &report.pile_caps {
+                                    ui.label(RichText::new(&cap.label).font(strong(12.5)));
+                                    ui.label(cap.column.clone().unwrap_or_else(|| "—".to_owned()));
+                                    ui.label(format!(
+                                        "{}×{:.0}",
+                                        section_cm(cap.width_m, cap.depth_m),
+                                        cap.height_m * 100.0
+                                    ));
+                                    ui.label(format!(
+                                        "{}× Ø{:.0}×{}m",
+                                        cap.pile_count,
+                                        cap.pile_diameter_m * 100.0,
+                                        decimal(cap.pile_depth_m, 1)
+                                    ));
+                                    ui.label(format!("{} kN", decimal(cap.load_kn, 1)));
+                                    ui.label(format!("{} kN", decimal(cap.allowable_kn, 1)));
+                                    ui.label(format!("{} m", decimal(cap.anchor_depth_m, 2)));
+                                    status(ui, cap.ok());
+                                    ui.end_row();
+                                }
+                            });
+                    }
                     if !report.warnings.is_empty() {
                         ui.add_space(10.0);
                         ui.label(RichText::new("Atenção").font(strong(13.0)).color(WARNING));

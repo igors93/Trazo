@@ -852,6 +852,121 @@ impl FloorPlanApp {
                     })))
                 })
             }
+            "inserir_bloco_broca" => {
+                let kind = FixtureKind::PileCap;
+                let point = to_model(required_number(args, "x")?, required_number(args, "y")?);
+                let (default_w, default_d) = kind.default_size();
+                let width = centimetres(args, "largura_cm")?.unwrap_or(default_w);
+                let depth = centimetres(args, "profundidade_cm")?.unwrap_or(default_d);
+                let mut spec = crate::domain::fixtures::PileCapSpec::default();
+                if let Some(diam) = centimetres(args, "diametro_broca_cm")? {
+                    spec.diameter_m = diam;
+                }
+                if let Some(len) = number(args, "comprimento_broca_m")? {
+                    spec.depth_m = len;
+                }
+                if let Some(cnt) = args.get("quantidade_brocas").and_then(|v| v.as_u64()) {
+                    spec.count = cnt.clamp(1, 4) as u32;
+                }
+                if let Some(anchor) = number(args, "arranque_m")? {
+                    spec.anchor_depth_m = anchor;
+                }
+                if !spec.valid() {
+                    return Err(
+                        "Parâmetros inválidos da broca: diâmetro 15–80 cm, profundidade 2–20 m, 1–4 brocas e arranque até a profundidade."
+                            .to_owned(),
+                    );
+                }
+                self.apply_change(None, |project| {
+                    let (center, turns, angle_rad) =
+                        project.structural_placement_fitted(kind, point, width, depth);
+                    let id = project
+                        .add_fixture(kind, center, width, depth, turns)
+                        .ok_or_else(|| {
+                            format!(
+                                "Não foi possível inserir o bloco sobre broca: confira o tamanho ({:.0} cm a {:.0} m) e se o ponto está no terreno.",
+                                kind.min_size() * 100.0,
+                                crate::domain::fixtures::MAX_SIZE
+                            )
+                        })?;
+                    project.set_pile_cap_spec(id, spec)?;
+                    if angle_rad.abs() > 1e-9
+                        && let Some(f) = project.fixtures.iter_mut().find(|f| f.id == id)
+                    {
+                        f.angle_rad = angle_rad;
+                    }
+                    project.ensure_default_layers();
+                    let label = project.structure_labels().get(&id).cloned();
+                    Ok(Change::new(format!(
+                        "Bloco sobre broca {} inserido (id {id}, {}× Ø{:.0} cm × {:.1} m, arranque {:.2} m).",
+                        label.clone().unwrap_or_default(),
+                        spec.count,
+                        spec.diameter_m * 100.0,
+                        spec.depth_m,
+                        spec.anchor_depth_m
+                    ))
+                    .select(Selection::Fixture(id))
+                    .data(json!({
+                        "id": id,
+                        "rotulo": label,
+                        "centro": xy(center),
+                        "secao_cm": section_cm(width, depth),
+                        "diametro_broca_cm": round1(spec.diameter_m * 100.0),
+                        "comprimento_broca_m": round1(spec.depth_m),
+                        "quantidade_brocas": spec.count,
+                        "arranque_m": (spec.anchor_depth_m * 100.0).round() / 100.0,
+                    })))
+                })
+            }
+            "editar_bloco_broca" => {
+                let id = element_id(args, "id")?;
+                let current = self
+                    .project
+                    .fixtures
+                    .iter()
+                    .find(|f| f.id == id && f.kind == FixtureKind::PileCap)
+                    .copied()
+                    .ok_or_else(|| format!("Bloco sobre broca {id} não encontrado."))?;
+                let mut spec = current.pile.unwrap_or_default();
+                if let Some(diam) = centimetres(args, "diametro_broca_cm")? {
+                    spec.diameter_m = diam;
+                }
+                if let Some(len) = number(args, "comprimento_broca_m")? {
+                    spec.depth_m = len;
+                }
+                if let Some(cnt) = args.get("quantidade_brocas").and_then(|v| v.as_u64()) {
+                    spec.count = cnt.clamp(1, 4) as u32;
+                }
+                if let Some(anchor) = number(args, "arranque_m")? {
+                    spec.anchor_depth_m = anchor;
+                }
+                let new_w = centimetres(args, "largura_cm")?;
+                let new_d = centimetres(args, "profundidade_cm")?;
+                self.apply_change(None, |project| {
+                    project.set_pile_cap_spec(id, spec)?;
+                    if let (Some(w), Some(d)) = (
+                        new_w.or(Some(current.width)),
+                        new_d.or(Some(current.depth)),
+                    ) && (new_w.is_some() || new_d.is_some())
+                    {
+                        project.update_fixture(id, None, Some((w, d)), None)?;
+                    }
+                    Ok(Change::new(format!(
+                        "Bloco sobre broca {id} atualizado ({}× Ø{:.0} cm × {:.1} m, arranque {:.2} m).",
+                        spec.count,
+                        spec.diameter_m * 100.0,
+                        spec.depth_m,
+                        spec.anchor_depth_m
+                    ))
+                    .data(json!({
+                        "id": id,
+                        "diametro_broca_cm": round1(spec.diameter_m * 100.0),
+                        "comprimento_broca_m": round1(spec.depth_m),
+                        "quantidade_brocas": spec.count,
+                        "arranque_m": (spec.anchor_depth_m * 100.0).round() / 100.0,
+                    })))
+                })
+            }
             "inserir_carga" => {
                 let kind = match text(args, "tipo")
                     .unwrap_or_else(|| "caixa_agua".to_owned())
@@ -1546,7 +1661,7 @@ impl FloorPlanApp {
                 })
             }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, configurar_sobreposicao, simular_whatif, definir_balanco, remover_balanco, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao, configurar_vento, ajustar_paredes_telhado ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_bloco_broca, editar_bloco_broca, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, configurar_sobreposicao, simular_whatif, definir_balanco, remover_balanco, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao, configurar_vento, ajustar_paredes_telhado ou vista.".to_owned(),
             ),
         }
     }
@@ -1658,6 +1773,33 @@ impl FloorPlanApp {
                     "fator_tombamento": f.overturning_fs.is_finite().then(|| round1(f.overturning_fs)),
                     "recalque_mm": round1(f.settlement_mm),
                     "atende": f.ok(),
+                })
+            })
+            .collect();
+        let pile_caps: Vec<Value> = report
+            .pile_caps
+            .iter()
+            .map(|c| {
+                json!({
+                    "id": c.id,
+                    "rotulo": c.label,
+                    "pilar": c.column,
+                    "dimensoes_cm": section_cm(c.width_m, c.depth_m),
+                    "altura_cm": round1(c.height_m * 100.0),
+                    "diametro_broca_cm": round1(c.pile_diameter_m * 100.0),
+                    "comprimento_broca_m": round1(c.pile_depth_m),
+                    "quantidade_brocas": c.pile_count,
+                    "arranque_m": (c.anchor_depth_m * 100.0).round() / 100.0,
+                    "carga_kn": round1(c.load_kn),
+                    "capacidade_admissivel_kn": round1(c.allowable_kn),
+                    "atrito_ruptura_kn": round1(c.shaft_rupture_kn),
+                    "ponta_ruptura_kn": round1(c.tip_rupture_kn),
+                    "tracao_vento_kn": round1(c.uplift_kn),
+                    "capacidade_arrancamento_kn": round1(c.uplift_capacity_kn),
+                    "recalque_mm": round1(c.settlement_mm),
+                    "acima_lencol": c.above_water_table,
+                    "com_sondagem": c.uses_survey,
+                    "atende": c.ok(),
                 })
             })
             .collect();
@@ -2131,6 +2273,7 @@ impl FloorPlanApp {
             "falhas_porticos_2d": frame_failures,
             "pilares": columns,
             "sapatas": footings,
+            "blocos_broca": pile_caps,
             "telhados": report.roofs.iter().map(roof_json).collect::<Vec<_>>(),
             "vento": wind_json(&self.project.structure.wind, &report.wind, &report.masonry),
             "mouroes": report.timber_posts.iter().map(|p| json!({

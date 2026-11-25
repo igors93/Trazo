@@ -67,6 +67,37 @@ pub(in crate::domain) fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Ve
             }
             shapes
         }
+        // Pile cap over bored pile (*bloco sobre broca*): dashed cap outline
+        // with the circular bored-pile shaft and center crosshairs inside.
+        FixtureKind::PileCap => {
+            let radius = hw.min(hd) * 0.56;
+            let cross = radius * 0.48;
+            vec![
+                SymbolShape::Polyline {
+                    points: corners,
+                    closed: true,
+                    dashed: true,
+                    weight: Weight::Outline,
+                },
+                SymbolShape::Circle {
+                    center: Point::new(0.0, 0.0),
+                    radius,
+                    weight: Weight::Outline,
+                },
+                SymbolShape::Polyline {
+                    points: vec![Point::new(-cross, 0.0), Point::new(cross, 0.0)],
+                    closed: false,
+                    dashed: false,
+                    weight: Weight::Detail,
+                },
+                SymbolShape::Polyline {
+                    points: vec![Point::new(0.0, -cross), Point::new(0.0, cross)],
+                    closed: false,
+                    dashed: false,
+                    weight: Weight::Detail,
+                },
+            ]
+        }
         // A round post: its section and a growth ring; a square one, its
         // section crossed.
         FixtureKind::TimberPost if (width - depth).abs() < 1e-6 => vec![
@@ -281,6 +312,35 @@ impl Project {
                         anchor: footing
                             .center
                             .translated(Point::new(hw - w / 2.0, hd + 0.14)),
+                        text,
+                    });
+                }
+            }
+            for cap in self
+                .fixtures
+                .iter()
+                .filter(|f| f.kind == FixtureKind::PileCap)
+            {
+                if let Some(text) = labels.get(&cap.id) {
+                    let spec = cap.pile.unwrap_or_default();
+                    let count_prefix = if spec.count > 1 {
+                        format!("{}×", spec.count)
+                    } else {
+                        String::new()
+                    };
+                    let text = format!(
+                        "{text} {} ({count_prefix}Ø{:.0}×{}m)",
+                        section_cm(cap.width, cap.depth),
+                        spec.diameter_m * 100.0,
+                        decimal(spec.depth_m, 1)
+                    );
+                    let (w, _) = crate::domain::electrical::tag_size(&text);
+                    let (hw, hd) = match cap.quarter_turns % 2 {
+                        0 => (cap.width / 2.0, cap.depth / 2.0),
+                        _ => (cap.depth / 2.0, cap.width / 2.0),
+                    };
+                    marks.push(PlanMark::Text {
+                        anchor: cap.center.translated(Point::new(hw - w / 2.0, hd + 0.14)),
                         text,
                     });
                 }

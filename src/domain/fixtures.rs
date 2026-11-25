@@ -53,6 +53,8 @@ pub enum FixtureKind {
     // Structural elements (see `structure.rs`).
     Column,
     Footing,
+    /// Pile cap over bored pile(s) (*bloco sobre broca / estaca*).
+    PileCap,
     WaterTank,
     HeavyEquipment,
     /// A timber post (*mourão*), round when width = depth (#146).
@@ -126,6 +128,7 @@ impl FixtureKind {
             Self::DataPoint => "Ponto de dados/TV",
             Self::Column => "Pilar",
             Self::Footing => "Sapata",
+            Self::PileCap => "Bloco sobre broca",
             Self::WaterTank => "Caixa-d'água",
             Self::HeavyEquipment => "Equipamento pesado",
             Self::TimberPost => "Mourão de madeira",
@@ -172,6 +175,7 @@ impl FixtureKind {
             Self::DataPoint => "ponto_dados",
             Self::Column => "pilar",
             Self::Footing => "sapata",
+            Self::PileCap => "bloco_broca",
             Self::WaterTank => "caixa_agua",
             Self::HeavyEquipment => "equipamento_pesado",
             Self::TimberPost => "mourao",
@@ -223,6 +227,7 @@ impl FixtureKind {
             Self::DataPoint => (0.26, 0.2),
             Self::Column => (0.30, 0.14),
             Self::Footing => (0.80, 0.80),
+            Self::PileCap => (0.45, 0.45),
             Self::WaterTank => (1.20, 1.20),
             Self::HeavyEquipment => (1.00, 1.00),
             Self::TimberPost => (0.15, 0.15),
@@ -277,6 +282,7 @@ impl FixtureKind {
             | Self::DataPoint
             | Self::Column
             | Self::Footing
+            | Self::PileCap
             | Self::WaterTank
             | Self::HeavyEquipment
             | Self::TimberPost => 0.0,
@@ -335,6 +341,45 @@ fn is_zero_angle(angle: &f64) -> bool {
     angle.abs() < 1e-9
 }
 
+/// Specifications of the bored pile(s) (*brocas / estacas*) under a
+/// [`FixtureKind::PileCap`].
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PileCapSpec {
+    /// Pile shaft diameter, in metres (default `0.25` m = Ø25 cm).
+    pub diameter_m: f64,
+    /// Pile depth below ground, in metres (default `4.00` m).
+    pub depth_m: f64,
+    /// Number of piles grouped under this cap (default `1`, up to `4`).
+    pub count: u32,
+    /// Starter-bar anchorage length descending inside the pile, in metres
+    /// (default `2.00` m; ≥ `1.50` m required to anchor wind uplift).
+    pub anchor_depth_m: f64,
+}
+
+impl Default for PileCapSpec {
+    fn default() -> Self {
+        Self {
+            diameter_m: 0.25,
+            depth_m: 4.0,
+            count: 1,
+            anchor_depth_m: 2.0,
+        }
+    }
+}
+
+impl PileCapSpec {
+    pub fn valid(self) -> bool {
+        self.diameter_m.is_finite()
+            && (0.15..=0.80).contains(&self.diameter_m)
+            && self.depth_m.is_finite()
+            && (2.0..=20.0).contains(&self.depth_m)
+            && (1..=4).contains(&self.count)
+            && self.anchor_depth_m.is_finite()
+            && (0.0..=self.depth_m).contains(&self.anchor_depth_m)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Fixture {
     pub id: u64,
@@ -358,6 +403,9 @@ pub struct Fixture {
     /// Characteristic concentrated load applied to the structure, in kN.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub structural_load_kn: Option<f64>,
+    /// Bored-pile parameters when `kind == FixtureKind::PileCap`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pile: Option<PileCapSpec>,
 }
 
 pub fn valid_size(kind: FixtureKind, width: f64, depth: f64) -> bool {
@@ -693,6 +741,7 @@ mod tests {
             angle_rad: 0.0,
             electrical: None,
             structural_load_kn: None,
+            pile: None,
         }
     }
 

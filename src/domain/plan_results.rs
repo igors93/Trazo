@@ -536,6 +536,45 @@ pub fn build_plan_simulation_overlay(
                 light,
             });
         }
+        for cap in &report.pile_caps {
+            let Some(fix) = project
+                .fixtures
+                .iter()
+                .find(|f| f.id == cap.id && f.kind == FixtureKind::PileCap)
+            else {
+                continue;
+            };
+            let u_comp = if cap.allowable_kn > 1e-6 {
+                cap.load_kn / cap.allowable_kn
+            } else {
+                2.0
+            };
+            let u_uplift = if cap.uplift_kn > 1e-6 {
+                if cap.uplift_anchored() {
+                    cap.uplift_kn / cap.uplift_capacity_kn.max(1e-6)
+                } else {
+                    2.0
+                }
+            } else {
+                0.0
+            };
+            let util = if !cap.above_water_table || cap.column.is_none() {
+                2.0
+            } else {
+                u_comp.max(u_uplift)
+            };
+            let light = Light::from_utilisation(util);
+            out.footings.push(PointUtilisationOverlay {
+                id: cap.id,
+                label: cap.label.clone(),
+                center: fix.center,
+                width_m: fix.width,
+                depth_m: fix.depth,
+                angle_rad: fix.rotation_rad(),
+                utilisation: util,
+                light,
+            });
+        }
     }
 
     // 2. Internal-force diagrams directly over the beams on the plan.
@@ -797,7 +836,7 @@ pub fn build_plan_simulation_overlay(
             let footing = project
                 .fixtures
                 .iter()
-                .filter(|f| f.kind == FixtureKind::Footing)
+                .filter(|f| matches!(f.kind, FixtureKind::Footing | FixtureKind::PileCap))
                 .min_by(|a, b| {
                     a.center
                         .distance(col_fix.center)

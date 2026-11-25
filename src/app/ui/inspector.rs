@@ -448,6 +448,72 @@ impl FloorPlanApp {
         );
         self.element_action_bar(ui, Selection::Fixture(id));
         self.electrical_device_section(ui, &fixture);
+        if fixture.kind == crate::domain::fixtures::FixtureKind::PileCap {
+            let mut spec = fixture.pile.unwrap_or_default();
+            let mut pile_changed = false;
+            let mut diam_cm = (spec.diameter_m * 100.0).round();
+            section(ui, "pile_cap_spec", "Estaca / Broca", |ui| {
+                grid(ui, "pile_cap_spec_grid", |ui| {
+                    property_label(ui, "Diâmetro");
+                    pile_changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut diam_cm)
+                                .range(15.0..=80.0)
+                                .speed(1.0)
+                                .fixed_decimals(0)
+                                .suffix(" cm"),
+                        )
+                        .changed();
+                    ui.end_row();
+                    property_label(ui, "Profundidade");
+                    pile_changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut spec.depth_m)
+                                .range(2.0..=20.0)
+                                .speed(0.1)
+                                .fixed_decimals(2)
+                                .suffix(" m"),
+                        )
+                        .changed();
+                    ui.end_row();
+                    property_label(ui, "Qtd. brocas");
+                    pile_changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut spec.count)
+                                .range(1..=4)
+                                .speed(0.2),
+                        )
+                        .changed();
+                    ui.end_row();
+                    property_label(ui, "Arranque (ferro)");
+                    pile_changed |= ui
+                        .add(
+                            egui::DragValue::new(&mut spec.anchor_depth_m)
+                                .range(0.0..=spec.depth_m)
+                                .speed(0.1)
+                                .fixed_decimals(2)
+                                .suffix(" m"),
+                        )
+                        .changed();
+                    ui.end_row();
+                });
+                ui.add_space(4.0);
+                hint(
+                    ui,
+                    Icon::Info,
+                    "Arranque ≥ 1,50 m dentro da broca ancora a tração de vento (NBR 6122). Broca manual só em solo seco.",
+                    ACCENT,
+                );
+            });
+            if pile_changed {
+                spec.diameter_m = (diam_cm / 100.0).clamp(0.15, 0.80);
+                spec.anchor_depth_m = spec.anchor_depth_m.min(spec.depth_m);
+                let prev = self.project.clone();
+                if self.project.set_pile_cap_spec(id, spec).is_ok() {
+                    self.record_change(prev);
+                }
+            }
+        }
         let mut submit = false;
         section(ui, "fixture_dimensions", "Dimensões", |ui| {
             grid(ui, "fixture_dimensions_grid", |ui| {

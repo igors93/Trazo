@@ -204,7 +204,7 @@ fn fixture_discipline(kind: FixtureKind) -> Discipline {
         Discipline::Electrical
     } else if kind.is_plumbing() {
         Discipline::Plumbing
-    } else if kind == FixtureKind::Footing {
+    } else if matches!(kind, FixtureKind::Footing | FixtureKind::PileCap) {
         Discipline::Foundations
     } else if kind.is_structural() {
         Discipline::Structure
@@ -525,7 +525,7 @@ impl Project {
             let footing_ids: Vec<u64> = self
                 .fixtures
                 .iter()
-                .filter(|f| f.kind == FixtureKind::Footing)
+                .filter(|f| matches!(f.kind, FixtureKind::Footing | FixtureKind::PileCap))
                 .map(|f| f.id)
                 .collect();
             for fid in footing_ids {
@@ -708,7 +708,7 @@ impl Project {
         let footings: Vec<&Fixture> = self
             .fixtures
             .iter()
-            .filter(|f| f.kind == FixtureKind::Footing)
+            .filter(|f| matches!(f.kind, FixtureKind::Footing | FixtureKind::PileCap))
             .collect();
 
         for col in &columns {

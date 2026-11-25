@@ -285,6 +285,69 @@ pub struct ConcentratedLoadResult {
     pub supported: bool,
 }
 
+/// Pre-sizing result for one pile cap over bored pile(s) (*bloco sobre broca*).
+#[derive(Clone, Debug, PartialEq)]
+pub struct PileCapResult {
+    pub id: u64,
+    pub label: String,
+    pub column: Option<String>,
+    pub column_id: Option<u64>,
+    pub width_m: f64,
+    pub depth_m: f64,
+    /// Block height for a rigid pile cap, metres.
+    pub height_m: f64,
+    /// Pile diameter, metres.
+    pub pile_diameter_m: f64,
+    /// Pile depth below ground, metres.
+    pub pile_depth_m: f64,
+    /// Number of piles under this cap.
+    pub pile_count: u32,
+    /// Starter-bar anchorage length inside the pile, metres.
+    pub anchor_depth_m: f64,
+    /// Characteristic vertical compression load, kN.
+    pub load_kn: f64,
+    /// Total allowable compression capacity of the pile group (Décourt-Quaresma / NBR 6122), kN.
+    pub allowable_kn: f64,
+    /// Ultimate shaft friction of one pile, kN.
+    pub shaft_rupture_kn: f64,
+    /// Ultimate tip resistance of one pile, kN.
+    pub tip_rupture_kn: f64,
+    /// Governing wind uplift tension from 2D frame analysis (ELU-EQU), kN (`0.0` when always in compression).
+    pub uplift_kn: f64,
+    /// Allowable uplift tension capacity from shaft friction (`0.35 * shaft * count`, NBR 6122 §8.2.2) when `anchor_depth_m >= 1.50 m`.
+    pub uplift_capacity_kn: f64,
+    /// Estimated elastic settlement under working load, mm.
+    pub settlement_mm: f64,
+    /// `true` when sized from the site's SPT survey; `false` when using a conservative indicative fallback.
+    pub uses_survey: bool,
+    /// Hand-dug bored piles (*brocas*) must stay strictly above the water table.
+    pub above_water_table: bool,
+    pub water_table_m: Option<f64>,
+}
+
+impl PileCapResult {
+    pub const MIN_ANCHOR_FOR_UPLIFT_M: f64 = 1.50;
+
+    pub fn compression_ok(&self) -> bool {
+        self.allowable_kn > 1e-6 && self.load_kn <= self.allowable_kn + 1e-3
+    }
+
+    pub fn uplift_anchored(&self) -> bool {
+        self.above_water_table
+            && self.anchor_depth_m + 1e-6 >= Self::MIN_ANCHOR_FOR_UPLIFT_M
+            && self.uplift_capacity_kn > 1e-6
+    }
+
+    pub fn uplift_ok(&self) -> bool {
+        self.uplift_kn <= 1e-6
+            || (self.uplift_anchored() && self.uplift_kn <= self.uplift_capacity_kn + 1e-3)
+    }
+
+    pub fn ok(&self) -> bool {
+        self.column.is_some() && self.above_water_table && self.compression_ok() && self.uplift_ok()
+    }
+}
+
 /// The pre-sizing of the whole structure.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StructureReport {
@@ -292,6 +355,8 @@ pub struct StructureReport {
     pub beams: Vec<BeamLineResult>,
     pub columns: Vec<ColumnResult>,
     pub footings: Vec<FootingResult>,
+    /// Pile caps over bored piles (*blocos sobre broca*).
+    pub pile_caps: Vec<PileCapResult>,
     pub concentrated_loads: Vec<ConcentratedLoadResult>,
     pub misaligned_columns: Vec<MisalignedColumn>,
     /// Balance beams centring the boundary footings (#144).
@@ -316,6 +381,34 @@ pub struct StructureReport {
     /// Eligible frame lines that failed to solve; never hidden from outputs.
     pub frame_failures: Vec<crate::domain::frame2d::FrameAnalysisFailure>,
     pub warnings: Vec<String>,
+}
+
+impl StructureReport {
+    /// Returns `Some(min_uplift_capacity_kn)` when every column in `frame`
+    /// stands on an anchored [`PileCapResult`] (*bloco sobre broca*) whose
+    /// shaft-friction uplift resistance covers the frame's governing wind
+    /// uplift tension (`elu_min_column_axial_kn`).
+    pub fn frame_uplift_anchored_by_piles(
+        &self,
+        frame: &crate::domain::frame2d::FrameLineResult,
+    ) -> Option<f64> {
+        if frame.columns.is_empty() || self.pile_caps.is_empty() {
+            return None;
+        }
+        let demand = frame.envelope.elu_min_column_axial_kn.max(0.0);
+        let mut min_cap = f64::INFINITY;
+        for col in &frame.columns {
+            let cap = self
+                .pile_caps
+                .iter()
+                .find(|p| p.column_id == Some(col.column_id))?;
+            if !cap.uplift_anchored() || cap.uplift_capacity_kn + 1e-3 < demand {
+                return None;
+            }
+            min_cap = min_cap.min(cap.uplift_capacity_kn);
+        }
+        min_cap.is_finite().then_some(min_cap)
+    }
 }
 
 /// What generating the structure added.

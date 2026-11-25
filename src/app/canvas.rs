@@ -477,10 +477,14 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
     };
     // Structure in its own colour; footings lie below, so nothing covers.
     let (ink, detail, fill) = match fixture.kind {
-        crate::domain::fixtures::FixtureKind::Footing if tone == FixtureTone::Normal => {
+        crate::domain::fixtures::FixtureKind::Footing
+        | crate::domain::fixtures::FixtureKind::PileCap
+            if tone == FixtureTone::Normal =>
+        {
             (theme::STRUCTURE, theme::STRUCTURE, Color32::TRANSPARENT)
         }
-        crate::domain::fixtures::FixtureKind::Footing => (ink, detail, Color32::TRANSPARENT),
+        crate::domain::fixtures::FixtureKind::Footing
+        | crate::domain::fixtures::FixtureKind::PileCap => (ink, detail, Color32::TRANSPARENT),
         crate::domain::fixtures::FixtureKind::Column
         | crate::domain::fixtures::FixtureKind::TimberPost
             if tone == FixtureTone::Normal =>

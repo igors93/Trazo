@@ -457,9 +457,10 @@ impl ProjectStructure {
 }
 
 impl FixtureKind {
-    pub const STRUCTURAL: [FixtureKind; 5] = [
+    pub const STRUCTURAL: [FixtureKind; 6] = [
         FixtureKind::Column,
         FixtureKind::Footing,
+        FixtureKind::PileCap,
         FixtureKind::WaterTank,
         FixtureKind::HeavyEquipment,
         FixtureKind::TimberPost,
@@ -470,6 +471,7 @@ impl FixtureKind {
             self,
             Self::Column
                 | Self::Footing
+                | Self::PileCap
                 | Self::WaterTank
                 | Self::HeavyEquipment
                 | Self::TimberPost

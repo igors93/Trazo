@@ -121,6 +121,7 @@ impl Discipline {
             Self::Foundations => matches!(
                 kind,
                 super::fixtures::FixtureKind::Footing
+                    | super::fixtures::FixtureKind::PileCap
                     | super::fixtures::FixtureKind::Column
                     | super::fixtures::FixtureKind::TimberPost
             ),

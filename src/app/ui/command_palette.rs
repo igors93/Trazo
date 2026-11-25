@@ -192,6 +192,17 @@ impl FloorPlanApp {
                 icon: Icon::Ruler,
                 action: PaletteAction::Tool(Tool::Measure, RibbonTab::Architecture),
             },
+            PaletteItem {
+                category: "Estrutura",
+                label: "Bloco sobre broca (Estaca / Agulha)".to_owned(),
+                shortcut: "",
+                keywords: "broca estaca agulha bloco coroamento fundacao pile cap",
+                icon: Icon::Fixture(crate::domain::fixtures::FixtureKind::PileCap),
+                action: PaletteAction::Tool(
+                    Tool::Fixture(crate::domain::fixtures::FixtureKind::PileCap),
+                    RibbonTab::Structure,
+                ),
+            },
             // --- Desenho 2D ---
             PaletteItem {
                 category: "Desenho 2D",

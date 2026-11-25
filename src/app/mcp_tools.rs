@@ -1272,6 +1272,8 @@ impl FloorPlanApp {
                 angle_rad: 0.0,
                 electrical: kind.default_electrical(),
                 structural_load_kn: kind.default_structural_load_kn(),
+                pile: (kind == FixtureKind::PileCap)
+                    .then(crate::domain::fixtures::PileCapSpec::default),
             }
         };
         let moved_to_wall = against_wall && placed.center != point;
@@ -1866,6 +1868,7 @@ impl FloorPlanApp {
             "estrutura_resumo": {
                 "pilares": project.fixtures.iter().filter(|f| f.kind == FixtureKind::Column).count(),
                 "sapatas": project.fixtures.iter().filter(|f| f.kind == FixtureKind::Footing).count(),
+                "blocos_broca": project.fixtures.iter().filter(|f| f.kind == FixtureKind::PileCap).count(),
                 "mouroes": project.fixtures.iter().filter(|f| f.kind == FixtureKind::TimberPost).count(),
                 "vigas": project.structure.beams.len(),
                 "lajes": project.structure.slabs.len(),

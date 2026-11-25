@@ -209,6 +209,7 @@ impl Project {
             angle_rad,
             electrical: None,
             structural_load_kn: kind.default_structural_load_kn(),
+            pile: None,
         };
         let limit = width.max(depth);
         for _ in 0..6 {
@@ -504,6 +505,24 @@ impl Project {
             });
             labels.insert(footing.id, format!("S{number}"));
         }
+        let mut pile_caps: Vec<&Fixture> = self
+            .fixtures
+            .iter()
+            .filter(|f| f.kind == FixtureKind::PileCap)
+            .collect();
+        pile_caps.sort_by(|a, b| reading(a.center, b.center));
+        let mut next_b = columns.len() + 1;
+        for cap in pile_caps {
+            let under = columns
+                .iter()
+                .position(|column| cap.contains(column.center))
+                .map(|i| i + 1);
+            let number = under.unwrap_or_else(|| {
+                next_b += 1;
+                next_b - 1
+            });
+            labels.insert(cap.id, format!("B{number}"));
+        }
         for line in self.beam_lines() {
             for span in &line.spans {
                 labels.insert(*span, line.label.clone());
@@ -793,10 +812,10 @@ impl Project {
         // Footings, sized by the loads.
         let columns: Vec<Fixture> = self.structural_columns().copied().collect();
         for column in columns {
-            let has = self
-                .fixtures
-                .iter()
-                .any(|f| f.kind == FixtureKind::Footing && f.contains(column.center));
+            let has = self.fixtures.iter().any(|f| {
+                matches!(f.kind, FixtureKind::Footing | FixtureKind::PileCap)
+                    && f.contains(column.center)
+            });
             // A footing under a boundary column stays inside the lot, off
             // centre from its column (a boundary footing, see #144).
             let at = self.fit_inside_lot(

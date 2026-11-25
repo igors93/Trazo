@@ -1086,8 +1086,11 @@ impl FloorPlanApp {
     /// and sinks sit where the bricks end.
     pub(super) fn fixture_placement(&self, kind: FixtureKind, point: Point) -> Fixture {
         let (width, depth) = self.fixture_tool_size(kind);
-        // Columns and footings sit on wall junctions and centre lines.
-        if matches!(kind, FixtureKind::Column | FixtureKind::Footing) {
+        // Columns, footings and pile caps sit on wall junctions and centre lines.
+        if matches!(
+            kind,
+            FixtureKind::Column | FixtureKind::Footing | FixtureKind::PileCap
+        ) {
             // Flush inside the lot on a boundary wall (B23).
             let (center, quarter_turns, angle_rad) = self
                 .project
@@ -1102,6 +1105,8 @@ impl FloorPlanApp {
                 angle_rad,
                 electrical: None,
                 structural_load_kn: None,
+                pile: (kind == FixtureKind::PileCap)
+                    .then(crate::domain::fixtures::PileCapSpec::default),
             };
         }
         if !kind.mounts_on_wall() {
@@ -1122,6 +1127,7 @@ impl FloorPlanApp {
                 angle_rad: 0.0,
                 electrical: kind.default_electrical(),
                 structural_load_kn: kind.default_structural_load_kn(),
+                pile: None,
             };
         }
         self.place_against_wall(kind, point, width, depth, self.fixture_turns)
@@ -1153,6 +1159,7 @@ impl FloorPlanApp {
             angle_rad: 0.0,
             electrical: kind.default_electrical(),
             structural_load_kn: kind.default_structural_load_kn(),
+            pile: None,
         };
         let wall = self
             .project

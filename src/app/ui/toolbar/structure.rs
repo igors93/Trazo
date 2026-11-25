@@ -19,6 +19,7 @@ impl FloorPlanApp {
         ribbon_panel(ui, "Elementos", |ui| {
             self.fixture_button(ui, FixtureKind::Column, "Pilar");
             self.fixture_button(ui, FixtureKind::Footing, "Sapata");
+            self.fixture_button(ui, FixtureKind::PileCap, "Bloco/broca");
         });
         vertical_divider(ui, RIBBON_PANEL_HEIGHT);
         ribbon_panel(ui, "Cargas", |ui| {

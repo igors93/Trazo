@@ -858,6 +858,7 @@ impl Project {
             angle_rad: 0.0,
             electrical: kind.default_electrical(),
             structural_load_kn: kind.default_structural_load_kn(),
+            pile: (kind == FixtureKind::PileCap).then(fixtures::PileCapSpec::default),
         };
         if !self.fixture_fits(&fixture) {
             return None;
@@ -865,6 +866,28 @@ impl Project {
         let id = self.id();
         self.fixtures.push(Fixture { id, ..fixture });
         Some(id)
+    }
+
+    /// Updates bored-pile parameters (*diâmetro, profundidade, quantidade, arranque*)
+    /// of a [`FixtureKind::PileCap`].
+    pub fn set_pile_cap_spec(
+        &mut self,
+        id: u64,
+        spec: fixtures::PileCapSpec,
+    ) -> Result<(), String> {
+        if !spec.valid() {
+            return Err(
+                "Parâmetros inválidos da broca: diâmetro 15–80 cm, profundidade 2–20 m, 1–4 brocas e arranque até a profundidade."
+                    .to_owned(),
+            );
+        }
+        let fixture = self
+            .fixtures
+            .iter_mut()
+            .find(|f| f.id == id && f.kind == FixtureKind::PileCap)
+            .ok_or_else(|| "Bloco sobre broca não encontrado.".to_owned())?;
+        fixture.pile = Some(spec);
+        Ok(())
     }
 
     /// Changes a fixture's position, size or rotation all at once; nothing

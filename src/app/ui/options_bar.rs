@@ -238,8 +238,13 @@ impl FloorPlanApp {
                                         let wall_cm =
                                             (self.project.masonry.thickness() * 100.0).round()
                                                 as i32;
-                                        if matches!(kind,crate::domain::fixtures::FixtureKind::Column | crate::domain::fixtures::FixtureKind::Footing) {
-                                            caption(ui,"Encaixa nos encontros e eixos das paredes.");
+                                        if matches!(
+                                            kind,
+                                            crate::domain::fixtures::FixtureKind::Column
+                                                | crate::domain::fixtures::FixtureKind::Footing
+                                                | crate::domain::fixtures::FixtureKind::PileCap
+                                        ) {
+                                            caption(ui, "Encaixa nos encontros e eixos das paredes.");
                                         } else if kind.mounts_on_wall() {
                                         caption(
                                             ui,

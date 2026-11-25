@@ -124,7 +124,10 @@ fn write_fixture_svg(
     let transparent_backing = electrical
         || matches!(
             fixture.kind,
-            FixtureKind::Footing | FixtureKind::WaterTank | FixtureKind::HeavyEquipment
+            FixtureKind::Footing
+                | FixtureKind::PileCap
+                | FixtureKind::WaterTank
+                | FixtureKind::HeavyEquipment
         );
     if !transparent_backing && !interior {
         let _ = writeln!(
@@ -1437,6 +1440,7 @@ mod tests {
                 angle_rad: 0.0,
                 electrical: None,
                 structural_load_kn: None,
+                pile: None,
             };
             let (low, high) = crate::domain::fixtures::symbol_bounds(&fixture.symbol()).unwrap();
             let center = low.midpoint(high);
