@@ -347,6 +347,85 @@ fn multi_resolution_layout_tabs_inspector_and_help_dialog_render_cleanly() {
 }
 
 #[test]
+fn start_page_recent_cards_fit_the_window_and_distinguish_matching_project_titles() {
+    use crate::io::templates::RecentEntry;
+
+    let filenames = [
+        "Muro_Broca.trazo",
+        "Muro_Estrutural.trazo",
+        "muro planta.trazo",
+    ];
+    for size in [
+        [640.0, 900.0],
+        [960.0, 900.0],
+        [1440.0, 900.0],
+        [2560.0, 900.0],
+    ] {
+        let mut harness = harness_with_size(size, |app| {
+            app.show_start_page = true;
+            app.pending_recovery = None;
+            app.recent_files.entries = filenames
+                .iter()
+                .map(|filename| {
+                    let path = std::env::temp_dir()
+                        .join("trazo-start-page-fixture")
+                        .join(filename);
+                    // Exercise the same card geometry without accessing real user files.
+                    app.thumbnail_cache.insert(path.clone(), None);
+                    RecentEntry {
+                        path,
+                        title: "Minha planta".into(),
+                        wall_count: 4,
+                        room_count: 0,
+                    }
+                })
+                .collect();
+        });
+        let cards: Vec<_> = filenames
+            .iter()
+            .map(|filename| harness.get_by_label(filename).rect())
+            .collect();
+        for rect in &cards {
+            assert!(
+                rect.left() >= 16.0 && rect.right() <= size[0] - 16.0,
+                "Recent card extends outside {size:?}: {rect:?}"
+            );
+        }
+        let content_width = (size[0] - 32.0).min(960.0);
+        let expected_left = (size[0] - content_width) * 0.5 + 11.0;
+        assert!(
+            (cards[0].left() - expected_left).abs() < 20.0,
+            "Start Page is not centred at {size:?}"
+        );
+        if size[0] >= 960.0 {
+            assert!((cards[0].top() - cards[2].top()).abs() < 2.0);
+            assert!(cards[0].right() < cards[1].left());
+            assert!(cards[1].right() < cards[2].left());
+        } else {
+            assert!(cards[2].top() > cards[0].bottom());
+        }
+        // Matching project titles represent distinct files; removing one recent
+        // entry must retain the other two.
+        harness
+            .get_by_label("Remover Muro_Broca.trazo dos recentes")
+            .click();
+        harness.step();
+        harness.step();
+        assert_eq!(harness.state().recent_files.entries.len(), 2);
+        assert!(
+            harness
+                .state()
+                .recent_files
+                .entries
+                .iter()
+                .all(|entry| entry.path.file_name().unwrap() != "Muro_Broca.trazo")
+        );
+        assert!(harness.query_by_label("Muro_Estrutural.trazo").is_some());
+        assert!(harness.query_by_label("muro planta.trazo").is_some());
+    }
+}
+
+#[test]
 fn start_page_hides_editor_ribbon_and_scales_across_resolutions() {
     let draft = seeded_project();
     for size in [[1000.0, 600.0], [1600.0, 900.0]] {
