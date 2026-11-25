@@ -8,6 +8,7 @@ pub mod memory;
 pub mod personal_library;
 pub mod print;
 pub mod project_file;
+pub mod quantities;
 pub mod recovery;
 pub mod report;
 pub mod settings;

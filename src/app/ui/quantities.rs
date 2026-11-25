@@ -150,7 +150,6 @@ impl FloorPlanApp {
             };
         }
         if let Some(pdf) = export_sheet {
-            let markup = takeoff_sheet_svg(&self.project, all_floors);
             let (label, ext) = if pdf {
                 ("Documento PDF", "pdf")
             } else {
@@ -162,8 +161,9 @@ impl FloorPlanApp {
                 .save_file()
             {
                 let res = if pdf {
-                    crate::domain::views::export_view_pdf(&markup, &path)
+                    crate::io::quantities::export_pdf(&self.project, all_floors, &path)
                 } else {
+                    let markup = takeoff_sheet_svg(&self.project, all_floors);
                     crate::domain::views::export_view_svg(&markup, &path)
                 };
                 self.message = match res {

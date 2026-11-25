@@ -921,9 +921,7 @@ impl FloorPlanApp {
                     .get("todos_pavimentos")
                     .and_then(Value::as_bool)
                     .unwrap_or(false);
-                let markup =
-                    crate::domain::quantities::takeoff_sheet_svg(&self.project, all_floors);
-                crate::domain::views::export_view_pdf(&markup, &path)?;
+                crate::io::quantities::export_pdf(&self.project, all_floors, &path)?;
             }
             "tabela_aco_csv" => {
                 let reinforcement = self.project.cached_reinforcement_report();

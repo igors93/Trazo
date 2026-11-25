@@ -31,7 +31,6 @@
 //! Axis lengths count the corners twice, which the waste allowance covers.
 
 use std::collections::HashMap;
-use std::fmt::Write;
 
 use super::annotations::frame_types;
 use super::masonry::Masonry;
@@ -934,148 +933,8 @@ pub fn takeoff_csv_for(t: &ConstructionTakeoff) -> String {
     out
 }
 
-/// Renders an A3 landscape printable vector sheet (*Planilha de Quantitativos da Obra*)
-/// sharing the exact domain takeoff tables (screen equals paper, exportable to SVG and PDF).
-pub fn takeoff_sheet_svg(project: &Project, all_floors: bool) -> String {
-    let t = if all_floors {
-        project.construction_takeoff_all_floors()
-    } else {
-        project.construction_takeoff()
-    };
-    let tables = takeoff_tables_for(&t);
-    let w = 1189.0_f64;
-    let h = 841.0_f64;
-    let mut svg = String::with_capacity(16_384);
-    let _ = writeln!(
-        svg,
-        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w:.0} {h:.0}" width="{w:.0}" height="{h:.0}">"##
-    );
-    svg.push_str(
-        r##"<rect width="100%" height="100%" fill="#ffffff"/>
-<rect x="24" y="24" width="1141" height="793" fill="none" stroke="#1e293b" stroke-width="1.4"/>
-"##,
-    );
-    let scope = if t.all_floors && t.floors.len() > 1 {
-        format!("Todos os pavimentos ({})", t.floors.len())
-    } else {
-        t.floors
-            .first()
-            .map(|f| format!("Pavimento: {}", f.floor_name))
-            .unwrap_or_else(|| "Pavimento ativo".to_owned())
-    };
-    let _ = writeln!(
-        svg,
-        r##"<text x="42" y="54" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#0f172a">Quantitativos de Obra — Alvenaria, Vergas, Argamassas e Acabamentos</text>
-<text x="42" y="74" font-family="Arial, sans-serif" font-size="11.5" fill="#475569">{} · {} · Perda blocos {:.0} % · Argamassa/reboco +10 % · Transpasse vergas 30 cm</text>
-<line x1="24" y1="86" x2="1165" y2="86" stroke="#cbd5e1" stroke-width="1"/>"##,
-        esc(&project.name),
-        esc(&scope),
-        t.waste_percent,
-    );
-
-    // Draw the summary, lintels and finishes tables cleanly in two columns.
-    let draw_table = |svg: &mut String,
-                      table: &ScheduleTable,
-                      x: f64,
-                      y: f64,
-                      tw: f64,
-                      max_rows: usize|
-     -> f64 {
-        let mut cy = y;
-        let _ = writeln!(
-            svg,
-            r##"<text x="{x:.1}" y="{cy:.1}" font-family="Arial, sans-serif" font-size="12.5" font-weight="bold" fill="#0f172a">{}</text>"##,
-            esc(&table.title)
-        );
-        cy += 8.0;
-        let cols = table.headers.len().max(1);
-        let col_w = tw / cols as f64;
-        let row_h = 18.0;
-        let _ = writeln!(
-            svg,
-            r##"<rect x="{x:.1}" y="{cy:.1}" width="{tw:.1}" height="{row_h:.1}" fill="#e2e8f0"/>"##
-        );
-        for (i, header) in table.headers.iter().enumerate() {
-            let hx = x + i as f64 * col_w + 5.0;
-            let _ = writeln!(
-                svg,
-                r##"<text x="{hx:.1}" y="{:.1}" font-family="Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#1e293b">{}</text>"##,
-                cy + 12.5,
-                esc(header)
-            );
-        }
-        cy += row_h;
-        for (r_idx, row) in table.rows.iter().take(max_rows).enumerate() {
-            if r_idx % 2 == 1 {
-                let _ = writeln!(
-                    svg,
-                    r##"<rect x="{x:.1}" y="{cy:.1}" width="{tw:.1}" height="{row_h:.1}" fill="#f8fafc"/>"##
-                );
-            }
-            for (i, cell) in row.iter().take(cols).enumerate() {
-                let cx = x + i as f64 * col_w + 5.0;
-                let clipped: String = cell.chars().take(34).collect();
-                let _ = writeln!(
-                    svg,
-                    r##"<text x="{cx:.1}" y="{:.1}" font-family="Arial, sans-serif" font-size="9" fill="#334155">{}</text>"##,
-                    cy + 12.5,
-                    esc(&clipped)
-                );
-            }
-            let _ = writeln!(
-                svg,
-                r##"<line x1="{x:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="#e2e8f0" stroke-width="0.6"/>"##,
-                cy + row_h,
-                x + tw,
-                cy + row_h
-            );
-            cy += row_h;
-        }
-        if let Some(footer) = &table.footer {
-            let _ = writeln!(
-                svg,
-                r##"<rect x="{x:.1}" y="{cy:.1}" width="{tw:.1}" height="{row_h:.1}" fill="#edf2f7"/>"##
-            );
-            for (i, cell) in footer.iter().take(cols).enumerate() {
-                let cx = x + i as f64 * col_w + 5.0;
-                let _ = writeln!(
-                    svg,
-                    r##"<text x="{cx:.1}" y="{:.1}" font-family="Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#0f172a">{}</text>"##,
-                    cy + 12.5,
-                    esc(cell)
-                );
-            }
-            cy += row_h;
-        }
-        cy + 14.0
-    };
-
-    let mut left_y = 110.0;
-    if let Some(masonry_tbl) = tables.first() {
-        left_y = draw_table(&mut svg, masonry_tbl, 42.0, left_y, 535.0, 18);
-    }
-    if let Some(lintels_tbl) = tables.get(2) {
-        let _ = draw_table(&mut svg, lintels_tbl, 42.0, left_y, 535.0, 14);
-    }
-
-    let mut right_y = 110.0;
-    if let Some(rooms_tbl) = tables.get(3) {
-        right_y = draw_table(&mut svg, rooms_tbl, 598.0, right_y, 550.0, 16);
-    }
-    if let Some(floors_tbl) = tables.get(4) {
-        let _ = draw_table(&mut svg, floors_tbl, 598.0, right_y, 550.0, 8);
-    } else if let Some(walls_tbl) = tables.get(1) {
-        let _ = draw_table(&mut svg, walls_tbl, 598.0, right_y, 550.0, 14);
-    }
-
-    let _ = writeln!(
-        svg,
-        r##"<line x1="24" y1="800" x2="1165" y2="800" stroke="#cbd5e1" stroke-width="1"/>
-<text x="42" y="812" font-family="Arial, sans-serif" font-size="10" fill="#64748b">Quantitativos preliminares medidos pelo eixo das paredes — confira medidas e perdas de compra antes do pedido de obra.</text>
-</svg>"##
-    );
-    svg
-}
+mod sheet;
+pub use sheet::{takeoff_sheet_pages, takeoff_sheet_svg};
 
 #[cfg(test)]
 mod tests {

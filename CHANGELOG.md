@@ -117,6 +117,7 @@ Everything below is on `main` and will become the first release, 0.1.0.
 
 ### Fixed
 
+- Quantity SVG/PDF exports now use content-sized columns, wrapped cells and variable row heights. Complete wall, room and floor tables continue onto numbered A3 sheets with repeated headers, preserving every row and total in both the GUI and MCP exports.
 - Ground beams now transfer loaded overhang moments into the continuous-span analysis and propagate signed reactions to the columns and footings. A support in uplift receives a red check and an explicit warning (#143).
 - Collinear wall joints no longer count as lateral bracing when checking masonry panel length; transverse returns and columns still do (#111, #147).
 - The area schedule of an empty project showed "-0,00 m²".
