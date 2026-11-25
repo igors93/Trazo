@@ -1,6 +1,6 @@
 use eframe::egui::{self, Margin, RichText, Stroke};
 
-use super::super::{DocDialog, FloorPlanApp, Tool, theme::*};
+use super::super::{DocDialog, FloorPlanApp, theme::*};
 use super::widgets::{primary_button, secondary_button, toggle_pill};
 use crate::{
     domain::{
@@ -12,6 +12,119 @@ use crate::{
     io::personal_library,
 };
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LibraryOrigin {
+    Personal,
+    Project,
+    Builtin,
+}
+
+enum CatalogAction {
+    Insert,
+    Place,
+    Delete,
+    Share,
+}
+
+fn catalog_card(
+    ui: &mut egui::Ui,
+    item: &LibraryItem,
+    origin: LibraryOrigin,
+) -> Option<CatalogAction> {
+    let mut action = None;
+    egui::Frame::new()
+        .fill(PANEL_ALT)
+        .stroke(Stroke::new(1.0, BORDER))
+        .corner_radius(6)
+        .inner_margin(Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ui.horizontal_top(|ui| {
+                let (rect, response) =
+                    ui.allocate_exact_size(egui::vec2(80.0, 72.0), egui::Sense::hover());
+                ui.painter().rect_filled(rect, 4, PANEL);
+                if let Some(kind) = item.base_kind {
+                    super::icons::paint_fixture_preview(
+                        ui.painter(),
+                        rect.shrink(4.0),
+                        kind,
+                        (item.width_m, item.depth_m),
+                        TEXT_2,
+                        ACCENT,
+                    );
+                    response.on_hover_ui(|ui| {
+                        ui.strong(&item.name);
+                        let (large, _) =
+                            ui.allocate_exact_size(egui::vec2(220.0, 160.0), egui::Sense::hover());
+                        super::icons::paint_fixture_preview(
+                            ui.painter(),
+                            large,
+                            kind,
+                            (item.width_m, item.depth_m),
+                            TEXT_2,
+                            ACCENT,
+                        );
+                    });
+                } else {
+                    ui.painter().text(
+                        rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        item.symbol_tag.as_deref().unwrap_or("Símbolo"),
+                        regular(12.0),
+                        ACCENT_TEXT,
+                    );
+                }
+                ui.vertical(|ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(RichText::new(&item.name).font(strong(12.5)).color(TEXT));
+                        if origin == LibraryOrigin::Personal {
+                            ui.label(RichText::new("Pessoal").size(10.5).color(ACCENT_TEXT));
+                        }
+                    });
+                    ui.label(
+                        RichText::new(
+                            format!(
+                                "{} · {:.2} × {:.2} m",
+                                item.category.label(),
+                                item.width_m,
+                                item.depth_m
+                            )
+                            .replace('.', ","),
+                        )
+                        .size(11.0)
+                        .color(MUTED),
+                    );
+                    if let Some(seats) = item.base_kind.and_then(|k| k.seat_count(item.width_m)) {
+                        ui.label(
+                            RichText::new(format!("{seats} lugares"))
+                                .size(11.0)
+                                .color(MUTED),
+                        );
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        if item.base_kind.is_some()
+                            && ui.small_button("Posicionar com mouse").clicked()
+                        {
+                            action = Some(CatalogAction::Place);
+                        }
+                        if ui.small_button("Inserir na planta").clicked() {
+                            action = Some(CatalogAction::Insert);
+                        }
+                        if origin == LibraryOrigin::Project
+                            && ui.small_button("Compartilhar").clicked()
+                        {
+                            action = Some(CatalogAction::Share);
+                        }
+                        if origin != LibraryOrigin::Builtin && ui.small_button("Excluir").clicked()
+                        {
+                            action = Some(CatalogAction::Delete);
+                        }
+                    });
+                });
+            });
+        });
+    action
+}
+
 impl FloorPlanApp {
     pub(super) fn library_dialog(&mut self, ctx: &egui::Context) {
         if self.active_doc_dialog != DocDialog::Library {
@@ -20,7 +133,7 @@ impl FloorPlanApp {
         let mut open = true;
         let mut close_clicked = false;
         let mut place_item: Option<LibraryItem> = None;
-        let mut pick_tool: Option<FixtureKind> = None;
+        let mut pick_model: Option<LibraryItem> = None;
         let mut remove_custom_id: Option<u64> = None;
         let mut remove_personal_item_id: Option<u64> = None;
         let mut promote_item_to_personal: Option<LibraryItem> = None;
@@ -125,32 +238,25 @@ impl FloorPlanApp {
                     ui.add_space(6.0);
                     ui.separator();
 
-                    #[derive(Clone, Copy, PartialEq, Eq)]
-                    enum ItemOrigin {
-                        Personal,
-                        Project,
-                        Builtin,
-                    }
-
                     let query = self.library_search.trim().to_lowercase();
-                    let mut all_items: Vec<(LibraryItem, ItemOrigin)> = self
+                    let mut all_items: Vec<(LibraryItem, LibraryOrigin)> = self
                         .personal_library
                         .items
                         .iter()
                         .cloned()
-                        .map(|i| (i, ItemOrigin::Personal))
+                        .map(|i| (i, LibraryOrigin::Personal))
                         .collect();
                     all_items.extend(
                         self.project
                             .library
                             .iter()
                             .cloned()
-                            .map(|i| (i, ItemOrigin::Project)),
+                            .map(|i| (i, LibraryOrigin::Project)),
                     );
                     all_items.extend(
                         LibraryItem::builtin_catalog()
                             .into_iter()
-                            .map(|i| (i, ItemOrigin::Builtin)),
+                            .map(|i| (i, LibraryOrigin::Builtin)),
                     );
 
                     egui::ScrollArea::vertical()
@@ -164,77 +270,18 @@ impl FloorPlanApp {
                                 {
                                     continue;
                                 }
-                                if !query.is_empty()
-                                    && !item.name.to_lowercase().contains(&query)
-                                    && !item.category.label().to_lowercase().contains(&query)
-                                {
+                                if !item.matches_query(&query) {
                                     continue;
                                 }
                                 shown += 1;
-                                egui::Frame::new()
-                                    .fill(PANEL_ALT)
-                                    .stroke(Stroke::new(1.0, BORDER))
-                                    .corner_radius(6)
-                                    .inner_margin(Margin::symmetric(10, 6))
-                                    .show(ui, |ui| {
-                                        ui.horizontal(|ui| {
-                                            ui.label(
-                                                RichText::new(&item.name)
-                                                    .font(strong(12.0))
-                                                    .color(TEXT),
-                                            );
-                                            if origin == ItemOrigin::Personal {
-                                                ui.label(
-                                                    RichText::new("Pessoal")
-                                                        .size(10.5)
-                                                        .color(ACCENT_TEXT),
-                                                );
-                                            }
-                                            ui.label(
-                                                RichText::new(format!(
-                                                    "{} · {:.2} × {:.2} m",
-                                                    item.category.label(),
-                                                    item.width_m,
-                                                    item.depth_m
-                                                )
-                                                .replace('.', ","))
-                                                .size(11.0)
-                                                .color(MUTED),
-                                            );
-                                            ui.with_layout(
-                                                egui::Layout::right_to_left(egui::Align::Center),
-                                                |ui| {
-                                                    if origin == ItemOrigin::Personal
-                                                        && ui.small_button("Excluir").clicked()
-                                                    {
-                                                        remove_personal_item_id = Some(item.id);
-                                                    } else if origin == ItemOrigin::Project {
-                                                        if ui.small_button("Excluir").clicked() {
-                                                            remove_custom_id = Some(item.id);
-                                                        }
-                                                        if ui
-                                                            .small_button("Compartilhar")
-                                                            .clicked()
-                                                        {
-                                                            promote_item_to_personal =
-                                                                Some(item.clone());
-                                                        }
-                                                    }
-                                                    if ui.small_button("Inserir na planta").clicked()
-                                                    {
-                                                        place_item = Some(item.clone());
-                                                    }
-                                                    if let Some(kind) = item.base_kind
-                                                        && ui
-                                                            .small_button("Posicionar com mouse")
-                                                            .clicked()
-                                                    {
-                                                        pick_tool = Some(kind);
-                                                    }
-                                                },
-                                            );
-                                        });
-                                    });
+                                match catalog_card(ui,&item,origin) {
+                                    Some(CatalogAction::Insert) => place_item = Some(item.clone()),
+                                    Some(CatalogAction::Place) => pick_model = Some(item.clone()),
+                                    Some(CatalogAction::Share) => promote_item_to_personal = Some(item.clone()),
+                                    Some(CatalogAction::Delete) if origin == LibraryOrigin::Personal => remove_personal_item_id = Some(item.id),
+                                    Some(CatalogAction::Delete) => remove_custom_id = Some(item.id),
+                                    None => {}
+                                }
                                 ui.add_space(4.0);
                             }
                             if shown == 0 {
@@ -770,9 +817,8 @@ impl FloorPlanApp {
                 Err(err) => self.message = err,
             }
         }
-        if let Some(kind) = pick_tool {
-            self.set_tool(Tool::Fixture(kind));
-            self.active_doc_dialog = DocDialog::None;
+        if let Some(item) = pick_model {
+            self.start_library_placement(item);
             return;
         }
         if !open || close_clicked {

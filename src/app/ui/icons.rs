@@ -84,19 +84,44 @@ fn paint_fixture_icon(
     accent: Color32,
 ) {
     let (width, depth) = kind.default_size();
-    // Tables draw chairs beyond their top.
-    let reach_y = if kind == FixtureKind::Table {
-        depth + 0.9
-    } else {
-        depth
+    paint_fixture_preview(painter, rect, kind, (width, depth), ink, accent);
+}
+
+/// The actual model dimensions and complete symbol extents determine the fit,
+/// including chairs, mirrors and off-centre parts such as desk chairs.
+pub(super) fn paint_fixture_preview(
+    painter: &Painter,
+    rect: Rect,
+    kind: FixtureKind,
+    size: (f64, f64),
+    ink: Color32,
+    accent: Color32,
+) {
+    if !painter.clip_rect().intersects(rect) || !fixtures::valid_size(kind, size.0, size.1) {
+        return;
+    }
+    let nominal_scale =
+        (rect.width() * 0.86 / size.0 as f32).min(rect.height() * 0.86 / size.1 as f32);
+    let shapes = fixtures::symbol_with_detail(
+        kind,
+        size.0,
+        size.1,
+        size.0.min(size.1) as f32 * nominal_scale >= 55.0,
+    );
+    let Some((low, high)) = fixtures::symbol_bounds(&shapes) else {
+        return;
     };
-    let scale = (rect.width() * 0.86 / width as f32).min(rect.height() * 0.86 / reach_y as f32);
-    let at = |x: f64, y: f64| rect.center() + vec2(x as f32 * scale, y as f32 * scale);
+    let scale = (rect.width() * 0.86 / (high.x - low.x) as f32)
+        .min(rect.height() * 0.86 / (high.y - low.y) as f32);
+    let center = low.midpoint(high);
+    let at = |x: f64, y: f64| {
+        rect.center() + vec2((x - center.x) as f32 * scale, (y - center.y) as f32 * scale)
+    };
     let side = rect.width().min(rect.height());
     let stroke_scale = (side / 24.0).clamp(0.65, 1.35);
-    let outline_w = (1.45 * stroke_scale).max(0.95);
-    let detail_w = (1.05 * stroke_scale).max(0.75);
-    for shape in fixtures::symbol(kind, width, depth) {
+    let outline_w = (1.25 * stroke_scale).max(0.9);
+    let detail_w = (0.85 * stroke_scale).max(0.65);
+    for shape in shapes {
         match shape {
             SymbolShape::Polyline {
                 points,
@@ -107,6 +132,7 @@ fn paint_fixture_icon(
                 let stroke = match weight {
                     Weight::Outline => Stroke::new(outline_w, ink),
                     Weight::Detail => Stroke::new(detail_w, accent),
+                    Weight::Fine => Stroke::new(0.55 * stroke_scale, accent.gamma_multiply(0.75)),
                 };
                 let mut points: Vec<Pos2> = points.iter().map(|p| at(p.x, p.y)).collect();
                 if dashed {
@@ -128,10 +154,11 @@ fn paint_fixture_icon(
                 let stroke = match weight {
                     Weight::Outline => Stroke::new(outline_w, ink),
                     Weight::Detail => Stroke::new(detail_w, accent),
+                    Weight::Fine => Stroke::new(0.55 * stroke_scale, accent.gamma_multiply(0.75)),
                 };
                 painter.circle_stroke(
                     at(center.x, center.y),
-                    (radius as f32 * scale).max(1.0),
+                    (radius as f32 * scale).max(0.35),
                     stroke,
                 );
             }
@@ -772,6 +799,48 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, ink: Color32, accent: Co
             pen.closed(&[(12.0, 3.5), (21.5, 20.0), (2.5, 20.0)], ink_s);
             pen.accent_line(&[(12.0, 9.5), (12.0, 14.0)]);
             pen.dot(12.0, 17.0, 1.15, accent);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fixture_previews_fit_all_parts_at_icon_and_catalog_sizes() {
+        let ctx = eframe::egui::Context::default();
+        for side in [24.0, 96.0] {
+            for kind in FixtureKind::ALL {
+                let rect = Rect::from_min_size(Pos2::new(20.0, 20.0), vec2(side, side));
+                let mut output = ctx.run_pass(Default::default(), |ctx| {
+                    let painter = ctx.layer_painter(eframe::egui::LayerId::new(
+                        eframe::egui::Order::Middle,
+                        eframe::egui::Id::unique("fixture-preview-test"),
+                    ));
+                    paint_fixture_preview(
+                        &painter,
+                        rect,
+                        kind,
+                        kind.default_size(),
+                        Color32::BLACK,
+                        Color32::BLUE,
+                    );
+                });
+                // This test inspects vector bounds without a GPU renderer.
+                output.textures_delta.clear();
+                assert!(!output.shapes.is_empty());
+                for shape in output.shapes {
+                    if matches!(shape.shape, Shape::Noop) {
+                        continue;
+                    }
+                    assert!(
+                        rect.contains_rect(shape.shape.visual_bounding_rect()),
+                        "{kind:?} at {side} px: {:?}",
+                        shape.shape.visual_bounding_rect()
+                    );
+                }
+            }
         }
     }
 }

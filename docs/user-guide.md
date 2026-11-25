@@ -116,7 +116,19 @@ From then on every edit (dragging, typed lengths, transforms and the AI tools) k
 
 The *Interiores* tab places counters, sinks, stoves, a wood stove, a barbecue grill, a fridge, washbasins, toilets, showers, sofas, beds, wardrobes, tables, desks, a washing machine and shelves. **Biblioteca** (library) opens the full catalogue of furniture, equipment and technical symbols, which can be customised.
 
-Near a straight wall, a fixture turns its back to the wall and stands against the face of the bricks. Fixtures drag in 5 cm steps, nudge with the arrows, turn with `G` and resize in Properties. A washbasin 0.90 m or wider becomes a double sink.
+Furniture uses dimension-aware vector symbols, with cushions and upholstery seams,
+bedding, basins and taps, appliance controls, cabinet divisions and detailed chairs.
+Fine details appear as you zoom in and are preserved in SVG, PDF, PNG and DXF exports.
+Small ribbon icons retain the main outlines for readability. Hover over an object
+or its library preview for a larger view.
+
+The library shows model previews, dimensions and seating counts. Search accepts
+unaccented words such as `sofa` and `lavatorio`. **Posicionar com mouse** preserves
+the selected model's dimensions, including Queen/King beds and larger sofas; **G**
+rotates the next object. Chairs outside a table and car mirrors are included in
+selection and display extents. Width and depth still describe the furniture body.
+
+Near a straight wall, wall-backed furniture turns its back to the wall and stands against the face of the bricks. Dining tables, cars and poolside objects remain freestanding where you click. Fixtures drag in 5 cm steps, nudge with the arrows, turn with `G` and resize in Properties. A washbasin 0.90 m or wider becomes a double sink.
 
 Room names and sizes find the free spot nearest the middle of each room, clear of furniture and door swings, both on screen and in exported drawings.
 

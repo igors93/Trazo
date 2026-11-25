@@ -431,15 +431,24 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
     };
     let screen = |local: Point| view.to_screen(fixture.to_world(local));
     let (hw, hd) = (fixture.width / 2.0, fixture.depth / 2.0);
-    painter.add(Shape::convex_polygon(
-        [(-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd)]
-            .iter()
-            .map(|(x, y)| screen(Point::new(*x, *y)))
-            .collect(),
-        fill,
-        Stroke::NONE,
-    ));
-    for shape in fixture.symbol() {
+    let interior = !electrical && !fixture.kind.is_structural();
+    if !interior {
+        painter.add(Shape::convex_polygon(
+            [(-hw, -hd), (hw, -hd), (hw, hd), (-hw, hd)]
+                .iter()
+                .map(|(x, y)| screen(Point::new(*x, *y)))
+                .collect(),
+            fill,
+            Stroke::NONE,
+        ));
+    }
+    let fine = view.pixels(fixture.width.min(fixture.depth)) >= 72.0;
+    for shape in crate::domain::fixtures::symbol_with_detail(
+        fixture.kind,
+        fixture.width,
+        fixture.depth,
+        fine,
+    ) {
         match shape {
             SymbolShape::Polyline {
                 points,
@@ -450,8 +459,12 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
                 let stroke = match weight {
                     Weight::Outline => Stroke::new(1.4, ink),
                     Weight::Detail => Stroke::new(0.9, detail),
+                    Weight::Fine => Stroke::new(0.55, detail.gamma_multiply(0.75)),
                 };
                 let mut points: Vec<Pos2> = points.into_iter().map(screen).collect();
+                if interior && closed && weight == Weight::Outline {
+                    painter.add(Shape::convex_polygon(points.clone(), fill, Stroke::NONE));
+                }
                 if dashed {
                     if closed {
                         points.push(points[0]);
@@ -471,7 +484,11 @@ pub fn paint_fixture(painter: &Painter, view: ViewTransform, fixture: &Fixture, 
                 let stroke = match weight {
                     Weight::Outline => Stroke::new(1.4, ink),
                     Weight::Detail => Stroke::new(0.9, detail),
+                    Weight::Fine => Stroke::new(0.55, detail.gamma_multiply(0.75)),
                 };
+                if interior && weight == Weight::Outline {
+                    painter.circle_filled(screen(center), view.pixels(radius), fill);
+                }
                 painter.circle_stroke(screen(center), view.pixels(radius), stroke);
             }
         }

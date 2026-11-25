@@ -22,6 +22,7 @@ use std::{
 use crate::domain::{
     dimensions::{DimensionAnchor, DimensionKind, ResolvedDimension},
     drawing::Shape,
+    fixtures::SymbolShape,
     geometry::{Point, polygon_centroid},
     hatch::hatch_segments_in_polygon,
     layers::{Layer, LayerCategory, LineType},
@@ -228,21 +229,37 @@ pub fn to_dxf_string(project: &Project) -> String {
     for fixture in &project.fixtures {
         let category = Project::fixture_category(fixture);
         let layer = layer_for_cat(category);
-        let hw = fixture.width * 0.5;
-        let hd = fixture.depth * 0.5;
-        let corners = [
-            fixture.to_world(Point::new(-hw, -hd)),
-            fixture.to_world(Point::new(hw, -hd)),
-            fixture.to_world(Point::new(hw, hd)),
-            fixture.to_world(Point::new(-hw, hd)),
-        ];
-        write_polyline(&mut entities_buf, &layer, &corners, true, None);
-        bounds.include_slice(&corners);
-
-        // Add subtle internal detail for quick identification in CAD viewers.
+        // Export the shared symbol, not a placeholder rectangle. Keeping the
+        // same local-to-world transform preserves free rotation and all parts.
+        for shape in fixture.symbol() {
+            match shape {
+                SymbolShape::Polyline {
+                    points,
+                    closed,
+                    dashed,
+                    ..
+                } => {
+                    let points: Vec<_> = points.into_iter().map(|p| fixture.to_world(p)).collect();
+                    write_polyline_styled(
+                        &mut entities_buf,
+                        &layer,
+                        &points,
+                        closed,
+                        None,
+                        dashed.then_some("DASHED"),
+                    );
+                    bounds.include_slice(&points);
+                }
+                SymbolShape::Circle { center, radius, .. } => {
+                    let center = fixture.to_world(center);
+                    write_circle(&mut entities_buf, &layer, center, radius, None);
+                    bounds.include(Point::new(center.x - radius, center.y - radius));
+                    bounds.include(Point::new(center.x + radius, center.y + radius));
+                }
+            }
+        }
         if fixture.kind.is_electrical() {
             let r = (fixture.width.min(fixture.depth) * 0.35).max(0.06);
-            write_circle(&mut entities_buf, &layer, fixture.center, r, None);
             if let Some(elec) = &fixture.electrical
                 && let Some(circuit) = elec.circuit
             {
@@ -257,10 +274,6 @@ pub fn to_dxf_string(project: &Project) -> String {
                     None,
                 );
             }
-        } else {
-            let mid_back = fixture.to_world(Point::new(0.0, -hd * 0.65));
-            let mid_front = fixture.to_world(Point::new(0.0, hd * 0.65));
-            write_line(&mut entities_buf, &layer, mid_back, mid_front, None);
         }
     }
 
@@ -2015,6 +2028,42 @@ mod tests {
     };
 
     #[test]
+    fn fixture_export_keeps_every_symbol_part_and_free_rotation() {
+        let mut project = Project::default();
+        let id = project
+            .add_fixture(FixtureKind::KitchenSink, Point::new(3.0, 4.0), 1.8, 0.6, 1)
+            .unwrap();
+        project
+            .fixtures
+            .iter_mut()
+            .find(|f| f.id == id)
+            .unwrap()
+            .angle_rad = 0.37;
+        let fixture = &project.fixtures[0];
+        let shapes = fixture.symbol();
+        let expected_circles = shapes
+            .iter()
+            .filter(|s| matches!(s, SymbolShape::Circle { .. }))
+            .count();
+        let expected_polylines = shapes.len() - expected_circles;
+        let dxf = to_dxf_string(&project);
+        let entities = dxf.split("ENTITIES\n").nth(1).unwrap();
+        assert_eq!(entities.matches("  0\nCIRCLE\n").count(), expected_circles);
+        assert_eq!(
+            entities.matches("  0\nPOLYLINE\n").count(),
+            expected_polylines
+        );
+        for shape in shapes {
+            if let SymbolShape::Circle { center, radius, .. } = shape {
+                let center = fixture.to_world(center);
+                let mut expected = String::new();
+                write_circle(&mut expected, "Mobiliario", center, radius, None);
+                assert!(dxf.contains(&expected));
+            }
+        }
+    }
+
+    #[test]
     fn round_trip_exports_and_reimports_walls_drawings_texts_dimensions_and_layers() {
         let mut project = Project::default();
         project.add_wall(Point::new(0.0, 0.0), Point::new(5.0, 0.0));
@@ -2276,10 +2325,17 @@ EOF
 
         project.sheet.scale = DrawingScale::S1_50;
         let dxf_50 = to_dxf_string(&project);
+        let electrical_layer = sanitize_layer_name(
+            &project
+                .layer_for_category(LayerCategory::Electrical)
+                .unwrap()
+                .name,
+        );
+        let dashed_electrical = format!("  8\n{electrical_layer}\n  6\nDASHED\n");
         // Floor conduit POLYLINE carries entity-level DASHED linetype (group 6).
         let entities_50 = dxf_50.split("ENTITIES").nth(1).unwrap();
         assert!(
-            entities_50.contains("  6\nDASHED\n"),
+            entities_50.contains(&dashed_electrical),
             "expected floor conduit to export with DASHED linetype"
         );
         // Structure text height at 1:50 is 2.2 / 20.0 = 0.11 m.
@@ -2289,7 +2345,10 @@ EOF
         project.conduits[0].run = ConduitRun::Ceiling;
         let dxf_ceiling = to_dxf_string(&project);
         let entities_ceiling = dxf_ceiling.split("ENTITIES").nth(1).unwrap();
-        assert!(!entities_ceiling.contains("  6\nDASHED\n"));
+        assert!(!entities_ceiling.contains(&dashed_electrical));
+        // Footing outlines retain their own dashed projection, independently
+        // of the conduit run and its electrical layer.
+        assert!(entities_ceiling.contains("  6\nDASHED\n"));
 
         // At 1:100 structure text height doubles to 0.22 m.
         project.sheet.scale = DrawingScale::S1_100;

@@ -2410,6 +2410,19 @@ impl Project {
             max.y = max.y.max(content_max.y);
         }
 
+        // Display/export framing includes chairs and mirrors; terrain fitting
+        // above continues to use the nominal physical content dimensions.
+        for fixture in &self.fixtures {
+            if fixture.kind.is_electrical() || fixture.kind.is_structural() {
+                continue;
+            }
+            let (low, high) = fixture.visual_bounds();
+            min.x = min.x.min(low.x);
+            min.y = min.y.min(low.y);
+            max.x = max.x.max(high.x);
+            max.y = max.y.max(high.y);
+        }
+
         for underlay in &self.underlays {
             if !underlay.visible {
                 continue;

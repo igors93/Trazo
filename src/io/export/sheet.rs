@@ -78,6 +78,7 @@ fn write_sheet_fixture(
     mm_per_m: f64,
 ) {
     let electrical = fixture.kind.is_electrical();
+    let interior = !electrical && !fixture.kind.is_structural();
     for shape in fixture.symbol() {
         let (color, stroke_w) = match &shape {
             SymbolShape::Polyline {
@@ -97,6 +98,14 @@ fn write_sheet_fixture(
                 weight: Weight::Outline,
                 ..
             } => ("#3b4e63", 0.22),
+            SymbolShape::Polyline {
+                weight: Weight::Fine,
+                ..
+            }
+            | SymbolShape::Circle {
+                weight: Weight::Fine,
+                ..
+            } => ("#84909e", 0.09),
             _ => ("#627489", 0.14),
         };
         let (color, stroke_w) = match &shape {
@@ -116,7 +125,7 @@ fn write_sheet_fixture(
                 points,
                 closed,
                 dashed,
-                ..
+                weight,
             } => {
                 let pts = points
                     .iter()
@@ -127,6 +136,11 @@ fn write_sheet_fixture(
                     .collect::<Vec<_>>()
                     .join(" ");
                 let elem = if closed { "polygon" } else { "polyline" };
+                let fill = if interior && closed && weight == Weight::Outline {
+                    "#ffffff"
+                } else {
+                    "none"
+                };
                 let dash = if dashed {
                     " stroke-dasharray=\"1.2 0.8\""
                 } else {
@@ -134,14 +148,23 @@ fn write_sheet_fixture(
                 };
                 let _ = writeln!(
                     svg,
-                    "<{elem} points=\"{pts}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{stroke_w:.2}\"{dash}/>"
+                    "<{elem} points=\"{pts}\" fill=\"{fill}\" stroke=\"{color}\" stroke-width=\"{stroke_w:.2}\" stroke-linejoin=\"round\" stroke-linecap=\"round\"{dash}/>"
                 );
             }
-            SymbolShape::Circle { center, radius, .. } => {
+            SymbolShape::Circle {
+                center,
+                radius,
+                weight,
+            } => {
+                let fill = if interior && weight == Weight::Outline {
+                    "#ffffff"
+                } else {
+                    "none"
+                };
                 let (cx, cy) = pt(fixture.to_world(center));
                 let _ = writeln!(
                     svg,
-                    "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{:.2}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{stroke_w:.2}\"/>",
+                    "<circle cx=\"{cx:.2}\" cy=\"{cy:.2}\" r=\"{:.2}\" fill=\"{fill}\" stroke=\"{color}\" stroke-width=\"{stroke_w:.2}\"/>",
                     radius * mm_per_m
                 );
             }

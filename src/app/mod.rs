@@ -263,6 +263,8 @@ pub struct FloorPlanApp {
     tunnel_token: mcp::server::TunnelToken,
     /// Rotation of the next fixture placed away from walls.
     fixture_turns: u8,
+    /// Library model selected for pointer placement, including its real size.
+    fixture_preset: Option<crate::domain::library::LibraryItem>,
     fixture_width_text: String,
     fixture_depth_text: String,
     fixture_load_text: String,
@@ -516,6 +518,7 @@ impl FloorPlanApp {
             tunnel: None,
             tunnel_token,
             fixture_turns: 0,
+            fixture_preset: None,
             fixture_width_text: String::new(),
             fixture_depth_text: String::new(),
             fixture_load_text: String::new(),
@@ -756,6 +759,7 @@ impl FloorPlanApp {
     fn set_tool(&mut self, tool: Tool) {
         self.commit_item_drag();
         self.tool = tool;
+        self.fixture_preset = None;
         self.cancel_creation();
         // Moving, copying, turning and mirroring act on the selection.
         if !matches!(tool, Tool::Modify(kind) if kind.uses_selection()) {
@@ -782,6 +786,9 @@ impl FloorPlanApp {
             Tool::Opening(OpeningKind::Gap) => {
                 "Clique em uma parede para abrir um vão livre; ajuste a largura no painel."
             }
+            Tool::Fixture(kind) if !kind.mounts_on_wall() => {
+                "Clique para escolher o ponto de inserção; G gira o objeto."
+            }
             Tool::Fixture(_) => {
                 "Clique para posicionar. Perto de uma parede o objeto encosta nela; G gira."
             }
@@ -793,6 +800,32 @@ impl FloorPlanApp {
             }
         }
         .to_owned();
+    }
+
+    fn fixture_tool_size(&self, kind: FixtureKind) -> (f64, f64) {
+        self.fixture_preset
+            .as_ref()
+            .filter(|item| item.base_kind == Some(kind))
+            .map(|item| (item.width_m, item.depth_m))
+            .unwrap_or_else(|| kind.default_size())
+    }
+
+    fn start_library_placement(&mut self, item: crate::domain::library::LibraryItem) {
+        let Some(kind) = item.base_kind else {
+            return;
+        };
+        if !crate::domain::fixtures::valid_size(kind, item.width_m, item.depth_m) {
+            self.message = "O modelo da biblioteca tem dimensões inválidas.".to_owned();
+            return;
+        }
+        self.set_tool(Tool::Fixture(kind));
+        let dimensions = format!("{:.2} × {:.2} m", item.width_m, item.depth_m).replace('.', ",");
+        self.message = format!(
+            "{} · {dimensions}. Clique para posicionar; G gira.",
+            item.name
+        );
+        self.fixture_preset = Some(item);
+        self.active_doc_dialog = DocDialog::None;
     }
 
     /// A blank plan in a new tab; the current project stays open in its own.
@@ -1561,7 +1594,7 @@ impl FloorPlanApp {
             }
             Selection::Fixture(id) => {
                 let fixture = self.project.fixtures.iter().find(|f| f.id == id)?;
-                let (low, high) = fixture.bounds();
+                let (low, high) = fixture.visual_bounds();
                 Some(span(&[low, high]))
             }
             Selection::Drawing(id) => {

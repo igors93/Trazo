@@ -59,6 +59,65 @@ fn harness_with_app(configure: impl FnOnce(&mut FloorPlanApp)) -> Harness<'stati
 }
 
 #[test]
+fn library_pointer_placement_preserves_model_dimensions_and_free_rotation() {
+    use crate::domain::library::LibraryItem;
+    let mut app = FloorPlanApp::new(&egui::Context::default());
+    app.project
+        .set_terrain(Point::new(-10.0, -10.0), Point::new(20.0, 20.0));
+    let model = LibraryItem::builtin_catalog()
+        .into_iter()
+        .find(|i| i.name.starts_with("Sofá retrátil"))
+        .unwrap();
+    app.start_library_placement(model.clone());
+    app.fixture_turns = 1;
+    let ghost = app.fixture_placement(FixtureKind::Sofa, Point::new(3.0, 3.0));
+    assert_eq!((ghost.width, ghost.depth), (model.width_m, model.depth_m));
+    assert_eq!(ghost.quarter_turns, 1);
+    app.place_fixture(FixtureKind::Sofa, Point::new(3.0, 3.0));
+    let placed = app.project.fixtures.last().unwrap();
+    assert_eq!(
+        (placed.width, placed.depth, placed.quarter_turns),
+        (ghost.width, ghost.depth, 1)
+    );
+
+    app.set_tool(Tool::Fixture(FixtureKind::Car));
+    assert!(app.fixture_preset.is_none());
+    app.fixture_turns = 3;
+    app.project
+        .add_wall(Point::new(0.0, 3.2), Point::new(10.0, 3.2))
+        .unwrap();
+    let ghost = app.fixture_placement(FixtureKind::Car, Point::new(7.0, 3.0));
+    assert_eq!((ghost.width, ghost.depth), FixtureKind::Car.default_size());
+    assert_eq!(ghost.quarter_turns, 3);
+    assert_eq!(ghost.center, Point::new(7.0, 3.0));
+    app.set_tool(Tool::Fixture(FixtureKind::DiningSet));
+    app.fixture_turns = 1;
+    let ghost = app.fixture_placement(FixtureKind::DiningSet, Point::new(7.0, 3.0));
+    assert_eq!(ghost.center, Point::new(7.0, 3.0));
+    assert_eq!(ghost.quarter_turns, 1);
+}
+
+#[test]
+fn interior_library_previews_and_accent_search_render_at_multiple_sizes() {
+    for size in [[960.0, 720.0], [1440.0, 900.0]] {
+        let mut harness = harness_with_size(size, |app| {
+            app.show_start_page = false;
+            app.active_doc_dialog = DocDialog::Library;
+            app.library_search = "sofa retratil".to_owned();
+        });
+        assert!(harness.query_by_label("Sofá retrátil (2,50 m)").is_some());
+        harness.get_by_label("Posicionar com mouse").click();
+        harness.step();
+        harness.step();
+        assert_eq!(harness.state().active_doc_dialog, DocDialog::None);
+        assert_eq!(
+            harness.state().fixture_tool_size(FixtureKind::Sofa),
+            (2.5, 1.1)
+        );
+    }
+}
+
+#[test]
 fn start_page_renders_recovery_banner_and_buttons_interact_cleanly() {
     let draft = seeded_project();
     let mut harness = harness_with_app(|app| {

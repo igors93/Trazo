@@ -1075,7 +1075,7 @@ impl FloorPlanApp {
     /// wall's face, half a wall thickness off its centre line, so counters
     /// and sinks sit where the bricks end.
     pub(super) fn fixture_placement(&self, kind: FixtureKind, point: Point) -> Fixture {
-        let (width, depth) = kind.default_size();
+        let (width, depth) = self.fixture_tool_size(kind);
         // Columns and footings sit on wall junctions and centre lines.
         if matches!(kind, FixtureKind::Column | FixtureKind::Footing) {
             // Flush inside the lot on a boundary wall (B23).
@@ -1108,7 +1108,7 @@ impl FloorPlanApp {
                 center: Point::new(step(point.x), step(point.y)),
                 width,
                 depth,
-                quarter_turns: 0,
+                quarter_turns: self.fixture_turns % 4,
                 angle_rad: 0.0,
                 electrical: kind.default_electrical(),
                 structural_load_kn: kind.default_structural_load_kn(),

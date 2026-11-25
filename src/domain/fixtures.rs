@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use super::geometry::Point;
 
+mod symbols;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FixtureKind {
@@ -227,6 +229,23 @@ impl FixtureKind {
         }
     }
 
+    /// Seats represented by the dimension-aware furniture symbol. The head
+    /// chairs are included for a dining set, so a 1.80 m set has six seats.
+    pub fn seat_count(self, width: f64) -> Option<usize> {
+        if !width.is_finite() || width <= 0.0 {
+            return None;
+        }
+        match self {
+            Self::Sofa => Some(((width - 0.32) / 0.65).round().clamp(1.0, 6.0) as usize),
+            Self::Armchair => Some(1),
+            Self::Table => Some(2 * (width / 0.60).floor().clamp(1.0, 10.0) as usize),
+            Self::DiningSet => {
+                Some(2 * ((width - 0.35) / 0.60).floor().clamp(1.0, 10.0) as usize + 2)
+            }
+            _ => None,
+        }
+    }
+
     /// Recommended functional clearance in front of the fixture (metres) for
     /// ergonomics and accessibility checks.
     pub fn front_clearance_m(self) -> f64 {
@@ -414,7 +433,52 @@ impl Fixture {
 
     pub fn contains(&self, point: Point) -> bool {
         let local = self.to_local(point);
-        local.x.abs() <= self.width / 2.0 + 1e-4 && local.y.abs() <= self.depth / 2.0 + 1e-4
+        if local.x.abs() <= self.width / 2.0 + 1e-4 && local.y.abs() <= self.depth / 2.0 + 1e-4 {
+            return true;
+        }
+        // Chairs and mirrors are selectable without making the empty space
+        // around the whole furniture body a hit target. Reject distant points
+        // before allocating any symbol geometry during hover hit testing.
+        if !matches!(
+            self.kind,
+            FixtureKind::Table | FixtureKind::DiningSet | FixtureKind::Desk | FixtureKind::Car
+        ) {
+            return false;
+        }
+        let reach = 0.5 + 0.06 * self.width.max(self.depth);
+        if local.x.abs() > self.width / 2.0 + reach || local.y.abs() > self.depth / 2.0 + reach {
+            return false;
+        }
+        symbol_with_detail(self.kind,self.width,self.depth,false).iter().any(|shape| {
+            matches!(shape, SymbolShape::Polyline { points, closed: true, weight: Weight::Outline, .. }
+                if super::geometry::polygon_contains_point(points,local))
+        })
+    }
+
+    /// Display extents include parts beyond the nominal body, while `bounds`
+    /// keeps its physical dimension contract for structural/clearance checks.
+    pub fn visual_bounds(&self) -> (Point, Point) {
+        let (mut low, mut high) = self.bounds();
+        let mut include = |p: Point| {
+            low.x = low.x.min(p.x);
+            low.y = low.y.min(p.y);
+            high.x = high.x.max(p.x);
+            high.y = high.y.max(p.y);
+        };
+        for shape in self.symbol() {
+            match shape {
+                SymbolShape::Polyline { points, .. } => points
+                    .into_iter()
+                    .map(|p| self.to_world(p))
+                    .for_each(&mut include),
+                SymbolShape::Circle { center, radius, .. } => {
+                    let c = self.to_world(center);
+                    include(Point::new(c.x - radius, c.y - radius));
+                    include(Point::new(c.x + radius, c.y + radius));
+                }
+            }
+        }
+        (low, high)
     }
 
     pub fn symbol(&self) -> Vec<SymbolShape> {
@@ -428,6 +492,8 @@ pub enum Weight {
     Outline,
     /// Inner details: basins, burners, bars.
     Detail,
+    /// Seams, drain slots and small controls, omitted at small screen scales.
+    Fine,
 }
 
 /// One shape of a plan symbol, in the fixture's own frame (metres).
@@ -479,9 +545,9 @@ fn circle(x: f64, y: f64, radius: f64, weight: Weight) -> SymbolShape {
 
 fn ellipse(x: f64, y: f64, rx: f64, ry: f64, weight: Weight) -> SymbolShape {
     SymbolShape::Polyline {
-        points: (0..24)
+        points: (0..64)
             .map(|i| {
-                let a = std::f64::consts::TAU * i as f64 / 24.0;
+                let a = std::f64::consts::TAU * i as f64 / 64.0;
                 Point::new(x + rx * a.cos(), y + ry * a.sin())
             })
             .collect(),
@@ -494,338 +560,127 @@ fn ellipse(x: f64, y: f64, rx: f64, ry: f64, weight: Weight) -> SymbolShape {
 /// The plan symbol of a fixture of `kind` measuring `width` × `depth`. The
 /// back (against the wall) is at y = -depth/2.
 pub fn symbol(kind: FixtureKind, width: f64, depth: f64) -> Vec<SymbolShape> {
-    use Weight::{Detail, Outline};
-    let (hw, hd) = (width / 2.0, depth / 2.0);
-    let outline = rect(-hw, -hd, hw, hd, Outline);
-    let small = width.min(depth);
-    match kind {
-        FixtureKind::OutletLow
-        | FixtureKind::OutletMid
-        | FixtureKind::OutletHigh
-        | FixtureKind::OutletSpecific
-        | FixtureKind::Switch
-        | FixtureKind::SwitchTwoWay
-        | FixtureKind::SwitchIntermediate
-        | FixtureKind::CeilingLight
-        | FixtureKind::WallLight
-        | FixtureKind::Panel
-        | FixtureKind::DataPoint => super::electrical::symbol(kind, width, depth),
-        FixtureKind::Column
-        | FixtureKind::Footing
-        | FixtureKind::WaterTank
-        | FixtureKind::HeavyEquipment
-        | FixtureKind::TimberPost => super::structure::symbol(kind, width, depth),
-        FixtureKind::Counter => vec![
-            outline,
-            line(&[(-hw, hd - 0.05), (hw, hd - 0.05)], false, Detail),
-        ],
-        FixtureKind::KitchenSink => {
-            let basin_w = (hw - 0.1).clamp(0.08, 0.3);
-            vec![
-                outline,
-                rect(-basin_w, -hd + 0.14, basin_w, hd - 0.08, Detail),
-                circle(0.0, 0.03, 0.03, Detail),
-                circle(0.0, -hd + 0.07, 0.025, Detail),
-            ]
-        }
-        FixtureKind::Stove => {
-            let radius = small * 0.15;
-            let mut shapes = vec![outline];
-            for (x, y) in [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
-                shapes.push(circle(x * hw * 0.48, y * hd * 0.45 - 0.02, radius, Detail));
+    symbol_with_detail(kind, width, depth, true)
+}
+
+/// Small previews skip fine details before allocating their geometry. Exports
+/// retain all detail, regardless of the current viewport zoom.
+pub fn symbol_with_detail(
+    kind: FixtureKind,
+    width: f64,
+    depth: f64,
+    fine: bool,
+) -> Vec<SymbolShape> {
+    if !valid_size(kind, width, depth) {
+        return Vec::new();
+    }
+    if kind.is_electrical() {
+        super::electrical::symbol(kind, width, depth)
+    } else if kind.is_structural() {
+        super::structure::symbol(kind, width, depth)
+    } else {
+        symbols::interior_symbol(kind, width, depth, fine)
+    }
+}
+
+/// Local extents of the actual drawing, including chairs and handles outside
+/// the furniture body. Preview fitting must not guess these from the kind.
+pub fn symbol_bounds(shapes: &[SymbolShape]) -> Option<(Point, Point)> {
+    let mut low = Point::new(f64::INFINITY, f64::INFINITY);
+    let mut high = Point::new(f64::NEG_INFINITY, f64::NEG_INFINITY);
+    let mut include = |p: Point| {
+        low.x = low.x.min(p.x);
+        low.y = low.y.min(p.y);
+        high.x = high.x.max(p.x);
+        high.y = high.y.max(p.y);
+    };
+    for shape in shapes {
+        match shape {
+            SymbolShape::Polyline { points, .. } => points.iter().copied().for_each(&mut include),
+            SymbolShape::Circle { center, radius, .. } => {
+                include(Point::new(center.x - radius, center.y - radius));
+                include(Point::new(center.x + radius, center.y + radius));
             }
-            shapes.push(line(&[(-hw, hd - 0.06), (hw, hd - 0.06)], false, Detail));
-            shapes
-        }
-        FixtureKind::WoodStove => {
-            let plate_front = hd - 0.18;
-            vec![
-                outline,
-                rect(-hw + 0.06, -hd + 0.06, hw - 0.22, plate_front, Detail),
-                circle(-hw * 0.45, (-hd + plate_front) / 2.0, small * 0.13, Detail),
-                circle(hw * 0.05, (-hd + plate_front) / 2.0, small * 0.1, Detail),
-                rect(-0.15, plate_front + 0.03, 0.15, hd - 0.03, Detail),
-                rect(hw - 0.17, -hd + 0.03, hw - 0.03, -hd + 0.17, Outline),
-            ]
-        }
-        FixtureKind::Grill => {
-            let (x0, x1, y0, y1) = (-hw + 0.08, hw - 0.08, -hd + 0.08, hd - 0.12);
-            let mut shapes = vec![outline, rect(x0, y0, x1, y1, Detail)];
-            let bars = ((x1 - x0) / 0.08).floor().max(1.0) as usize;
-            for i in 1..bars {
-                let x = x0 + (x1 - x0) * i as f64 / bars as f64;
-                shapes.push(line(&[(x, y0), (x, y1)], false, Detail));
-            }
-            shapes
-        }
-        FixtureKind::Fridge => vec![
-            outline,
-            line(&[(-hw, hd - 0.06), (hw, hd - 0.06)], false, Detail),
-            line(
-                &[(hw - 0.1, -hd + 0.08), (hw - 0.1, hd - 0.12)],
-                false,
-                Detail,
-            ),
-        ],
-        FixtureKind::Washbasin => {
-            let basins = if width >= 0.9 { 2 } else { 1 };
-            let slot = width / basins as f64;
-            let mut shapes = vec![outline];
-            for i in 0..basins {
-                let x = -hw + slot * (i as f64 + 0.5);
-                shapes.push(ellipse(
-                    x,
-                    0.03,
-                    (slot / 2.0 - 0.07).clamp(0.05, 0.22),
-                    (hd - 0.08).clamp(0.05, 0.16),
-                    Detail,
-                ));
-                shapes.push(circle(x, -hd + 0.05, 0.02, Detail));
-            }
-            shapes
-        }
-        FixtureKind::Toilet => {
-            let tank = (depth * 0.28).clamp(0.08, 0.2);
-            vec![
-                rect(-hw, -hd, hw, -hd + tank, Outline),
-                ellipse(
-                    0.0,
-                    (-hd + tank + hd) / 2.0,
-                    hw * 0.85,
-                    (depth - tank) / 2.0,
-                    Outline,
-                ),
-            ]
-        }
-        FixtureKind::Shower => vec![
-            outline,
-            line(&[(-hw, -hd), (hw, hd)], false, Detail),
-            line(&[(-hw, hd), (hw, -hd)], false, Detail),
-            circle(0.0, 0.0, 0.04, Detail),
-        ],
-        FixtureKind::Table => {
-            let mut shapes = vec![outline];
-            let chairs = (width / 0.6).floor().max(1.0) as usize;
-            for i in 0..chairs {
-                let x = -hw + width * (i as f64 + 0.5) / chairs as f64;
-                shapes.push(rect(x - 0.2, -hd - 0.45, x + 0.2, -hd - 0.08, Detail));
-                shapes.push(rect(x - 0.2, hd + 0.08, x + 0.2, hd + 0.45, Detail));
-            }
-            shapes
-        }
-        FixtureKind::Shelves => vec![
-            outline,
-            line(&[(-hw, -hd), (hw, hd)], true, Detail),
-            line(&[(-hw, hd), (hw, -hd)], true, Detail),
-        ],
-        FixtureKind::BedDouble => {
-            let head = -hd + 0.12;
-            let pillow_y1 = (-hd + 0.50).min(0.0);
-            let fold_y = (-hd + depth * 0.42).min(hd - 0.15);
-            vec![
-                outline,
-                line(&[(-hw, head), (hw, head)], false, Detail),
-                rect(-hw + 0.10, head + 0.04, -0.05, pillow_y1, Detail),
-                rect(0.05, head + 0.04, hw - 0.10, pillow_y1, Detail),
-                line(&[(-hw, fold_y), (hw, fold_y)], false, Detail),
-            ]
-        }
-        FixtureKind::BedSingle => {
-            let head = -hd + 0.10;
-            let pillow_y1 = (-hd + 0.46).min(0.0);
-            let fold_y = (-hd + depth * 0.42).min(hd - 0.15);
-            vec![
-                outline,
-                line(&[(-hw, head), (hw, head)], false, Detail),
-                rect(-hw + 0.10, head + 0.04, hw - 0.10, pillow_y1, Detail),
-                line(&[(-hw, fold_y), (hw, fold_y)], false, Detail),
-            ]
-        }
-        FixtureKind::Sofa => {
-            let back = -hd + (depth * 0.24).clamp(0.12, 0.25);
-            let arm = (width * 0.09).clamp(0.10, 0.22);
-            let inner_w = (width - 2.0 * arm).max(0.2);
-            let seats = (inner_w / 0.65).round().clamp(2.0, 4.0) as usize;
-            let mut shapes = vec![
-                outline,
-                rect(-hw, -hd, -hw + arm, hd, Detail),
-                rect(hw - arm, -hd, hw, hd, Detail),
-                rect(-hw + arm, -hd, hw - arm, back, Detail),
-            ];
-            for i in 1..seats {
-                let x = -hw + arm + inner_w * i as f64 / seats as f64;
-                shapes.push(line(&[(x, back), (x, hd)], false, Detail));
-            }
-            shapes
-        }
-        FixtureKind::Armchair => {
-            let back = -hd + (depth * 0.26).clamp(0.12, 0.24);
-            let arm = (width * 0.18).clamp(0.10, 0.20);
-            vec![
-                outline,
-                rect(-hw, -hd, -hw + arm, hd, Detail),
-                rect(hw - arm, -hd, hw, hd, Detail),
-                rect(-hw + arm, -hd, hw - arm, back, Detail),
-            ]
-        }
-        FixtureKind::Wardrobe => vec![
-            outline,
-            line(&[(-hw, -hd), (hw, hd)], true, Detail),
-            line(&[(-hw, hd), (hw, -hd)], true, Detail),
-            line(&[(-hw, hd - 0.05), (hw, hd - 0.05)], false, Detail),
-        ],
-        FixtureKind::Desk => vec![
-            outline,
-            rect(-0.22, hd + 0.06, 0.22, hd + 0.46, Detail),
-            line(&[(-0.22, hd + 0.36), (0.22, hd + 0.36)], false, Detail),
-        ],
-        FixtureKind::DiningSet => {
-            let mut shapes = vec![outline];
-            let per_side = (width / 0.6).floor().clamp(1.0, 4.0) as usize;
-            for i in 0..per_side {
-                let x = -hw + width * (i as f64 + 0.5) / per_side as f64;
-                shapes.push(rect(x - 0.20, -hd - 0.42, x + 0.20, -hd - 0.06, Detail));
-                shapes.push(rect(x - 0.20, hd + 0.06, x + 0.20, hd + 0.42, Detail));
-            }
-            shapes.push(rect(-hw - 0.42, -0.20, -hw - 0.06, 0.20, Detail));
-            shapes.push(rect(hw + 0.06, -0.20, hw + 0.42, 0.20, Detail));
-            shapes
-        }
-        FixtureKind::Washer => vec![
-            outline,
-            circle(0.0, 0.02, small * 0.32, Detail),
-            line(&[(-hw, -hd + 0.10), (hw, -hd + 0.10)], false, Detail),
-        ],
-        FixtureKind::TvStand => vec![
-            outline,
-            rect(-hw * 0.72, -hd + 0.06, hw * 0.72, -hd + 0.14, Outline),
-        ],
-        FixtureKind::Bathtub => vec![
-            outline,
-            rect(-hw + 0.08, -hd + 0.08, hw - 0.08, hd - 0.08, Detail),
-            circle(hw - 0.22, 0.0, 0.035, Detail),
-        ],
-        FixtureKind::Car => {
-            // Top-view passenger car: tapered bumpers, windshield, roof, rear
-            // glass, side mirrors and headlight markers (+Y is the front hood).
-            let body = SymbolShape::Polyline {
-                points: vec![
-                    Point::new(-hw * 0.80, -hd),
-                    Point::new(hw * 0.80, -hd),
-                    Point::new(hw, -hd * 0.86),
-                    Point::new(hw, hd * 0.82),
-                    Point::new(hw * 0.78, hd),
-                    Point::new(-hw * 0.78, hd),
-                    Point::new(-hw, hd * 0.82),
-                    Point::new(-hw, -hd * 0.86),
-                ],
-                closed: true,
-                dashed: false,
-                weight: Outline,
-            };
-            let windshield = SymbolShape::Polyline {
-                points: vec![
-                    Point::new(-hw * 0.72, hd * 0.06),
-                    Point::new(hw * 0.72, hd * 0.06),
-                    Point::new(hw * 0.84, hd * 0.42),
-                    Point::new(-hw * 0.84, hd * 0.42),
-                ],
-                closed: true,
-                dashed: false,
-                weight: Detail,
-            };
-            let rear_glass = SymbolShape::Polyline {
-                points: vec![
-                    Point::new(-hw * 0.72, -hd * 0.46),
-                    Point::new(hw * 0.72, -hd * 0.46),
-                    Point::new(hw * 0.82, -hd * 0.74),
-                    Point::new(-hw * 0.82, -hd * 0.74),
-                ],
-                closed: true,
-                dashed: false,
-                weight: Detail,
-            };
-            let roof = rect(-hw * 0.72, -hd * 0.46, hw * 0.72, hd * 0.06, Detail);
-            let left_mirror = rect(-hw - 0.09, hd * 0.22, -hw, hd * 0.34, Detail);
-            let right_mirror = rect(hw, hd * 0.22, hw + 0.09, hd * 0.34, Detail);
-            let left_headlight = line(
-                &[(-hw * 0.78, hd * 0.90), (-hw * 0.44, hd * 0.94)],
-                false,
-                Detail,
-            );
-            let right_headlight = line(
-                &[(hw * 0.44, hd * 0.94), (hw * 0.78, hd * 0.90)],
-                false,
-                Detail,
-            );
-            let left_hood = line(
-                &[(-hw * 0.78, hd * 0.42), (-hw * 0.68, hd * 0.88)],
-                false,
-                Detail,
-            );
-            let right_hood = line(
-                &[(hw * 0.78, hd * 0.42), (hw * 0.68, hd * 0.88)],
-                false,
-                Detail,
-            );
-            vec![
-                body,
-                windshield,
-                rear_glass,
-                roof,
-                left_mirror,
-                right_mirror,
-                left_headlight,
-                right_headlight,
-                left_hood,
-                right_hood,
-            ]
-        }
-        FixtureKind::Umbrella => {
-            // Classic octagonal patio / poolside umbrella with 8 radial ribs
-            // and central pole cap.
-            let r = small * 0.5;
-            let mut vertices = Vec::with_capacity(8);
-            let mut shapes = Vec::with_capacity(10);
-            for i in 0..8 {
-                let angle = (i as f64) * std::f64::consts::FRAC_PI_4 + std::f64::consts::FRAC_PI_8;
-                vertices.push(Point::new(r * angle.cos(), r * angle.sin()));
-            }
-            shapes.push(SymbolShape::Polyline {
-                points: vertices.clone(),
-                closed: true,
-                dashed: false,
-                weight: Outline,
-            });
-            for v in vertices {
-                shapes.push(line(&[(0.0, 0.0), (v.x, v.y)], false, Detail));
-            }
-            shapes.push(circle(0.0, 0.0, (r * 0.09).max(0.05), Outline));
-            shapes
-        }
-        FixtureKind::SunLounger => {
-            // Poolside reclining sun lounger (espreguiçadeira): outer frame,
-            // mattress pad, reclined backrest fold, headrest pillow and knee fold.
-            let pad = rect(-hw + 0.06, -hd + 0.06, hw - 0.06, hd - 0.06, Detail);
-            let backrest_y = -hd + depth * 0.34;
-            let knee_y = -hd + depth * 0.68;
-            let backrest_line = line(&[(-hw, backrest_y), (hw, backrest_y)], false, Outline);
-            let knee_line = line(&[(-hw + 0.06, knee_y), (hw - 0.06, knee_y)], true, Detail);
-            let pillow = rect(
-                -hw * 0.58,
-                -hd + (depth * 0.08).min(0.16),
-                hw * 0.58,
-                -hd + (depth * 0.20).min(0.38),
-                Detail,
-            );
-            vec![outline, pad, backrest_line, knee_line, pillow]
         }
     }
+    (low.x <= high.x && low.y <= high.y).then_some((low, high))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    #[test]
+    fn detailed_symbols_keep_the_same_outlines_when_simplified() {
+        for kind in FixtureKind::ALL {
+            let (w, d) = kind.default_size();
+            let full = symbol(kind, w, d);
+            let simple = symbol_with_detail(kind, w, d, false);
+            let retained: Vec<_> =
+                full.iter()
+                    .filter(|s| match s {
+                        SymbolShape::Polyline { weight, .. }
+                        | SymbolShape::Circle { weight, .. } => *weight != Weight::Fine,
+                    })
+                    .cloned()
+                    .collect();
+            assert_eq!(simple, retained, "{kind:?}");
+            assert!(full.len() > simple.len(), "{kind:?} has no fine detail");
+        }
+    }
+
+    #[test]
+    fn chairs_are_selectable_and_included_in_visual_extents_after_rotation() {
+        for turns in 0..4 {
+            let mut f = fixture(turns);
+            f.kind = FixtureKind::DiningSet;
+            (f.width, f.depth) = (1.8, 0.9);
+            f.angle_rad = 0.31;
+            let on_chair = f.to_world(Point::new(-0.45, -0.70));
+            assert!(f.contains(on_chair));
+            assert!(!f.contains(f.to_world(Point::new(-1.25, -0.85))));
+            let (low, high) = f.visual_bounds();
+            assert!(on_chair.x >= low.x && on_chair.x <= high.x);
+            assert!(on_chair.y >= low.y && on_chair.y <= high.y);
+            let (a, b) = f.bounds();
+            assert!(low.x < a.x && low.y < a.y && high.x > b.x && high.y > b.y);
+        }
+        assert_eq!(FixtureKind::DiningSet.seat_count(1.2), Some(4));
+        assert_eq!(FixtureKind::DiningSet.seat_count(1.8), Some(6));
+        assert_eq!(FixtureKind::DiningSet.seat_count(2.4), Some(8));
+        assert_eq!(FixtureKind::Sofa.seat_count(2.1), Some(3));
+        assert_eq!(FixtureKind::Sofa.seat_count(2.5), Some(3));
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(48))]
+        #[test]
+        fn resized_furniture_has_finite_bounded_geometry(w in 0.2f64..=8.0, d in 0.2f64..=8.0) {
+            for kind in FixtureKind::ALL {
+                let shapes = symbol(kind,w,d);
+                let (low,high) = symbol_bounds(&shapes).unwrap();
+                prop_assert!(low.x.is_finite() && low.y.is_finite() && high.x.is_finite() && high.y.is_finite());
+                prop_assert!(low.x < high.x && low.y < high.y);
+                let mut vertices = 0;
+                for shape in shapes {
+                    match shape {
+                        SymbolShape::Polyline { points, closed, .. } => {
+                            prop_assert!(points.len() >= if closed {3} else {2}, "invalid vertex count for {:?}",kind);
+                            vertices += points.len();
+                            for p in points {
+                                prop_assert!(p.x.is_finite() && p.y.is_finite());
+                                prop_assert!(p.x >= low.x-1e-9 && p.x <= high.x+1e-9);
+                                prop_assert!(p.y >= low.y-1e-9 && p.y <= high.y+1e-9);
+                            }
+                        }
+                        SymbolShape::Circle { radius, .. } => prop_assert!(radius.is_finite() && radius > 0.0),
+                    }
+                }
+                prop_assert!(vertices < 4096);
+            }
+        }
+    }
 
     fn fixture(turns: u8) -> Fixture {
         Fixture {

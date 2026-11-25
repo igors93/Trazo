@@ -211,7 +211,11 @@ impl FloorPlanApp {
                                         caption(ui, "Clique numa parede para inserir.");
                                     }
                                     Tool::Fixture(kind) => {
-                                        let (width, depth) = kind.default_size();
+                                        let (width, depth) = self.fixture_tool_size(kind);
+                                        if let Some(item) = &self.fixture_preset {
+                                            caption(ui, &item.name);
+                                            divider(ui);
+                                        }
                                         caption(ui, "Tamanho");
                                         chip(
                                             ui,
@@ -231,12 +235,18 @@ impl FloorPlanApp {
                                         let wall_cm =
                                             (self.project.masonry.thickness() * 100.0).round()
                                                 as i32;
+                                        if matches!(kind,crate::domain::fixtures::FixtureKind::Column | crate::domain::fixtures::FixtureKind::Footing) {
+                                            caption(ui,"Encaixa nos encontros e eixos das paredes.");
+                                        } else if kind.mounts_on_wall() {
                                         caption(
                                             ui,
                                             &format!(
                                                 "Encosta automaticamente na face da parede ({wall_cm} cm)."
                                             ),
                                         );
+                                        } else {
+                                            caption(ui,"Posição livre · clique para inserir · G gira.");
+                                        }
                                     }
                                     Tool::Move => self.selection_options(ui),
                                     Tool::Measure => {

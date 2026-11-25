@@ -73,6 +73,34 @@ pub struct LibraryItem {
 }
 
 impl LibraryItem {
+    /// Search is accent-insensitive and every word may match the name, room
+    /// category or base object. Typing "sofa" also finds "Sofá".
+    pub fn matches_query(&self, query: &str) -> bool {
+        fn normalize(text: &str) -> String {
+            text.to_lowercase()
+                .chars()
+                .map(|c| match c {
+                    'á' | 'à' | 'â' | 'ã' | 'ä' => 'a',
+                    'é' | 'è' | 'ê' | 'ë' => 'e',
+                    'í' | 'ì' | 'î' | 'ï' => 'i',
+                    'ó' | 'ò' | 'ô' | 'õ' | 'ö' => 'o',
+                    'ú' | 'ù' | 'û' | 'ü' => 'u',
+                    'ç' => 'c',
+                    _ => c,
+                })
+                .collect()
+        }
+        let text = normalize(&format!(
+            "{} {} {}",
+            self.name,
+            self.category.label(),
+            self.base_kind.map_or("", FixtureKind::label)
+        ));
+        normalize(query)
+            .split_whitespace()
+            .all(|word| text.contains(word))
+    }
+
     /// Curated built-in catalog of common Brazilian furniture, appliances & technical symbols.
     pub fn builtin_catalog() -> Vec<LibraryItem> {
         let mut id = 10_000;
@@ -93,7 +121,7 @@ impl LibraryItem {
                 symbol_tag: symbol_tag.map(|s| s.to_owned()),
             }
         };
-        vec![
+        let mut catalog = vec![
             mk(
                 "Sofá 3 lugares",
                 LibraryCategory::Living,
@@ -342,7 +370,75 @@ impl LibraryItem {
                 None,
                 Some("RS"),
             ),
-        ]
+        ];
+        // Append new models so the existing built-in IDs remain stable.
+        catalog.extend([
+            mk(
+                "Fogão a lenha",
+                LibraryCategory::Kitchen,
+                1.0,
+                0.60,
+                Some(FixtureKind::WoodStove),
+                None,
+            ),
+            mk(
+                "Mesa com cadeiras laterais",
+                LibraryCategory::Living,
+                2.0,
+                0.90,
+                Some(FixtureKind::Table),
+                None,
+            ),
+            mk(
+                "Sofá 2 lugares",
+                LibraryCategory::Living,
+                1.60,
+                0.85,
+                Some(FixtureKind::Sofa),
+                None,
+            ),
+            mk(
+                "Mesa de jantar 4 lugares",
+                LibraryCategory::Living,
+                1.20,
+                0.80,
+                Some(FixtureKind::DiningSet),
+                None,
+            ),
+            mk(
+                "Mesa de jantar 8 lugares",
+                LibraryCategory::Living,
+                2.40,
+                1.0,
+                Some(FixtureKind::DiningSet),
+                None,
+            ),
+            mk(
+                "Pia com duas cubas",
+                LibraryCategory::Kitchen,
+                1.80,
+                0.60,
+                Some(FixtureKind::KitchenSink),
+                None,
+            ),
+            mk(
+                "Lavatório duplo",
+                LibraryCategory::Bathroom,
+                1.20,
+                0.50,
+                Some(FixtureKind::Washbasin),
+                None,
+            ),
+            mk(
+                "Geladeira de duas portas",
+                LibraryCategory::Kitchen,
+                0.95,
+                0.75,
+                Some(FixtureKind::Fridge),
+                None,
+            ),
+        ]);
+        catalog
     }
 }
 
@@ -420,6 +516,46 @@ impl Project {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn catalog_covers_every_interior_kind_and_search_ignores_accents() {
+        let catalog = LibraryItem::builtin_catalog();
+        for kind in FixtureKind::ALL {
+            assert!(
+                catalog.iter().any(|i| i.base_kind == Some(kind)),
+                "{kind:?}"
+            );
+        }
+        let mut ids = std::collections::HashSet::new();
+        for item in &catalog {
+            assert!(ids.insert(item.id));
+            if let Some(kind) = item.base_kind {
+                assert!(valid_size(kind, item.width_m, item.depth_m));
+            }
+        }
+        assert!(catalog.iter().any(|i| i.matches_query("sofa retratil")));
+        assert!(
+            catalog
+                .iter()
+                .any(|i| i.matches_query("LAVATORIO banheiro"))
+        );
+        assert!(
+            !catalog
+                .iter()
+                .any(|i| i.matches_query("sofa cozinha inexistente"))
+        );
+        for (name, seats) in [
+            ("Mesa de jantar 4 lugares", 4),
+            ("Mesa de jantar 6 lugares", 6),
+            ("Mesa de jantar 8 lugares", 8),
+        ] {
+            let item = catalog.iter().find(|i| i.name == name).unwrap();
+            assert_eq!(
+                item.base_kind.unwrap().seat_count(item.width_m),
+                Some(seats)
+            );
+        }
+    }
 
     #[test]
     fn expanded_fixture_catalog_and_custom_library_place_and_round_trip() {

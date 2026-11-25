@@ -114,6 +114,7 @@ fn write_fixture_svg(
     pixels_per_meter: f64,
 ) {
     let electrical = fixture.kind.is_electrical();
+    let interior = !electrical && !fixture.kind.is_structural();
     let corner = |x: f64, y: f64| {
         let (px, py) = point(fixture.to_world(Point::new(x, y)));
         format!("{px:.1},{py:.1}")
@@ -124,7 +125,7 @@ fn write_fixture_svg(
             fixture.kind,
             FixtureKind::Footing | FixtureKind::WaterTank | FixtureKind::HeavyEquipment
         );
-    if !transparent_backing {
+    if !transparent_backing && !interior {
         let _ = writeln!(
             svg,
             "<polygon points=\"{} {} {} {}\" fill=\"#ffffff\"/>",
@@ -141,12 +142,15 @@ fn write_fixture_svg(
         let (color, width) = match (weight, electrical) {
             (Weight::Outline, false) => ("#3b4e63", 2.0),
             (Weight::Detail, false) => ("#627489", 1.2),
+            (Weight::Fine, false) => ("#84909e", 0.7),
             (Weight::Outline, true) => (ELECTRICAL_INK, 1.8),
             (Weight::Detail, true) => (ELECTRICAL_INK, 1.0),
+            (Weight::Fine, true) => (ELECTRICAL_INK, 0.7),
         };
         let (color, width) = match (weight, fixture.kind.is_structural()) {
             (Weight::Outline, true) => (STRUCTURE_INK, 1.8),
             (Weight::Detail, true) => (STRUCTURE_INK, 0.8),
+            (Weight::Fine, true) => (STRUCTURE_INK, 0.6),
             _ => (color, width),
         };
         match shape {
@@ -162,6 +166,11 @@ fn write_fixture_svg(
                     .collect::<Vec<_>>()
                     .join(" ");
                 let element = if closed { "polygon" } else { "polyline" };
+                let fill = if interior && closed && weight == Weight::Outline {
+                    "#ffffff"
+                } else {
+                    "none"
+                };
                 let dash = if dashed {
                     " stroke-dasharray=\"6 4\""
                 } else {
@@ -169,14 +178,19 @@ fn write_fixture_svg(
                 };
                 let _ = writeln!(
                     svg,
-                    "<{element} points=\"{points}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{width}\"{dash}/>"
+                    "<{element} points=\"{points}\" fill=\"{fill}\" stroke=\"{color}\" stroke-width=\"{width}\" stroke-linejoin=\"round\" stroke-linecap=\"round\"{dash}/>"
                 );
             }
             SymbolShape::Circle { center, radius, .. } => {
+                let fill = if interior && weight == Weight::Outline {
+                    "#ffffff"
+                } else {
+                    "none"
+                };
                 let (cx, cy) = point(fixture.to_world(center));
                 let _ = writeln!(
                     svg,
-                    "<circle cx=\"{cx:.1}\" cy=\"{cy:.1}\" r=\"{:.1}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"{width}\"/>",
+                    "<circle cx=\"{cx:.1}\" cy=\"{cy:.1}\" r=\"{:.1}\" fill=\"{fill}\" stroke=\"{color}\" stroke-width=\"{width}\"/>",
                     radius * pixels_per_meter
                 );
             }
@@ -1402,6 +1416,69 @@ pub fn csv(project: &Project, path: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::domain::model::OpeningKind;
+
+    /// A contact sheet exercises the production fixture exporter and provides
+    /// a reproducible visual QA artifact when TRAZO_INTERIOR_PREVIEW_DIR is set.
+    #[test]
+    fn detailed_interior_catalog_exports_and_rasterizes() {
+        let mut markup = String::from(
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1560" viewBox="0 0 1440 1560"><rect width="1440" height="1560" fill="#f1f5f9"/>"##,
+        );
+        for (i, kind) in FixtureKind::ALL.into_iter().enumerate() {
+            let (width, depth) = kind.default_size();
+            let fixture = Fixture {
+                id: i as u64,
+                kind,
+                center: Point::new(0.0, 0.0),
+                width,
+                depth,
+                quarter_turns: 0,
+                angle_rad: 0.0,
+                electrical: None,
+                structural_load_kn: None,
+            };
+            let (low, high) = crate::domain::fixtures::symbol_bounds(&fixture.symbol()).unwrap();
+            let center = low.midpoint(high);
+            let x = (i % 4) as f64 * 360.0;
+            let y = (i / 4) as f64 * 260.0;
+            let scale = (300.0 / (high.x - low.x)).min(170.0 / (high.y - low.y));
+            let at = |p: Point| {
+                (
+                    x + 180.0 + (p.x - center.x) * scale,
+                    y + 155.0 + (p.y - center.y) * scale,
+                )
+            };
+            let _ = writeln!(
+                markup,
+                r##"<rect x="{}" y="{}" width="340" height="240" rx="12" fill="#ffffff" stroke="#d8e0e9"/><text x="{}" y="{}" font-family="Arial" font-size="18" fill="#26374b">{}</text><text x="{}" y="{}" font-family="Arial" font-size="13" fill="#718096">{:.2} × {:.2} m</text>"##,
+                x + 10.0,
+                y + 10.0,
+                x + 28.0,
+                y + 39.0,
+                kind.label(),
+                x + 28.0,
+                y + 60.0,
+                width,
+                depth
+            );
+            write_fixture_svg(&mut markup, &fixture, &at, scale);
+        }
+        markup.push_str("</svg>");
+        let tree = resvg::usvg::Tree::from_str(&markup, &resvg_options()).unwrap();
+        let mut pixmap = resvg::tiny_skia::Pixmap::new(1440, 1560).unwrap();
+        resvg::render(
+            &tree,
+            resvg::tiny_skia::Transform::identity(),
+            &mut pixmap.as_mut(),
+        );
+        assert!(pixmap.data().iter().any(|value| *value < 100));
+        if let Some(dir) = std::env::var_os("TRAZO_INTERIOR_PREVIEW_DIR") {
+            let dir = std::path::PathBuf::from(dir);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("interiores.svg"), markup).unwrap();
+            pixmap.save_png(dir.join("interiores.png")).unwrap();
+        }
+    }
 
     #[test]
     fn long_room_names_are_kept_inside_their_exported_room() {

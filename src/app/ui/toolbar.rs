@@ -388,21 +388,39 @@ impl FloorPlanApp {
 
     fn fixture_button(&mut self, ui: &mut Ui, kind: FixtureKind, label: &str) {
         let (width, depth) = kind.default_size();
+        let dimensions = format!("{width:.2} × {depth:.2} m").replace('.', ",");
+        let placement = if kind.mounts_on_wall() {
+            "Perto de uma parede, encosta na face dela."
+        } else {
+            "Escolha o ponto de inserção; G gira o objeto."
+        };
         let hint = format!(
-            "{}: {width:.2} × {depth:.2} m. Clique na planta; perto de uma parede ele encosta nela.",
+            "{}: {dimensions}. Clique na planta. {placement}",
             kind.label()
+        );
+        if ribbon_button(
+            ui,
+            Icon::Fixture(kind),
+            label,
+            self.tool == Tool::Fixture(kind),
+            false,
         )
-        .replace('.', ",");
-        if tip(
-            ribbon_button(
-                ui,
-                Icon::Fixture(kind),
-                label,
-                self.tool == Tool::Fixture(kind),
-                false,
-            ),
-            &hint,
-        )
+        .on_hover_ui(|ui| {
+            ui.strong(kind.label());
+            let (rect, _) = ui.allocate_exact_size(vec2(180.0, 124.0), Sense::hover());
+            super::icons::paint_fixture_preview(
+                ui.painter(),
+                rect,
+                kind,
+                (width, depth),
+                TEXT_2,
+                ACCENT,
+            );
+            ui.label(&hint);
+            if let Some(seats) = kind.seat_count(width) {
+                ui.label(format!("{seats} lugares no símbolo em planta"));
+            }
+        })
         .clicked()
         {
             self.set_tool(Tool::Fixture(kind));

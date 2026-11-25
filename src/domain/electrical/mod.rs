@@ -132,7 +132,16 @@ impl FixtureKind {
     /// Whether the device goes on a wall (everything but ceiling points and
     /// structural elements, which stand on the wall's centre line).
     pub fn mounts_on_wall(self) -> bool {
-        self != Self::CeilingLight && !self.is_structural()
+        !self.is_structural()
+            && !matches!(
+                self,
+                Self::CeilingLight
+                    | Self::Table
+                    | Self::DiningSet
+                    | Self::Car
+                    | Self::Umbrella
+                    | Self::SunLounger
+            )
     }
 
     /// The usual power and height of a new device of this kind.
