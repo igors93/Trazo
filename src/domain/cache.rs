@@ -166,6 +166,48 @@ fn hash_slab(h: &mut DefaultHasher, s: &Slab) {
     hash_f64(h, s.thickness_m);
 }
 
+fn hash_opening(h: &mut DefaultHasher, opening: &super::model::Opening) {
+    opening.id.hash(h);
+    opening.wall_id.hash(h);
+    (opening.kind as u8).hash(h);
+    hash_f64(h, opening.t);
+    hash_f64(h, opening.width());
+    hash_f64(h, opening.height().unwrap_or(-1.0));
+    hash_f64(h, opening.sill());
+}
+
+fn hash_roof(h: &mut DefaultHasher, roof: &super::roof::Roof) {
+    roof.id.hash(h);
+    hash_point(h, roof.min);
+    hash_point(h, roof.max);
+    (roof.style as u8).hash(h);
+    (roof.high_side as u8).hash(h);
+    (roof.tile as u8).hash(h);
+    (roof.timber as u8).hash(h);
+    roof.exposed.hash(h);
+    roof.use_trusses.hash(h);
+    for v in [
+        roof.high_m,
+        roof.low_m,
+        roof.overhang_m,
+        roof.beam_spacing_m,
+        roof.purlin_spacing_m,
+        roof.rafter_spacing_m,
+        roof.lateral_bracing_kn.unwrap_or(-1.0),
+    ] {
+        hash_f64(h, v);
+    }
+    roof.beam_section_cm.is_some().hash(h);
+    if let Some((width, height)) = roof.beam_section_cm {
+        hash_f64(h, width);
+        hash_f64(h, height);
+    }
+    roof.extra_beam_positions_m.len().hash(h);
+    for position in &roof.extra_beam_positions_m {
+        hash_f64(h, *position);
+    }
+}
+
 pub fn electrical_fingerprint(project: &Project) -> u64 {
     let mut h = DefaultHasher::new();
     hash_f64(&mut h, project.wall_height);
@@ -218,6 +260,27 @@ pub fn electrical_fingerprint(project: &Project) -> u64 {
 
 pub fn structure_fingerprint(project: &Project) -> u64 {
     let mut h = DefaultHasher::new();
+    // Foundation positions/checks depend on the lot outline, and legacy walls
+    // without their own masonry use the project's default material.
+    project.terrain.is_some().hash(&mut h);
+    if let Some(terrain) = &project.terrain {
+        hash_point(&mut h, terrain.min);
+        hash_point(&mut h, terrain.max);
+        terrain.vertices.len().hash(&mut h);
+        for point in &terrain.vertices {
+            hash_point(&mut h, *point);
+        }
+    }
+    project.masonry.name.hash(&mut h);
+    for value in [
+        project.masonry.block_width,
+        project.masonry.block_length,
+        project.masonry.block_height,
+        project.masonry.joint,
+        project.masonry.plaster,
+    ] {
+        hash_f64(&mut h, value);
+    }
     hash_f64(&mut h, project.wall_height);
     let s = project.structure.settings;
     hash_f64(&mut h, s.fck_mpa);
@@ -260,13 +323,7 @@ pub fn structure_fingerprint(project: &Project) -> u64 {
         hash_f64(&mut h, f.width_m.unwrap_or(-1.0));
     }
     for opening in &project.openings {
-        opening.id.hash(&mut h);
-        opening.wall_id.hash(&mut h);
-        (opening.kind as u8).hash(&mut h);
-        hash_f64(&mut h, opening.t);
-        hash_f64(&mut h, opening.width());
-        hash_f64(&mut h, opening.height().unwrap_or(-1.0));
-        hash_f64(&mut h, opening.sill());
+        hash_opening(&mut h, opening);
     }
     if let Some(survey) = &project.structure.soil_survey {
         survey.readings.len().hash(&mut h);
@@ -278,6 +335,17 @@ pub fn structure_fingerprint(project: &Project) -> u64 {
         hash_f64(&mut h, survey.water_table_m.unwrap_or(-1.0));
         hash_f64(&mut h, survey.footing_depth_m);
         survey.name.hash(&mut h);
+        survey.extra_boreholes.len().hash(&mut h);
+        for borehole in &survey.extra_boreholes {
+            borehole.name.hash(&mut h);
+            hash_f64(&mut h, borehole.water_table_m.unwrap_or(-1.0));
+            borehole.readings.len().hash(&mut h);
+            for reading in &borehole.readings {
+                hash_f64(&mut h, reading.depth_m);
+                reading.n.hash(&mut h);
+                (reading.soil as u8).hash(&mut h);
+            }
+        }
     }
     (project.structure.post_species as u8).hash(&mut h);
     project.structure.post_treated.hash(&mut h);
@@ -288,34 +356,7 @@ pub fn structure_fingerprint(project: &Project) -> u64 {
     hash_f64(&mut h, wind.s3);
     project.structure.roofs.len().hash(&mut h);
     for roof in &project.structure.roofs {
-        roof.id.hash(&mut h);
-        hash_point(&mut h, roof.min);
-        hash_point(&mut h, roof.max);
-        (roof.style as u8).hash(&mut h);
-        (roof.high_side as u8).hash(&mut h);
-        (roof.tile as u8).hash(&mut h);
-        (roof.timber as u8).hash(&mut h);
-        roof.exposed.hash(&mut h);
-        roof.use_trusses.hash(&mut h);
-        for v in [
-            roof.high_m,
-            roof.low_m,
-            roof.overhang_m,
-            roof.beam_spacing_m,
-            roof.purlin_spacing_m,
-            roof.rafter_spacing_m,
-            roof.lateral_bracing_kn.unwrap_or(-1.0),
-        ] {
-            hash_f64(&mut h, v);
-        }
-        if let Some((width, height)) = roof.beam_section_cm {
-            hash_f64(&mut h, width);
-            hash_f64(&mut h, height);
-        }
-        roof.extra_beam_positions_m.len().hash(&mut h);
-        for position in &roof.extra_beam_positions_m {
-            hash_f64(&mut h, *position);
-        }
+        hash_roof(&mut h, roof);
     }
     project.structure.balance_beams.len().hash(&mut h);
     for beam in &project.structure.balance_beams {
@@ -399,6 +440,10 @@ pub fn structure_fingerprint(project: &Project) -> u64 {
             for room in &level.data.rooms {
                 hash_room(&mut h, room);
             }
+            level.data.openings.len().hash(&mut h);
+            for opening in &level.data.openings {
+                hash_opening(&mut h, opening);
+            }
             for fixture in &level.data.fixtures {
                 if fixture.kind.is_structural() {
                     hash_fixture(&mut h, fixture);
@@ -409,6 +454,10 @@ pub fn structure_fingerprint(project: &Project) -> u64 {
             }
             for slab in &level.data.slabs {
                 hash_slab(&mut h, slab);
+            }
+            level.data.roofs.len().hash(&mut h);
+            for roof in &level.data.roofs {
+                hash_roof(&mut h, roof);
             }
         }
     }
@@ -631,6 +680,104 @@ impl Project {
 mod tests {
     use super::*;
     use crate::domain::fixtures::FixtureKind;
+
+    #[test]
+    fn structural_cache_refreshes_after_lot_and_default_masonry_changes() {
+        let mut project = Project::default();
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Sala")
+            .unwrap();
+        project.generate_structure();
+        let before = project.cached_structure_report();
+        project.set_terrain(Point::new(-1.0, -1.0), Point::new(10.0, 10.0));
+        let with_lot = project.cached_structure_report();
+        assert!(!Arc::ptr_eq(&before, &with_lot));
+        project.masonry.block_width += 0.05;
+        assert!(!Arc::ptr_eq(&with_lot, &project.cached_structure_report()));
+    }
+
+    #[test]
+    fn structural_cache_refreshes_after_additional_borehole_changes() {
+        use super::super::soil::{Borehole, SoilKind, SoilSurvey, SptReading};
+        let mut project = Project::default();
+        let reading = SptReading {
+            depth_m: 1.0,
+            n: 15,
+            soil: SoilKind::Sand,
+        };
+        project.structure.soil_survey =
+            Some(SoilSurvey::new("SP-01".to_owned(), vec![reading], None, 1.0).unwrap());
+        let before = project.cached_structure_report();
+        project
+            .structure
+            .soil_survey
+            .as_mut()
+            .unwrap()
+            .extra_boreholes
+            .push(Borehole::new("SP-02".to_owned(), vec![reading], None).unwrap());
+        let additional = project.cached_structure_report();
+        assert!(!Arc::ptr_eq(&before, &additional));
+        project
+            .structure
+            .soil_survey
+            .as_mut()
+            .unwrap()
+            .extra_boreholes[0]
+            .readings[0]
+            .n = 3;
+        assert!(!Arc::ptr_eq(
+            &additional,
+            &project.cached_structure_report()
+        ));
+    }
+
+    #[test]
+    fn structural_cache_refreshes_after_upper_floor_opening_and_roof_edits() {
+        let mut project = Project::default();
+        let ground = project.ensure_default_floor();
+        project
+            .add_room(Point::new(0.0, 0.0), Point::new(4.0, 3.0), "Sala")
+            .unwrap();
+        project.generate_structure();
+        let upper = project.add_floor("Superior", true, true);
+        let wall = project.walls[0].id;
+        project
+            .add_opening(wall, super::super::model::OpeningKind::Door, 0.5)
+            .unwrap();
+        project.structure.roofs.push(super::super::roof::Roof::new(
+            Point::new(0.0, 0.0),
+            Point::new(4.0, 3.0),
+            super::super::roof::RoofSide::West,
+            3.2,
+            2.8,
+        ));
+        project.switch_floor(ground).unwrap();
+        let before = project.cached_structure_report();
+        project
+            .floors
+            .levels
+            .iter_mut()
+            .find(|floor| floor.id == upper)
+            .unwrap()
+            .data
+            .openings[0]
+            .width = Some(1.2);
+        let changed_opening = project.cached_structure_report();
+        assert!(!Arc::ptr_eq(&before, &changed_opening));
+        project
+            .floors
+            .levels
+            .iter_mut()
+            .find(|floor| floor.id == upper)
+            .unwrap()
+            .data
+            .roofs[0]
+            .high_m += 0.2;
+        assert!(!Arc::ptr_eq(
+            &changed_opening,
+            &project.cached_structure_report()
+        ));
+    }
 
     #[test]
     fn derived_caches_reuse_results_across_frames_and_invalidate_on_edit() {
