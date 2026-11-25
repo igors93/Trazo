@@ -3,6 +3,60 @@ use crate::domain::{conduits::PlanMark, fixtures::FixtureKind, geometry::Point, 
 
 use crate::domain::model::OpeningKind;
 
+#[test]
+fn shared_beam_supports_are_memoized_and_deep_imports_are_bounded() {
+    let mut project = Project::default();
+    let from = project
+        .add_fixture(FixtureKind::Column, Point::new(0.0, 0.0), 0.2, 0.2, 0)
+        .unwrap();
+    let to = project
+        .add_fixture(FixtureKind::Column, Point::new(4.0, 0.0), 0.2, 0.2, 0)
+        .unwrap();
+    project.structure.beams.push(Beam {
+        id: 100,
+        from,
+        to,
+        from_support: None,
+        to_support: None,
+        width_m: 0.2,
+        height_m: 0.4,
+    });
+    for id in 101..=240 {
+        project.structure.beams.push(Beam {
+            id,
+            from,
+            to,
+            from_support: Some(BeamSupport::Beam {
+                beam_id: id - 1,
+                t: 0.0,
+            }),
+            to_support: Some(BeamSupport::Beam {
+                beam_id: id - 1,
+                t: 1.0,
+            }),
+            width_m: 0.2,
+            height_m: 0.4,
+        });
+    }
+    // Both ends reuse the same host at every level. Without memoization this
+    // expands into 2^40 recursive resolutions despite there being only 41 beams.
+    let beam = project.structure.beams[40];
+    assert_eq!(
+        project.beam_endpoints(&beam),
+        Some((Point::new(0.0, 0.0), Point::new(4.0, 0.0)))
+    );
+    assert_eq!(
+        project.beam_support_depth(&beam, &mut std::collections::HashSet::new()),
+        40
+    );
+    assert!(
+        project
+            .beam_endpoints(&project.structure.beams[140])
+            .is_none()
+    );
+    assert!(project.prune_structure() > 0);
+}
+
 fn house() -> Project {
     let mut project = Project::default();
     project.set_terrain(Point::new(-2.0, -2.0), Point::new(30.0, 30.0));

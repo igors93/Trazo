@@ -14,6 +14,11 @@ use super::{
     reading, round_up, slab_geometry::wall_orientation, validate_section,
 };
 
+/// Real beam support hierarchies are shallow. Bound recursion for imported files
+/// and cache shared hosts so a branching support graph is visited only once.
+const MAX_SUPPORT_DEPTH: usize = 64;
+type SupportCache = HashMap<u64, Option<(Point, Point)>>;
+
 impl Project {
     pub fn structural_columns(&self) -> impl Iterator<Item = &Fixture> {
         self.fixtures
@@ -34,15 +39,32 @@ impl Project {
         support: BeamSupport,
         visited: &mut HashSet<u64>,
     ) -> Option<Point> {
+        self.resolve_support_cached(support, visited, &mut SupportCache::new())
+    }
+
+    fn resolve_support_cached(
+        &self,
+        support: BeamSupport,
+        visited: &mut HashSet<u64>,
+        cache: &mut SupportCache,
+    ) -> Option<Point> {
         match support {
             BeamSupport::Column { id } => self.column(id).map(|c| c.center),
             BeamSupport::Beam { beam_id, t } => {
-                if !t.is_finite() || !(0.0..=1.0).contains(&t) || !visited.insert(beam_id) {
+                if !t.is_finite() || !(0.0..=1.0).contains(&t) {
+                    return None;
+                }
+                if let Some(endpoints) = cache.get(&beam_id) {
+                    return endpoints.map(|(a, b)| a.lerp(b, t));
+                }
+                if visited.len() >= MAX_SUPPORT_DEPTH || !visited.insert(beam_id) {
                     return None;
                 }
                 let host = self.beam_by_id(beam_id)?;
-                let (a, b) = self.beam_endpoints_inner(host, visited)?;
+                let endpoints = self.beam_endpoints_inner(host, visited, cache);
                 visited.remove(&beam_id);
+                cache.insert(beam_id, endpoints);
+                let (a, b) = endpoints?;
                 Some(a.lerp(b, t))
             }
         }
@@ -52,9 +74,10 @@ impl Project {
         &self,
         beam: &Beam,
         visited: &mut HashSet<u64>,
+        cache: &mut SupportCache,
     ) -> Option<(Point, Point)> {
-        let start = self.resolve_support(beam.start_support(), visited)?;
-        let end = self.resolve_support(beam.end_support(), visited)?;
+        let start = self.resolve_support_cached(beam.start_support(), visited, cache)?;
+        let end = self.resolve_support_cached(beam.end_support(), visited, cache)?;
         if start.distance(end) < 1e-4 {
             return None;
         }
@@ -65,22 +88,38 @@ impl Project {
     /// columns or on other beams.
     pub fn beam_endpoints(&self, beam: &Beam) -> Option<(Point, Point)> {
         let mut visited = HashSet::from([beam.id]);
-        self.beam_endpoints_inner(beam, &mut visited)
+        self.beam_endpoints_inner(beam, &mut visited, &mut SupportCache::new())
     }
 
     /// Support depth of a beam: 0 when resting only on columns, 1 when resting
     /// on a primary beam, etc.
     pub(super) fn beam_support_depth(&self, beam: &Beam, visited: &mut HashSet<u64>) -> usize {
+        self.beam_support_depth_cached(beam, visited, &mut HashMap::new())
+    }
+
+    fn beam_support_depth_cached(
+        &self,
+        beam: &Beam,
+        visited: &mut HashSet<u64>,
+        cache: &mut HashMap<u64, usize>,
+    ) -> usize {
+        if let Some(depth) = cache.get(&beam.id) {
+            return *depth;
+        }
+        if visited.len() >= MAX_SUPPORT_DEPTH {
+            return MAX_SUPPORT_DEPTH;
+        }
         let mut depth = 0;
         for support in [beam.start_support(), beam.end_support()] {
             if let BeamSupport::Beam { beam_id, .. } = support
                 && visited.insert(beam_id)
                 && let Some(host) = self.beam_by_id(beam_id)
             {
-                depth = depth.max(1 + self.beam_support_depth(host, visited));
+                depth = depth.max(1 + self.beam_support_depth_cached(host, visited, cache));
                 visited.remove(&beam_id);
             }
         }
+        cache.insert(beam.id, depth);
         depth
     }
 
