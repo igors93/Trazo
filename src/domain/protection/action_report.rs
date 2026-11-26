@@ -133,7 +133,7 @@ fn worsened_checks(before: &Project, after: &Project) -> Vec<Worsened> {
             }
         }
     }
-    worsened.sort_by(|a, b| b.after.cmp(&a.after));
+    worsened.sort_by_key(|w| std::cmp::Reverse(w.after));
     worsened
 }
 
