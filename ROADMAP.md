@@ -73,7 +73,7 @@ Engineering features follow these rules. They apply to everything in milestones 
     - simple independent cross-checks (total weight against foundation capacity, span-to-depth rules) contest a detailed simulation that disagrees with them (#172);
     - every AI action reports what it made worse: checks that changed colour, structural elements removed and hypotheses changed, in the tool answer and on screen (#170).
 
-    The first four points and the hypothesis changes are in place (#168, #169, #171); the action report (#170) and the cross-checks (#172) remain.
+    Everything but the cross-checks (#172) is in place (#168, #169, #170, #171).
 
 ## Where Trazo stands
 
@@ -592,7 +592,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 167 | Affordable AI: the guidance works with free assistant tiers and local models, and every check, refusal and contestation keeps working with no AI connected | P1 | M | M0 | ⬜ |
 | 168 | Hypothesis provenance: every structural and electrical hypothesis records who set it (Trazo's default, the person, the AI) and its evidence (a soil survey, a specification, the city's wind map), shown in *Segurança*, the review report and every MCP result | P0 | M | M0 | ✅ |
 | 169 | Contested hypotheses: a result that depends on a hypothesis more favourable than the conservative default without evidence is shown as contested (never green); NBR minimums for loads and the regional wind cannot be lowered; implausible combinations are flagged (for example, a soil pressure that contradicts the survey's soil type) | P0 | M | M0 | ✅ |
-| 170 | AI action report: each MCP edit returns and shows what it made worse (checks that changed colour, structural elements removed, hypotheses changed), so neither the assistant nor the person can miss it | P0 | S | M0 | 🟡 The plan log records each AI action and its origin; the safety difference is not reported |
+| 170 | AI action report: each MCP edit returns and shows what it made worse (checks that changed colour, structural elements removed, hypotheses changed), so neither the assistant nor the person can miss it | P0 | S | M0 | ✅ |
 | 171 | Hypotheses need the person: an assistant's change to a hypothesis is proposed, not applied, until the person confirms it in the window with its evidence (the first use of approval mode, #46) | P0 | M | M0 | ✅ |
 | 172 | Independent cross-checks: simplified global checks (total weight against the sum of foundation capacities, span-to-depth rules for beams and slabs, column load per floor) contest a detailed simulation that disagrees beyond a tolerance | P1 | M | M0 | ⬜ |
 

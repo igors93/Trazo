@@ -1,20 +1,27 @@
 //! What the protection layer adds to every assistant answer (roadmap M0):
-//! the hypotheses Trazo held back for the person (#171).
+//! the hypotheses Trazo held back for the person (#171) and what the action
+//! made worse (#170).
 
 use serde_json::{Value, json};
 
 use crate::app::FloorPlanApp;
 use crate::domain::model::Project;
+use crate::domain::protection::action_report::action_report;
 use crate::domain::protection::hypotheses::HypothesisProposal;
 use crate::mcp::ToolOutput;
 
 impl FloorPlanApp {
     /// Tells the assistant, in its tool answer, what Trazo did not let it
     /// change: favourable hypotheses kept for the person to confirm.
-    pub(super) fn report_protection(&self, before: &Project, mut output: ToolOutput) -> ToolOutput {
+    pub(super) fn report_protection(
+        &mut self,
+        before: &Project,
+        mut output: ToolOutput,
+    ) -> ToolOutput {
         if output.is_error {
             return output;
         }
+        output = self.report_action(before, output);
         let earlier = before.protection.hypotheses.proposals();
         let held: Vec<&HypothesisProposal> = self
             .project
@@ -60,6 +67,50 @@ impl FloorPlanApp {
             Some(other) => json!({ "resultado": other, "hipoteses_aguardando_pessoa": held_json }),
             None => json!({ "hipoteses_aguardando_pessoa": held_json }),
         });
+        output
+    }
+
+    /// Adds what the action made worse to the answer and shows it on screen
+    /// (#170): worse checks, supporting elements removed, hypotheses changed.
+    fn report_action(&mut self, before: &Project, mut output: ToolOutput) -> ToolOutput {
+        let report = action_report(before, &self.project);
+        if report.is_empty() {
+            return output;
+        }
+        let summary = report.summary();
+        output.text.push('\n');
+        output.text.push_str(&summary);
+        output.text.push_str(
+            " Explique isso à pessoa em palavras simples e proponha como corrigir antes de seguir.",
+        );
+        let worsened: Vec<Value> = report
+            .worsened
+            .iter()
+            .map(|w| {
+                json!({
+                    "elemento": w.element,
+                    "verificacao": w.check,
+                    "antes": w.before.map(|l| l.key()),
+                    "depois": w.after.key(),
+                    "o_que_fazer": w.simple,
+                })
+            })
+            .collect();
+        let report_json = json!({
+            "verificacoes_piores": worsened,
+            "elementos_removidos": report.removed,
+            "hipoteses_alteradas": report.hypotheses,
+        });
+        output.structured = Some(match output.structured.take() {
+            Some(Value::Object(mut map)) => {
+                map.insert("seguranca_piorou".to_owned(), report_json);
+                Value::Object(map)
+            }
+            Some(other) => json!({ "resultado": other, "seguranca_piorou": report_json }),
+            None => json!({ "seguranca_piorou": report_json }),
+        });
+        // On screen too: the status bar shows it over the AI's message.
+        self.edit_notice = Some(format!("IA · {summary}"));
         output
     }
 }

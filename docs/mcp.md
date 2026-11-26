@@ -44,7 +44,7 @@ Instructions are not enough: an assistant can be wrong, and an assistant that de
 | Every hypothesis records its origin and evidence (#168) | ✅ `hipoteses` in `pre_dimensionamento` and `configurar`; *Segurança* and the report list them |
 | A favourable hypothesis without evidence makes the result *contested*, never green; NBR minimums cannot be lowered (#169) | ✅ A red *Hipóteses de cálculo* verdict, green structural checks turn yellow, and `configurar` refuses a live load below NBR 6120 or a V0 below the city's |
 | A hypothesis change by the assistant is proposed, and applied only when the person confirms it with its evidence (#171) | ✅ The answer lists `hipoteses_aguardando_pessoa`; pass `evidencia` so the person sees what backs the value |
-| Each tool answer reports what the edit made worse: checks that changed colour, structural elements removed, hypotheses changed (#170) | 🟡 Logged, not yet reported as a safety difference |
+| Each tool answer reports what the edit made worse: checks that changed colour, structural elements removed, hypotheses changed (#170) | ✅ `seguranca_piorou` in the answer, a sentence for the assistant to explain, and a notice in the status bar |
 | Simple independent cross-checks contest a detailed simulation that disagrees (#172) | ⬜ |
 
 > [!NOTE]

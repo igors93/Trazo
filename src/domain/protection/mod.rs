@@ -3,6 +3,7 @@
 //! training, or an AI assistant working for it, cannot reach a reassuring
 //! result through a wrong hypothesis. See `docs/proposta.md`.
 
+pub mod action_report;
 pub mod hypotheses;
 
 use serde::{Deserialize, Serialize};
