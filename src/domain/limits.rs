@@ -340,7 +340,10 @@ mod tests {
         assert_eq!(summary.verdicts[0].element, "Estrutura");
         assert_eq!(summary.verdicts[0].light(), Light::Red);
         // No structural element is sized while the project is refused.
+        // (The site questions and hypotheses are inputs, not sized elements.)
         assert!(summary.verdicts.iter().all(|v| v.element == "Estrutura"
+            || v.element == "Riscos do terreno"
+            || v.element == "Hipóteses de cálculo"
             || v.discipline != crate::domain::verdict::Discipline::Structure));
         project.structure.settings.floors = 1;
         project.structure.settings.live_kn_m2 = 6.0;

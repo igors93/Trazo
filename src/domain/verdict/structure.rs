@@ -49,8 +49,11 @@ fn slenderness_check(column: &crate::domain::structure::ColumnResult) -> Check {
 /// "Fora dos limites" with no numbers.
 pub fn structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Verdict> {
     let mut verdicts = limited_structure_verdicts(project, report);
-    // A second, simpler opinion contests a simulation it disagrees with (#172).
-    super::cross_checks::cross_check(project, report, &mut verdicts);
+    // A second, simpler opinion contests a simulation it disagrees with
+    // (#172); a refused structure shows no numbers, so it is skipped then.
+    if crate::domain::limits::structure_violations(project).is_empty() {
+        super::cross_checks::cross_check(project, report, &mut verdicts);
+    }
     // What Trazo cannot see on the site is asked, never assumed (#156).
     super::site_risks::site_risks(project, &mut verdicts);
     // An extension beyond what the house was built for is red (#158).
