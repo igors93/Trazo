@@ -4,6 +4,7 @@
 //! result through a wrong hypothesis. See `docs/proposta.md`.
 
 pub mod action_report;
+pub mod help;
 pub mod hypotheses;
 
 use serde::{Deserialize, Serialize};
@@ -15,11 +16,14 @@ pub struct Protection {
     /// Who set each calculation hypothesis, and on what evidence (#168).
     #[serde(skip_serializing_if = "hypotheses::Hypotheses::is_empty")]
     pub hypotheses: hypotheses::Hypotheses,
+    /// Local places to ask for help, typed by the person (#159).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub help_contacts: Vec<String>,
 }
 
 impl Protection {
     pub fn is_empty(&self) -> bool {
-        self.hypotheses.is_empty()
+        self.hypotheses.is_empty() && self.help_contacts.is_empty()
     }
 }
 

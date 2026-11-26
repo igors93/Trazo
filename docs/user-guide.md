@@ -281,7 +281,9 @@ Trazo refuses to size what its methods do not cover, and says why:
 - footings on soil weaker than 100 kPa;
 - an electrical demand above 75 kVA.
 
-A project-wide limit blocks *Gerar estrutura* and *Ajustar sapatas*; an element beyond its limit shows no numbers, only the reason and a pointer to a professional. The methods and limits are in [Engineering methods](engineering.md).
+A project-wide limit blocks *Gerar estrutura* and *Ajustar sapatas*; an element beyond its limit shows no numbers, only the reason and where to find help.
+
+**Onde buscar ajuda** in *Segurança* opens by itself whenever something is red: free technical assistance (ATHIS, Lei 11.888/2008) through the municipality, CAU or CREA, university model offices and the Defesa Civil (199). Type local contacts there (one per line) and **Salvar contatos**: they go into the project and the report. The methods and limits are in [Engineering methods](engineering.md).
 
 **Check the hypotheses behind a green.** Every result rests on the values listed at the end of *Segurança* and in the report: concrete strength, allowable soil pressure, loads and wind. When data is missing, Trazo takes the safe side: 100 kPa (1 kgf/cm²) for the soil without a survey, C20 concrete without a specification and V0 = 45 m/s while the city is unknown (set it in *Normas › Local e clima*). The **Hipóteses de cálculo** panel at the top of *Segurança* shows each value with who set it (Trazo's default, you or the AI) and its evidence. A value more favourable than Trazo's safe value without evidence, or one below the standard, is contested: it turns red and no structural result that depends on it stays green. Type the evidence (the soil survey report, the concrete invoice) and click **Informar prova**, or click **Usar o valor seguro**. When an AI assistant tries to make a hypothesis more favourable, Trazo does not apply it: the proposal waits in the same panel until you **Confirmar** it with the evidence, or **Recusar** it.
 
@@ -292,6 +294,7 @@ A project-wide limit blocks *Gerar estrutura* and *Ajustar sapatas*; an element 
 - the slab, beam, column, footing and circuit tables with their lights;
 - the preliminary reinforcement of beams, columns, slabs and footings, its bar schedule and theoretical steel mass;
 - every check with its margin and what to change, and the warnings;
+- where to find help: free technical assistance, university model offices, the Defesa Civil and the project's local contacts;
 - the drawings: the formwork plan, the beam forces, the electrical plan and the single-line diagram, as available.
 
 The report pages are A4 and numbered; the drawings follow at their own sheet size.

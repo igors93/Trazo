@@ -54,6 +54,14 @@ pub fn structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Ve
     verdicts
 }
 
+/// A refusal's reason followed by where to find help (#159).
+fn with_help(message: &str) -> String {
+    format!(
+        "{message} {}",
+        crate::domain::protection::help::HELP_SENTENCE
+    )
+}
+
 /// The structural verdicts, with the applicability limits applied.
 fn limited_structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Verdict> {
     let project_wide = crate::domain::limits::structure_violations(project);
@@ -65,7 +73,7 @@ fn limited_structure_verdicts(project: &Project, report: &StructureReport) -> Ve
                 .into_iter()
                 .map(|v| {
                     let detail = limit_detail(&v);
-                    Check::fail("Fora dos limites", v.message, detail)
+                    Check::fail("Fora dos limites", with_help(&v.message), detail)
                 })
                 .collect(),
         }];
@@ -77,7 +85,7 @@ fn limited_structure_verdicts(project: &Project, report: &StructureReport) -> Ve
         let refused: Vec<Check> = elements
             .iter()
             .filter(|v| v.element == verdict.element)
-            .map(|v| Check::fail("Fora dos limites", v.message.clone(), limit_detail(v)))
+            .map(|v| Check::fail("Fora dos limites", with_help(&v.message), limit_detail(v)))
             .collect();
         if !refused.is_empty() {
             verdict.checks = refused;

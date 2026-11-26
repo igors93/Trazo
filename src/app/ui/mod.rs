@@ -17,6 +17,7 @@ mod foundations;
 mod frames;
 mod grid;
 mod header;
+mod help_panel;
 mod hypotheses;
 pub(super) mod icons;
 pub(in crate::app) use icons::Glyph;

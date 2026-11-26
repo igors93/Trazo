@@ -1858,6 +1858,17 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
     for warning in warnings {
         pages.paragraph(&format!("• {warning}"), 3.0, INK);
     }
+
+    // 7. Where to find help (#159).
+    pages.heading("7. Onde buscar ajuda");
+    pages.paragraph(
+        "Resultado vermelho ou recusado não deve ser construído assim. Se a família não puder pagar um profissional:",
+        3.0,
+        MUTED,
+    );
+    for line in crate::domain::protection::help::help_lines(&project.protection.help_contacts) {
+        pages.paragraph(&format!("• {line}"), 3.0, INK);
+    }
     pages.finish()
 }
 

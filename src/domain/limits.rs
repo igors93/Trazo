@@ -258,11 +258,10 @@ pub fn electrical_violations(schedule: &LoadSchedule) -> Vec<Violation> {
 pub fn structural_refusal(project: &Project) -> Option<String> {
     let violations = structure_violations(project);
     (!violations.is_empty()).then(|| {
-        violations
-            .iter()
-            .map(|v| v.message.as_str())
-            .collect::<Vec<_>>()
-            .join(" ")
+        let mut reasons: Vec<&str> = violations.iter().map(|v| v.message.as_str()).collect();
+        // A refusal always says where to find help (#159).
+        reasons.push(crate::domain::protection::help::HELP_SENTENCE);
+        reasons.join(" ")
     })
 }
 

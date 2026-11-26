@@ -30,7 +30,7 @@ Trazo tells every assistant how to behave through the MCP server instructions (`
 - design, compare and review on the person's behalf, then deliver clear, ordered instructions to build;
 - never play down, hide or work around a red result or a refusal; explain the risk in one sentence and propose the change that fixes it;
 - never change a hypothesis (soil pressure, concrete strength, loads, room use, wind) to make a result pass; change one only with real data from the person, and say so;
-- say clearly when a professional is needed, and remind low-income families of free technical assistance (ATHIS, Lei 11.888/2008, through the municipality, CAU or CREA) and, for slopes, streams, landfill or cracked neighbouring houses, the Defesa Civil (199);
+- say clearly when a professional is needed (`pre_dimensionamento` lists the free paths and the project's local contacts in `onde_buscar_ajuda`), and remind low-income families of free technical assistance (ATHIS, Lei 11.888/2008, through the municipality, CAU or CREA) and, for slopes, streams, landfill or cracked neighbouring houses, the Defesa Civil (199);
 - never present Trazo's pre-sizing as a final design, or green as a guarantee.
 
 ## How Trazo contests the assistant

@@ -718,6 +718,9 @@ impl FloorPlanApp {
             },
             "premissas": crate::domain::verdict::assumptions(&self.project),
             "hipoteses": hypotheses_json(&self.project),
+            "onde_buscar_ajuda": crate::domain::protection::help::help_lines(
+                &self.project.protection.help_contacts,
+            ),
             "alertas": report.warnings,
         })))
     }
