@@ -183,6 +183,14 @@ pub struct Project {
     )]
     pub codes: super::codes::BuildingCodes,
 
+    /// Protection for self-builders: the origin of every calculation
+    /// hypothesis, so Trazo can contest one that nothing backs up (#168).
+    #[serde(
+        default,
+        skip_serializing_if = "super::protection::Protection::is_empty"
+    )]
+    pub protection: super::protection::Protection,
+
     next_id: u64,
 }
 
@@ -265,6 +273,7 @@ impl Default for Project {
             guids: super::guid::GuidRegistry::default(),
 
             codes: super::codes::BuildingCodes::default(),
+            protection: super::protection::Protection::default(),
 
             next_id: 1,
         }

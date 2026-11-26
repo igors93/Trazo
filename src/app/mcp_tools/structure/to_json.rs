@@ -235,6 +235,27 @@ pub(super) fn wind_json(
     })
 }
 
+/// Every calculation hypothesis with its origin and evidence (#168).
+pub(in crate::app::mcp_tools) fn hypotheses_json(project: &crate::domain::model::Project) -> Value {
+    use crate::domain::protection::hypotheses::{HypothesisKey, evidence};
+    Value::Array(
+        HypothesisKey::ALL
+            .into_iter()
+            .map(|key| {
+                let record = project.protection.hypotheses.record(key);
+                json!({
+                    "chave": key.key(),
+                    "nome": key.label(),
+                    "valor": key.display(project),
+                    "origem": record.source.key(),
+                    "prova": evidence(key, project),
+                    "o_que_e": key.plain(),
+                })
+            })
+            .collect(),
+    )
+}
+
 /// Traffic-light verdicts as tool output (#101).
 pub(in crate::app::mcp_tools) fn verdicts_json(
     verdicts: &[crate::domain::verdict::Verdict],

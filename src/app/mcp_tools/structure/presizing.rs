@@ -6,7 +6,7 @@ use serde_json::{Value, json};
 use super::super::{ToolOutput, xy};
 use super::{
     beam_ultimate_envelope_json, cantilevers_json, foundation_study_json, grid_analysis_json,
-    loads_analysis_json, roof_json, round1, verdicts_json, wind_json,
+    hypotheses_json, loads_analysis_json, roof_json, round1, verdicts_json, wind_json,
 };
 use crate::app::FloorPlanApp;
 use crate::domain::structure::section_cm;
@@ -717,6 +717,7 @@ impl FloorPlanApp {
                     .collect::<Vec<_>>(),
             },
             "premissas": crate::domain::verdict::assumptions(&self.project),
+            "hipoteses": hypotheses_json(&self.project),
             "alertas": report.warnings,
         })))
     }

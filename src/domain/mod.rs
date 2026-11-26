@@ -42,6 +42,7 @@ pub mod notes;
 pub mod offset;
 pub mod openings;
 pub mod plan_results;
+pub mod protection;
 pub mod quantities;
 pub mod reinforcement;
 pub mod roof;

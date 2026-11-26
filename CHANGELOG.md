@@ -4,6 +4,10 @@ All notable changes to Trazo are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Added
+
+- **Hypothesis provenance (#168).** Every calculation hypothesis (soil pressure, concrete strength, live and finish loads, masonry weight, occupancy, wind speed, terrain category, S1 and S3) records who set it (Trazo's default, the person or an AI assistant) and its evidence (`src/domain/protection/hypotheses.rs`). Every edit is credited in `record_change`, whether it comes from the window or from MCP; a soil survey and the city's NBR 6123 wind speed count as evidence by themselves. The origins appear in the assumptions of *Segurança* and the review report, and in `pre_dimensionamento` and `projeto_estrutural` → `configurar` (`hipoteses`).
+
 ### Changed
 
 - **Trazo's mission is now written down and drives the whole documentation.** Trazo exists so that a lack of money and technical knowledge does not leave a family completely unprotected against the risks of building its own home. Its first users are families, bricklayers and community groups who build without an engineer, not engineers who already know how to design. The new [proposal](docs/proposta.md), in Portuguese for everyone, explains who Trazo is for, how it works, how it protects, what it does not do, when to stop and get help, and where to find free technical assistance (ATHIS, Lei 11.888/2008) and the Defesa Civil (199). The README, roadmap, user guide, engineering methods, MCP guide, architecture notes, contributing guide and GitHub templates follow it.

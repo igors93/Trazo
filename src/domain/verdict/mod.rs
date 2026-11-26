@@ -226,6 +226,8 @@ pub fn assumptions(project: &Project) -> Vec<String> {
         "Fios de cobre com isolação de PVC, método B1, 30 °C; queda de tensão até 4 %.".to_owned(),
         "Métodos, normas e limites: docs/engineering.md.".to_owned(),
     ];
+    // Who set each hypothesis, and on what evidence (#168).
+    lines.extend(crate::domain::protection::hypotheses::origin_lines(project));
     if let Some(site_line) = project.codes.site.assumption_line() {
         lines.push(site_line);
     }

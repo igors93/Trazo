@@ -2,6 +2,7 @@
 
 use super::{CreationState, FloorPlanApp};
 use crate::domain::model::Project;
+use crate::domain::protection::hypotheses::{HypothesisSource, track_changes};
 
 impl FloorPlanApp {
     pub(super) fn undo(&mut self) {
@@ -66,6 +67,15 @@ impl FloorPlanApp {
             }
             return true;
         }
+        // Who changed each calculation hypothesis (soil, concrete, loads,
+        // wind), so Trazo can contest a favourable value nobody backs up
+        // (#168). Every edit passes here, from the window or from MCP.
+        let source = if self.mcp_running.is_some() {
+            HypothesisSource::Assistant
+        } else {
+            HypothesisSource::Person
+        };
+        track_changes(&previous, &mut self.project, source);
         // Propagate safe cross-discipline dependencies (wall-mounted devices,
         // footings under moved columns) within the same undo transaction.
         let sync = self.project.propagate_dependencies(&previous);

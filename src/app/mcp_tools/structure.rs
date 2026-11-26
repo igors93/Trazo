@@ -14,7 +14,7 @@ use args::{centimetres, parse_occupancy_class, parse_soil_class, roof_arg, room_
 pub(super) use to_json::verdicts_json;
 use to_json::{
     beam_ultimate_envelope_json, cantilevers_json, foundation_study_json, grid_analysis_json,
-    loads_analysis_json, roof_json, round1, wind_json,
+    hypotheses_json, loads_analysis_json, roof_json, round1, wind_json,
 };
 
 use super::{Change, ToolOutput, element_id, number, required_number, text, to_model, xy};
@@ -439,7 +439,8 @@ impl FloorPlanApp {
                 }
                 self.apply_change(Some("Nada mudou nos materiais e cargas."), |project| {
                     project.structure.settings = settings;
-                    Ok(Change::new("Materiais e cargas atualizados.".to_owned()))
+                    Ok(Change::new("Materiais e cargas atualizados.".to_owned())
+                        .data(json!({ "hipoteses": hypotheses_json(project) })))
                 })
             }
             "ajustar_sapatas" => self.apply_change(
