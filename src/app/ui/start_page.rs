@@ -213,7 +213,7 @@ impl FloorPlanApp {
                 });
                 ui.add(
                     egui::Label::new(
-                        RichText::new("Planta baixa, documentação técnica ABNT e pré-dimensionamento estrutural/elétrico")
+                        RichText::new("Planeje sua casa com mais segurança: o Trazo confere os riscos e mostra quando pedir ajuda")
                             .size(13.0)
                             .color(MUTED),
                     )
