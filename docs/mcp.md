@@ -8,6 +8,7 @@ Everything the assistant does appears live in the window. Each tool call is one 
 
 - [MCP at the centre of Trazo](#mcp-at-the-centre-of-trazo)
 - [How Trazo contests the assistant](#how-trazo-contests-the-assistant)
+- [Free and local assistants](#free-and-local-assistants)
 - [How it works](#how-it-works)
 - [Connecting a client](#connecting-a-client)
 - [Tools](#tools)
@@ -56,6 +57,12 @@ Instructions are not enough: an assistant can be wrong, and an assistant that de
 
 > [!NOTE]
 > When an assistant makes a hypothesis more favourable than Trazo's safe value without evidence the project holds (a soil survey, the city's wind), `projeto_estrutural` does not apply it: the change waits in *Segurança* › *Hipóteses de cálculo* until the person confirms it with evidence. Tell the person what is waiting and why, and ask for the soil survey report, the concrete invoice or the source of the value.
+
+## Free and local assistants
+
+A paid subscription must not stand between a family and a safer house (#167). Trazo never needs an AI: every check, refusal, contestation, the building guide and the family booklet work with no assistant connected. When an assistant is used, any MCP client can connect, including clients that run models on the person's own computer.
+
+Small, free or local models get lost in a long tool list. **Modo essencial**, in *Conectar uma IA* (or `TRAZO_MCP_ESSENCIAL=1` before starting Trazo), makes `tools/list` offer only the 16 tools needed to design, have Trazo check and hand over the guide: `obter_planta`, `imagem_da_planta`, `definir_terreno`, `criar_comodo`, `editar_comodo`, `inserir_abertura`, `inserir_objeto`, `executar_lote`, `projeto_estrutural`, `projeto_eletrico`, `pre_dimensionamento`, `revisar_projeto`, `guia_de_obra`, `exportar_planta`, `desfazer` and `salvar_projeto`. The other tools still run when called. Reconnect the assistant after changing the mode.
 
 ## How it works
 

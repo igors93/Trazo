@@ -1343,7 +1343,48 @@ fn catalogue() -> Vec<Tool> {
 
 /// The tool definitions for `tools/list`.
 pub fn tools() -> Vec<Value> {
-    catalogue().iter().map(Tool::definition).collect()
+    let essential = essential_catalogue();
+    catalogue()
+        .iter()
+        .filter(|tool| !essential || ESSENTIAL_TOOLS.contains(&tool.name))
+        .map(Tool::definition)
+        .collect()
+}
+
+/// The tools a small, free or local model needs to design a house, have
+/// Trazo check it and hand the family the guide (#167). Every other tool
+/// still runs when called; it is only left out of the list.
+pub const ESSENTIAL_TOOLS: [&str; 16] = [
+    "obter_planta",
+    "imagem_da_planta",
+    "definir_terreno",
+    "criar_comodo",
+    "editar_comodo",
+    "inserir_abertura",
+    "inserir_objeto",
+    "executar_lote",
+    "projeto_estrutural",
+    "projeto_eletrico",
+    "pre_dimensionamento",
+    "revisar_projeto",
+    "guia_de_obra",
+    "exportar_planta",
+    "desfazer",
+    "salvar_projeto",
+];
+
+/// Whether `tools/list` offers only the essential tools (#167).
+static ESSENTIAL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Offers only the essential tools, for free or local models that get lost
+/// in a long catalogue; also on with `TRAZO_MCP_ESSENCIAL=1`.
+pub fn set_essential_catalogue(on: bool) {
+    ESSENTIAL.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn essential_catalogue() -> bool {
+    ESSENTIAL.load(std::sync::atomic::Ordering::Relaxed)
+        || std::env::var("TRAZO_MCP_ESSENCIAL").is_ok_and(|v| v.trim() == "1")
 }
 
 pub fn tool_names() -> Vec<&'static str> {
@@ -1470,6 +1511,21 @@ mod tests {
         )
         .unwrap();
         assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 67);
+    }
+}
+
+#[cfg(test)]
+mod essential_tests {
+    use super::*;
+
+    #[test]
+    fn every_essential_tool_exists_and_the_guide_and_review_are_in() {
+        let names: Vec<&str> = catalogue().iter().map(|t| t.name).collect();
+        for name in ESSENTIAL_TOOLS {
+            assert!(names.contains(&name), "{name} is not a tool");
+        }
+        assert!(ESSENTIAL_TOOLS.contains(&"revisar_projeto"));
+        assert!(ESSENTIAL_TOOLS.contains(&"guia_de_obra"));
     }
 }
 

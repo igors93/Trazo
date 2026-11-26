@@ -196,6 +196,7 @@ Trazo runs an MCP server while it is open, at `http://127.0.0.1:7799/mcp`. Conne
 
 - **The operational centre.** The assistant designs, compares, reviews and organises; the person does not need to know the commands.
 - **Told to protect.** Trazo instructs every assistant that the person may have no engineering training: speak simply, never play down a red result or a refusal, never change a hypothesis (soil, concrete, loads) without evidence from the person, and point to a professional or free technical assistance when one is needed.
+- **Affordable.** Trazo never needs an AI; with one, *Modo essencial* offers only 16 tools so free or local models can follow (see [free and local assistants](docs/mcp.md#free-and-local-assistants)).
 - **Contested by Trazo.** Instructions are not enough, so Trazo's own rules check every AI edit, and contesting the AI's hypotheses is the first item of the roadmap (see [Trazo contests the AI](#trazo-contests-the-ai)).
 - **Live and visible.** Each AI edit flashes on the plan, and *Conectar uma IA* logs what the assistant did.
 - **Safe to try.** Every tool call is one undo step, and failed calls change nothing.

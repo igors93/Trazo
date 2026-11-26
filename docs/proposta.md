@@ -60,7 +60,7 @@ Você não precisa aprender desenho técnico nem engenharia para começar. O cen
 
 As ferramentas de desenho continuam lá para quem quiser ajustar a planta com as próprias mãos. E, mesmo sem nenhuma IA ligada, o Trazo continua conferindo e avisando do mesmo jeito.
 
-> Hoje é preciso conectar um assistente de IA (como Claude ou ChatGPT) ao Trazo, e o guia de [conexão com IA](mcp.md) explica como. Fazer as orientações funcionarem também com opções gratuitas é uma das metas do [roadmap](../ROADMAP.md), porque o custo de uma assinatura não pode ser a barreira entre uma família e uma casa mais segura.
+> Para conversar é preciso conectar um assistente de IA ao Trazo, e o guia de [conexão com IA](mcp.md) explica como. O custo de uma assinatura não pode ser a barreira entre uma família e uma casa mais segura: o *Modo essencial* deixa o Trazo mais fácil para IAs gratuitas ou que rodam no próprio computador, e todas as verificações, o guia de obra e o caderno da família funcionam mesmo sem nenhuma IA.
 
 ### O Trazo contesta a IA
 

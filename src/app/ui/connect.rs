@@ -423,6 +423,17 @@ impl FloorPlanApp {
                 {
                     self.follow_ai = !self.follow_ai;
                 }
+                let essential = crate::mcp::protocol::essential_catalogue();
+                if super::widgets::toggle_pill(
+                    ui,
+                    "Modo essencial",
+                    essential,
+                    "Para IAs gratuitas ou modelos locais: oferece só as 16 ferramentas essenciais para projetar, conferir e entregar o guia de obra. Reconecte a IA depois de mudar.",
+                )
+                .clicked()
+                {
+                    crate::mcp::protocol::set_essential_catalogue(!essential);
+                }
             });
         });
         ui.add_space(4.0);
