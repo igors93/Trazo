@@ -55,6 +55,18 @@ pub(super) fn write_conduits(
             "arranjo-fotovoltaico",
         );
     }
+    let earth_marks = project.earthing_plan_marks();
+    if !earth_marks.is_empty() {
+        write_marks(
+            svg,
+            &earth_marks,
+            point,
+            unit,
+            widths,
+            "#2e7d32",
+            "aterramento-bep",
+        );
+    }
 }
 
 /// Writes structural plan marks filtered by `scope` (`All`, `Superstructure`

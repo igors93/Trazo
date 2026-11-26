@@ -385,5 +385,75 @@ pub fn electrical_project_verdicts(
         }
     }
 
+    // #129 Earthing layout & simplified NBR 5419-2 SPDA risk check (when a panel or circuits exist).
+    if project.main_panel().is_some() || !schedule.circuits.is_empty() {
+        let es = project.earthing_and_spda_report();
+        let mut es_checks = Vec::new();
+        if es.settings.scheme == crate::domain::electrical::earthing::EarthingScheme::Tt
+            && es.tt_missing_rcd_circuits > 0
+        {
+            es_checks.push(Check::fail(
+                "Esquema TT · DR obrigatório",
+                es.earthing_note.clone(),
+                format!(
+                    "NBR 5410 §5.1.2.2.4.2 exige proteção diferencial (DR 30 mA) em todos os circuitos no esquema TT ({} sem DR).",
+                    es.tt_missing_rcd_circuits
+                ),
+            ));
+        } else {
+            // 0..25 Ω green/yellow; > 50 Ω red (utilisation scaled to 50 Ω hard limit, with 25 Ω target).
+            let util = if es.array_resistance_ohm <= es.target_resistance_ohm {
+                (es.array_resistance_ohm / es.target_resistance_ohm) * 0.85
+            } else if es.array_resistance_ohm <= 50.0 {
+                0.85 + ((es.array_resistance_ohm - es.target_resistance_ohm) / 25.0) * 0.15
+            } else {
+                es.array_resistance_ohm / 50.0
+            };
+            es_checks.push(Check::new(
+                "Aterramento (NBR 5410)",
+                util,
+                es.earthing_note.clone(),
+                format!(
+                    "Esquema {}, {} hastes de {} m em ρ = {:.0} Ω·m → Ra = {} Ω (meta ≤ 25 Ω, cabo #{} mm²).",
+                    es.settings.scheme.code(),
+                    es.rod_count,
+                    decimal(es.settings.rod_length_m, 2),
+                    es.settings.soil_resistivity_ohm_m,
+                    decimal(es.array_resistance_ohm, 1),
+                    decimal(es.buried_conductor_mm2, 0)
+                ),
+            ));
+        }
+        if es.spda_refused_height {
+            es_checks.push(Check::fail(
+                "SPDA · fora da triagem (NBR 5419)",
+                es.spda_note.clone(),
+                format!(
+                    "Altura H = {} m > 15 m: exige estudo completo NBR 5419-2 por engenheiro eletricista.",
+                    decimal(es.building_height_m, 1)
+                ),
+            ));
+        } else {
+            es_checks.push(Check::new(
+                "Risco SPDA (NBR 5419-2)",
+                es.risk_r1 / es.tolerable_risk_rt,
+                es.spda_note.clone(),
+                format!(
+                    "R1 = {:.2e}/ano vs. RT = 1,00e-5/ano (Ng = {}, Ad = {:.0} m², Cd = {}, Nd = {:.4}/ano).",
+                    es.risk_r1,
+                    decimal(es.flash_density_ng, 2),
+                    es.collection_area_ad_m2,
+                    decimal(es.settings.surroundings.cd(), 2),
+                    es.annual_direct_flashes_nd
+                ),
+            ));
+        }
+        verdicts.push(Verdict {
+            discipline: Discipline::Electrical,
+            element: "Aterramento e SPDA".to_owned(),
+            checks: es_checks,
+        });
+    }
+
     verdicts
 }

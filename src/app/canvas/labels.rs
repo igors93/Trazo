@@ -309,6 +309,10 @@ pub(super) fn paint_electrical_extras(painter: &Painter, view: ViewTransform, pr
     if !pv_marks.is_empty() {
         paint_marks(painter, view, &pv_marks, Color32::from_rgb(21, 101, 192), 20.0);
     }
+    let earth_marks = project.earthing_plan_marks();
+    if !earth_marks.is_empty() {
+        paint_marks(painter, view, &earth_marks, Color32::from_rgb(46, 125, 50), 22.0);
+    }
 }
 
 pub(super) fn paint_wall_labels(

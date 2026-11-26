@@ -86,7 +86,7 @@ Engineering features follow these rules. They apply to everything in milestones 
 | Exchange (#38–#45, #70) | ✅ Complete: DXF and DWG, SVG and CSV, print to scale, image and PDF underlays, blocks with attributes, external references, version comparison |
 | Release (#58–#64, #77–#81) | 🟡 CI, licence, property tests, migrations, release binaries, crash reports, Windows installer and samples done; schema, signing and CI on Windows and macOS remain |
 | Construction site (#53–#57, #71) | ✅ Complete: opening dimension chains, first-course plan and wall elevations with block paging, setting-out plan, construction quantities, roof plan with gutters and downpipes, and the one-click A3 construction set |
-| Electrical design (#88–#91) | ✅ Devices, NBR 5410 forecast, circuits, conduits with wiring, phase balancing, voltage drop, demand, service entrance, single-line diagram |
+| Electrical design (#88–#91, #124–#129) | ✅ Complete (M7): devices, NBR 5410 forecast, circuits, conduits with wiring, intermediate switches & boundary room assignment, phase balancing, voltage drop, demand, service entrance, single-line diagram, electrical shopping list by wire section & colour, Lumen Method room lighting (NBR ISO/CIE 8995-1), photovoltaic pre-sizing with roof-plane placement & monthly generation (INPE/CRESESB), multi-board short-circuit (`Icc`) & breaker selectivity, and earthing layout + simplified NBR 5419-2 SPDA risk check |
 | Structure (#92–#94, #105–#117, #143–#147, #150) | ✅ Complete from foundation to roof (M4 & M5): columns/beams/slabs/footings, 2D plane-frame analysis with NBR 6120/6123/8681 combinations, coupled slab+beam grid analogy, overlays, What-if, background cache, reinforcement & steel schedule, lintels/sills & NBR 16868 masonry, SPT & 4-way foundation study, ground beams & strip footings, boundary balance beams, per-wall sloped tops, timber roofs (mono-pitch/gable/hip/trusses/overhangs/uplift), timber posts & eave beams, stairs/balconies/cantilevers, tall-wall wind/sliding/bolts/ties/jambs and the end-to-end gourmet reference project (`examples/area-gourmet.json`) |
 | Discipline views (#96) | ✅ Architecture, electrical, structure, foundations and prepared plumbing views on synchronized linked tabs sharing a single live model; hydraulic pipe calculations join with #72 |
 | Plumbing (#72) | ⬜ Not started (sanitary fixture view discipline and dependency tracking prepared) |
@@ -670,7 +670,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 126 | Photovoltaic pre-sizing: consumption, kWp, panels on the roof planes and monthly generation for the city | P2 | M | M7 | ✅ |
 | 127 | Several boards (main and sub-boards), short-circuit estimate and breaker selectivity (B09) | P2 | L | M7 | ✅ |
 | 128 | Intermediate (four-way) switches, and devices on room boundaries assigned to the right room (B08, B10) | P1 | S | M7 | ✅ |
-| 129 | Earthing layout and a simplified lightning-protection risk check (NBR 5419) | P2 | M | M7 | ⬜ |
+| 129 | Earthing layout and a simplified lightning-protection risk check (NBR 5419) | P2 | M | M7 | ✅ |
 
 ### G. Comfort and performance
 

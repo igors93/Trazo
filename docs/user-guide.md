@@ -229,6 +229,10 @@ The *Solar (Fotovoltaico)* tab of *Projeto elétrico* pre-sizes a rooftop grid-t
 
 Place more than one **Quadro** on the plan to model a main board (`QDG`) feeding secondary sub-boards (`QDC1`, `QDC2`, …). The *Curto e seletividade* tab of *Projeto elétrico* estimates the prospective three-phase and single-phase short-circuit currents (`Icc`) at each board from the utility transformer, service drop and feeders, verifies the breakers' breaking capacity (`Icn`), checks cumulative feeder + terminal voltage drop (≤ 4 %) and cable thermal withstand, and evaluates upstream-to-downstream breaker selectivity (`DG → QDC → Ck`), exporting to PDF, SVG and CSV.
 
+### Earthing layout and simplified lightning-protection risk (SPDA)
+
+The *Aterramento e SPDA* tab of *Projeto elétrico* lays out the earthing electrode array (BEP + Copperweld grounding rods spaced 3 m outside the building inside the lot, drawn on the electrical plan and exported sheets), sizes the rod count and earthing/bonding conductors by Dwight's equation and NBR 5410 §6.4, and runs a simplified ABNT NBR 5419-2:2015 risk screening (`R1` vs. `RT = 10⁻⁵/year`) for houses up to 15 m tall, naming the required protection level (`NP IV`–`NP I`) or refusing buildings above 15 m for specialist design. Export to PDF or SVG.
+
 ## Structure
 
 The *Estrutura* (structure) tab lays out a first reinforced-concrete structure over the floor plan and pre-sizes it. Columns, beams, slabs and footings are drawn as a formwork plan (*planta de forma*) on their own layer, *Estrutura*, in dark teal.

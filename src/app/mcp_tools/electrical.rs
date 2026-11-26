@@ -880,8 +880,150 @@ impl FloorPlanApp {
                     )))
                 })
             }
+            "aterramento_spda" => {
+                use crate::domain::electrical::earthing::earthing_spda_sheet_svg;
+                let r = self.project.earthing_and_spda_report();
+                let mut exported: Option<String> = None;
+                if let Some(raw) = text(args, "salvar_svg") {
+                    let path = unique_path(resolve_path(&raw, "svg"));
+                    ensure_parent(&path)?;
+                    let svg = earthing_spda_sheet_svg(&self.project);
+                    crate::domain::views::export_view_svg(&svg, &path)?;
+                    exported = Some(path.display().to_string());
+                } else if let Some(raw) = text(args, "salvar_pdf") {
+                    let path = unique_path(resolve_path(&raw, "pdf"));
+                    ensure_parent(&path)?;
+                    let svg = earthing_spda_sheet_svg(&self.project);
+                    crate::domain::views::export_view_pdf(&svg, &path)?;
+                    exported = Some(path.display().to_string());
+                }
+                let msg = format!(
+                    "{} {} {}",
+                    r.earthing_note,
+                    r.spda_note,
+                    exported
+                        .as_deref()
+                        .map_or(String::new(), |p| format!("Exportado em {p}."))
+                );
+                Ok(ToolOutput::ok(msg.trim().to_owned()).with_structured(json!({
+                    "aterramento": {
+                        "esquema": r.settings.scheme.key(),
+                        "resistividade_solo_ohm_m": r.settings.soil_resistivity_ohm_m,
+                        "haste_comprimento_m": r.settings.rod_length_m,
+                        "haste_diametro_mm": r.settings.rod_diameter_mm,
+                        "espacamento_m": r.settings.rod_spacing_m,
+                        "resistencia_haste_ohm": (r.single_rod_ohm * 10.0).round() / 10.0,
+                        "numero_hastes": r.rod_count,
+                        "resistencia_malha_ohm": (r.array_resistance_ohm * 10.0).round() / 10.0,
+                        "meta_ohm": r.target_resistance_ohm,
+                        "condutor_enterrado_mm2": r.buried_conductor_mm2,
+                        "condutor_eletroduto_mm2": r.conduit_conductor_mm2,
+                        "condutor_bep_mm2": r.bonding_conductor_mm2,
+                        "caixas_inspecao": r.inspection_boxes,
+                        "bep": r.bep_position.map(xy),
+                        "hastes": r.rods.iter().map(|h| json!({
+                            "indice": h.index,
+                            "posicao": xy(h.position),
+                        })).collect::<Vec<_>>(),
+                        "semaforo": r.earthing_light.key(),
+                        "explicacao": r.earthing_note,
+                    },
+                    "spda": {
+                        "cidade": r.city_label,
+                        "dias_trovoada_ano": r.thunderstorm_days_year,
+                        "densidade_ng": (r.flash_density_ng * 100.0).round() / 100.0,
+                        "comprimento_m": (r.building_length_m * 10.0).round() / 10.0,
+                        "largura_m": (r.building_width_m * 10.0).round() / 10.0,
+                        "altura_m": (r.building_height_m * 10.0).round() / 10.0,
+                        "area_exposicao_ad_m2": r.collection_area_ad_m2.round(),
+                        "fator_cd": r.settings.surroundings.cd(),
+                        "entorno": r.settings.surroundings.key(),
+                        "descargas_diretas_nd": r.annual_direct_flashes_nd,
+                        "descargas_linha_nl": r.annual_line_flashes_nl,
+                        "risco_r1": r.risk_r1,
+                        "risco_toleravel_rt": r.tolerable_risk_rt,
+                        "spda_exigido": r.spda_required,
+                        "acima_limite_altura_15m": r.spda_refused_height,
+                        "nivel_protecao_recomendado": r.recommended_np,
+                        "semaforo": r.spda_light.key(),
+                        "explicacao": r.spda_note,
+                    },
+                    "semaforo_geral": r.overall_light.key(),
+                    "arquivo_exportado": exported,
+                    "alertas": r.warnings,
+                    "premissas": r.assumptions,
+                })))
+            }
+            "configurar_aterramento" => {
+                use crate::domain::electrical::earthing::{EarthingScheme, SpdaSurroundings};
+                let scheme = match text(args, "esquema") {
+                    Some(raw) => Some(
+                        EarthingScheme::parse(&raw)
+                            .ok_or("'esquema' deve ser tn_s, tt ou tn_c_s.")?,
+                    ),
+                    None => None,
+                };
+                let surroundings = match text(args, "entorno") {
+                    Some(raw) => Some(
+                        SpdaSurroundings::parse(&raw).ok_or(
+                            "'entorno' deve ser cercada_mais_altos, urbano_similar, isolada ou topo_morro.",
+                        )?,
+                    ),
+                    None => None,
+                };
+                let rho = number(args, "resistividade_solo_ohm_m")?;
+                let rods = number(args, "numero_hastes")?;
+                let spacing = number(args, "espacamento_m")?;
+                let overhead = args.get("rede_aerea").and_then(Value::as_bool);
+                let dps = args.get("tem_dps").and_then(Value::as_bool);
+                let show = args.get("mostrar_na_planta").and_then(Value::as_bool);
+                if let Some(v) = rho
+                    && !(20.0..=5000.0).contains(&v)
+                {
+                    return Err("'resistividade_solo_ohm_m' deve estar entre 20 e 5000 Ω·m.".to_owned());
+                }
+                if let Some(v) = rods
+                    && (!(0.0..=12.0).contains(&v) || v.fract() != 0.0)
+                {
+                    return Err("'numero_hastes' deve ser um inteiro entre 1 e 12 (ou 0 para automático).".to_owned());
+                }
+                if let Some(v) = spacing
+                    && !(2.0..=10.0).contains(&v)
+                {
+                    return Err("'espacamento_m' deve estar entre 2 e 10 m.".to_owned());
+                }
+                self.apply_change(Some("A configuração de aterramento/SPDA já estava assim."), |project| {
+                    let e = &mut project.electrical.earthing;
+                    if let Some(s) = scheme {
+                        e.scheme = s;
+                    }
+                    if let Some(s) = surroundings {
+                        e.surroundings = s;
+                    }
+                    if let Some(v) = rho {
+                        e.soil_resistivity_ohm_m = v;
+                    }
+                    if let Some(v) = rods {
+                        e.rod_count = (v > 0.0).then_some(v as usize);
+                    }
+                    if let Some(v) = spacing {
+                        e.rod_spacing_m = v;
+                    }
+                    if let Some(v) = overhead {
+                        e.overhead_power_line = v;
+                    }
+                    if let Some(v) = dps {
+                        e.has_dps_at_entrance = v;
+                    }
+                    if let Some(v) = show {
+                        e.show_on_plan = v;
+                    }
+                    let rep = project.earthing_and_spda_report();
+                    Ok(Change::new(format!("{} {}", rep.earthing_note, rep.spda_note)))
+                })
+            }
             _ => Err(
-                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao, definir_concessionaria, demanda_coletiva, lista_materiais, luminotecnico, configurar_iluminacao, fotovoltaico, configurar_fotovoltaico, seletividade ou configurar_curto_circuito.".to_owned(),
+                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao, definir_concessionaria, demanda_coletiva, lista_materiais, luminotecnico, configurar_iluminacao, fotovoltaico, configurar_fotovoltaico, seletividade, configurar_curto_circuito, aterramento_spda ou configurar_aterramento.".to_owned(),
             ),
         }
     }
@@ -1079,6 +1221,17 @@ impl FloorPlanApp {
                     "quadros": sc.boards.len(),
                     "pares_seletividade": sc.selectivity.len(),
                     "semaforo": sc.light.key(),
+                })
+            }),
+            "aterramento_spda": (self.project.main_panel().is_some() || !schedule.circuits.is_empty()).then(|| {
+                let es = self.project.earthing_and_spda_report();
+                json!({
+                    "esquema": es.settings.scheme.key(),
+                    "hastes": es.rod_count,
+                    "resistencia_ohm": (es.array_resistance_ohm * 10.0).round() / 10.0,
+                    "spda_exigido": es.spda_required,
+                    "risco_r1": es.risk_r1,
+                    "semaforo": es.overall_light.key(),
                 })
             }),
             "semaforo": super::structure::verdicts_json(&crate::domain::verdict::electrical_project_verdicts(&self.project, &schedule)),
@@ -1353,5 +1506,41 @@ mod tests {
         assert_eq!(data["quadros"].as_array().unwrap().len(), 2);
         assert!(!data["seletividade"].as_array().unwrap().is_empty());
         assert!(data["icc_max_ka"].as_f64().unwrap() > 1.0);
+    }
+
+    #[test]
+    fn mcp_computes_and_configures_earthing_and_spda_risk() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        app.project = crate::domain::samples::SampleProject::CasaTerrea.build();
+        let (pw, pd) = crate::domain::fixtures::FixtureKind::Panel.default_size();
+        let (rmin, _) = app.project.room_bounds(&app.project.rooms[0]).unwrap();
+        app.project
+            .add_fixture(
+                crate::domain::fixtures::FixtureKind::Panel,
+                crate::domain::geometry::Point::new(rmin.x + 0.35, rmin.y + 0.15),
+                pw,
+                pd,
+                0,
+            )
+            .unwrap();
+
+        let cfg = app.run_mcp_tool(
+            "projeto_eletrico",
+            &json!({
+                "acao": "configurar_aterramento",
+                "esquema": "tn_s",
+                "resistividade_solo_ohm_m": 200,
+                "entorno": "urbano_similar",
+                "tem_dps": true
+            }),
+        );
+        assert!(!cfg.is_error, "{}", cfg.text);
+
+        let res = app.run_mcp_tool("projeto_eletrico", &json!({ "acao": "aterramento_spda" }));
+        assert!(!res.is_error, "{}", res.text);
+        let data = res.structured.unwrap();
+        assert_eq!(data["aterramento"]["numero_hastes"], 4);
+        assert_eq!(data["spda"]["spda_exigido"], false);
+        assert!(!data["aterramento"]["hastes"].as_array().unwrap().is_empty());
     }
 }

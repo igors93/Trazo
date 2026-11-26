@@ -1,6 +1,7 @@
 //! Electrical installation design (ABNT NBR 5410): devices, room load
 //! forecast, circuit sizing, automatic placement, plan symbols and load schedule.
 
+pub mod earthing;
 mod forecast;
 pub mod lighting;
 pub mod photovoltaic;
@@ -71,6 +72,9 @@ pub struct ElectricalSettings {
         skip_serializing_if = "crate::domain::distribution::selectivity::ShortCircuitSettings::is_default"
     )]
     pub short_circuit: crate::domain::distribution::selectivity::ShortCircuitSettings,
+    /// Earthing layout & simplified SPDA risk parameters (NBR 5410 §6.4 / NBR 5419-2, #129).
+    #[serde(default, skip_serializing_if = "earthing::EarthingSettings::is_default")]
+    pub earthing: earthing::EarthingSettings,
 }
 
 fn default_voltage() -> f64 {
@@ -92,6 +96,7 @@ impl Default for ElectricalSettings {
             lighting: lighting::LightingSettings::default(),
             pv: photovoltaic::PvSettings::default(),
             short_circuit: crate::domain::distribution::selectivity::ShortCircuitSettings::default(),
+            earthing: earthing::EarthingSettings::default(),
         }
     }
 }

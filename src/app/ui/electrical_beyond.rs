@@ -9,6 +9,9 @@ use super::super::{FloorPlanApp, theme::*};
 use super::widgets::secondary_button;
 use crate::domain::distribution::section_label;
 use crate::domain::distribution::selectivity::{short_circuit_csv, short_circuit_sheet_svg};
+use crate::domain::electrical::earthing::{
+    EarthingScheme, SpdaSurroundings, earthing_spda_sheet_svg,
+};
 use crate::domain::electrical::lighting::{
     SurfaceReflectance, lighting_report_csv, lighting_report_svg,
 };
@@ -931,6 +934,237 @@ impl FloorPlanApp {
         self.message = match result {
             Ok(()) => format!("Estudo de curto-circuito exportado em {}", path.display()),
             Err(error) => format!("Erro ao exportar curto-circuito: {error}"),
+        };
+    }
+
+    /// Tab 7 (#129): Earthing layout (NBR 5410 §6.4) and simplified SPDA risk check (NBR 5419-2).
+    pub(super) fn electrical_earthing_tab(&mut self, ui: &mut Ui) {
+        let mut cfg = self.project.electrical.earthing;
+        let mut changed = false;
+        let mut export_pdf: Option<bool> = None;
+        let report = self.project.earthing_and_spda_report();
+
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.label(
+                RichText::new(
+                    "Malha de aterramento e BEP (NBR 5410 §6.4) e triagem simplificada de risco de descargas atmosféricas — SPDA (NBR 5419-2).",
+                )
+                .size(12.0)
+                .color(TEXT_2),
+            );
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Esquema:");
+                for option in EarthingScheme::ALL {
+                    if ui
+                        .selectable_label(cfg.scheme == option, option.code())
+                        .clicked()
+                    {
+                        cfg.scheme = option;
+                        changed = true;
+                    }
+                }
+                ui.separator();
+                ui.label("Resistividade do solo (ρ):");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut cfg.soil_resistivity_ohm_m)
+                            .range(20.0..=5000.0)
+                            .speed(10.0)
+                            .suffix(" Ω·m"),
+                    )
+                    .changed();
+                for (lbl, val) in [("Úmido 100", 100.0), ("Comum 200", 200.0), ("Seco 500", 500.0)] {
+                    if ui
+                        .selectable_label((cfg.soil_resistivity_ohm_m - val).abs() < 5.0, lbl)
+                        .clicked()
+                    {
+                        cfg.soil_resistivity_ohm_m = val;
+                        changed = true;
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Entorno (Cd):");
+                egui::ComboBox::from_id_salt("elec_spda_surroundings")
+                    .selected_text(cfg.surroundings.label())
+                    .show_ui(ui, |ui| {
+                        for option in SpdaSurroundings::ALL {
+                            if ui
+                                .selectable_label(cfg.surroundings == option, option.label())
+                                .clicked()
+                            {
+                                cfg.surroundings = option;
+                                changed = true;
+                            }
+                        }
+                    });
+                changed |= ui
+                    .checkbox(&mut cfg.overhead_power_line, "Rede aérea")
+                    .changed();
+                changed |= ui
+                    .checkbox(&mut cfg.has_dps_at_entrance, "DPS na entrada")
+                    .changed();
+                changed |= ui
+                    .checkbox(&mut cfg.show_on_plan, "Mostrar BEP/hastes na planta")
+                    .changed();
+                ui.separator();
+                if secondary_button(ui, "Exportar PDF").clicked() {
+                    export_pdf = Some(true);
+                }
+                if secondary_button(ui, "Exportar SVG").clicked() {
+                    export_pdf = Some(false);
+                }
+            });
+
+            ui.add_space(8.0);
+            ui.label(RichText::new("1. Aterramento e equipotencialização (NBR 5410 §6.4)").font(strong(13.0)));
+            let e_color = match report.earthing_light {
+                Light::Green => SUCCESS,
+                Light::Yellow => WARNING,
+                Light::Red => DANGER,
+            };
+            ui.label(RichText::new(&report.earthing_note).font(strong(12.0)).color(e_color));
+            ui.add_space(4.0);
+            egui::Grid::new("elec_earthing_grid")
+                .num_columns(2)
+                .spacing([16.0, 4.0])
+                .show(ui, |ui| {
+                    let row = |ui: &mut Ui, label: &str, value: String| {
+                        ui.label(RichText::new(label).color(TEXT_2));
+                        ui.label(value);
+                        ui.end_row();
+                    };
+                    row(
+                        ui,
+                        "Haste individual (Dwight)",
+                        format!(
+                            "Copperweld Ø{:.0} mm × {} m → R1 = {} Ω",
+                            report.settings.rod_diameter_mm,
+                            decimal(report.settings.rod_length_m, 2),
+                            decimal(report.single_rod_ohm, 1)
+                        ),
+                    );
+                    row(
+                        ui,
+                        "Malha dimensionada",
+                        format!(
+                            "{} hastes espaçadas em {} m → Ra = {} Ω (meta ≤ 25 Ω)",
+                            report.rod_count,
+                            decimal(report.settings.rod_spacing_m, 1),
+                            decimal(report.array_resistance_ohm, 1)
+                        ),
+                    );
+                    row(
+                        ui,
+                        "Condutores e caixas",
+                        format!(
+                            "Enterrado #{} mm² nu (ou #{} mm² em eletroduto) · BEP #{} mm² · {} caixas de inspeção Ø300 mm",
+                            decimal(report.buried_conductor_mm2, 0),
+                            decimal(report.conduit_conductor_mm2, 0),
+                            decimal(report.bonding_conductor_mm2, 0),
+                            report.inspection_boxes
+                        ),
+                    );
+                });
+
+            ui.add_space(10.0);
+            ui.label(RichText::new("2. Triagem de risco de descargas atmosféricas — SPDA (NBR 5419-2)").font(strong(13.0)));
+            let s_color = match report.spda_light {
+                Light::Green => SUCCESS,
+                Light::Yellow => WARNING,
+                Light::Red => DANGER,
+            };
+            ui.label(RichText::new(&report.spda_note).font(strong(12.0)).color(s_color));
+            ui.add_space(4.0);
+            egui::Grid::new("elec_spda_grid")
+                .num_columns(2)
+                .spacing([16.0, 4.0])
+                .show(ui, |ui| {
+                    let row = |ui: &mut Ui, label: &str, value: String| {
+                        ui.label(RichText::new(label).color(TEXT_2));
+                        ui.label(value);
+                        ui.end_row();
+                    };
+                    row(
+                        ui,
+                        "Local / densidade de raios",
+                        format!(
+                            "{} · Td = {:.0} dias/ano → Ng = {} descargas/km²·ano",
+                            report.city_label,
+                            report.thunderstorm_days_year,
+                            decimal(report.flash_density_ng, 2)
+                        ),
+                    );
+                    row(
+                        ui,
+                        "Edificação / área Ad",
+                        format!(
+                            "{} × {} × {} m → Ad = {:.0} m² · Nd = {:.4}/ano · Nl = {:.4}/ano",
+                            decimal(report.building_length_m, 1),
+                            decimal(report.building_width_m, 1),
+                            decimal(report.building_height_m, 1),
+                            report.collection_area_ad_m2,
+                            report.annual_direct_flashes_nd,
+                            report.annual_line_flashes_nl
+                        ),
+                    );
+                    row(
+                        ui,
+                        "Risco R1 vs. tolerável RT",
+                        format!(
+                            "R1 = {:.2e}/ano (limite tolerável RT = 1,00e-5/ano)",
+                            report.risk_r1
+                        ),
+                    );
+                    row(
+                        ui,
+                        "Conclusão da triagem",
+                        report
+                            .recommended_np
+                            .clone()
+                            .unwrap_or_else(|| "SPDA estrutural dispensado na triagem · manter DPS Classe II e aterramento".to_owned()),
+                    );
+                });
+
+            ui.add_space(6.0);
+            for note in &report.assumptions {
+                ui.label(RichText::new(note).size(11.0).color(MUTED));
+            }
+        });
+
+        if changed {
+            let previous = self.project.clone();
+            self.project.electrical.earthing = cfg;
+            self.record_change(previous);
+        }
+        if let Some(pdf) = export_pdf {
+            self.export_electrical_earthing(pdf);
+        }
+    }
+
+    fn export_electrical_earthing(&mut self, pdf: bool) {
+        let (label, ext) = if pdf {
+            ("Documento PDF", "pdf")
+        } else {
+            ("Desenho SVG", "svg")
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(format!("aterramento-spda.{ext}"))
+            .save_file()
+        else {
+            return;
+        };
+        let markup = earthing_spda_sheet_svg(&self.project);
+        let result = if pdf {
+            crate::domain::views::export_view_pdf(&markup, &path)
+        } else {
+            crate::domain::views::export_view_svg(&markup, &path)
+        };
+        self.message = match result {
+            Ok(()) => format!("Estudo de aterramento/SPDA exportado em {}", path.display()),
+            Err(error) => format!("Erro ao exportar aterramento/SPDA: {error}"),
         };
     }
 }

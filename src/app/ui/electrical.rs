@@ -482,6 +482,7 @@ impl FloorPlanApp {
                         "Iluminação (lux)",
                         "Solar (Fotovoltaico)",
                         "Curto e seletividade",
+                        "Aterramento e SPDA",
                     ]
                     .iter()
                     .enumerate()
@@ -495,7 +496,9 @@ impl FloorPlanApp {
                     }
                 });
                 ui.separator();
-                if tab == 6 {
+                if tab == 7 {
+                    self.electrical_earthing_tab(ui);
+                } else if tab == 6 {
                     self.electrical_selectivity_tab(ui);
                 } else if tab == 5 {
                     self.electrical_pv_tab(ui);

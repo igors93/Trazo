@@ -447,6 +447,10 @@ Checked for #126 by `worked_example_sao_paulo_400kwh_matches_cresesb_hand_calcul
 
 Checked for #127 by `worked_example_short_circuit_matches_iec_60909_hand_calculation`, `main_board_with_sub_board_models_attenuated_icc_selectivity_and_cumulative_drop` and `mcp_evaluates_sub_boards_short_circuit_and_breaker_selectivity`.
 
+| Earthing & simplified SPDA risk (#129) | Dwight's vertical rod equation `R1 = ρ/(2πL)·(ln(4L/d)−1)` with mutual-interference reduction factor `Kn` for Copperweld rods (Ø16 mm × 2.40 m, spacing ≥ 3 m, minimum 3 rods, target `Ra ≤ 25 Ω`, conservative `ρ = 300 Ω·m` when unmeasured), BEP & buried `#25 mm²` / conduit `#16 mm²` / bonding `#6–25 mm²` conductors (NBR 5410 Tables 51 & 58), TT mandatory 30 mA RCD check; simplified NBR 5419-2:2015 loss-of-human-life risk `R1 = RA + RB + RU + RV` vs. `RT = 10⁻⁵/year` from `Ng = 0.04·Td^1.25`, collection area `Ad = L·W + 2(3H)(L+W) + π(3H)²`, `Cd` (Table A.1), `Nd`, `Nl` and recommended SPDA level (`NP IV–I`), refused above `H = 15 m` | ABNT NBR 5410:2004 §6.4 · ABNT NBR 5419-2:2015 |
+
+Checked for #129 by `worked_example_dwight_earthing_matches_hand_calculation_and_sizes_rods`, `worked_example_nbr5419_collection_area_and_risk_distinguish_urban_vs_hilltop` and `mcp_computes_and_configures_earthing_and_spda_risk`.
+
 The regional utility profiles (`src/domain/utility_profiles.rs`: Generic NBR 5410, Enel SP LIG-BT 12ª ed., CPFL GED-13, CEMIG ND 5.1, COPEL NTC 901100) use explicit per-utility residential demand tables and service-entrance thresholds (no hidden scale multipliers) and carry a `UtilityStandardCitation` (standard, edition, tables and local-bulletin verification note) surfaced in the UI, single-line diagram and MCP `quadro_de_cargas` (B21). Because utilities publish periodic technical bulletins (*comunicados técnicos*), designers should still confirm the active local revision before submitting a connection request.
 
 ## Construction quantities
