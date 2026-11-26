@@ -906,6 +906,7 @@ fn catalogue() -> Vec<Tool> {
                         "revestimento_kn_m2": number("Para configurar: revestimento e contrapiso, kN/m²."),
                         "peso_alvenaria_kn_m3": number("Para configurar: peso específico da alvenaria em kN/m³ (8 a 25; padrão 13)."),
                         "sobrecarga_por_comodo": boolean("Para configurar: aplica sobrecarga mínima NBR 6120 por uso de cada cômodo."),
+                        "evidencia": string("Para configurar e configurar_vento: de onde vem o valor (laudo de sondagem, nota fiscal do concreto, ensaio, fonte). Um valor mais favorável que o seguro nunca é aplicado direto: fica como proposta até a pessoa confirmar com a prova na janela Segurança."),
                         "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Para vista." },
                     }),
                     json!({
@@ -961,7 +962,7 @@ fn catalogue() -> Vec<Tool> {
                     }),
                 ),
                 json!({
-                "v0_ms": number("Para configurar_vento: velocidade básica do vento, m/s (25 a 55, padrão 35)."),
+                "v0_ms": number("Para configurar_vento: velocidade básica do vento, m/s (25 a 55). Não pode ficar abaixo do V0 da cidade do terreno."),
                 "categoria_terreno": integer("Para configurar_vento: categoria do terreno, 1 (mar aberto) a 5 (centro denso), padrão 3."),
                 "s1": number("Para configurar_vento: fator topográfico S1 (padrão 1)."),
                 "s3": number("Para configurar_vento: fator estatístico S3 (padrão 1)."),

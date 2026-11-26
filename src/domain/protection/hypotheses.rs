@@ -194,11 +194,14 @@ pub struct HypothesisRecord {
 pub struct Hypotheses {
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     records: BTreeMap<HypothesisKey, HypothesisRecord>,
+    /// Favourable changes an assistant asked for, waiting for the person (#171).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    proposals: Vec<HypothesisProposal>,
 }
 
 impl Hypotheses {
     pub fn is_empty(&self) -> bool {
-        self.records.is_empty()
+        self.records.is_empty() && self.proposals.is_empty()
     }
 
     /// The origin of `key` (Trazo's default when nobody changed it).
@@ -275,6 +278,27 @@ pub fn track_changes(previous: &Project, current: &mut Project, source: Hypothes
             HypothesisRecord {
                 source,
                 evidence: None,
+            },
+        );
+    }
+}
+
+/// Notes the evidence an assistant cites for the hypotheses it changed in
+/// the edit from `previous` to `current`, for the person to check (#171).
+pub fn cite_evidence(previous: &Project, current: &mut Project, cited: &str) {
+    let cited = cited.trim();
+    if cited.is_empty() {
+        return;
+    }
+    for key in HypothesisKey::ALL {
+        if key.same(previous, current) {
+            continue;
+        }
+        current.protection.hypotheses.set(
+            key,
+            HypothesisRecord {
+                source: HypothesisSource::Assistant,
+                evidence: Some(cited.to_owned()),
             },
         );
     }
@@ -473,6 +497,188 @@ fn contest(key: HypothesisKey, project: &Project) -> Option<Contest> {
     })
 }
 
+/// A hypothesis an AI assistant wanted to make more favourable, waiting for
+/// the person to confirm it with evidence (#171).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct HypothesisProposal {
+    pub key: HypothesisKey,
+    pub value: f64,
+    /// What the assistant said backs it up, for the person to check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub evidence: Option<String>,
+}
+
+/// Sets `key` to `value`, within the range each setting accepts.
+pub fn set_value(key: HypothesisKey, project: &mut Project, value: f64) -> Result<(), String> {
+    let in_range = |low: f64, high: f64, name: &str| {
+        if value.is_finite() && (low..=high).contains(&value) {
+            Ok(())
+        } else {
+            Err(format!(
+                "{name} deve ficar entre {} e {}.",
+                decimal(low, 1),
+                decimal(high, 1)
+            ))
+        }
+    };
+    let settings = &mut project.structure.settings;
+    match key {
+        HypothesisKey::SoilPressure => {
+            in_range(10.0, 600.0, "A tensão do solo")?;
+            settings.soil_kpa = value;
+        }
+        HypothesisKey::ConcreteStrength => {
+            in_range(20.0, 50.0, "O fck")?;
+            settings.fck_mpa = value;
+        }
+        HypothesisKey::LiveLoad => {
+            in_range(0.5, 10.0, "A sobrecarga")?;
+            settings.live_kn_m2 = value;
+        }
+        HypothesisKey::FinishLoad => {
+            in_range(0.0, 5.0, "O revestimento")?;
+            settings.finish_kn_m2 = value;
+        }
+        HypothesisKey::MasonryWeight => {
+            in_range(8.0, 25.0, "O peso da alvenaria")?;
+            settings.masonry_kn_m3 = value;
+        }
+        HypothesisKey::Occupancy => {
+            return Err("O uso da edificação muda pela lista de usos.".to_owned());
+        }
+        HypothesisKey::WindSpeed
+        | HypothesisKey::WindCategory
+        | HypothesisKey::WindTopography
+        | HypothesisKey::WindStatistical => {
+            let mut wind = project.structure.wind;
+            match key {
+                HypothesisKey::WindSpeed => wind.v0_ms = value,
+                HypothesisKey::WindCategory => wind.category = value.round().clamp(1.0, 5.0) as u8,
+                HypothesisKey::WindTopography => wind.s1 = value,
+                _ => wind.s3 = value,
+            }
+            project.set_wind(wind)?;
+        }
+    }
+    Ok(())
+}
+
+impl Hypotheses {
+    /// Hypothesis changes waiting for the person.
+    pub fn proposals(&self) -> &[HypothesisProposal] {
+        &self.proposals
+    }
+
+    fn propose(&mut self, proposal: HypothesisProposal) {
+        self.proposals.retain(|p| p.key != proposal.key);
+        self.proposals.push(proposal);
+    }
+
+    fn take_proposal(&mut self, key: HypothesisKey) -> Option<HypothesisProposal> {
+        let index = self.proposals.iter().position(|p| p.key == key)?;
+        Some(self.proposals.remove(index))
+    }
+}
+
+/// An assistant may make a hypothesis safer, but not more favourable than
+/// Trazo can stand behind: such a change is taken back and kept as a
+/// proposal for the person (#171). A change the project itself backs up
+/// (a soil survey, the city's wind) goes through. Returns the proposals.
+pub fn hold_favourable_changes(
+    previous: &Project,
+    current: &mut Project,
+) -> Vec<HypothesisProposal> {
+    let mut held = Vec::new();
+    for key in HypothesisKey::ALL {
+        let Some(reference) = reference(key, current) else {
+            continue;
+        };
+        let old = key.value(previous);
+        let new = key.value(current);
+        if !key.more_favourable(new, old)
+            || !key.more_favourable(new, reference)
+            || project_evidence(key, current).is_some()
+        {
+            continue;
+        }
+        let proposal = HypothesisProposal {
+            key,
+            value: new,
+            evidence: current.protection.hypotheses.record(key).evidence,
+        };
+        if set_value(key, current, old).is_err() {
+            continue;
+        }
+        let before = previous.protection.hypotheses.record(key);
+        current.protection.hypotheses.set(key, before);
+        current.protection.hypotheses.propose(proposal.clone());
+        held.push(proposal);
+    }
+    held
+}
+
+/// The person adopts a proposal, with the evidence that backs it up.
+pub fn confirm_proposal(
+    project: &mut Project,
+    key: HypothesisKey,
+    evidence: &str,
+) -> Result<(), String> {
+    let evidence = evidence.trim();
+    if evidence.is_empty() {
+        return Err(
+            "Informe a prova: o laudo da sondagem, a nota fiscal do concreto, o ensaio ou a fonte do valor."
+                .to_owned(),
+        );
+    }
+    let mut draft = project.clone();
+    let proposal = draft
+        .protection
+        .hypotheses
+        .take_proposal(key)
+        .ok_or("Não há proposta para essa hipótese.")?;
+    set_value(key, &mut draft, proposal.value)?;
+    draft.protection.hypotheses.set(
+        key,
+        HypothesisRecord {
+            source: HypothesisSource::Person,
+            evidence: Some(evidence.to_owned()),
+        },
+    );
+    if let Some(refused) = contests(&draft)
+        .into_iter()
+        .find(|c| c.key == key && c.normative)
+    {
+        return Err(format!("{} {}", refused.reason, refused.fix));
+    }
+    *project = draft;
+    Ok(())
+}
+
+/// The person turns a proposal down.
+pub fn reject_proposal(project: &mut Project, key: HypothesisKey) -> bool {
+    project.protection.hypotheses.take_proposal(key).is_some()
+}
+
+/// The person backs up the current value of `key` with evidence.
+pub fn give_evidence(
+    project: &mut Project,
+    key: HypothesisKey,
+    evidence: &str,
+) -> Result<(), String> {
+    let evidence = evidence.trim();
+    if evidence.is_empty() {
+        return Err("Informe de onde vem o valor.".to_owned());
+    }
+    project.protection.hypotheses.set(
+        key,
+        HypothesisRecord {
+            source: HypothesisSource::Person,
+            evidence: Some(evidence.to_owned()),
+        },
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -568,6 +774,46 @@ mod tests {
         project.structure.settings.fck_mpa = CONSERVATIVE_FCK_MPA;
         project.structure.wind.v0_ms = 50.0;
         assert!(contests(&project).is_empty());
+    }
+
+    #[test]
+    fn an_assistant_cannot_adopt_a_favourable_hypothesis_but_the_person_can() {
+        let previous = Project::default();
+        let mut current = previous.clone();
+        current.structure.settings.soil_kpa = 300.0;
+        current.structure.settings.fck_mpa = 20.0;
+        let held = hold_favourable_changes(&previous, &mut current);
+        assert_eq!(held.len(), 1);
+        assert_eq!(held[0].key, HypothesisKey::SoilPressure);
+        assert!(
+            (current.structure.settings.soil_kpa - previous.structure.settings.soil_kpa).abs()
+                < 1e-9
+        );
+        assert!((current.structure.settings.fck_mpa - 20.0).abs() < 1e-9);
+        assert_eq!(current.protection.hypotheses.proposals().len(), 1);
+
+        assert!(confirm_proposal(&mut current, HypothesisKey::SoilPressure, "  ").is_err());
+        assert!(
+            confirm_proposal(&mut current, HypothesisKey::SoilPressure, "laudo SPT SP-01").is_ok()
+        );
+        assert!((current.structure.settings.soil_kpa - 300.0).abs() < 1e-9);
+        assert!(current.protection.hypotheses.proposals().is_empty());
+        let record = current
+            .protection
+            .hypotheses
+            .record(HypothesisKey::SoilPressure);
+        assert_eq!(record.source, HypothesisSource::Person);
+    }
+
+    #[test]
+    fn the_person_cannot_confirm_a_value_below_the_standard() {
+        let previous = Project::default();
+        let mut current = previous.clone();
+        current.structure.settings.live_kn_m2 = 1.0;
+        assert_eq!(hold_favourable_changes(&previous, &mut current).len(), 1);
+        assert!(confirm_proposal(&mut current, HypothesisKey::LiveLoad, "medição").is_err());
+        assert!(reject_proposal(&mut current, HypothesisKey::LiveLoad));
+        assert!(current.protection.hypotheses.proposals().is_empty());
     }
 
     #[test]

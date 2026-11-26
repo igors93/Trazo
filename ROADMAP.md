@@ -28,7 +28,7 @@ Most homes in Brazil's favelas, peripheries and poorer neighbourhoods are built 
 
 **MCP is Trazo's operational centre.** An AI assistant connected through MCP does the intellectual work of design: it turns a family's description into a plan, compares alternatives, runs and reviews every check, and organises the documents. The person does not need to learn CAD or engineering to start; they receive clear instructions to build. The drawing tools stay for anyone who wants to adjust by hand.
 
-**Trazo contests the AI.** An assistant that designs alone can call a simulation with wrong hypotheses (a firm soil nobody surveyed, a live load below the standard, a stronger concrete than the site will mix) and receive a result that looks safe. So the essential condition is that Trazo's deterministic rules check and contest every AI decision, the hypotheses included: the AI supplies inputs, never results; every hypothesis records its origin; a favourable hypothesis without evidence cannot produce green; normative minimums cannot be lowered; and changing a hypothesis needs the person. Today Trazo computes every result itself and refuses what lies outside its limits, but it does not yet contest hypotheses: closing that gap is the first item of [M0](#m0-protection-for-self-builders).
+**Trazo contests the AI.** An assistant that designs alone can call a simulation with wrong hypotheses (a firm soil nobody surveyed, a live load below the standard, a stronger concrete than the site will mix) and receive a result that looks safe. So the essential condition is that Trazo's deterministic rules check and contest every AI decision, the hypotheses included: the AI supplies inputs, never results; every hypothesis records its origin; a favourable hypothesis without evidence cannot produce green; normative minimums cannot be lowered; and changing a hypothesis needs the person. Trazo now records the origin of every hypothesis (#168), contests favourable ones without evidence (#169) and holds an assistant's favourable changes for the person (#171); the rest of this rule is in [M0](#m0-protection-for-self-builders).
 
 Trazo is not the engineer, and never pretends to be. **Professionals are allies:** Trazo prepares exact drawings, a calculation report and a review box so that an engineer or architect, often a volunteer or a public technical-assistance service, can review a family's project quickly and cheaply. When a decision has to choose between the family and the specialist, Trazo chooses the family.
 
@@ -73,7 +73,7 @@ Engineering features follow these rules. They apply to everything in milestones 
     - simple independent cross-checks (total weight against foundation capacity, span-to-depth rules) contest a detailed simulation that disagrees with them (#172);
     - every AI action reports what it made worse: checks that changed colour, structural elements removed and hypotheses changed, in the tool answer and on screen (#170).
 
-    Today Trazo meets only the first point. Through MCP, an assistant can still raise the soil pressure without a survey, raise the concrete strength or lower a live load and receive green. Closing that gap comes before every other item.
+    The first four points and the hypothesis changes are in place (#168, #169, #171); the action report (#170) and the cross-checks (#172) remain.
 
 ## Where Trazo stands
 
@@ -593,7 +593,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 168 | Hypothesis provenance: every structural and electrical hypothesis records who set it (Trazo's default, the person, the AI) and its evidence (a soil survey, a specification, the city's wind map), shown in *Segurança*, the review report and every MCP result | P0 | M | M0 | ✅ |
 | 169 | Contested hypotheses: a result that depends on a hypothesis more favourable than the conservative default without evidence is shown as contested (never green); NBR minimums for loads and the regional wind cannot be lowered; implausible combinations are flagged (for example, a soil pressure that contradicts the survey's soil type) | P0 | M | M0 | ✅ |
 | 170 | AI action report: each MCP edit returns and shows what it made worse (checks that changed colour, structural elements removed, hypotheses changed), so neither the assistant nor the person can miss it | P0 | S | M0 | 🟡 The plan log records each AI action and its origin; the safety difference is not reported |
-| 171 | Hypotheses need the person: an assistant's change to a hypothesis is proposed, not applied, until the person confirms it in the window with its evidence (the first use of approval mode, #46) | P0 | M | M0 | ⬜ |
+| 171 | Hypotheses need the person: an assistant's change to a hypothesis is proposed, not applied, until the person confirms it in the window with its evidence (the first use of approval mode, #46) | P0 | M | M0 | ✅ |
 | 172 | Independent cross-checks: simplified global checks (total weight against the sum of foundation capacities, span-to-depth rules for beams and slabs, column load per floor) contest a detailed simulation that disagrees beyond a tolerance | P1 | M | M0 | ⬜ |
 
 ### A. Construction site

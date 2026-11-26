@@ -446,8 +446,15 @@ impl FloorPlanApp {
                         crate::domain::protection::decimal(minimum, 1)
                     ));
                 }
+                let cited = text(args, "evidencia");
                 self.apply_change(Some("Nada mudou nos materiais e cargas."), |project| {
+                    let previous = project.clone();
                     project.structure.settings = settings;
+                    if let Some(cited) = &cited {
+                        crate::domain::protection::hypotheses::cite_evidence(
+                            &previous, project, cited,
+                        );
+                    }
                     Ok(Change::new("Materiais e cargas atualizados.".to_owned())
                         .data(json!({ "hipoteses": hypotheses_json(project) })))
                 })
@@ -650,8 +657,15 @@ impl FloorPlanApp {
                         "O V0 não pode ficar abaixo do vento da cidade do terreno ({city:.0} m/s, mapa de isopletas da NBR 6123)."
                     ));
                 }
+                let cited = text(args, "evidencia");
                 self.apply_change(Some("O vento já era esse."), |project| {
+                    let previous = project.clone();
                     project.set_wind(wind)?;
+                    if let Some(cited) = &cited {
+                        crate::domain::protection::hypotheses::cite_evidence(
+                            &previous, project, cited,
+                        );
+                    }
                     let report = project.structure_report();
                     Ok(Change::new(format!(
                         "Vento: V0 = {:.0} m/s, categoria {}.",

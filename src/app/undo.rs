@@ -2,7 +2,9 @@
 
 use super::{CreationState, FloorPlanApp};
 use crate::domain::model::Project;
-use crate::domain::protection::hypotheses::{HypothesisSource, track_changes};
+use crate::domain::protection::hypotheses::{
+    HypothesisSource, hold_favourable_changes, track_changes,
+};
 
 impl FloorPlanApp {
     pub(super) fn undo(&mut self) {
@@ -71,6 +73,9 @@ impl FloorPlanApp {
         // wind), so Trazo can contest a favourable value nobody backs up
         // (#168). Every edit passes here, from the window or from MCP.
         let source = if self.mcp_running.is_some() {
+            // An assistant cannot adopt a favourable hypothesis on its own:
+            // the change waits for the person, with evidence (#171).
+            hold_favourable_changes(&previous, &mut self.project);
             HypothesisSource::Assistant
         } else {
             HypothesisSource::Person

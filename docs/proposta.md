@@ -76,7 +76,7 @@ Por isso, a condição essencial do Trazo é esta: **o Trazo precisa ser capaz d
 6. **Conta de conferência.** O Trazo refaz contas simples e independentes (o peso total da casa contra o que as fundações aguentam, alturas mínimas de viga pelo vão) e contesta uma simulação detalhada que discorde delas.
 7. **Cada ação da IA diz o que piorou.** Se uma mudança da IA deixa verificações piores, remove um pilar ou altera uma hipótese, isso volta na resposta para a IA e aparece para você.
 
-**O que já existe e o que falta.** Hoje o Trazo já calcula todos os resultados por conta própria, recusa o que está fora dos limites dos métodos, lista as hipóteses no memorial e registra cada ação da IA. Mas **ainda não contesta hipóteses**: pela conexão com IA, ainda é possível aumentar a resistência do solo sem sondagem, aumentar o concreto ou diminuir cargas, e receber verde. Fechar essa brecha é a **primeira prioridade** do [roadmap](../ROADMAP.md). Enquanto isso: **desconfie de um verde que dependa de solo, concreto ou cargas alterados pela IA** e confira as hipóteses na janela *Segurança* e no memorial.
+**O que já existe.** O Trazo calcula todos os resultados por conta própria, recusa o que está fora dos limites dos métodos, registra a origem e a prova de cada hipótese, contesta as hipóteses otimistas sem prova e as que ficam abaixo da norma (elas aparecem em vermelho, e nenhum resultado que dependa delas fica verde), e guarda como proposta qualquer hipótese otimista que a IA tente mudar, até você confirmar com a prova na janela *Segurança* › *Hipóteses de cálculo*. O que ainda falta está no [roadmap](../ROADMAP.md).
 
 ## Como o Trazo protege
 

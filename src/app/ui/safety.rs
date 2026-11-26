@@ -39,6 +39,7 @@ impl FloorPlanApp {
         let mut filter: u8 = ctx.data(|d| d.get_temp(filter_id)).unwrap_or(0);
         let summary: SafetySummary = safety_summary(&self.project);
         let mut export = false;
+        let mut hypothesis_action = None;
         egui::Window::new("Segurança · semáforo dos resultados")
             .open(&mut open)
             .collapsible(false)
@@ -102,6 +103,10 @@ impl FloorPlanApp {
                 }
                 ui.separator();
                 egui::ScrollArea::vertical().show(ui, |ui| {
+                    // Who set each hypothesis, what Trazo contests and what the
+                    // assistant proposed (#168, #169, #171).
+                    hypothesis_action = super::hypotheses::show(ui, &self.project);
+                    ui.add_space(6.0);
                     for (index, verdict) in summary.verdicts.iter().enumerate() {
                         let light = verdict.light();
                         if filter == 1 && light == Light::Green {
@@ -171,6 +176,9 @@ impl FloorPlanApp {
         });
         if export {
             self.export_presizing_report();
+        }
+        if let Some(action) = hypothesis_action {
+            self.apply_hypothesis_action(action);
         }
         if !open {
             self.active_doc_dialog = DocDialog::None;

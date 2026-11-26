@@ -25,6 +25,7 @@ mod markups;
 mod openings_fixtures;
 mod paths;
 mod project_docs;
+mod protection;
 mod resources;
 mod rooms_walls;
 mod shapes;
@@ -99,6 +100,7 @@ impl FloorPlanApp {
                 )
             }
         };
+        let output = self.report_protection(&before, output);
         self.revalidate_selection();
         self.sync_inspector_fields();
         self.mcp_running = None;

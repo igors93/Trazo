@@ -69,7 +69,7 @@ An AI that designs alone can call a simulation with **wrong hypotheses** (a firm
 - **Independent cross-checks** contest a detailed simulation that disagrees with simple global checks.
 - **Every AI action reports what it made worse.**
 
-**Status:** today Trazo already computes every result itself, refuses what lies outside its methods' limits, lists the hypotheses in the report and logs every AI action. It does **not yet contest hypotheses**: through MCP an assistant can still raise the soil pressure without a survey or lower a live load and receive green. Closing this gap is the first item of the [roadmap](ROADMAP.md#m0-protection-for-self-builders).
+**Status:** Trazo computes every result itself, refuses what lies outside its methods' limits, records the origin and evidence of every hypothesis (#168), contests favourable hypotheses without evidence and values below the standards (#169), and keeps an assistant's favourable hypothesis changes as proposals until the person confirms them with evidence in *Segurança* (#171). Reporting what each AI action made worse (#170) and independent cross-checks (#172) come next in the [roadmap](ROADMAP.md#m0-protection-for-self-builders).
 
 ## How Trazo protects
 
