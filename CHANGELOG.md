@@ -55,6 +55,8 @@ All notable changes to Trazo are recorded here. The format follows [Keep a Chang
 - Separate buildings on one lot (a house, a leisure pavilion, a garage) are screened for global wind stability one by one, tied by beams, roofs, timber eave beams and room walls, instead of as one building as long as the whole lot; each direction reports the block that governs (`bloco` in `estabilidade_global`).
 - A frame column in tension under wind is no longer red when every column of the frame stands on a footing whose own weight and the soil over it hold the tension (vertical prism, 15 kN/m³, ×0.9; NBR 6122 shallow foundations in tension).
 - A concrete beam that runs along a wall over an opening and reaches down to it is the opening's lintel (*viga-verga*): no masonry lintel is asked for under it.
+- A column standing in no wall, under a roof and outside any room with a slab (a garage, a porch, a pavilion) now reaches the roof plane at its position instead of stopping at the storey height.
+- A column between two supports of the same roof on one concrete beam line (the bond beam on a side wall under a mono-pitch roof) is now braced at the top by that roof, and its wind joins the roof's bracing demand; it is a cantilever again when the bracing fails.
 - `definir_telhado` accepts `contraventamento_barra_mm` (and `contraventamento_x`): Trazo computes the X-bracing resistance `n·As·fyd/√2` from the bar the designer specifies instead of taking a resistance value.
 
 ## [0.1.0] - 2026-11-25

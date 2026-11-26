@@ -397,6 +397,36 @@ fn union(parent: &mut HashMap<u64, u64>, a: u64, b: u64) {
     }
 }
 
+/// The roof that holds the top of a column it does not bear on: the column
+/// stands between two of the roof's supports on one concrete beam line (the
+/// bond beam on top of a side wall under a mono-pitch roof), so the beam ties
+/// its top to the roof's braced plane. Its wind then joins that roof's
+/// bracing demand, and it is a cantilever again if the bracing fails.
+fn roof_tying_column(report: &StructureReport, column_id: u64) -> Option<u64> {
+    let label_of = |id: u64| {
+        report
+            .columns
+            .iter()
+            .find(|c| c.id == id)
+            .map(|c| c.label.as_str())
+    };
+    report.roofs.iter().find_map(|roof| {
+        let supports = |id: u64| {
+            label_of(id).is_some_and(|label| {
+                roof.reactions
+                    .iter()
+                    .any(|r| r.support.as_deref() == Some(label))
+            })
+        };
+        report.beams.iter().find_map(|line| {
+            let at = line.joints.iter().position(|j| *j == column_id)?;
+            let before = line.joints[..at].iter().any(|j| supports(*j));
+            let after = line.joints[at + 1..].iter().any(|j| supports(*j));
+            (before && after).then_some(roof.id)
+        })
+    })
+}
+
 /// How badly a screening row fails: failing first, then the worst ratio.
 fn severity(row: &GlobalStabilityResult) -> (u8, f64) {
     let ratios = [
@@ -1102,7 +1132,8 @@ impl Project {
                         .iter()
                         .any(|x| x.support.as_deref() == Some(result.label.as_str()))
                 })
-                .map(|r| r.id);
+                .map(|r| r.id)
+                .or_else(|| roof_tying_column(report, result.id));
             let braced = roof_id.is_some();
             let moment = if braced {
                 w * height * height / 8.0
@@ -1516,6 +1547,63 @@ mod tests {
             .unwrap();
         let with = project.structure_report().wind.global[0].gravity_kn;
         assert!(with > without + 1.0, "{without} → {with}");
+    }
+
+    #[test]
+    fn a_side_wall_column_tied_by_the_bond_beam_is_braced_by_a_mono_pitch_roof() {
+        let garage = |with_beams: bool| {
+            let mut project = Project::default();
+            project.set_terrain(Point::new(-1.0, -1.0), Point::new(11.0, 10.0));
+            let mut middles = Vec::new();
+            for x in [0.07, 9.81] {
+                project
+                    .add_wall(Point::new(x, 0.0), Point::new(x, 8.44))
+                    .unwrap();
+                let ids: Vec<u64> = [0.07, 4.22, 8.37]
+                    .iter()
+                    .map(|y| {
+                        let id = project
+                            .add_fixture(FixtureKind::Column, Point::new(x, *y), 0.30, 0.20, 0)
+                            .unwrap();
+                        project
+                            .add_fixture(FixtureKind::Footing, Point::new(x, *y), 0.80, 0.80, 0)
+                            .unwrap();
+                        id
+                    })
+                    .collect();
+                if with_beams {
+                    project.add_beam(ids[0], ids[1], 0.20, 0.40).unwrap();
+                    project.add_beam(ids[1], ids[2], 0.20, 0.40).unwrap();
+                }
+                middles.push(ids[1]);
+            }
+            let mut roof = Roof::new(
+                Point::new(0.0, 0.0),
+                Point::new(9.88, 8.44),
+                RoofSide::North,
+                3.87,
+                2.85,
+            );
+            roof.lateral_bracing_kn = Some(1000.0);
+            let roof = project.add_roof(roof).unwrap();
+            project.fit_walls_to_roof(roof).unwrap();
+            let report = project.structure_report();
+            middles
+                .iter()
+                .map(|id| {
+                    report
+                        .wind
+                        .columns
+                        .iter()
+                        .find(|c| c.id == *id)
+                        .map(|c| c.braced)
+                })
+                .collect::<Vec<_>>()
+        };
+        // Tied by the bond beam to the roof's front and back supports.
+        assert_eq!(garage(true), vec![Some(true), Some(true)]);
+        // Without the beam the middle column stands alone under the wind.
+        assert_eq!(garage(false), vec![Some(false), Some(false)]);
     }
 
     #[test]

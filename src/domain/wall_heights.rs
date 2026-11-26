@@ -152,7 +152,35 @@ impl Project {
             .fold(None, |tallest: Option<f64>, h| {
                 Some(tallest.map_or(h, |t| t.max(h)))
             })
+            .or_else(|| self.free_column_roof_height(column.center))
             .unwrap_or(self.wall_height)
+    }
+
+    /// A column standing in no wall, under a roof and outside any room with
+    /// a slab (a garage, a porch, a pavilion) reaches the roof plane there.
+    fn free_column_roof_height(&self, at: Point) -> Option<f64> {
+        let under_slab = self.structure.slabs.iter().any(|slab| {
+            self.rooms
+                .iter()
+                .find(|room| room.id == slab.room_id)
+                .and_then(|room| self.room_polygon(room))
+                .is_some_and(|outline| super::geometry::polygon_contains_point(&outline, at))
+        });
+        if under_slab {
+            return None;
+        }
+        self.structure
+            .roofs
+            .iter()
+            .filter(|roof| {
+                at.x >= roof.min.x - 1e-6
+                    && at.x <= roof.max.x + 1e-6
+                    && at.y >= roof.min.y - 1e-6
+                    && at.y <= roof.max.y + 1e-6
+            })
+            .map(|roof| roof.height_at(at))
+            .filter(|h| h.is_finite() && *h >= MIN_WALL_HEIGHT_M)
+            .reduce(f64::max)
     }
 }
 
@@ -181,6 +209,36 @@ pub fn side_for_slenderness(height: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_free_column_under_a_mono_pitch_roof_reaches_the_roof() {
+        use crate::domain::fixtures::FixtureKind;
+        use crate::domain::roof::{Roof, RoofSide};
+        let mut project = Project::default();
+        project.set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 10.0));
+        let column = project
+            .add_fixture(FixtureKind::Column, Point::new(5.0, 4.0), 0.20, 0.30, 0)
+            .unwrap();
+        let free = |p: &Project| {
+            let fixture = *p.fixtures.iter().find(|f| f.id == column).unwrap();
+            p.column_height(&fixture)
+        };
+        // No roof: the storey height.
+        assert!((free(&project) - project.wall_height).abs() < 1e-9);
+        // A mono-pitch roof 3.87 m high at x = 0 and 2.85 m at x = 10.
+        project
+            .add_roof(Roof::new(
+                Point::new(0.0, 0.0),
+                Point::new(10.0, 8.0),
+                RoofSide::West,
+                3.87,
+                2.85,
+            ))
+            .unwrap();
+        let roof = project.structure.roofs[0].clone();
+        assert!((free(&project) - roof.height_at(Point::new(5.0, 4.0))).abs() < 1e-9);
+        assert!(free(&project) > project.wall_height);
+    }
     use crate::domain::fixtures::FixtureKind;
 
     fn project_with_wall() -> (Project, u64) {
