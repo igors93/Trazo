@@ -718,6 +718,10 @@ impl FloorPlanApp {
             },
             "premissas": crate::domain::verdict::assumptions(&self.project),
             "hipoteses": hypotheses_json(&self.project),
+            "riscos_terreno": {
+                "com_risco": self.project.protection.site_risks.risky().iter().map(|r| r.key()).collect::<Vec<_>>(),
+                "sem_resposta": self.project.protection.site_risks.unanswered().iter().map(|r| r.key()).collect::<Vec<_>>(),
+            },
             "onde_buscar_ajuda": crate::domain::protection::help::help_lines(
                 &self.project.protection.help_contacts,
             ),

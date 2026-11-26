@@ -51,6 +51,8 @@ pub fn structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Ve
     let mut verdicts = limited_structure_verdicts(project, report);
     // A second, simpler opinion contests a simulation it disagrees with (#172).
     super::cross_checks::cross_check(project, report, &mut verdicts);
+    // What Trazo cannot see on the site is asked, never assumed (#156).
+    super::site_risks::site_risks(project, &mut verdicts);
     // A result that rests on a hypothesis Trazo contests is never green (#169).
     super::hypotheses::contest(project, &mut verdicts);
     verdicts

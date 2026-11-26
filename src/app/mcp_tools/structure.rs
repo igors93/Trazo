@@ -378,6 +378,65 @@ impl FloorPlanApp {
                 }
                 Ok(Change::new("Laje removida.".to_owned()))
             }),
+            "riscos_terreno" => {
+                use crate::domain::protection::hypotheses::HypothesisSource;
+                use crate::domain::protection::site_risks::SiteRisk;
+                let mut answers = Vec::new();
+                for risk in SiteRisk::ALL {
+                    match args.get(risk.key()) {
+                        Some(Value::Bool(yes)) => answers.push((risk, Some(*yes))),
+                        Some(Value::Null) => answers.push((risk, None)),
+                        Some(_) => {
+                            return Err(format!(
+                                "'{}' deve ser true (sim), false (não) ou null (não sei).",
+                                risk.key()
+                            ));
+                        }
+                        None => {}
+                    }
+                }
+                let questions = |project: &crate::domain::model::Project| {
+                    let risks = &project.protection.site_risks;
+                    SiteRisk::ALL
+                        .iter()
+                        .map(|&risk| {
+                            json!({
+                                "chave": risk.key(),
+                                "pergunta": risk.question(),
+                                "resposta": risks.answer(risk).map(|a| a.yes),
+                                "respondido_por": risks.answer(risk).map(|a| a.by.key()),
+                                "vale": risks.effective(risk),
+                                "risco": risk.danger(),
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                };
+                if answers.is_empty() {
+                    return Ok(ToolOutput::ok(
+                        "Perguntas sobre o terreno: faça cada uma à pessoa e registre só o que ela responder. Um \"não\" dado pela IA não vale até a pessoa confirmar na janela Segurança.",
+                    )
+                    .with_structured(json!({ "perguntas": questions(&self.project) })));
+                }
+                self.apply_change(Some("As respostas já eram essas."), |project| {
+                    for (risk, yes) in &answers {
+                        project
+                            .protection
+                            .site_risks
+                            .set(*risk, *yes, HypothesisSource::Assistant);
+                    }
+                    let risky = project.protection.site_risks.risky();
+                    let message = if risky.is_empty() {
+                        "Respostas registradas. Um \"não\" dado pela IA só vale depois que a pessoa confirmar na janela Segurança.".to_owned()
+                    } else {
+                        format!(
+                            "Há risco no terreno: {} As fundações ficam vermelhas até um profissional avaliar. {}",
+                            risky.iter().map(|r| r.danger()).collect::<Vec<_>>().join(" "),
+                            crate::domain::protection::help::HELP_SENTENCE
+                        )
+                    };
+                    Ok(Change::new(message).data(json!({ "perguntas": questions(project) })))
+                })
+            }
             "configurar" => {
                 let mut settings = self.project.structure.settings;
                 if let Some(raw) = text(args, "classe_solo") {

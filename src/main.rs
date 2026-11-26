@@ -1,4 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// The MCP tool catalogue is one large `json!` literal per tool.
+#![recursion_limit = "256"]
 
 mod app;
 mod bench;

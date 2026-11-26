@@ -876,7 +876,7 @@ fn catalogue() -> Vec<Tool> {
             properties: merge(
                 merge(
                     json!({
-                            "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_bloco_broca", "editar_bloco_broca", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "configurar_sobreposicao", "simular_whatif", "definir_balanco", "remover_balanco", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "gerar_fundacao_paredes", "definir_fundacao_parede", "remover_fundacao_paredes", "definir_sondagem", "remover_sondagem", "simular_fundacoes", "definir_telhado", "remover_telhado", "ajustar_paredes_telhado", "inserir_mourao", "configurar_vento", "vista"], "description": "O que fazer." },
+                            "acao": { "type": "string", "enum": ["gerar_estrutura", "inserir_pilar", "inserir_sapata", "inserir_bloco_broca", "editar_bloco_broca", "inserir_carga", "editar_carga", "remover_carga", "ligar_pilares", "apoiar_em_viga", "editar_viga", "remover_viga", "definir_laje", "remover_laje", "configurar", "configurar_sobreposicao", "simular_whatif", "definir_balanco", "remover_balanco", "ajustar_sapatas", "gerar_vigas_alavanca", "ligar_viga_alavanca", "remover_viga_alavanca", "gerar_fundacao_paredes", "definir_fundacao_parede", "remover_fundacao_paredes", "definir_sondagem", "remover_sondagem", "simular_fundacoes", "definir_telhado", "remover_telhado", "ajustar_paredes_telhado", "inserir_mourao", "configurar_vento", "riscos_terreno", "vista"], "description": "O que fazer." },
                         "x": number("Para inserir pilar, sapata, bloco sobre broca, mourão ou carga, ou o canto do telhado: posição x, em metros."),
                         "y": number("Para inserir pilar, sapata, bloco sobre broca, mourão ou carga, ou o canto do telhado: posição y, em metros."),
                         "largura_cm": number("Largura do pilar, da sapata, do bloco sobre broca ou da viga, em cm."),
@@ -906,6 +906,12 @@ fn catalogue() -> Vec<Tool> {
                         "revestimento_kn_m2": number("Para configurar: revestimento e contrapiso, kN/m²."),
                         "peso_alvenaria_kn_m3": number("Para configurar: peso específico da alvenaria em kN/m³ (8 a 25; padrão 13)."),
                         "sobrecarga_por_comodo": boolean("Para configurar: aplica sobrecarga mínima NBR 6120 por uso de cada cômodo."),
+                        "encosta": boolean("Para riscos_terreno: o terreno fica em morro ou encosta? Pergunte à pessoa; null = não sei."),
+                        "perto_de_agua": boolean("Para riscos_terreno: perto de córrego, rio, canal ou área que alaga?"),
+                        "aterro": boolean("Para riscos_terreno: o chão é aterro (terra trazida, entulho, lixão antigo)?"),
+                        "agua_no_solo": boolean("Para riscos_terreno: brota água do chão ou ele fica encharcado?"),
+                        "trincas_vizinhos": boolean("Para riscos_terreno: as casas vizinhas têm rachaduras?"),
+                        "escavacao_vizinho": boolean("Para riscos_terreno: vai escavar perto do muro ou da fundação de um vizinho? Um \"sim\" deixa as fundações vermelhas; um \"não\" da IA só vale após a pessoa confirmar."),
                         "evidencia": string("Para configurar e configurar_vento: de onde vem o valor (laudo de sondagem, nota fiscal do concreto, ensaio, fonte). Um valor mais favorável que o seguro nunca é aplicado direto: fica como proposta até a pessoa confirmar com a prova na janela Segurança."),
                         "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Para vista." },
                     }),

@@ -7,6 +7,7 @@ pub mod action_report;
 pub mod cross_checks;
 pub mod help;
 pub mod hypotheses;
+pub mod site_risks;
 
 use serde::{Deserialize, Serialize};
 
@@ -20,11 +21,14 @@ pub struct Protection {
     /// Local places to ask for help, typed by the person (#159).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub help_contacts: Vec<String>,
+    /// What Trazo cannot see on the site, as the person answered (#156).
+    #[serde(skip_serializing_if = "site_risks::SiteRisks::is_empty")]
+    pub site_risks: site_risks::SiteRisks,
 }
 
 impl Protection {
     pub fn is_empty(&self) -> bool {
-        self.hypotheses.is_empty() && self.help_contacts.is_empty()
+        self.hypotheses.is_empty() && self.help_contacts.is_empty() && self.site_risks.is_empty()
     }
 }
 

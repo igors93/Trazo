@@ -6,6 +6,7 @@ mod codes;
 mod cross_checks;
 mod electrical;
 mod hypotheses;
+mod site_risks;
 mod structure;
 
 #[cfg(test)]
