@@ -773,6 +773,13 @@ impl FloorPlanApp {
             ui.close();
         }
         menu_separator(ui);
+        if menu_item(ui, Some(Icon::ExportPdf), "Conjunto para obra A3 (PDF)...", "")
+            .on_hover_text("Planta cotada, locação, primeira fiada, elevações das paredes, cobertura e quantitativos, numerados, num só PDF")
+            .clicked()
+        {
+            self.export_construction_set();
+            ui.close();
+        }
         if menu_item(
             ui,
             Some(Icon::ExportPdf),

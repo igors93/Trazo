@@ -85,7 +85,7 @@ Engineering features follow these rules. They apply to everything in milestones 
 | Documentation (#26–#37, #71, #151–#155) | 🟡 Core complete (#26–#37: associative dimensions, layers, sheets, scales, title blocks, hatches, schedules, schematic sections, sheet sets, ABNT styles); multi-viewport mixed-scale sheet composer, executive sections, site/roof/location plans, urban occupancy/permeability tables and 3D sheet perspective remain (#71, #151–#155) |
 | Exchange (#38–#45, #70) | ✅ Complete: DXF and DWG, SVG and CSV, print to scale, image and PDF underlays, blocks with attributes, external references, version comparison |
 | Release (#58–#64, #77–#81) | 🟡 CI, licence, property tests, migrations, release binaries, crash reports, Windows installer and samples done; schema, signing and CI on Windows and macOS remain |
-| Construction site (#53–#57) | 🟡 Building blocks exist (first course per wall, block estimate, sheets); the site deliverables do not |
+| Construction site (#53–#57, #71) | ✅ Complete: opening dimension chains, first-course plan and wall elevations with block paging, setting-out plan, construction quantities, roof plan with gutters and downpipes, and the one-click A3 construction set |
 | Electrical design (#88–#91) | ✅ Devices, NBR 5410 forecast, circuits, conduits with wiring, phase balancing, voltage drop, demand, service entrance, single-line diagram |
 | Structure (#92–#94, #105–#117, #143–#147, #150) | ✅ Complete from foundation to roof (M4 & M5): columns/beams/slabs/footings, 2D plane-frame analysis with NBR 6120/6123/8681 combinations, coupled slab+beam grid analogy, overlays, What-if, background cache, reinforcement & steel schedule, lintels/sills & NBR 16868 masonry, SPT & 4-way foundation study, ground beams & strip footings, boundary balance beams, per-wall sloped tops, timber roofs (mono-pitch/gable/hip/trusses/overhangs/uplift), timber posts & eave beams, stairs/balconies/cantilevers, tall-wall wind/sliding/bolts/ties/jambs and the end-to-end gourmet reference project (`examples/area-gourmet.json`) |
 | Discipline views (#96) | ✅ Architecture, electrical, structure, foundations and prepared plumbing views on synchronized linked tabs sharing a single live model; hydraulic pipe calculations join with #72 |
@@ -604,7 +604,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 54 | First-course plan and wall elevations with block paging: whole, half and cut blocks, lintels and sills | P1 | L | M2 | ✅ |
 | 55 | Setting-out plan (*locação*): cumulative dimensions from an origin on the lot, for marking out the building | P1 | M | M2 | ✅ |
 | 56 | Construction quantities: blocks with waste, half blocks and U-blocks, lintels per opening, laying mortar, plaster, flooring and wall finishes per room | P0 | M | M2 | ✅ |
-| 57 | One-click construction set: A3 at 1:50 with dimensions, openings, schedules, first course, setting-out and legend | P0 | M | M2 | 🟡 Sheets, scales, templates and title blocks exist |
+| 57 | One-click construction set: A3 at 1:50 with dimensions, openings, schedules, first course, setting-out and legend | P0 | M | M2 | ✅ |
 | 71 | Roof plan (*planta de cobertura*): roof planes (mono-pitch, gable, hip), slopes with the tile's minimum, ridges, gutters and downpipes | P1 | L | M2 | ✅ Downpipes by the 1 cm²/m² rule; full NBR 10844 sizing joins the rainwater item |
 
 ### B. Engineering safety and trust

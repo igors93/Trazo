@@ -11,7 +11,7 @@ impl FloorPlanApp {
     pub(super) fn tool_export(&self, args: &Value) -> Result<ToolOutput, String> {
         let format = text(args, "formato")
             .map(|format| format.to_lowercase())
-            .ok_or("Informe 'formato': pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, caderno_familia_pdf, primeira_fiada_svg, paginacao_pdf, locacao_svg, locacao_pdf, cobertura_svg, cobertura_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, grelha_svg, grelha_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.")?;
+            .ok_or("Informe 'formato': pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, caderno_familia_pdf, conjunto_obra_pdf, primeira_fiada_svg, paginacao_pdf, locacao_svg, locacao_pdf, cobertura_svg, cobertura_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, grelha_svg, grelha_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.")?;
         let (ext, suffix) = match format.as_str() {
             "pdf" => ("pdf", ""),
             "pdf_abas" => ("pdf", "-abas"),
@@ -23,6 +23,7 @@ impl FloorPlanApp {
             "prancha_svg" => ("svg", "-prancha"),
             "memorial_pdf" => ("pdf", "-memorial"),
             "caderno_familia_pdf" => ("pdf", "-caderno-da-familia"),
+            "conjunto_obra_pdf" => ("pdf", "-conjunto-para-obra"),
             "primeira_fiada_svg" => ("svg", "-primeira-fiada"),
             "paginacao_pdf" => ("pdf", "-paginacao"),
             "locacao_svg" => ("svg", "-locacao"),
@@ -45,7 +46,7 @@ impl FloorPlanApp {
             "tabela_aco_csv" => ("csv", "-tabela-aco"),
             "csv" => ("csv", "-quadros"),
             _ => {
-                return Err("Formato inválido. Use: pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, caderno_familia_pdf, primeira_fiada_svg, paginacao_pdf, locacao_svg, locacao_pdf, cobertura_svg, cobertura_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, grelha_svg, grelha_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.".to_owned());
+                return Err("Formato inválido. Use: pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, caderno_familia_pdf, conjunto_obra_pdf, primeira_fiada_svg, paginacao_pdf, locacao_svg, locacao_pdf, cobertura_svg, cobertura_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, grelha_svg, grelha_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.".to_owned());
             }
         };
         let explicit_discipline = text(args, "disciplina");
@@ -88,6 +89,13 @@ impl FloorPlanApp {
                 )?);
             }
             "prancha_svg" => export::export_scaled_svg_for_view(&self.project, &view, &path)?,
+            "conjunto_obra_pdf" => {
+                let pages = crate::io::construction::set::export_construction_set_pdf(
+                    &self.project,
+                    &path,
+                )?;
+                extra_pages = Some(pages);
+            }
             "primeira_fiada_svg" => {
                 let markup = crate::io::construction::paging::first_course_svg(&self.project);
                 std::fs::write(&path, markup)
@@ -218,6 +226,10 @@ impl FloorPlanApp {
         let msg = match (format.as_str(), extra_pages) {
             ("memorial_pdf", Some(pages)) => format!(
                 "Memorial técnico ({pages} páginas) exportado em {}",
+                path.display()
+            ),
+            ("conjunto_obra_pdf", Some(pages)) => format!(
+                "Conjunto para obra ({pages} prancha(s) A3) exportado em {}",
                 path.display()
             ),
             ("paginacao_pdf", Some(pages)) => format!(

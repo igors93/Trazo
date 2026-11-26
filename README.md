@@ -124,6 +124,9 @@ Trazo does not promise that a house will not fall. It does everything it can so 
 - Automatic circuits and a load schedule with current, wire gauge, breaker and RCD
 - Conduits with wiring, phase balancing, voltage drop and single-line diagram
 
+**Construction site**
+- One-click A3 construction set: dimensioned plan, setting-out, first course and wall elevations with block paging, roof plan with gutters and downpipes, quantities
+
 **Building materials**
 - Construction quantities: blocks with waste, half blocks, lintels, mortar, plaster, finishes
 - Bar schedule with a CA-50 summary by diameter

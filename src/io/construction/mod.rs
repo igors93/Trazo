@@ -6,6 +6,7 @@
 
 pub mod paging;
 pub mod roof_plan;
+pub mod set;
 pub mod setting_out;
 
 use std::fmt::Write as _;

@@ -320,4 +320,23 @@ impl FloorPlanApp {
                 Err(error) => format!("Erro ao exportar a cobertura: {error}"),
             };
     }
+
+    /// Saves the one-click construction set (#57) as a PDF.
+    pub(super) fn export_construction_set(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Documento PDF", &["pdf"])
+            .set_file_name(format!("{}-conjunto-para-obra.pdf", self.document_name()))
+            .save_file()
+        else {
+            return;
+        };
+        self.message =
+            match crate::io::construction::set::export_construction_set_pdf(&self.project, &path) {
+                Ok(pages) => format!(
+                    "Conjunto para obra ({pages} prancha(s) A3) salvo em {}",
+                    path.display()
+                ),
+                Err(error) => format!("Erro ao exportar o conjunto para obra: {error}"),
+            };
+    }
 }
