@@ -123,10 +123,14 @@ pub(crate) fn wrap(text: &str, chars: usize) -> Vec<String> {
     crate::io::report::wrap(text, chars)
 }
 
+/// The plumbing sheets, in order, waiting for their title blocks.
+pub(crate) fn plumbing_drawings(project: &Project) -> Vec<Drawn> {
+    points::points_drawing(project).into_iter().collect()
+}
+
 /// The plumbing sheets, numbered `01/NN`.
 pub fn plumbing_pages(project: &Project) -> Vec<String> {
-    let drawn: Vec<Drawn> = points::points_drawing(project).into_iter().collect();
-    finish_all(project, drawn)
+    finish_all(project, plumbing_drawings(project))
 }
 
 /// Writes the plumbing sheets as one PDF; returns the page count.

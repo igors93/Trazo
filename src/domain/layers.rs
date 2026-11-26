@@ -79,6 +79,8 @@ pub enum LayerCategory {
     Electrical,
     /// Columns, beams, slabs and footings (the formwork plan).
     Structure,
+    /// Water, sewage, rain and gas (#96).
+    Plumbing,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -215,6 +217,16 @@ pub fn default_layers() -> Vec<Layer> {
             visible: true,
             locked: false,
             category: Some(LayerCategory::Structure),
+        },
+        Layer {
+            id: 11,
+            name: "Instalações hidrossanitárias".to_owned(),
+            color: [31, 111, 209],
+            line_weight_mm: 0.25,
+            line_type: LineType::Solid,
+            visible: true,
+            locked: false,
+            category: Some(LayerCategory::Plumbing),
         },
     ]
 }
@@ -456,7 +468,7 @@ mod tests {
     #[test]
     fn default_layers_support_visibility_lock_custom_layers_and_assignment() {
         let mut project = Project::default();
-        assert_eq!(project.layers.len(), 10);
+        assert_eq!(project.layers.len(), 11);
         assert!(project.category_visible(LayerCategory::Walls));
         assert!(!project.category_locked(LayerCategory::Walls));
 

@@ -300,6 +300,7 @@ fn multi_resolution_layout_tabs_inspector_and_help_dialog_render_cleanly() {
         RibbonTab::Edit,
         RibbonTab::Interiors,
         RibbonTab::Electrical,
+        RibbonTab::Plumbing,
         RibbonTab::Structure,
         RibbonTab::Drafting,
         RibbonTab::View,

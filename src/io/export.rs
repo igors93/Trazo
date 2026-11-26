@@ -31,6 +31,7 @@ pub mod sheet;
 
 pub use sheet::{export_scaled_pdf_for_view, export_scaled_pdf_views, export_scaled_svg_for_view};
 mod markups;
+mod plumbing;
 
 /// Visual configuration of one open view/tab to export, matching how Trazo
 /// displays synchronized workspace tabs on screen (discipline visibility,
@@ -268,7 +269,17 @@ fn write_discipline_overlay_svg(
                 }
             }
         }
-        Discipline::Plumbing | Discipline::All | Discipline::Architecture => {}
+        Discipline::Plumbing => plumbing::write_plumbing(
+            svg,
+            project,
+            point,
+            &plumbing::Marks {
+                radius: (pixels_per_meter * 0.05).clamp(3.0, 6.0),
+                stroke: 1.6,
+                font: Some((pixels_per_meter * 0.11).clamp(9.0, 13.0)),
+            },
+        ),
+        Discipline::All | Discipline::Architecture => {}
     }
     svg.push_str("</g>\n");
 }

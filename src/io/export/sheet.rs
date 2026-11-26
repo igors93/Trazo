@@ -229,7 +229,17 @@ fn write_sheet_discipline_overlay(
                 );
             }
         }
-        Discipline::Plumbing | Discipline::All | Discipline::Architecture => {}
+        Discipline::Plumbing => super::plumbing::write_plumbing(
+            svg,
+            project,
+            pt,
+            &super::plumbing::Marks {
+                radius: (mm_per_m * 0.018).clamp(0.6, 1.1),
+                stroke: 0.3,
+                font: Some((mm_per_m * 0.04).clamp(1.4, 2.2)),
+            },
+        ),
+        Discipline::All | Discipline::Architecture => {}
     }
     svg.push_str("</g>\n");
 }

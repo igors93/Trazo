@@ -25,6 +25,7 @@ mod labels;
 mod markups;
 mod notes;
 pub mod overlay;
+mod plumbing;
 mod preview;
 mod sim_overlay;
 mod views;
@@ -440,6 +441,7 @@ pub fn paint(painter: &Painter, view: ViewTransform, project: &Project, options:
         labels::paint_conduits(painter, view, project);
         labels::paint_electrical_tags(painter, view, project);
     }
+    plumbing::paint_plumbing(painter, view, project);
     drawings::paint_drawings(painter, view, project, marks);
     paint_markups(painter, view, project);
 

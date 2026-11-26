@@ -97,8 +97,8 @@ fn paint_foundations_overlay(
     super::sim_overlay::paint_simulation_overlay(painter, view, project);
 }
 
-/// Draws only sanitary/plumbing fixtures on top of the faded architecture
-/// (prepared view for hydraulic installations #72).
+/// Draws the fixtures that take water and the plumbing points on top of
+/// the faded architecture (*Planta Hidrossanitária*, #96).
 fn paint_plumbing_overlay(
     painter: &Painter,
     view: ViewTransform,
@@ -116,6 +116,7 @@ fn paint_plumbing_overlay(
         };
         paint_fixture(painter, view, fixture, tone);
     }
+    super::plumbing::paint_plumbing(painter, view, project);
 }
 
 /// Draws the focused discipline's overlay on top of a faded architectural veil.

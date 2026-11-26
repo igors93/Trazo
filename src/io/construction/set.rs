@@ -109,6 +109,7 @@ pub fn construction_set_pages(project: &Project) -> Vec<String> {
     if let Some(roof) = roof_plan_drawing(project) {
         drawn.push(roof);
     }
+    drawn.extend(super::plumbing::plumbing_drawings(project));
     let quantities = crate::domain::quantities::takeoff_sheet_pages(project, true);
     let total = 1 + drawn.len() + quantities.len();
     let plan_project = set_plan_project(project);

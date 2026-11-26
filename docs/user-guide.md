@@ -35,7 +35,7 @@ Conventions: lengths are in metres, Portuguese decimal commas are accepted in ev
 | Area | What it holds |
 | --- | --- |
 | **Menu bar** | *Arquivo* (File), *Editar* (Edit), *Exibir* (View), *Desenhar* (Draw) and *Ajuda* (Help), each entry with its icon and shortcut; quick buttons for new, open, save, undo and redo; the project name with a dot that marks unsaved changes; and **Exportar** (Export). |
-| **Ribbon** | Nine tabs: *Arquitetura* (architecture), *Editar* (edit), *Interiores* (interiors), *Elétrica* (electrical), *Estrutura* (structure), *Desenho* (2D drafting), *Marcações* (review marks), *Vista* (view) and *Saída* (output). Click the active tab, or the arrow at the right, to fold the ribbon and gain drawing space. |
+| **Ribbon** | Ten tabs: *Arquitetura* (architecture), *Editar* (edit), *Interiores* (interiors), *Elétrica* (electrical), *Hidráulica* (plumbing), *Estrutura* (structure), *Desenho* (2D drafting), *Marcações* (review marks), *Vista* (view) and *Saída* (output). Click the active tab, or the arrow at the right, to fold the ribbon and gain drawing space. |
 | **Options bar** | The active tool and its settings: the lot's exact width and length, the wall material and block size, the modulation switch, the default door width, the selection filter, and so on. |
 | **Project browser** (left) | Views, lot, rooms, walls, doors, windows, open spans, fixtures, drawings, groups and constraints, with areas and lengths. A text filter, foldable groups, click to select, double-click to zoom to an element. Empty categories stay as quiet one-line rows. |
 | **Properties** (right) | Foldable sections for the selected element (dimensions, masonry, frame type, finishes, location, relations). With nothing selected: the area schedule, the door and window schedule, the masonry estimate, the occupancy rate and the view settings. |
@@ -320,18 +320,19 @@ The report pages are A4 and numbered; the drawings follow at their own sheet siz
 
 ## Water, sewage and rain
 
-The plumbing design starts from the fixtures you place with the *Interiores* tools: toilet, washbasin, shower, kitchen sink, washing machine, bathtub and stove. Nothing else needs drawing.
+The plumbing design starts from the fixtures you place with the *Interiores* or *Hidráulica* tabs: toilet, washbasin, shower, kitchen sink, washing machine, bathtub and stove. Nothing else needs drawing. The *Hidráulica* tab also chooses how the water is heated (**Chuveiro elétrico**, **Aquecedor a gás** or **Aquecedor solar**), turns on the plumbing view (**Só hidráulica**) and hides or shows the plumbing layer, *Instalações hidrossanitárias*.
 
 - **Points** (*Exportar* › **Projeto hidrossanitário (PDF)**): every fixture gets its points at the usual heights from the finished floor: cold water (**AF**), hot water (**AQ**, only when the water is heated by gas or the sun; with electric showers there are no hot-water pipes), the drain (**ES**, with its DN: 100 for the toilet, 50 for the kitchen sink and the washing machine, 40 for the others) and gas for the stove. The sheet has the legend, the count of each kind of point and the fixture schedule (*quadro de aparelhos*) with the rooms, the heights, the weight each fixture adds to the water flow (NBR 5626) and its drainage units (UHC, NBR 8160). The heights are the usual ones: the fixture's manual has the last word.
 
 ## Discipline views
 
-Architecture, electrical and structure are views of the same model. The tabs choose what the plan shows:
+Architecture, electrical, plumbing and structure are views of the same model. The tabs choose what the plan shows:
 
 - **Só elétrica** (on the *Elétrica* tab) puts the architecture behind a veil and draws the electrical design on top, without the structure.
+- **Só hidráulica** (on the *Hidráulica* tab) does the same for the fixtures that take water and the water (blue), hot water (red), drain (brown) and gas (amber) points, with their heights when you zoom in.
 - **Só estrutura** (on the *Estrutura* tab) does the same for the formwork plan, without furniture or electrical devices.
 
-Each tab of the window keeps its own view. Every sheet in a sheet set has a discipline too: **+ Planta de Instalações Elétricas** and **+ Planta de Forma** add sheets that show only their layers (with their schedules), and the *Disciplina* list changes it for any sheet. An architecture sheet leaves out the electrical design and the structure.
+Each tab of the window keeps its own view. Every sheet in a sheet set has a discipline too: **+ Planta de Instalações Elétricas**, **+ Planta Hidrossanitária** and **+ Planta de Forma** add sheets that show only their layers (with their schedules), and the *Disciplina* list changes it for any sheet. An architecture sheet leaves out the electrical design, the plumbing and the structure.
 
 ## Documentation and output
 
@@ -351,7 +352,7 @@ Each tab of the window keeps its own view. Every sheet in a sheet set has a disc
 
 - **Prancha** (sheet): ISO A4 to A0 or a custom size, portrait or landscape, ABNT margins, and exact print scales of 1:25, 1:50, 1:75, 1:100 and 1:200 (**Melhor escala** picks the largest that fits). The title block holds the drawing, client, author, registration (CAU/CREA), address, date, sheet number and revision.
 - **Quadros** (schedules): areas, doors and windows, rooms, materials and construction quantities, configurable and placed on sheets.
-- **Conjunto para obra A3** (*Exportar* menu, PDF): the whole construction set in one click, numbered `01/NN`: the dimensioned plan at 1:50 when it fits with all its dimension chains, otherwise the largest scale that does (with the opening dimension chains, added only to the copy that is printed, the door and window schedule and the legend; when the lot alone would force a smaller scale, the plan leaves it out, since the setting-out plan shows it), the setting-out plan, the first-course plan, the wall elevations, the roof plan when there is a roof, and the quantities takeoff.
+- **Conjunto para obra A3** (*Exportar* menu, PDF): the whole construction set in one click, numbered `01/NN`: the dimensioned plan at 1:50 when it fits with all its dimension chains, otherwise the largest scale that does (with the opening dimension chains, added only to the copy that is printed, the door and window schedule and the legend; when the lot alone would force a smaller scale, the plan leaves it out, since the setting-out plan shows it), the setting-out plan, the first-course plan, the wall elevations, the roof plan when there is a roof, the plumbing sheets when there are fixtures that take water, and the quantities takeoff.
 - **Primeira fiada e paginação** (*Exportar* menu, PDF): an A3 first-course plan with every block of each wall's first course (whole, half and cut, in colours), the doors that interrupt it, the lintels (VA) and sills (CV), and the count per wall; then the elevation of every wall, course by course in running bond, with its doors, windows and concrete bands and the count of whole, half and cut blocks. 1:50 whenever it fits.
 - **Planta de locação** (*Exportar* menu, PDF): the building on the lot with the origin at the lot's lower-left corner, the string lines (*gabarito*) through every wall axis and column centre, the cumulative distances along X and Y, and a table of every corner (A, B, C…) and column (P1, P2…) with its X and Y in metres.
 - **Planta de cobertura** (*Exportar* menu, PDF): each roof's water planes with an arrow showing where the water runs and the slope against the tile's minimum (red when below it), the ridge, hips, eaves, verges and high edge, a gutter on every eave with its length, drained area and, when the city is set, its NBR 10844 design flow, and the downpipes (Ø 100 mm, one for every 78 m² of roof, at least one per gutter). Final rainwater sizing follows NBR 10844.

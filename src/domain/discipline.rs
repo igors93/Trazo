@@ -1,6 +1,6 @@
 //! Discipline views (#96) and synchronized workspace tabs: architecture,
-//! electrical, plumbing (prepared view for #72), structure and foundations
-//! are views of the same central model. Each shows what it needs, in its own
+//! electrical, plumbing, structure and foundations are views of the same
+//! central model. Each shows what it needs, in its own
 //! colour, on screen (the rest faded behind it) and on its own sheets.
 
 use std::borrow::Cow;
@@ -18,8 +18,8 @@ pub enum Discipline {
     All,
     Architecture,
     Electrical,
-    /// Prepared view highlighting sanitary/wet fixtures (hydraulic piping
-    /// sizing joins in #72).
+    /// The fixtures that take water and the water, drain and gas points
+    /// (*Planta Hidrossanitária*).
     Plumbing,
     Structure,
     /// Columns and footings (foundation plan view).
@@ -82,18 +82,22 @@ impl Discipline {
     /// The layers this discipline leaves out.
     ///
     /// Both `Visão geral` (`All`) and `Arquitetura` show the clean general
-    /// floor plan without structural or electrical overlays; structure and
-    /// electrical appear strictly in their own discipline views.
+    /// floor plan without structural, electrical or plumbing overlays; each
+    /// appears strictly in its own discipline view.
     pub fn hidden(self) -> &'static [LayerCategory] {
         match self {
-            Self::All | Self::Architecture => {
-                &[LayerCategory::Electrical, LayerCategory::Structure]
-            }
-            Self::Electrical => &[LayerCategory::Structure],
+            Self::All | Self::Architecture => &[
+                LayerCategory::Electrical,
+                LayerCategory::Structure,
+                LayerCategory::Plumbing,
+            ],
+            Self::Electrical => &[LayerCategory::Structure, LayerCategory::Plumbing],
             Self::Plumbing => &[LayerCategory::Electrical, LayerCategory::Structure],
-            Self::Structure | Self::Foundations => {
-                &[LayerCategory::Electrical, LayerCategory::Fixtures]
-            }
+            Self::Structure | Self::Foundations => &[
+                LayerCategory::Electrical,
+                LayerCategory::Fixtures,
+                LayerCategory::Plumbing,
+            ],
         }
     }
 
@@ -299,7 +303,16 @@ mod tests {
         assert!(!foundations.category_visible(LayerCategory::Electrical));
         let plumbing = project.for_discipline(Discipline::Plumbing);
         assert!(plumbing.category_visible(LayerCategory::Fixtures));
+        assert!(plumbing.category_visible(LayerCategory::Plumbing));
         assert!(!plumbing.category_visible(LayerCategory::Electrical));
+        assert!(!general.category_visible(LayerCategory::Plumbing));
+        assert!(!architecture.category_visible(LayerCategory::Plumbing));
+        assert!(!structure.category_visible(LayerCategory::Plumbing));
+        assert!(
+            !project
+                .for_discipline(Discipline::Electrical)
+                .category_visible(LayerCategory::Plumbing)
+        );
         assert_eq!(
             Discipline::from_key("estrutura"),
             Some(Discipline::Structure)

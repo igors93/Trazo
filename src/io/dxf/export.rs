@@ -479,6 +479,7 @@ pub(super) fn default_category_name(cat: LayerCategory) -> &'static str {
         LayerCategory::Annotations => "Anotacoes",
         LayerCategory::Electrical => "Eletrica",
         LayerCategory::Structure => "Estrutura",
+        LayerCategory::Plumbing => "Hidraulica",
     }
 }
 

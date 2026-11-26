@@ -93,6 +93,7 @@ enum RibbonTab {
     Edit,
     Interiors,
     Electrical,
+    Plumbing,
     Structure,
     Drafting,
     Markups,

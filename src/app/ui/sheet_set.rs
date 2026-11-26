@@ -52,7 +52,11 @@ impl FloorPlanApp {
                         self.record_change(prev);
                     }
                     // A floor plan sheet for each other discipline.
-                    for discipline in [Discipline::Electrical, Discipline::Structure] {
+                    for discipline in [
+                        Discipline::Electrical,
+                        Discipline::Plumbing,
+                        Discipline::Structure,
+                    ] {
                         if secondary_button(ui, &format!("+ {}", discipline.sheet_title()))
                             .clicked()
                         {

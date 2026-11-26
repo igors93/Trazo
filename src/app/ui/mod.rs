@@ -195,6 +195,7 @@ mod tests {
             RibbonTab::Edit,
             RibbonTab::Interiors,
             RibbonTab::Electrical,
+            RibbonTab::Plumbing,
             RibbonTab::Structure,
             RibbonTab::Drafting,
             RibbonTab::Markups,
