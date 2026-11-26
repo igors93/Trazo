@@ -4,7 +4,9 @@ All notable changes to Trazo are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
-Everything below is on `main` and will become the first release, 0.1.0.
+## [0.1.0] - 2026-11-25
+
+First public release. Portable archives for Windows, Linux and macOS are distributed as unsigned community builds with SHA-256 checksums; no installer or code-signing certificate is required.
 
 ### Added
 
@@ -130,4 +132,5 @@ Everything below is on `main` and will become the first release, 0.1.0.
 - Switching, adding or removing a floor cleared only the primary selection. A following `Delete` could remove selected elements on another floor.
 - Switching floors left conduits, beams and slabs behind, and the next edit on another floor deleted them. They now travel with their floor.
 
-[Unreleased]: https://github.com/igors93/Trazo/commits/main
+[Unreleased]: https://github.com/igors93/Trazo/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/igors93/Trazo/releases/tag/v0.1.0
