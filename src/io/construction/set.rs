@@ -15,26 +15,84 @@ use crate::domain::model::Project;
 use crate::domain::sheet::{DrawingScale, Orientation, PaperSize, SheetLayout};
 use crate::io::export::ExportView;
 
-/// The plan as it goes into the set: A3 landscape at 1:50 when the
-/// building fits (the largest standard scale otherwise), with the opening
-/// dimension chains added to a copy, never to the person's project.
+/// Adds opening dimension chains to every wall with openings. On the top
+/// and left of the building the plan sheet already draws its own exterior
+/// chain and the overall dimension, so those walls get their chain in a row
+/// of its own, further out.
+fn add_opening_chains(project: &mut Project) {
+    let ends = project.walls.iter().flat_map(|w| [w.start, w.end]);
+    let (left, top) = ends.fold((f64::INFINITY, f64::INFINITY), |(x, y), p| {
+        (x.min(p.x), y.min(p.y))
+    });
+    let edge = 0.35;
+    let walls: Vec<(u64, f64)> = project
+        .walls
+        .iter()
+        .filter(|w| project.openings.iter().any(|o| o.wall_id == w.id))
+        .map(|w| {
+            let on_top = (w.start.y - top).abs() < edge && (w.end.y - top).abs() < edge;
+            let on_left = (w.start.x - left).abs() < edge && (w.end.x - left).abs() < edge;
+            (
+                w.id,
+                if on_top || on_left {
+                    OUTER_CHAIN_M
+                } else {
+                    0.45
+                },
+            )
+        })
+        .collect();
+    for (wall, offset) in walls {
+        let _ = project.generate_opening_dimension_chains(Some(wall), offset);
+    }
+}
+
+/// Offset of the opening chains on the top and left walls, beyond the
+/// sheet's own exterior chain and overall dimension, metres.
+const OUTER_CHAIN_M: f64 = 1.45;
+
+/// Room for the dimension chains around the plan, metres (both sides).
+const DIMENSION_ROOM_M: f64 = 3.6;
+
+/// The plan as it goes into the set: A3 landscape at 1:50 when it fits (the
+/// largest standard scale otherwise), with the opening dimension chains
+/// added to a copy, never to the person's project. When the lot alone would
+/// force a smaller scale, the copy leaves the lot out: the setting-out plan
+/// shows it.
 fn set_plan_project(project: &Project) -> Project {
     let mut working = project.clone();
-    let title_block = working.sheet.title_block.clone();
     let mut layout = SheetLayout::standard(PaperSize::A3, Orientation::Landscape);
-    layout.title_block = title_block;
-    layout.title_block.drawing_title = "Planta baixa cotada".to_owned();
-    if let Some((min, max)) = working.content_bounds() {
-        let (area_w, area_h) = layout.drawing_area_mm();
-        let (w, h) = (max.x - min.x + 1.5, max.y - min.y + 1.5);
-        layout.scale = if DrawingScale::S1_50.fits(w, h, area_w, area_h) {
-            DrawingScale::S1_50
-        } else {
-            DrawingScale::best_fit(w, h, area_w, area_h)
-        };
+    layout.title_block = working.sheet.title_block.clone();
+    add_opening_chains(&mut working);
+    let (area_w, area_h) = layout.drawing_area_mm();
+    // The same bounds the plan sheet centres and crops by, plus room for
+    // the dimension chains drawn outside the walls on every side.
+    let scale_for = |p: &Project| {
+        p.bounds().map(|(min, max)| {
+            let (w, h) = (
+                max.x - min.x + DIMENSION_ROOM_M,
+                max.y - min.y + DIMENSION_ROOM_M,
+            );
+            if DrawingScale::S1_50.fits(w, h, area_w, area_h) {
+                DrawingScale::S1_50
+            } else {
+                DrawingScale::best_fit(w, h, area_w, area_h)
+            }
+        })
+    };
+    let with_lot = scale_for(&working);
+    let mut building = working.clone();
+    building.terrain = None;
+    let without_lot = scale_for(&building);
+    if let (Some(with_lot), Some(without_lot)) = (with_lot, without_lot)
+        && without_lot.denominator() < with_lot.denominator()
+    {
+        working = building;
+        layout.scale = without_lot;
+    } else if let Some(scale) = with_lot {
+        layout.scale = scale;
     }
     working.sheet = layout;
-    let _ = working.generate_opening_dimension_chains(None, 0.45);
     working
 }
 

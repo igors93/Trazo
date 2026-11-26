@@ -148,23 +148,15 @@ pub(crate) fn setting_out_drawing(project: &Project) -> Option<Drawn> {
     let mut y = ay + 6.0;
     sheet.text(tx, y, 2.4, true, INK, "PONTOS DE LOCAÇÃO (m)");
     y += 3.6;
-    sheet.text(tx, y, 2.0, true, MUTED, "Ponto        X (→)       Y (↑)");
+    sheet.text(tx, y, 2.0, true, MUTED, "Ponto");
+    sheet.text(tx + 20.0, y, 2.0, true, MUTED, "X (→)");
+    sheet.text(tx + 38.0, y, 2.0, true, MUTED, "Y (↑)");
     y += 3.2;
     let room = ((ay + ah - y - 18.0) / 3.0).max(1.0) as usize;
     for point in out.points.iter().take(room) {
-        sheet.text(
-            tx,
-            y,
-            2.0,
-            false,
-            INK,
-            &format!(
-                "{:<8} {:>9} {:>11}",
-                point.label,
-                decimal(point.x_m, 2),
-                decimal(point.y_m, 2)
-            ),
-        );
+        sheet.text(tx, y, 2.0, false, INK, &point.label);
+        sheet.text(tx + 20.0, y, 2.0, false, INK, &decimal(point.x_m, 2));
+        sheet.text(tx + 38.0, y, 2.0, false, INK, &decimal(point.y_m, 2));
         y += 3.0;
     }
     if out.points.len() > room {
