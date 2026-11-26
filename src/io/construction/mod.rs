@@ -69,14 +69,12 @@ impl Sheet {
 
     pub(crate) fn rect(
         &mut self,
-        x: f64,
-        y: f64,
-        w: f64,
-        h: f64,
+        bounds: (f64, f64, f64, f64),
         fill: &str,
         stroke: &str,
         width: f64,
     ) {
+        let (x, y, w, h) = bounds;
         let _ = writeln!(
             self.svg,
             "<rect x=\"{x:.2}\" y=\"{y:.2}\" width=\"{w:.2}\" height=\"{h:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{width:.2}\"/>"

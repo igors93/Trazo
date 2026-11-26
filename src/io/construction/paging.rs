@@ -35,7 +35,7 @@ fn legend(sheet: &mut Sheet, x: f64, y: f64) {
     .enumerate()
     {
         let ry = y + 3.0 + row as f64 * 3.6;
-        sheet.rect(x, ry, 6.0, 2.4, color, INK, 0.2);
+        sheet.rect((x, ry, 6.0, 2.4), color, INK, 0.2);
         sheet.text(x + 8.0, ry + 2.0, 2.1, false, INK, label);
     }
 }
@@ -208,10 +208,12 @@ fn elevation(sheet: &mut Sheet, wall: &WallPaging, x: f64, base: f64, s: f64) {
     for course in &wall.courses {
         for piece in &course.pieces {
             sheet.rect(
-                ex(piece.start_m),
-                ey(course.bottom_m + course.height_m),
-                piece.length_m * s,
-                course.height_m * s,
+                (
+                    ex(piece.start_m),
+                    ey(course.bottom_m + course.height_m),
+                    piece.length_m * s,
+                    course.height_m * s,
+                ),
                 fill(piece.kind),
                 INK,
                 0.12,
@@ -220,10 +222,12 @@ fn elevation(sheet: &mut Sheet, wall: &WallPaging, x: f64, base: f64, s: f64) {
     }
     for band in &wall.bands {
         sheet.rect(
-            ex(band.from_m),
-            ey(band.top_m),
-            (band.to_m - band.from_m) * s,
-            (band.top_m - band.bottom_m) * s,
+            (
+                ex(band.from_m),
+                ey(band.top_m),
+                (band.to_m - band.from_m) * s,
+                (band.top_m - band.bottom_m) * s,
+            ),
             BAND_FILL,
             INK,
             0.18,
@@ -239,10 +243,12 @@ fn elevation(sheet: &mut Sheet, wall: &WallPaging, x: f64, base: f64, s: f64) {
     }
     for opening in &wall.openings {
         sheet.rect(
-            ex(opening.from_m),
-            ey(opening.top_m),
-            (opening.to_m - opening.from_m) * s,
-            (opening.top_m - opening.bottom_m) * s,
+            (
+                ex(opening.from_m),
+                ey(opening.top_m),
+                (opening.to_m - opening.from_m) * s,
+                (opening.top_m - opening.bottom_m) * s,
+            ),
             "#ffffff",
             "#2878d2",
             0.3,
