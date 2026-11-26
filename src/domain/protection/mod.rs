@@ -8,6 +8,7 @@ pub mod cross_checks;
 pub mod help;
 pub mod hypotheses;
 pub mod site_risks;
+pub mod stages;
 
 use serde::{Deserialize, Serialize};
 
@@ -24,11 +25,17 @@ pub struct Protection {
     /// What Trazo cannot see on the site, as the person answered (#156).
     #[serde(skip_serializing_if = "site_risks::SiteRisks::is_empty")]
     pub site_risks: site_risks::SiteRisks,
+    /// The floors to come and the foundation already built (#158).
+    #[serde(skip_serializing_if = "stages::StagePlan::is_empty")]
+    pub stages: stages::StagePlan,
 }
 
 impl Protection {
     pub fn is_empty(&self) -> bool {
-        self.hypotheses.is_empty() && self.help_contacts.is_empty() && self.site_risks.is_empty()
+        self.hypotheses.is_empty()
+            && self.help_contacts.is_empty()
+            && self.site_risks.is_empty()
+            && self.stages.is_empty()
     }
 }
 

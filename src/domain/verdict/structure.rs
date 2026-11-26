@@ -53,6 +53,8 @@ pub fn structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Ve
     super::cross_checks::cross_check(project, report, &mut verdicts);
     // What Trazo cannot see on the site is asked, never assumed (#156).
     super::site_risks::site_risks(project, &mut verdicts);
+    // An extension beyond what the house was built for is red (#158).
+    super::stages::stages(project, &mut verdicts);
     // A result that rests on a hypothesis Trazo contests is never green (#169).
     super::hypotheses::contest(project, &mut verdicts);
     verdicts

@@ -7,6 +7,7 @@ mod cross_checks;
 mod electrical;
 mod hypotheses;
 mod site_risks;
+mod stages;
 mod structure;
 
 #[cfg(test)]

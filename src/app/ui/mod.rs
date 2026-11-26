@@ -41,6 +41,7 @@ mod selection;
 mod sheet;
 mod sheet_set;
 mod site_risks_panel;
+mod stages_panel;
 mod start_page;
 mod status_bar;
 mod structure;

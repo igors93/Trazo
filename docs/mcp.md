@@ -31,6 +31,7 @@ Trazo tells every assistant how to behave through the MCP server instructions (`
 - never play down, hide or work around a red result or a refusal; explain the risk in one sentence and propose the change that fixes it;
 - never change a hypothesis (soil pressure, concrete strength, loads, room use, wind) to make a result pass; change one only with real data from the person, and say so;
 - ask the person about the site with `projeto_estrutural` → `riscos_terreno` (slope, water, landfill, groundwater, neighbours' cracks, digging next to a neighbour, building on top of an existing house and whether its base is known) and record only their answers: a "yes" stops the foundations, and an assistant's "no" counts only after the person confirms it in *Segurança*;
+- ask whether the family will build more floors later and record it with `projeto_estrutural` → `etapas` (`andares_futuros`, `fundacao_executada`), so the first stage is sized for them;
 - say clearly when a professional is needed (`pre_dimensionamento` lists the free paths and the project's local contacts in `onde_buscar_ajuda`), and remind low-income families of free technical assistance (ATHIS, Lei 11.888/2008, through the municipality, CAU or CREA) and, for slopes, streams, landfill or cracked neighbouring houses, the Defesa Civil (199);
 - never present Trazo's pre-sizing as a final design, or green as a guarantee.
 

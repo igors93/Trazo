@@ -42,6 +42,7 @@ impl FloorPlanApp {
         let mut hypothesis_action = None;
         let mut help_contacts = None;
         let mut site_answer = None;
+        let mut stage_action = None;
         let urgent = summary.red > 0;
         egui::Window::new("Segurança · semáforo dos resultados")
             .open(&mut open)
@@ -109,6 +110,7 @@ impl FloorPlanApp {
                     // Who set each hypothesis, what Trazo contests and what the
                     // assistant proposed (#168, #169, #171).
                     site_answer = super::site_risks_panel::show(ui, &self.project);
+                    stage_action = super::stages_panel::show(ui, &self.project);
                     hypothesis_action = super::hypotheses::show(ui, &self.project);
                     // Where to find help, open whenever something is red (#159).
                     help_contacts = super::help_panel::show(ui, &self.project, urgent);
@@ -188,6 +190,9 @@ impl FloorPlanApp {
         }
         if let Some((risk, yes)) = site_answer {
             self.answer_site_risk(risk, yes);
+        }
+        if let Some(action) = stage_action {
+            self.apply_stage_action(action);
         }
         if let Some(contacts) = help_contacts {
             self.save_help_contacts(contacts);

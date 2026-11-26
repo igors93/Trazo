@@ -378,6 +378,52 @@ impl FloorPlanApp {
                 }
                 Ok(Change::new("Laje removida.".to_owned()))
             }),
+            "etapas" => {
+                use crate::domain::protection::stages::{
+                    extension_beyond_built, mark_foundation_built, plan_future_floors,
+                };
+                let future = match number(args, "andares_futuros")? {
+                    Some(v) if v.fract() != 0.0 || !(0.0..=2.0).contains(&v) => {
+                        return Err("'andares_futuros' é um inteiro de 0 a 2.".to_owned());
+                    }
+                    Some(v) => Some(v as u32),
+                    None => None,
+                };
+                let built = args.get("fundacao_executada").and_then(Value::as_bool);
+                let summary = |project: &crate::domain::model::Project| {
+                    json!({
+                        "andares_futuros": project.protection.stages.future_floors,
+                        "pavimentos_carregados": project.structure.settings.floors,
+                        "fundacao_feita_para": project.protection.stages.built_for,
+                        "ampliacao_alem_da_fundacao": extension_beyond_built(project)
+                            .map(|(built, now)| json!({ "feita_para": built, "agora": now })),
+                    })
+                };
+                if future.is_none() && built.is_none() {
+                    return Ok(ToolOutput::ok("Construção em etapas.")
+                        .with_structured(summary(&self.project)));
+                }
+                self.apply_change(Some("As etapas já eram essas."), |project| {
+                    if let Some(future) = future {
+                        plan_future_floors(project, future)?;
+                    }
+                    if let Some(built) = built {
+                        mark_foundation_built(project, built);
+                    }
+                    let message = match extension_beyond_built(project) {
+                        Some((built, now)) => format!(
+                            "Atenção: a fundação foi feita para {built} pavimento(s) e o projeto agora tem {now}. Não suba mais andares sem um profissional. {}",
+                            crate::domain::protection::help::HELP_SENTENCE
+                        ),
+                        None => format!(
+                            "Etapas: os pilares carregam {} pavimento(s), contando {} futuro(s). Ajuste as sapatas às novas cargas.",
+                            project.structure.settings.floors,
+                            project.protection.stages.future_floors
+                        ),
+                    };
+                    Ok(Change::new(message).data(summary(project)))
+                })
+            }
             "riscos_terreno" => {
                 use crate::domain::protection::hypotheses::HypothesisSource;
                 use crate::domain::protection::site_risks::SiteRisk;
