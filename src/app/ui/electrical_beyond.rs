@@ -166,12 +166,13 @@ impl FloorPlanApp {
                     .striped(true)
                     .spacing([14.0, 5.0])
                     .show(ui, |ui| {
-                        for h in ["Qtd.", "Dispositivo", "Aplicação"] {
+                        for h in ["Qtd.", "Grupo", "Dispositivo", "Aplicação"] {
                             ui.label(RichText::new(h).font(strong(12.0)).color(TEXT_2));
                         }
                         ui.end_row();
                         for p in &list.protections {
                             ui.label(RichText::new(format!("{} un", p.quantity)).font(strong(12.0)));
+                            ui.label(RichText::new(p.category.label()).color(TEXT_2));
                             ui.label(&p.specification);
                             ui.label(RichText::new(&p.notes).color(TEXT_2));
                             ui.end_row();
@@ -308,6 +309,7 @@ impl FloorPlanApp {
                 for option in SurfaceReflectance::ALL {
                     if ui
                         .selectable_label(settings.reflectance == option, option.short())
+                        .on_hover_text(option.label())
                         .clicked()
                     {
                         settings.reflectance = option;

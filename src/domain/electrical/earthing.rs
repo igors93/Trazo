@@ -421,15 +421,14 @@ pub fn earthing_and_spda_report(project: &Project) -> EarthingSpdaReport {
     let (bep_position, rods) =
         layout_earthing_points(project, rod_count, settings.rod_spacing_m.max(2.0));
 
-    let earthing_light = if settings.scheme == EarthingScheme::Tt && tt_missing_rcd > 0 {
-        Light::Red
-    } else if array_ohm > 50.0 {
-        Light::Red
-    } else if array_ohm > target_ohm {
-        Light::Yellow
-    } else {
-        Light::Green
-    };
+    let earthing_light =
+        if (settings.scheme == EarthingScheme::Tt && tt_missing_rcd > 0) || array_ohm > 50.0 {
+            Light::Red
+        } else if array_ohm > target_ohm {
+            Light::Yellow
+        } else {
+            Light::Green
+        };
 
     let earthing_note = if settings.scheme == EarthingScheme::Tt && tt_missing_rcd > 0 {
         format!(

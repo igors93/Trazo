@@ -182,9 +182,10 @@ mod tests {
 #[cfg(test)]
 mod preview {
     #[test]
+    #[ignore = "local scratch preview with hardcoded Windows temp path"]
     fn render_preview() {
         let json = include_str!("../../../../examples/casa-terrea.json");
-        let mut project: crate::domain::model::Project = serde_json::from_str(json).unwrap();
+        let project: crate::domain::model::Project = serde_json::from_str(json).unwrap();
 
         let pages = super::plumbing_pages(&project);
         let dir = std::path::Path::new(

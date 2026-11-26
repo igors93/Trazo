@@ -72,6 +72,7 @@ pub struct ColdWater {
 
 impl ColdWater {
     /// The outlets whose pressure is not good.
+    #[allow(dead_code)]
     pub fn problems(&self) -> impl Iterator<Item = &super::network::Outlet> {
         self.network
             .outlets

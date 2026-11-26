@@ -12,7 +12,6 @@ use crate::domain::{
     electrical::CircuitKind,
     fixtures::{Fixture, FixtureKind},
     model::Project,
-    schedules::ScheduleTable,
 };
 
 /// Default waste allowance applied to wires and conduits (percent).
@@ -722,81 +721,6 @@ pub fn electrical_shopping_list(project: &Project, waste_pct: f64) -> Electrical
     ];
 
     list
-}
-
-/// Schedule table version of the electrical shopping list for drawing sheets.
-pub fn build_electrical_materials_schedule(project: &Project) -> ScheduleTable {
-    let list = electrical_shopping_list(project, DEFAULT_ELECTRICAL_WASTE_PCT);
-    let mut rows = Vec::new();
-    for w in &list.wires {
-        rows.push(vec![
-            "Cabo cobre 750 V".to_owned(),
-            format!(
-                "{} mm² · {}",
-                section_label(w.section_mm2),
-                w.color.color_name()
-            ),
-            format!("{} m", decimal(w.net_length_m, 1)),
-            format!(
-                "{} m ({} rolo(s))",
-                decimal(w.total_length_m, 1),
-                w.rolls_100m
-            ),
-        ]);
-    }
-    for c in &list.conduits {
-        rows.push(vec![
-            "Eletroduto".to_owned(),
-            format!("Ø{} mm ({})", c.diameter_mm, c.run.label().to_lowercase()),
-            format!("{} m", decimal(c.net_length_m, 1)),
-            format!(
-                "{} m ({} rolo(s))",
-                decimal(c.total_length_m, 1),
-                c.rolls_50m
-            ),
-        ]);
-    }
-    for b in &list.boxes {
-        rows.push(vec![
-            "Caixa / Quadro".to_owned(),
-            b.kind.clone(),
-            format!("{} un", b.quantity),
-            format!("{} un", b.quantity),
-        ]);
-    }
-    for p in &list.protections {
-        rows.push(vec![
-            p.category.label().to_owned(),
-            p.specification.clone(),
-            format!("{} un", p.quantity),
-            format!("{} un", p.quantity),
-        ]);
-    }
-    ScheduleTable {
-        title: format!(
-            "Lista de materiais elétricos (NBR 5410 · perda {:.0} %)",
-            list.waste_pct
-        ),
-        headers: ["Grupo", "Item / Especificação", "Líquido", "Compra"]
-            .into_iter()
-            .map(str::to_owned)
-            .collect(),
-        rows,
-        footer: Some(vec![
-            "Totais".to_owned(),
-            "Cabos e eletrodutos".to_owned(),
-            format!(
-                "{} m fios · {} m eletrod.",
-                decimal(list.total_wire_net_m, 1),
-                decimal(list.total_conduit_net_m, 1)
-            ),
-            format!(
-                "{} m fios · {} m eletrod.",
-                decimal(list.total_wire_m, 1),
-                decimal(list.total_conduit_m, 1)
-            ),
-        ]),
-    }
 }
 
 fn csv_field(value: &str) -> String {
