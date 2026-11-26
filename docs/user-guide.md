@@ -213,6 +213,10 @@ The single-line diagram shows the meter, the main breaker, the surge protector (
 
 Each utility publishes its own entrance tables: check them before you order the meter box.
 
+### Electrical shopping list
+
+The *Lista de materiais* tab of *Projeto elétrico* consolidates everything to buy from the conduits and load schedule: copper PVC 750 V wires grouped by section and NBR 5410 colour (phase, light-blue neutral, return, green/yellow earth) with 100 m rolls, corrugated/rigid conduits by nominal diameter with 50 m coils, 4×2″ wall boxes, 4×4″ octagonal ceiling boxes, DIN distribution boards with 30 % spare space, main/feeder/terminal breakers, 30 mA RCDs, Class II SPDs and finishing devices. Adjust the waste percentage (default 10 %) and export to CSV, PDF or SVG.
+
 ## Structure
 
 The *Estrutura* (structure) tab lays out a first reinforced-concrete structure over the floor plan and pre-sizes it. Columns, beams, slabs and footings are drawn as a formwork plan (*planta de forma*) on their own layer, *Estrutura*, in dark teal.

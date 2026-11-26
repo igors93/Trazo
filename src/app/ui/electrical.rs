@@ -447,11 +447,12 @@ impl FloorPlanApp {
                     }
                 });
                 ui.add_space(6.0);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     for (index, title) in [
                         "Cargas e circuitos",
                         "Quadro e diagrama unifilar",
                         "Demanda coletiva (Multifamiliar)",
+                        "Lista de materiais",
                     ]
                     .iter()
                     .enumerate()
@@ -465,7 +466,9 @@ impl FloorPlanApp {
                     }
                 });
                 ui.separator();
-                if tab == 2 {
+                if tab == 3 {
+                    self.electrical_shopping_list_tab(ui, ctx);
+                } else if tab == 2 {
                     self.collective_demand_tab(ui, ctx);
                 } else if tab == 1 {
                     egui::ScrollArea::vertical().show(ui, |ui| {

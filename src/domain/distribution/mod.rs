@@ -10,6 +10,7 @@ mod tests;
 use serde::{Deserialize, Serialize};
 
 pub use crate::domain::utility_profiles::UtilityProfile;
+pub use calculations::earth_section;
 pub use schedule_svg::{build_panel_schedule, single_line_svg};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

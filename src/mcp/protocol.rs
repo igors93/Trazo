@@ -843,9 +843,9 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "projeto_eletrico",
             title: "Projeto elétrico (NBR 5410)",
-            description: "Comandos do projeto elétrico. gerar_pontos: adiciona o que a NBR 5410 exige e falta em cada cômodo. distribuir_circuitos: renumera os circuitos. definir_tensao: 127 ou 220 V. gerar_eletrodutos: liga ao quadro (QD/QDG/QDC) os pontos ainda desconectados. ligar_pontos / definir_trecho / remover_eletroduto: gerencia eletrodutos. definir_alimentacao: auto, monofasica, bifasica ou trifasica. definir_concessionaria: generico, cpfl, enel_sp, celesc, cemig, copel, energisa, equatorial, fecoergs ou hidropan. demanda_coletiva: calcula demanda coletiva multifamiliar (CODI/CEMIG/Celesc/Fecoergs/Hidropan).",
+            description: "Comandos do projeto elétrico. gerar_pontos: adiciona o que a NBR 5410 exige e falta em cada cômodo. distribuir_circuitos: renumera os circuitos. definir_tensao: 127 ou 220 V. gerar_eletrodutos: liga ao quadro (QD/QDG/QDC) os pontos ainda desconectados. ligar_pontos / definir_trecho / remover_eletroduto: gerencia eletrodutos. definir_alimentacao: auto, monofasica, bifasica ou trifasica. definir_concessionaria: generico, cpfl, enel_sp, celesc, cemig, copel, energisa, equatorial, fecoergs ou hidropan. demanda_coletiva: calcula demanda coletiva multifamiliar (CODI/CEMIG/Celesc/Fecoergs/Hidropan). lista_materiais: gera a lista de compras elétrica por bitola e cor, eletrodutos, caixas, disjuntores, DR e DPS.",
             properties: json!({
-                "acao": { "type": "string", "enum": ["gerar_pontos", "distribuir_circuitos", "definir_tensao", "gerar_eletrodutos", "ligar_pontos", "definir_trecho", "remover_eletroduto", "definir_alimentacao", "definir_concessionaria", "demanda_coletiva"], "description": "O que fazer." },
+                "acao": { "type": "string", "enum": ["gerar_pontos", "distribuir_circuitos", "definir_tensao", "gerar_eletrodutos", "ligar_pontos", "definir_trecho", "remover_eletroduto", "definir_alimentacao", "definir_concessionaria", "demanda_coletiva", "lista_materiais"], "description": "O que fazer." },
                 "tensao": number("Para definir_tensao: 127 ou 220."),
                 "de": integer("Para ligar_pontos: id do ponto do lado do quadro."),
                 "para": integer("Para ligar_pontos: id do outro ponto."),
@@ -861,6 +861,10 @@ fn catalogue() -> Vec<Tool> {
                 "demanda_especial_kva": number("Para demanda_coletiva: cargas especiais como elevadores/bombas (kVA)."),
                 "demanda_comercial_kva": number("Para demanda_coletiva: demanda comercial (kVA)."),
                 "como_impresso": boolean("Para demanda_coletiva: usar valor impresso literal em caso de errata publicada."),
+                "perda_pct": number("Para lista_materiais: percentual de perda/sobra em cabos e eletrodutos (padrão 10 %)."),
+                "salvar_csv": string("Caminho opcional para salvar a lista de materiais em CSV."),
+                "salvar_svg": string("Caminho opcional para salvar a folha em SVG."),
+                "salvar_pdf": string("Caminho opcional para salvar a folha em PDF."),
             }),
             required: &["acao"],
             read_only: false,

@@ -665,7 +665,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 124 | Electrical shopping list: wire length per section and colour, conduits, boxes, breakers and RCDs | P1 | S | M7 | ⬜ |
+| 124 | Electrical shopping list: wire length per section and colour, conduits, boxes, breakers and RCDs | P1 | S | M7 | ✅ |
 | 125 | Lighting calculation (lumen method): lux per room against the NBR ISO/CIE 8995-1 targets | P2 | M | M7 | ⬜ |
 | 126 | Photovoltaic pre-sizing: consumption, kWp, panels on the roof planes and monthly generation for the city | P2 | M | M7 | ⬜ |
 | 127 | Several boards (main and sub-boards), short-circuit estimate and breaker selectivity (B09) | P2 | L | M7 | ⬜ |

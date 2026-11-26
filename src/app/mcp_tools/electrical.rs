@@ -6,7 +6,8 @@
 use serde_json::{Value, json};
 
 use super::{
-    Change, ToolOutput, element_id, number, quarter_turns, required_number, text, to_model, xy,
+    Change, ToolOutput, element_id, ensure_parent, number, quarter_turns, required_number,
+    resolve_path, text, to_model, unique_path, xy,
 };
 use crate::app::{FloorPlanApp, Selection};
 use crate::domain::conduits::ConduitRun;
@@ -345,8 +346,96 @@ impl FloorPlanApp {
                 );
                 Ok(ToolOutput::ok(msg).with_structured(serde_json::to_value(&res).unwrap_or_else(|_| json!({}))))
             }
+            "lista_materiais" => {
+                use crate::domain::electrical::shopping_list::{
+                    DEFAULT_ELECTRICAL_WASTE_PCT, electrical_shopping_list_csv,
+                    electrical_shopping_list_svg,
+                };
+                let waste = number(args, "perda_pct")?.unwrap_or(DEFAULT_ELECTRICAL_WASTE_PCT);
+                if !(0.0..=50.0).contains(&waste) {
+                    return Err("'perda_pct' deve estar entre 0 e 50.".to_owned());
+                }
+                let list = self.project.electrical_shopping_list(waste);
+                let mut exported: Option<String> = None;
+                if let Some(raw) = text(args, "salvar_csv") {
+                    let path = unique_path(resolve_path(&raw, "csv"));
+                    ensure_parent(&path)?;
+                    std::fs::write(&path, electrical_shopping_list_csv(&self.project, waste))
+                        .map_err(|e| format!("Não foi possível salvar o CSV: {e}"))?;
+                    exported = Some(path.display().to_string());
+                } else if let Some(raw) = text(args, "salvar_svg") {
+                    let path = unique_path(resolve_path(&raw, "svg"));
+                    ensure_parent(&path)?;
+                    let svg = electrical_shopping_list_svg(&self.project, waste);
+                    crate::domain::views::export_view_svg(&svg, &path)?;
+                    exported = Some(path.display().to_string());
+                } else if let Some(raw) = text(args, "salvar_pdf") {
+                    let path = unique_path(resolve_path(&raw, "pdf"));
+                    ensure_parent(&path)?;
+                    let svg = electrical_shopping_list_svg(&self.project, waste);
+                    crate::domain::views::export_view_pdf(&svg, &path)?;
+                    exported = Some(path.display().to_string());
+                }
+                let msg = format!(
+                    "Lista de materiais elétricos (perda {:.0} %): {:.1} m de cabos ({:.1} m líquido), {:.1} m de eletrodutos, {} item(ns) de caixas/quadros e {} item(ns) de proteção.{}",
+                    list.waste_pct,
+                    list.total_wire_m,
+                    list.total_wire_net_m,
+                    list.total_conduit_m,
+                    list.boxes.len(),
+                    list.protections.len(),
+                    exported
+                        .as_deref()
+                        .map_or(String::new(), |p| format!(" Exportado em {p}."))
+                );
+                Ok(ToolOutput::ok(msg).with_structured(json!({
+                    "perda_pct": list.waste_pct,
+                    "tem_eletrodutos": list.has_conduits,
+                    "total_cabos_liquido_m": (list.total_wire_net_m * 10.0).round() / 10.0,
+                    "total_cabos_m": (list.total_wire_m * 10.0).round() / 10.0,
+                    "total_eletrodutos_liquido_m": (list.total_conduit_net_m * 10.0).round() / 10.0,
+                    "total_eletrodutos_m": (list.total_conduit_m * 10.0).round() / 10.0,
+                    "cabos": list.wires.iter().map(|w| json!({
+                        "bitola_mm2": w.section_mm2,
+                        "funcao": w.color.key(),
+                        "cor": w.color.color_name(),
+                        "descricao": w.color.label(),
+                        "liquido_m": (w.net_length_m * 10.0).round() / 10.0,
+                        "com_perda_m": (w.total_length_m * 10.0).round() / 10.0,
+                        "rolos_100m": w.rolls_100m,
+                    })).collect::<Vec<_>>(),
+                    "eletrodutos": list.conduits.iter().map(|c| json!({
+                        "diametro_mm": c.diameter_mm,
+                        "trecho": c.run.key(),
+                        "liquido_m": (c.net_length_m * 10.0).round() / 10.0,
+                        "com_perda_m": (c.total_length_m * 10.0).round() / 10.0,
+                        "rolos_50m": c.rolls_50m,
+                    })).collect::<Vec<_>>(),
+                    "caixas_e_quadros": list.boxes.iter().map(|b| json!({
+                        "tipo": b.kind,
+                        "especificacao": b.specification,
+                        "quantidade": b.quantity,
+                    })).collect::<Vec<_>>(),
+                    "protecao": list.protections.iter().map(|p| json!({
+                        "categoria": p.category.key(),
+                        "especificacao": p.specification,
+                        "polos": p.poles,
+                        "corrente_a": p.rating_a,
+                        "curva_ou_classe": p.curve_or_class,
+                        "quantidade": p.quantity,
+                        "observacao": p.notes,
+                    })).collect::<Vec<_>>(),
+                    "acabamentos": list.devices.iter().map(|d| json!({
+                        "especificacao": d.specification,
+                        "quantidade": d.quantity,
+                    })).collect::<Vec<_>>(),
+                    "arquivo_exportado": exported,
+                    "alertas": list.warnings,
+                    "premissas": list.assumptions,
+                })))
+            }
             _ => Err(
-                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao, definir_concessionaria ou demanda_coletiva.".to_owned(),
+                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao, definir_concessionaria, demanda_coletiva ou lista_materiais.".to_owned(),
             ),
         }
     }
@@ -662,5 +751,38 @@ mod tests {
         );
         assert!(!removed.is_error, "{}", removed.text);
         assert!(app.project.conduits.iter().all(|c| c.id != id));
+    }
+
+    #[test]
+    fn mcp_returns_electrical_shopping_list_by_section_and_colour() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        app.project = crate::domain::samples::SampleProject::CasaTerrea.build();
+        app.project.generate_electrical_points();
+        let (pw, pd) = crate::domain::fixtures::FixtureKind::Panel.default_size();
+        let (rmin, _) = app.project.room_bounds(&app.project.rooms[0]).unwrap();
+        app.project
+            .add_fixture(
+                crate::domain::fixtures::FixtureKind::Panel,
+                crate::domain::geometry::Point::new(rmin.x + 0.35, rmin.y + 0.15),
+                pw,
+                pd,
+                0,
+            )
+            .unwrap();
+        app.project.assign_circuits();
+        app.project.generate_conduits().unwrap();
+
+        let res = app.run_mcp_tool(
+            "projeto_eletrico",
+            &json!({ "acao": "lista_materiais", "perda_pct": 10 }),
+        );
+        assert!(!res.is_error, "{}", res.text);
+        let data = res.structured.unwrap();
+        assert_eq!(data["tem_eletrodutos"], true);
+        assert!(data["total_cabos_m"].as_f64().unwrap() > 50.0);
+        assert!(!data["cabos"].as_array().unwrap().is_empty());
+        assert!(!data["eletrodutos"].as_array().unwrap().is_empty());
+        assert!(!data["caixas_e_quadros"].as_array().unwrap().is_empty());
+        assert!(!data["protecao"].as_array().unwrap().is_empty());
     }
 }

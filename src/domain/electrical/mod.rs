@@ -3,6 +3,7 @@
 
 mod forecast;
 mod placement;
+pub mod shopping_list;
 mod sizing;
 mod symbols;
 
