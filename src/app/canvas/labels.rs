@@ -303,15 +303,33 @@ pub(super) fn paint_electrical_tags(painter: &Painter, view: ViewTransform, proj
 pub(super) fn paint_electrical_extras(painter: &Painter, view: ViewTransform, project: &Project) {
     let lux_marks = project.lighting_plan_marks();
     if !lux_marks.is_empty() {
-        paint_marks(painter, view, &lux_marks, Color32::from_rgb(180, 110, 10), 32.0);
+        paint_marks(
+            painter,
+            view,
+            &lux_marks,
+            Color32::from_rgb(180, 110, 10),
+            32.0,
+        );
     }
     let pv_marks = project.pv_plan_marks();
     if !pv_marks.is_empty() {
-        paint_marks(painter, view, &pv_marks, Color32::from_rgb(21, 101, 192), 20.0);
+        paint_marks(
+            painter,
+            view,
+            &pv_marks,
+            Color32::from_rgb(21, 101, 192),
+            20.0,
+        );
     }
     let earth_marks = project.earthing_plan_marks();
     if !earth_marks.is_empty() {
-        paint_marks(painter, view, &earth_marks, Color32::from_rgb(46, 125, 50), 22.0);
+        paint_marks(
+            painter,
+            view,
+            &earth_marks,
+            Color32::from_rgb(46, 125, 50),
+            22.0,
+        );
     }
 }
 

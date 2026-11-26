@@ -226,8 +226,7 @@ fn accumulate_run_wires(
     for cw in &run.circuits {
         let key = section_key(cw.section_mm2);
         if cw.phases > 0 {
-            *wires.entry((key, WireColor::Phase)).or_insert(0.0) +=
-                length_m * f64::from(cw.phases);
+            *wires.entry((key, WireColor::Phase)).or_insert(0.0) += length_m * f64::from(cw.phases);
         }
         if cw.neutral {
             *wires.entry((key, WireColor::Neutral)).or_insert(0.0) += length_m;
@@ -699,9 +698,15 @@ pub fn electrical_shopping_list(project: &Project, waste_pct: f64) -> Electrical
         "Interruptor intermediário (four-way) 10 A com espelho 4×2\"",
         switch_inter,
     );
-    push_dev("Ponto de luz no teto (plafon / luminária LED)", ceiling_lights);
+    push_dev(
+        "Ponto de luz no teto (plafon / luminária LED)",
+        ceiling_lights,
+    );
     push_dev("Arandela de parede (ponto de luz)", wall_lights);
-    push_dev("Tomada de dados / TV (RJ45 ou coaxial) com espelho 4×2\"", data_points);
+    push_dev(
+        "Tomada de dados / TV (RJ45 ou coaxial) com espelho 4×2\"",
+        data_points,
+    );
 
     list.assumptions = vec![
         format!(
@@ -726,9 +731,17 @@ pub fn build_electrical_materials_schedule(project: &Project) -> ScheduleTable {
     for w in &list.wires {
         rows.push(vec![
             "Cabo cobre 750 V".to_owned(),
-            format!("{} mm² · {}", section_label(w.section_mm2), w.color.color_name()),
+            format!(
+                "{} mm² · {}",
+                section_label(w.section_mm2),
+                w.color.color_name()
+            ),
             format!("{} m", decimal(w.net_length_m, 1)),
-            format!("{} m ({} rolo(s))", decimal(w.total_length_m, 1), w.rolls_100m),
+            format!(
+                "{} m ({} rolo(s))",
+                decimal(w.total_length_m, 1),
+                w.rolls_100m
+            ),
         ]);
     }
     for c in &list.conduits {
@@ -736,7 +749,11 @@ pub fn build_electrical_materials_schedule(project: &Project) -> ScheduleTable {
             "Eletroduto".to_owned(),
             format!("Ø{} mm ({})", c.diameter_mm, c.run.label().to_lowercase()),
             format!("{} m", decimal(c.net_length_m, 1)),
-            format!("{} m ({} rolo(s))", decimal(c.total_length_m, 1), c.rolls_50m),
+            format!(
+                "{} m ({} rolo(s))",
+                decimal(c.total_length_m, 1),
+                c.rolls_50m
+            ),
         ]);
     }
     for b in &list.boxes {
@@ -783,10 +800,7 @@ pub fn build_electrical_materials_schedule(project: &Project) -> ScheduleTable {
 }
 
 fn csv_field(value: &str) -> String {
-    if value
-        .chars()
-        .any(|c| matches!(c, ',' | '"' | '\r' | '\n'))
-    {
+    if value.chars().any(|c| matches!(c, ',' | '"' | '\r' | '\n')) {
         format!("\"{}\"", value.replace('"', "\"\""))
     } else {
         value.to_owned()
@@ -843,8 +857,7 @@ pub fn electrical_shopping_list_csv(project: &Project, waste_pct: f64) -> String
             "protecao,{},{},{},{},{},un,,{}\r",
             csv_field(&p.specification),
             csv_field(&p.curve_or_class),
-            p.rating_a
-                .map_or(String::new(), |a| format!("{a:.0} A")),
+            p.rating_a.map_or(String::new(), |a| format!("{a:.0} A")),
             p.quantity,
             p.quantity,
             csv_field(&p.notes)
@@ -885,7 +898,13 @@ pub fn electrical_shopping_list_svg(project: &Project, waste_pct: f64) -> String
         height - 20.0
     );
 
-    let text = |svg: &mut String, x: f64, y: f64, size: f64, bold: bool, color: &str, value: &str| {
+    let text = |svg: &mut String,
+                x: f64,
+                y: f64,
+                size: f64,
+                bold: bool,
+                color: &str,
+                value: &str| {
         let _ = writeln!(
             svg,
             "<text x=\"{x:.2}\" y=\"{y:.2}\" {font} font-size=\"{size}\"{} fill=\"{color}\">{}</text>",
@@ -935,12 +954,33 @@ pub fn electrical_shopping_list_svg(project: &Project, waste_pct: f64) -> String
         *y += 4.5;
     };
 
-    draw_section_title(&mut svg, 18.0, &mut ly, "1. Cabos de cobre PVC 750 V (por bitola e cor)");
+    draw_section_title(
+        &mut svg,
+        18.0,
+        &mut ly,
+        "1. Cabos de cobre PVC 750 V (por bitola e cor)",
+    );
     if list.wires.is_empty() {
-        text(&mut svg, 18.0, ly, 2.6, false, muted, "Nenhum circuito lançado.");
+        text(
+            &mut svg,
+            18.0,
+            ly,
+            2.6,
+            false,
+            muted,
+            "Nenhum circuito lançado.",
+        );
         ly += 6.0;
     } else {
-        text(&mut svg, 18.0, ly, 2.5, true, muted, "Bitola · Cor (NBR 5410)");
+        text(
+            &mut svg,
+            18.0,
+            ly,
+            2.5,
+            true,
+            muted,
+            "Bitola · Cor (NBR 5410)",
+        );
         text(&mut svg, 118.0, ly, 2.5, true, muted, "Líquido");
         text(&mut svg, 146.0, ly, 2.5, true, muted, "Com perda");
         text(&mut svg, 178.0, ly, 2.5, true, muted, "Rolos 100 m");
@@ -955,17 +995,54 @@ pub fn electrical_shopping_list_svg(project: &Project, waste_pct: f64) -> String
                 ink,
                 &format!("{} mm² — {}", section_label(w.section_mm2), w.color.label()),
             );
-            text(&mut svg, 118.0, ly, 2.5, false, ink, &format!("{} m", decimal(w.net_length_m, 1)));
-            text(&mut svg, 146.0, ly, 2.5, true, ink, &format!("{} m", decimal(w.total_length_m, 1)));
-            text(&mut svg, 178.0, ly, 2.5, false, muted, &format!("{} rolo(s)", w.rolls_100m));
+            text(
+                &mut svg,
+                118.0,
+                ly,
+                2.5,
+                false,
+                ink,
+                &format!("{} m", decimal(w.net_length_m, 1)),
+            );
+            text(
+                &mut svg,
+                146.0,
+                ly,
+                2.5,
+                true,
+                ink,
+                &format!("{} m", decimal(w.total_length_m, 1)),
+            );
+            text(
+                &mut svg,
+                178.0,
+                ly,
+                2.5,
+                false,
+                muted,
+                &format!("{} rolo(s)", w.rolls_100m),
+            );
             ly += 4.8;
         }
     }
 
     ly += 4.0;
-    draw_section_title(&mut svg, 18.0, &mut ly, "2. Eletrodutos (por diâmetro nominal)");
+    draw_section_title(
+        &mut svg,
+        18.0,
+        &mut ly,
+        "2. Eletrodutos (por diâmetro nominal)",
+    );
     if list.conduits.is_empty() {
-        text(&mut svg, 18.0, ly, 2.6, false, muted, "Nenhum eletroduto lançado.");
+        text(
+            &mut svg,
+            18.0,
+            ly,
+            2.6,
+            false,
+            muted,
+            "Nenhum eletroduto lançado.",
+        );
         ly += 6.0;
     } else {
         for c in &list.conduits {
@@ -978,15 +1055,44 @@ pub fn electrical_shopping_list_svg(project: &Project, waste_pct: f64) -> String
                 ink,
                 &format!("Ø{} mm ({})", c.diameter_mm, c.run.label()),
             );
-            text(&mut svg, 118.0, ly, 2.5, false, ink, &format!("{} m", decimal(c.net_length_m, 1)));
-            text(&mut svg, 146.0, ly, 2.5, true, ink, &format!("{} m", decimal(c.total_length_m, 1)));
-            text(&mut svg, 178.0, ly, 2.5, false, muted, &format!("{} rolo(s) 50 m", c.rolls_50m));
+            text(
+                &mut svg,
+                118.0,
+                ly,
+                2.5,
+                false,
+                ink,
+                &format!("{} m", decimal(c.net_length_m, 1)),
+            );
+            text(
+                &mut svg,
+                146.0,
+                ly,
+                2.5,
+                true,
+                ink,
+                &format!("{} m", decimal(c.total_length_m, 1)),
+            );
+            text(
+                &mut svg,
+                178.0,
+                ly,
+                2.5,
+                false,
+                muted,
+                &format!("{} rolo(s) 50 m", c.rolls_50m),
+            );
             ly += 4.8;
         }
     }
 
     let mut ry = 38.0;
-    draw_section_title(&mut svg, 218.0, &mut ry, "3. Caixas e quadros de distribuição");
+    draw_section_title(
+        &mut svg,
+        218.0,
+        &mut ry,
+        "3. Caixas e quadros de distribuição",
+    );
     for b in &list.boxes {
         text(
             &mut svg,
@@ -1140,7 +1246,9 @@ mod tests {
             WireColor::Earth,
         ] {
             assert!(
-                list.wires.iter().any(|w| w.color == color && w.net_length_m > 0.0),
+                list.wires
+                    .iter()
+                    .any(|w| w.color == color && w.net_length_m > 0.0),
                 "missing wire color {color:?}"
             );
         }
@@ -1203,9 +1311,13 @@ mod tests {
         let sw = add(FixtureKind::Switch, 3.5, 2.5, Some(1));
         let outlet = add(FixtureKind::OutletLow, 3.5, 3.5, Some(2));
         // Straight distances: panel->light = 3.0 m, light->sw = 2.0 m, light->outlet = 3.0 m.
-        project.add_conduit(panel, light, ConduitRun::Ceiling).unwrap();
+        project
+            .add_conduit(panel, light, ConduitRun::Ceiling)
+            .unwrap();
         project.add_conduit(light, sw, ConduitRun::Ceiling).unwrap();
-        project.add_conduit(light, outlet, ConduitRun::Ceiling).unwrap();
+        project
+            .add_conduit(light, outlet, ConduitRun::Ceiling)
+            .unwrap();
 
         let list = project.electrical_shopping_list(0.0);
         // Panel riser = 2.8 - 1.5 = 1.3 m; switch drop = 2.8 - 1.1 = 1.7 m; outlet drop = 2.8 - 0.3 = 2.5 m.

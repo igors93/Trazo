@@ -1436,7 +1436,11 @@ mod tests {
         let data = res.structured.unwrap();
         let rooms = data["comodos"].as_array().unwrap();
         assert_eq!(rooms.len(), app.project.rooms.len());
-        assert!(rooms.iter().all(|r| r["iluminancia_lux"].as_f64().unwrap() > 0.0));
+        assert!(
+            rooms
+                .iter()
+                .all(|r| r["iluminancia_lux"].as_f64().unwrap() > 0.0)
+        );
 
         let board = app
             .run_mcp_tool("quadro_de_cargas", &json!({}))

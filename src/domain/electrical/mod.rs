@@ -61,7 +61,10 @@ pub struct ElectricalSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_rules: Option<UtilityOverrides>,
     /// Room lighting calculation parameters (NBR ISO/CIE 8995-1, #125).
-    #[serde(default, skip_serializing_if = "lighting::LightingSettings::is_default")]
+    #[serde(
+        default,
+        skip_serializing_if = "lighting::LightingSettings::is_default"
+    )]
     pub lighting: lighting::LightingSettings,
     /// Photovoltaic pre-sizing parameters (NBR 16690 / Lei 14.300, #126).
     #[serde(default, skip_serializing_if = "photovoltaic::PvSettings::is_default")]
@@ -73,7 +76,10 @@ pub struct ElectricalSettings {
     )]
     pub short_circuit: crate::domain::distribution::selectivity::ShortCircuitSettings,
     /// Earthing layout & simplified SPDA risk parameters (NBR 5410 §6.4 / NBR 5419-2, #129).
-    #[serde(default, skip_serializing_if = "earthing::EarthingSettings::is_default")]
+    #[serde(
+        default,
+        skip_serializing_if = "earthing::EarthingSettings::is_default"
+    )]
     pub earthing: earthing::EarthingSettings,
 }
 
@@ -95,7 +101,8 @@ impl Default for ElectricalSettings {
             custom_rules: None,
             lighting: lighting::LightingSettings::default(),
             pv: photovoltaic::PvSettings::default(),
-            short_circuit: crate::domain::distribution::selectivity::ShortCircuitSettings::default(),
+            short_circuit: crate::domain::distribution::selectivity::ShortCircuitSettings::default(
+            ),
             earthing: earthing::EarthingSettings::default(),
         }
     }

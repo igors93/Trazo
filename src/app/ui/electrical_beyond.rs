@@ -225,8 +225,11 @@ impl FloorPlanApp {
             return;
         };
         let result = match kind {
-            "csv" => std::fs::write(&path, electrical_shopping_list_csv(&self.project, waste_pct))
-                .map_err(|e| e.to_string()),
+            "csv" => std::fs::write(
+                &path,
+                electrical_shopping_list_csv(&self.project, waste_pct),
+            )
+            .map_err(|e| e.to_string()),
             "pdf" => {
                 let markup = electrical_shopping_list_svg(&self.project, waste_pct);
                 crate::domain::views::export_view_pdf(&markup, &path)
@@ -237,7 +240,10 @@ impl FloorPlanApp {
             }
         };
         self.message = match result {
-            Ok(()) => format!("Lista de materiais elétricos exportada em {}", path.display()),
+            Ok(()) => format!(
+                "Lista de materiais elétricos exportada em {}",
+                path.display()
+            ),
             Err(error) => format!("Erro ao exportar lista elétrica: {error}"),
         };
     }
@@ -414,8 +420,9 @@ impl FloorPlanApp {
             return;
         };
         let result = match kind {
-            "csv" => std::fs::write(&path, lighting_report_csv(&self.project))
-                .map_err(|e| e.to_string()),
+            "csv" => {
+                std::fs::write(&path, lighting_report_csv(&self.project)).map_err(|e| e.to_string())
+            }
             "pdf" => {
                 let markup = lighting_report_svg(&self.project);
                 crate::domain::views::export_view_pdf(&markup, &path)
@@ -679,8 +686,9 @@ impl FloorPlanApp {
             return;
         };
         let result = match kind {
-            "csv" => std::fs::write(&path, photovoltaic_csv(&self.project))
-                .map_err(|e| e.to_string()),
+            "csv" => {
+                std::fs::write(&path, photovoltaic_csv(&self.project)).map_err(|e| e.to_string())
+            }
             "pdf" => {
                 let markup = photovoltaic_sheet_svg(&self.project);
                 crate::domain::views::export_view_pdf(&markup, &path)
@@ -920,8 +928,9 @@ impl FloorPlanApp {
             return;
         };
         let result = match kind {
-            "csv" => std::fs::write(&path, short_circuit_csv(&self.project))
-                .map_err(|e| e.to_string()),
+            "csv" => {
+                std::fs::write(&path, short_circuit_csv(&self.project)).map_err(|e| e.to_string())
+            }
             "pdf" => {
                 let markup = short_circuit_sheet_svg(&self.project);
                 crate::domain::views::export_view_pdf(&markup, &path)

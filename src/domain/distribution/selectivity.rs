@@ -411,10 +411,7 @@ pub fn short_circuit_report(project: &Project, schedule: &LoadSchedule) -> Short
         settings.service_drop_section_mm2,
         RHO_CU_20,
     );
-    let ent_wire = schedule
-        .entrance
-        .and_then(|e| e.wire_mm2)
-        .unwrap_or(10.0);
+    let ent_wire = schedule.entrance.and_then(|e| e.wire_mm2).unwrap_or(10.0);
     let z_ent = cable_impedance(settings.entrance_length_m, ent_wire, RHO_CU_20);
     let z_qdg_pos = z_tr.add(z_drop).add(z_ent);
     let z_qdg_loop = z_tr.add(z_drop.add(z_ent).scale(2.0));
@@ -490,8 +487,10 @@ pub fn short_circuit_report(project: &Project, schedule: &LoadSchedule) -> Short
     }
 
     // Track per-board impedance (pos, loop), feeder drop, breaker, and icc_max for circuits.
-    let mut board_data: std::collections::HashMap<String, (Impedance, Impedance, f64, Option<f64>, f64)> =
-        std::collections::HashMap::new();
+    let mut board_data: std::collections::HashMap<
+        String,
+        (Impedance, Impedance, f64, Option<f64>, f64),
+    > = std::collections::HashMap::new();
     board_data.insert(
         main_label.clone(),
         (z_qdg_pos, z_qdg_loop, 0.0, main_breaker, icc_max_qdg),
@@ -592,9 +591,7 @@ pub fn short_circuit_report(project: &Project, schedule: &LoadSchedule) -> Short
         let z_term_hot = cable_impedance(len, wire, RHO_CU_70).scale(2.0);
         let z_end_loop = z_loop.add(z_term_hot);
         let icc_min_end_a = C_MIN * row.voltage_v.max(1.0) / z_end_loop.mag().max(1e-6);
-        let mag_trip_max_a = row
-            .breaker_a
-            .map_or(0.0, |b| b * curve.mag_max_mult());
+        let mag_trip_max_a = row.breaker_a.map_or(0.0, |b| b * curve.mag_max_mult());
         let magnetic_trip_ok = row.breaker_a.is_none() || icc_min_end_a + 1e-6 >= mag_trip_max_a;
         let cable_thermal_ka = (K_PVC_CU * wire / MCB_CLEAR_TIME_S.sqrt()) / 1000.0;
         let cable_thermal_ok = icc_board_ka <= cable_thermal_ka + 1e-6;
@@ -608,9 +605,7 @@ pub fn short_circuit_report(project: &Project, schedule: &LoadSchedule) -> Short
         } else {
             Light::Green
         };
-        if !total_drop_ok
-            && let Some(td) = total_drop
-        {
+        if !total_drop_ok && let Some(td) = total_drop {
             report.warnings.push(format!(
                 "Circuito C{} ({board_name}): queda acumulada (alimentador + terminal) de {} % passa dos 4 % (NBR 5410 §6.2.7).",
                 row.number,
@@ -755,7 +750,13 @@ pub fn short_circuit_sheet_svg(project: &Project) -> String {
         width - 20.0,
         height - 20.0
     );
-    let text = |svg: &mut String, x: f64, y: f64, size: f64, bold: bool, color: &str, value: &str| {
+    let text = |svg: &mut String,
+                x: f64,
+                y: f64,
+                size: f64,
+                bold: bool,
+                color: &str,
+                value: &str| {
         let _ = writeln!(
             svg,
             "<text x=\"{x:.2}\" y=\"{y:.2}\" {font} font-size=\"{size}\"{} fill=\"{color}\">{}</text>",
@@ -791,7 +792,15 @@ pub fn short_circuit_sheet_svg(project: &Project) -> String {
     );
 
     let mut y = 40.0;
-    text(&mut svg, 18.0, y, 3.4, true, ink, "1. Quadros e níveis de curto-circuito");
+    text(
+        &mut svg,
+        18.0,
+        y,
+        3.4,
+        true,
+        ink,
+        "1. Quadros e níveis de curto-circuito",
+    );
     y += 5.5;
     for b in &r.boards {
         let color = match b.light {
@@ -834,7 +843,15 @@ pub fn short_circuit_sheet_svg(project: &Project) -> String {
     }
 
     y += 5.0;
-    text(&mut svg, 18.0, y, 3.4, true, ink, "2. Coordenação e seletividade entre disjuntores");
+    text(
+        &mut svg,
+        18.0,
+        y,
+        3.4,
+        true,
+        ink,
+        "2. Coordenação e seletividade entre disjuntores",
+    );
     y += 5.5;
     for s in &r.selectivity {
         let color = match s.light {
@@ -922,7 +939,9 @@ mod tests {
         project
             .update_electrical(shower, Some(Some(1)), Some(5500.0), None)
             .unwrap();
-        project.add_conduit(panel, shower, ConduitRun::Ceiling).unwrap();
+        project
+            .add_conduit(panel, shower, ConduitRun::Ceiling)
+            .unwrap();
 
         let report = project.short_circuit_report();
         assert_eq!(report.boards.len(), 1);
@@ -964,7 +983,9 @@ mod tests {
                 .add_fixture(kind, Point::new(x, y), w, d, 0)
                 .unwrap();
             if c.is_some() || va.is_some() {
-                project.update_electrical(id, c.map(Some), va, None).unwrap();
+                project
+                    .update_electrical(id, c.map(Some), va, None)
+                    .unwrap();
             }
             id
         };
@@ -974,11 +995,19 @@ mod tests {
         let shower_casa = add(FixtureKind::OutletSpecific, 8.0, 3.0, Some(2), Some(5500.0));
         let light_ed = add(FixtureKind::CeilingLight, 23.0, 3.0, Some(3), Some(200.0));
         let outlet_ed = add(FixtureKind::OutletLow, 26.0, 3.0, Some(4), Some(1200.0));
-        project.add_conduit(qdg, light_casa, ConduitRun::Ceiling).unwrap();
-        project.add_conduit(light_casa, shower_casa, ConduitRun::Ceiling).unwrap();
+        project
+            .add_conduit(qdg, light_casa, ConduitRun::Ceiling)
+            .unwrap();
+        project
+            .add_conduit(light_casa, shower_casa, ConduitRun::Ceiling)
+            .unwrap();
         project.add_conduit(qdg, qdc1, ConduitRun::Floor).unwrap();
-        project.add_conduit(qdc1, light_ed, ConduitRun::Ceiling).unwrap();
-        project.add_conduit(light_ed, outlet_ed, ConduitRun::Ceiling).unwrap();
+        project
+            .add_conduit(qdc1, light_ed, ConduitRun::Ceiling)
+            .unwrap();
+        project
+            .add_conduit(light_ed, outlet_ed, ConduitRun::Ceiling)
+            .unwrap();
 
         let report = project.short_circuit_report();
         assert_eq!(report.boards.len(), 2);

@@ -9,11 +9,7 @@ use std::fmt::Write as _;
 use serde::{Deserialize, Serialize};
 
 use crate::domain::{
-    conduits::PlanMark,
-    distribution::earth_section,
-    geometry::Point,
-    limits,
-    model::Project,
+    conduits::PlanMark, distribution::earth_section, geometry::Point, limits, model::Project,
     verdict::Light,
 };
 
@@ -336,13 +332,25 @@ fn layout_earthing_points(
     let min_d = d_left.min(d_right).min(d_top).min(d_bottom);
 
     let (mut bep, dir) = if (min_d - d_left).abs() < 1e-6 {
-        (Point::new(bmin.x - offset, anchor.y.clamp(bmin.y, bmax.y)), Point::new(0.0, 1.0))
+        (
+            Point::new(bmin.x - offset, anchor.y.clamp(bmin.y, bmax.y)),
+            Point::new(0.0, 1.0),
+        )
     } else if (min_d - d_right).abs() < 1e-6 {
-        (Point::new(bmax.x + offset, anchor.y.clamp(bmin.y, bmax.y)), Point::new(0.0, 1.0))
+        (
+            Point::new(bmax.x + offset, anchor.y.clamp(bmin.y, bmax.y)),
+            Point::new(0.0, 1.0),
+        )
     } else if (min_d - d_top).abs() < 1e-6 {
-        (Point::new(anchor.x.clamp(bmin.x, bmax.x), bmin.y - offset), Point::new(1.0, 0.0))
+        (
+            Point::new(anchor.x.clamp(bmin.x, bmax.x), bmin.y - offset),
+            Point::new(1.0, 0.0),
+        )
     } else {
-        (Point::new(anchor.x.clamp(bmin.x, bmax.x), bmax.y + offset), Point::new(1.0, 0.0))
+        (
+            Point::new(anchor.x.clamp(bmin.x, bmax.x), bmax.y + offset),
+            Point::new(1.0, 0.0),
+        )
     };
 
     // Clamp inside terrain bounding box if a lot exists.
@@ -398,10 +406,7 @@ pub fn earthing_and_spda_report(project: &Project) -> EarthingSpdaReport {
     };
     let array_ohm = r1 * rod_array_factor(rod_count);
 
-    let ent_phase = schedule
-        .entrance
-        .and_then(|e| e.wire_mm2)
-        .unwrap_or(10.0);
+    let ent_phase = schedule.entrance.and_then(|e| e.wire_mm2).unwrap_or(10.0);
     let pe_main = earth_section(ent_phase);
     let buried_mm2 = pe_main.max(25.0);
     let conduit_mm2 = pe_main.max(16.0);
@@ -491,7 +496,11 @@ pub fn earthing_and_spda_report(project: &Project) -> EarthingSpdaReport {
 
     // Incoming LV power line flashes Nl (100 m residential exposure, NBR 5419-2 §A.4).
     let al = 40.0 * 100.0;
-    let ci = if settings.overhead_power_line { 1.0 } else { 0.5 };
+    let ci = if settings.overhead_power_line {
+        1.0
+    } else {
+        0.5
+    };
     let ce = match settings.surroundings {
         SpdaSurroundings::SurroundedTaller => 0.1,
         SpdaSurroundings::SurroundedSimilar => 0.5,
@@ -504,7 +513,11 @@ pub fn earthing_and_spda_report(project: &Project) -> EarthingSpdaReport {
     let rf = 1.0e-3;
     let lf = 1.0e-2;
     let lt = 1.0e-2;
-    let p_spd = if settings.has_dps_at_entrance { 0.05 } else { 1.0 };
+    let p_spd = if settings.has_dps_at_entrance {
+        0.05
+    } else {
+        1.0
+    };
     let ra = nd * 1.0e-2 * lt;
     let rb = nd * 1.0 * rf * lf;
     let ru = nl * 1.0e-2 * p_spd * lt;
@@ -524,7 +537,9 @@ pub fn earthing_and_spda_report(project: &Project) -> EarthingSpdaReport {
         ]
         .iter()
         .find(|(_, pb)| ra * pb + rb * pb + ru + rv <= TOLERABLE_RISK_R1)
-        .map_or("NP I + medidas complementares (engenheiro)", |(name, _)| *name);
+        .map_or("NP I + medidas complementares (engenheiro)", |(name, _)| {
+            *name
+        });
         Some(np.to_owned())
     } else {
         None
@@ -727,7 +742,13 @@ pub fn earthing_spda_sheet_svg(project: &Project) -> String {
          <rect width=\"{width}\" height=\"{height}\" fill=\"#ffffff\"/>\n\
          <rect x=\"10\" y=\"10\" width=\"400\" height=\"277\" fill=\"none\" stroke=\"{ink}\" stroke-width=\"0.5\"/>\n"
     );
-    let text = |svg: &mut String, x: f64, y: f64, size: f64, bold: bool, color: &str, value: &str| {
+    let text = |svg: &mut String,
+                x: f64,
+                y: f64,
+                size: f64,
+                bold: bool,
+                color: &str,
+                value: &str| {
         let _ = writeln!(
             svg,
             "<text x=\"{x:.2}\" y=\"{y:.2}\" {font} font-size=\"{size}\"{} fill=\"{color}\">{}</text>",
@@ -758,13 +779,25 @@ pub fn earthing_spda_sheet_svg(project: &Project) -> String {
             r.settings.scheme.code(),
             r.rod_count,
             decimal(r.array_resistance_ohm, 1),
-            if r.spda_required { "Exigido" } else { "Não exigido na triagem" }
+            if r.spda_required {
+                "Exigido"
+            } else {
+                "Não exigido na triagem"
+            }
         ),
     );
 
     // Left column: Earthing schematic + specifications.
     let mut y = 42.0;
-    text(&mut svg, 18.0, y, 3.6, true, ink, "1. Sistema de aterramento e equipotencialização (NBR 5410 §6.4)");
+    text(
+        &mut svg,
+        18.0,
+        y,
+        3.6,
+        true,
+        ink,
+        "1. Sistema de aterramento e equipotencialização (NBR 5410 §6.4)",
+    );
     y += 6.0;
     let e_color = match r.earthing_light {
         Light::Green => green,
@@ -774,13 +807,54 @@ pub fn earthing_spda_sheet_svg(project: &Project) -> String {
     text(&mut svg, 18.0, y, 2.7, true, e_color, &r.earthing_note);
     y += 7.0;
     let e_rows = [
-        ("Esquema de aterramento", r.settings.scheme.label().to_owned()),
-        ("Resistividade do solo (ρ)", format!("{:.0} Ω·m", r.settings.soil_resistivity_ohm_m)),
-        ("Haste individual (Dwight)", format!("Ø{:.0} mm × {} m → R1 = {} Ω", r.settings.rod_diameter_mm, decimal(r.settings.rod_length_m, 2), decimal(r.single_rod_ohm, 1))),
-        ("Malha de hastes", format!("{} hastes em linha espaçadas em {} m → Ra = {} Ω (meta ≤ 25 Ω)", r.rod_count, decimal(r.settings.rod_spacing_m, 1), decimal(r.array_resistance_ohm, 1))),
-        ("Condutor de aterramento", format!("#{} mm² cobre nu enterrado (ou #{} mm² isolado em eletroduto)", decimal(r.buried_conductor_mm2, 0), decimal(r.conduit_conductor_mm2, 0))),
-        ("Equipotencialização (BEP)", format!("BEP próximo ao QDG + condutores #{} mm² (tubulações, armaduras, PE)", decimal(r.bonding_conductor_mm2, 0))),
-        ("Caixas de inspeção", format!("{} caixa(s) Ø300 mm com tampa (1 por haste)", r.inspection_boxes)),
+        (
+            "Esquema de aterramento",
+            r.settings.scheme.label().to_owned(),
+        ),
+        (
+            "Resistividade do solo (ρ)",
+            format!("{:.0} Ω·m", r.settings.soil_resistivity_ohm_m),
+        ),
+        (
+            "Haste individual (Dwight)",
+            format!(
+                "Ø{:.0} mm × {} m → R1 = {} Ω",
+                r.settings.rod_diameter_mm,
+                decimal(r.settings.rod_length_m, 2),
+                decimal(r.single_rod_ohm, 1)
+            ),
+        ),
+        (
+            "Malha de hastes",
+            format!(
+                "{} hastes em linha espaçadas em {} m → Ra = {} Ω (meta ≤ 25 Ω)",
+                r.rod_count,
+                decimal(r.settings.rod_spacing_m, 1),
+                decimal(r.array_resistance_ohm, 1)
+            ),
+        ),
+        (
+            "Condutor de aterramento",
+            format!(
+                "#{} mm² cobre nu enterrado (ou #{} mm² isolado em eletroduto)",
+                decimal(r.buried_conductor_mm2, 0),
+                decimal(r.conduit_conductor_mm2, 0)
+            ),
+        ),
+        (
+            "Equipotencialização (BEP)",
+            format!(
+                "BEP próximo ao QDG + condutores #{} mm² (tubulações, armaduras, PE)",
+                decimal(r.bonding_conductor_mm2, 0)
+            ),
+        ),
+        (
+            "Caixas de inspeção",
+            format!(
+                "{} caixa(s) Ø300 mm com tampa (1 por haste)",
+                r.inspection_boxes
+            ),
+        ),
     ];
     for (k, v) in e_rows {
         text(&mut svg, 18.0, y, 2.6, true, muted, k);
@@ -827,7 +901,15 @@ pub fn earthing_spda_sheet_svg(project: &Project) -> String {
             "<circle cx=\"{rx:.1}\" cy=\"{:.1}\" r=\"2.2\" fill=\"#ffffff\" stroke=\"{green}\" stroke-width=\"0.4\"/>",
             sy + 6.0
         );
-        text(&mut svg, rx - 2.5, sy + 3.0, 2.2, true, green, &format!("H{}", i + 1));
+        text(
+            &mut svg,
+            rx - 2.5,
+            sy + 3.0,
+            2.2,
+            true,
+            green,
+            &format!("H{}", i + 1),
+        );
     }
     text(
         &mut svg,
@@ -847,7 +929,15 @@ pub fn earthing_spda_sheet_svg(project: &Project) -> String {
 
     // Right column: Simplified NBR 5419-2 SPDA risk check.
     let mut ry = 42.0;
-    text(&mut svg, 218.0, ry, 3.6, true, ink, "2. Triagem de risco de descargas atmosféricas (NBR 5419-2)");
+    text(
+        &mut svg,
+        218.0,
+        ry,
+        3.6,
+        true,
+        ink,
+        "2. Triagem de risco de descargas atmosféricas (NBR 5419-2)",
+    );
     ry += 6.0;
     let s_color = match r.spda_light {
         Light::Green => green,
@@ -857,15 +947,60 @@ pub fn earthing_spda_sheet_svg(project: &Project) -> String {
     text(&mut svg, 218.0, ry, 2.7, true, s_color, &r.spda_note);
     ry += 7.0;
     let s_rows = [
-        ("Local / dias de trovoada", format!("{} (Td = {:.0} dias/ano)", r.city_label, r.thunderstorm_days_year)),
-        ("Densidade de descargas (Ng)", format!("{} descargas / km²·ano", decimal(r.flash_density_ng, 2))),
-        ("Dimensões da edificação", format!("L = {} m · W = {} m · H = {} m", decimal(r.building_length_m, 1), decimal(r.building_width_m, 1), decimal(r.building_height_m, 1))),
-        ("Área de exposição (Ad)", format!("{:.0} m²", r.collection_area_ad_m2)),
-        ("Fator de localização (Cd)", r.settings.surroundings.label().to_owned()),
-        ("Descargas diretas (Nd)", format!("{:.4} / ano", r.annual_direct_flashes_nd)),
-        ("Descargas na linha (Nl)", format!("{:.4} / ano ({})", r.annual_line_flashes_nl, if r.settings.overhead_power_line { "rede aérea" } else { "subterrânea" })),
-        ("Risco calculado (R1)", format!("{:.2e} / ano (tolerável RT = 1,00e-5 / ano)", r.risk_r1)),
-        ("Recomendação SPDA", r.recommended_np.clone().unwrap_or_else(|| "Dispensado na triagem · manter DPS Classe II".to_owned())),
+        (
+            "Local / dias de trovoada",
+            format!(
+                "{} (Td = {:.0} dias/ano)",
+                r.city_label, r.thunderstorm_days_year
+            ),
+        ),
+        (
+            "Densidade de descargas (Ng)",
+            format!("{} descargas / km²·ano", decimal(r.flash_density_ng, 2)),
+        ),
+        (
+            "Dimensões da edificação",
+            format!(
+                "L = {} m · W = {} m · H = {} m",
+                decimal(r.building_length_m, 1),
+                decimal(r.building_width_m, 1),
+                decimal(r.building_height_m, 1)
+            ),
+        ),
+        (
+            "Área de exposição (Ad)",
+            format!("{:.0} m²", r.collection_area_ad_m2),
+        ),
+        (
+            "Fator de localização (Cd)",
+            r.settings.surroundings.label().to_owned(),
+        ),
+        (
+            "Descargas diretas (Nd)",
+            format!("{:.4} / ano", r.annual_direct_flashes_nd),
+        ),
+        (
+            "Descargas na linha (Nl)",
+            format!(
+                "{:.4} / ano ({})",
+                r.annual_line_flashes_nl,
+                if r.settings.overhead_power_line {
+                    "rede aérea"
+                } else {
+                    "subterrânea"
+                }
+            ),
+        ),
+        (
+            "Risco calculado (R1)",
+            format!("{:.2e} / ano (tolerável RT = 1,00e-5 / ano)", r.risk_r1),
+        ),
+        (
+            "Recomendação SPDA",
+            r.recommended_np
+                .clone()
+                .unwrap_or_else(|| "Dispensado na triagem · manter DPS Classe II".to_owned()),
+        ),
     ];
     for (k, v) in s_rows {
         text(&mut svg, 218.0, ry, 2.6, true, muted, k);

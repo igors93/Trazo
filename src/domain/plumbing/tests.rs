@@ -89,7 +89,12 @@ fn a_tank_just_over_the_slab_leaves_the_shower_weak_and_says_how_high_to_go() {
     let mut raised = house();
     raised.plumbing.tank_base_m = Some(cold.comfort_base_m + 0.05);
     let cold = cold_water(&raised).unwrap();
-    assert!(cold.network.outlets.iter().all(|o| o.state == Pressure::Good));
+    assert!(
+        cold.network
+            .outlets
+            .iter()
+            .all(|o| o.state == Pressure::Good)
+    );
 }
 
 #[test]
@@ -103,7 +108,10 @@ fn a_tank_heavier_than_the_structure_expects_is_red() {
     let tank = project.fixtures.last_mut().unwrap();
     tank.structural_load_kn = Some(5.0);
     let verdicts = plumbing_verdicts(&project);
-    let weight = verdicts.iter().find(|v| v.element == "Caixa-d'água").unwrap();
+    let weight = verdicts
+        .iter()
+        .find(|v| v.element == "Caixa-d'água")
+        .unwrap();
     assert_eq!(weight.light(), Light::Red);
     // Pressure problems are yellow, never red.
     assert!(

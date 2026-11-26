@@ -258,7 +258,10 @@ pub fn assumptions(project: &Project) -> Vec<String> {
 /// Every verdict of the project, worst first.
 pub fn safety_summary(project: &Project) -> SafetySummary {
     let mut verdicts = structure_verdicts(project, &project.structure_report());
-    verdicts.extend(electrical_project_verdicts(project, &project.load_schedule()));
+    verdicts.extend(electrical_project_verdicts(
+        project,
+        &project.load_schedule(),
+    ));
     verdicts.extend(code_verdicts(project));
     verdicts.extend(plumbing_verdicts(project));
     verdicts.sort_by(|a, b| {

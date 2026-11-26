@@ -812,7 +812,9 @@ impl FloorPlanApp {
             "Projeto hidrossanitário (PDF)...",
             "",
         )
-        .on_hover_text("Pontos de água, esgoto e gás de cada aparelho, com legenda e quadro de aparelhos")
+        .on_hover_text(
+            "Pontos de água, esgoto e gás de cada aparelho, com legenda e quadro de aparelhos",
+        )
         .clicked()
         {
             self.export_plumbing();

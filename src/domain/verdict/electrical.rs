@@ -353,7 +353,10 @@ pub fn electrical_project_verdicts(
             s.status == crate::domain::distribution::selectivity::SelectivityStatus::None
         }) {
             sc_checks.push(Check::fail(
-                &format!("Seletividade {} → {}", pair.upstream_label, pair.downstream_label),
+                &format!(
+                    "Seletividade {} → {}",
+                    pair.upstream_label, pair.downstream_label
+                ),
                 pair.explanation.clone(),
                 format!(
                     "Razão In_montante / In_jusante = {} < 1,25 (NBR 5410 §5.3.6).",

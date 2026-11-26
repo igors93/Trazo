@@ -62,33 +62,249 @@ struct CitySolarData {
 }
 
 const BRAZIL_SOLAR_DB: [CitySolarData; 27] = [
-    CitySolarData { preset_id: "sao_paulo_sp", city: "São Paulo", uf: "SP", latitude: -23.55, monthly_hsp: [5.15, 5.10, 4.65, 4.15, 3.60, 3.35, 3.55, 4.15, 4.30, 4.75, 5.20, 5.30] },
-    CitySolarData { preset_id: "campinas_sp", city: "Campinas", uf: "SP", latitude: -22.91, monthly_hsp: [5.55, 5.50, 5.10, 4.65, 4.05, 3.80, 4.00, 4.65, 4.85, 5.30, 5.65, 5.60] },
-    CitySolarData { preset_id: "rio_de_janeiro_rj", city: "Rio de Janeiro", uf: "RJ", latitude: -22.91, monthly_hsp: [5.75, 5.80, 5.20, 4.55, 3.90, 3.65, 3.80, 4.45, 4.65, 5.15, 5.55, 5.80] },
-    CitySolarData { preset_id: "belo_horizonte_mg", city: "Belo Horizonte", uf: "MG", latitude: -19.92, monthly_hsp: [5.65, 5.75, 5.35, 4.95, 4.45, 4.25, 4.45, 5.15, 5.35, 5.55, 5.50, 5.45] },
-    CitySolarData { preset_id: "curitiba_pr", city: "Curitiba", uf: "PR", latitude: -25.43, monthly_hsp: [5.10, 4.95, 4.45, 3.85, 3.25, 2.95, 3.15, 3.80, 4.00, 4.50, 5.15, 5.35] },
-    CitySolarData { preset_id: "florianopolis_sc", city: "Florianópolis", uf: "SC", latitude: -27.60, monthly_hsp: [5.50, 5.25, 4.65, 3.95, 3.25, 2.85, 3.05, 3.65, 3.95, 4.60, 5.40, 5.70] },
-    CitySolarData { preset_id: "porto_alegre_rs", city: "Porto Alegre", uf: "RS", latitude: -30.03, monthly_hsp: [5.95, 5.50, 4.75, 3.85, 3.00, 2.55, 2.75, 3.45, 4.05, 4.85, 5.75, 6.10] },
-    CitySolarData { preset_id: "brasilia_df", city: "Brasília", uf: "DF", latitude: -15.79, monthly_hsp: [5.40, 5.55, 5.35, 5.25, 5.05, 4.95, 5.15, 5.75, 5.85, 5.70, 5.35, 5.25] },
-    CitySolarData { preset_id: "goiania_go", city: "Goiânia", uf: "GO", latitude: -16.68, monthly_hsp: [5.35, 5.45, 5.30, 5.20, 4.95, 4.85, 5.05, 5.65, 5.70, 5.60, 5.35, 5.20] },
-    CitySolarData { preset_id: "salvador_ba", city: "Salvador", uf: "BA", latitude: -12.97, monthly_hsp: [6.05, 6.00, 5.65, 4.95, 4.35, 4.15, 4.35, 4.95, 5.55, 5.95, 6.05, 6.05] },
-    CitySolarData { preset_id: "recife_pe", city: "Recife", uf: "PE", latitude: -8.05, monthly_hsp: [6.05, 5.95, 5.70, 5.10, 4.60, 4.35, 4.55, 5.20, 5.80, 6.20, 6.30, 6.15] },
-    CitySolarData { preset_id: "fortaleza_ce", city: "Fortaleza", uf: "CE", latitude: -3.73, monthly_hsp: [5.65, 5.50, 5.25, 5.15, 5.35, 5.45, 5.70, 6.15, 6.45, 6.50, 6.35, 6.05] },
-    CitySolarData { preset_id: "manaus_am", city: "Manaus", uf: "AM", latitude: -3.12, monthly_hsp: [4.35, 4.35, 4.45, 4.40, 4.45, 4.75, 5.00, 5.35, 5.35, 5.15, 4.85, 4.55] },
-    CitySolarData { preset_id: "belem_pa", city: "Belém", uf: "PA", latitude: -1.46, monthly_hsp: [4.55, 4.50, 4.55, 4.65, 4.85, 5.10, 5.30, 5.55, 5.60, 5.55, 5.35, 4.90] },
-    CitySolarData { preset_id: "vitoria_es", city: "Vitória", uf: "ES", latitude: -20.32, monthly_hsp: [5.85, 5.95, 5.40, 4.75, 4.20, 3.95, 4.10, 4.75, 5.05, 5.40, 5.55, 5.75] },
-    CitySolarData { preset_id: "campo_grande_ms", city: "Campo Grande", uf: "MS", latitude: -20.47, monthly_hsp: [5.65, 5.55, 5.30, 4.85, 4.25, 4.00, 4.25, 4.95, 5.20, 5.65, 5.90, 5.85] },
-    CitySolarData { preset_id: "cuiaba_mt", city: "Cuiabá", uf: "MT", latitude: -15.60, monthly_hsp: [5.25, 5.25, 5.20, 5.15, 4.85, 4.75, 5.00, 5.45, 5.45, 5.65, 5.60, 5.35] },
-    CitySolarData { preset_id: "natal_rn", city: "Natal", uf: "RN", latitude: -5.79, monthly_hsp: [6.05, 5.95, 5.75, 5.35, 5.10, 4.95, 5.15, 5.75, 6.25, 6.50, 6.50, 6.25] },
-    CitySolarData { preset_id: "joao_pessoa_pb", city: "João Pessoa", uf: "PB", latitude: -7.12, monthly_hsp: [6.05, 5.95, 5.75, 5.20, 4.80, 4.60, 4.80, 5.45, 6.00, 6.35, 6.40, 6.20] },
-    CitySolarData { preset_id: "maceio_al", city: "Maceió", uf: "AL", latitude: -9.67, monthly_hsp: [6.05, 5.95, 5.70, 5.10, 4.55, 4.30, 4.50, 5.15, 5.75, 6.15, 6.25, 6.15] },
-    CitySolarData { preset_id: "aracaju_se", city: "Aracaju", uf: "SE", latitude: -10.95, monthly_hsp: [6.15, 6.05, 5.80, 5.20, 4.65, 4.40, 4.60, 5.25, 5.85, 6.20, 6.30, 6.20] },
-    CitySolarData { preset_id: "teresina_pi", city: "Teresina", uf: "PI", latitude: -5.09, monthly_hsp: [5.40, 5.30, 5.25, 5.25, 5.40, 5.55, 5.80, 6.20, 6.40, 6.35, 6.10, 5.75] },
-    CitySolarData { preset_id: "sao_luis_ma", city: "São Luís", uf: "MA", latitude: -2.53, monthly_hsp: [5.05, 4.85, 4.80, 4.85, 5.10, 5.35, 5.55, 5.90, 6.10, 6.05, 5.85, 5.45] },
-    CitySolarData { preset_id: "palmas_to", city: "Palmas", uf: "TO", latitude: -10.18, monthly_hsp: [5.15, 5.15, 5.15, 5.25, 5.30, 5.40, 5.60, 5.95, 5.85, 5.65, 5.40, 5.15] },
-    CitySolarData { preset_id: "londrina_pr", city: "Londrina", uf: "PR", latitude: -23.31, monthly_hsp: [5.65, 5.50, 5.05, 4.50, 3.85, 3.55, 3.80, 4.50, 4.75, 5.25, 5.75, 5.85] },
-    CitySolarData { preset_id: "joinville_sc", city: "Joinville", uf: "SC", latitude: -26.30, monthly_hsp: [4.95, 4.75, 4.25, 3.65, 3.05, 2.75, 2.90, 3.45, 3.70, 4.25, 4.95, 5.15] },
-    CitySolarData { preset_id: "caxias_do_sul_rs", city: "Caxias do Sul", uf: "RS", latitude: -29.17, monthly_hsp: [5.75, 5.35, 4.65, 3.75, 2.95, 2.55, 2.75, 3.45, 3.95, 4.75, 5.60, 5.95] },
+    CitySolarData {
+        preset_id: "sao_paulo_sp",
+        city: "São Paulo",
+        uf: "SP",
+        latitude: -23.55,
+        monthly_hsp: [
+            5.15, 5.10, 4.65, 4.15, 3.60, 3.35, 3.55, 4.15, 4.30, 4.75, 5.20, 5.30,
+        ],
+    },
+    CitySolarData {
+        preset_id: "campinas_sp",
+        city: "Campinas",
+        uf: "SP",
+        latitude: -22.91,
+        monthly_hsp: [
+            5.55, 5.50, 5.10, 4.65, 4.05, 3.80, 4.00, 4.65, 4.85, 5.30, 5.65, 5.60,
+        ],
+    },
+    CitySolarData {
+        preset_id: "rio_de_janeiro_rj",
+        city: "Rio de Janeiro",
+        uf: "RJ",
+        latitude: -22.91,
+        monthly_hsp: [
+            5.75, 5.80, 5.20, 4.55, 3.90, 3.65, 3.80, 4.45, 4.65, 5.15, 5.55, 5.80,
+        ],
+    },
+    CitySolarData {
+        preset_id: "belo_horizonte_mg",
+        city: "Belo Horizonte",
+        uf: "MG",
+        latitude: -19.92,
+        monthly_hsp: [
+            5.65, 5.75, 5.35, 4.95, 4.45, 4.25, 4.45, 5.15, 5.35, 5.55, 5.50, 5.45,
+        ],
+    },
+    CitySolarData {
+        preset_id: "curitiba_pr",
+        city: "Curitiba",
+        uf: "PR",
+        latitude: -25.43,
+        monthly_hsp: [
+            5.10, 4.95, 4.45, 3.85, 3.25, 2.95, 3.15, 3.80, 4.00, 4.50, 5.15, 5.35,
+        ],
+    },
+    CitySolarData {
+        preset_id: "florianopolis_sc",
+        city: "Florianópolis",
+        uf: "SC",
+        latitude: -27.60,
+        monthly_hsp: [
+            5.50, 5.25, 4.65, 3.95, 3.25, 2.85, 3.05, 3.65, 3.95, 4.60, 5.40, 5.70,
+        ],
+    },
+    CitySolarData {
+        preset_id: "porto_alegre_rs",
+        city: "Porto Alegre",
+        uf: "RS",
+        latitude: -30.03,
+        monthly_hsp: [
+            5.95, 5.50, 4.75, 3.85, 3.00, 2.55, 2.75, 3.45, 4.05, 4.85, 5.75, 6.10,
+        ],
+    },
+    CitySolarData {
+        preset_id: "brasilia_df",
+        city: "Brasília",
+        uf: "DF",
+        latitude: -15.79,
+        monthly_hsp: [
+            5.40, 5.55, 5.35, 5.25, 5.05, 4.95, 5.15, 5.75, 5.85, 5.70, 5.35, 5.25,
+        ],
+    },
+    CitySolarData {
+        preset_id: "goiania_go",
+        city: "Goiânia",
+        uf: "GO",
+        latitude: -16.68,
+        monthly_hsp: [
+            5.35, 5.45, 5.30, 5.20, 4.95, 4.85, 5.05, 5.65, 5.70, 5.60, 5.35, 5.20,
+        ],
+    },
+    CitySolarData {
+        preset_id: "salvador_ba",
+        city: "Salvador",
+        uf: "BA",
+        latitude: -12.97,
+        monthly_hsp: [
+            6.05, 6.00, 5.65, 4.95, 4.35, 4.15, 4.35, 4.95, 5.55, 5.95, 6.05, 6.05,
+        ],
+    },
+    CitySolarData {
+        preset_id: "recife_pe",
+        city: "Recife",
+        uf: "PE",
+        latitude: -8.05,
+        monthly_hsp: [
+            6.05, 5.95, 5.70, 5.10, 4.60, 4.35, 4.55, 5.20, 5.80, 6.20, 6.30, 6.15,
+        ],
+    },
+    CitySolarData {
+        preset_id: "fortaleza_ce",
+        city: "Fortaleza",
+        uf: "CE",
+        latitude: -3.73,
+        monthly_hsp: [
+            5.65, 5.50, 5.25, 5.15, 5.35, 5.45, 5.70, 6.15, 6.45, 6.50, 6.35, 6.05,
+        ],
+    },
+    CitySolarData {
+        preset_id: "manaus_am",
+        city: "Manaus",
+        uf: "AM",
+        latitude: -3.12,
+        monthly_hsp: [
+            4.35, 4.35, 4.45, 4.40, 4.45, 4.75, 5.00, 5.35, 5.35, 5.15, 4.85, 4.55,
+        ],
+    },
+    CitySolarData {
+        preset_id: "belem_pa",
+        city: "Belém",
+        uf: "PA",
+        latitude: -1.46,
+        monthly_hsp: [
+            4.55, 4.50, 4.55, 4.65, 4.85, 5.10, 5.30, 5.55, 5.60, 5.55, 5.35, 4.90,
+        ],
+    },
+    CitySolarData {
+        preset_id: "vitoria_es",
+        city: "Vitória",
+        uf: "ES",
+        latitude: -20.32,
+        monthly_hsp: [
+            5.85, 5.95, 5.40, 4.75, 4.20, 3.95, 4.10, 4.75, 5.05, 5.40, 5.55, 5.75,
+        ],
+    },
+    CitySolarData {
+        preset_id: "campo_grande_ms",
+        city: "Campo Grande",
+        uf: "MS",
+        latitude: -20.47,
+        monthly_hsp: [
+            5.65, 5.55, 5.30, 4.85, 4.25, 4.00, 4.25, 4.95, 5.20, 5.65, 5.90, 5.85,
+        ],
+    },
+    CitySolarData {
+        preset_id: "cuiaba_mt",
+        city: "Cuiabá",
+        uf: "MT",
+        latitude: -15.60,
+        monthly_hsp: [
+            5.25, 5.25, 5.20, 5.15, 4.85, 4.75, 5.00, 5.45, 5.45, 5.65, 5.60, 5.35,
+        ],
+    },
+    CitySolarData {
+        preset_id: "natal_rn",
+        city: "Natal",
+        uf: "RN",
+        latitude: -5.79,
+        monthly_hsp: [
+            6.05, 5.95, 5.75, 5.35, 5.10, 4.95, 5.15, 5.75, 6.25, 6.50, 6.50, 6.25,
+        ],
+    },
+    CitySolarData {
+        preset_id: "joao_pessoa_pb",
+        city: "João Pessoa",
+        uf: "PB",
+        latitude: -7.12,
+        monthly_hsp: [
+            6.05, 5.95, 5.75, 5.20, 4.80, 4.60, 4.80, 5.45, 6.00, 6.35, 6.40, 6.20,
+        ],
+    },
+    CitySolarData {
+        preset_id: "maceio_al",
+        city: "Maceió",
+        uf: "AL",
+        latitude: -9.67,
+        monthly_hsp: [
+            6.05, 5.95, 5.70, 5.10, 4.55, 4.30, 4.50, 5.15, 5.75, 6.15, 6.25, 6.15,
+        ],
+    },
+    CitySolarData {
+        preset_id: "aracaju_se",
+        city: "Aracaju",
+        uf: "SE",
+        latitude: -10.95,
+        monthly_hsp: [
+            6.15, 6.05, 5.80, 5.20, 4.65, 4.40, 4.60, 5.25, 5.85, 6.20, 6.30, 6.20,
+        ],
+    },
+    CitySolarData {
+        preset_id: "teresina_pi",
+        city: "Teresina",
+        uf: "PI",
+        latitude: -5.09,
+        monthly_hsp: [
+            5.40, 5.30, 5.25, 5.25, 5.40, 5.55, 5.80, 6.20, 6.40, 6.35, 6.10, 5.75,
+        ],
+    },
+    CitySolarData {
+        preset_id: "sao_luis_ma",
+        city: "São Luís",
+        uf: "MA",
+        latitude: -2.53,
+        monthly_hsp: [
+            5.05, 4.85, 4.80, 4.85, 5.10, 5.35, 5.55, 5.90, 6.10, 6.05, 5.85, 5.45,
+        ],
+    },
+    CitySolarData {
+        preset_id: "palmas_to",
+        city: "Palmas",
+        uf: "TO",
+        latitude: -10.18,
+        monthly_hsp: [
+            5.15, 5.15, 5.15, 5.25, 5.30, 5.40, 5.60, 5.95, 5.85, 5.65, 5.40, 5.15,
+        ],
+    },
+    CitySolarData {
+        preset_id: "londrina_pr",
+        city: "Londrina",
+        uf: "PR",
+        latitude: -23.31,
+        monthly_hsp: [
+            5.65, 5.50, 5.05, 4.50, 3.85, 3.55, 3.80, 4.50, 4.75, 5.25, 5.75, 5.85,
+        ],
+    },
+    CitySolarData {
+        preset_id: "joinville_sc",
+        city: "Joinville",
+        uf: "SC",
+        latitude: -26.30,
+        monthly_hsp: [
+            4.95, 4.75, 4.25, 3.65, 3.05, 2.75, 2.90, 3.45, 3.70, 4.25, 4.95, 5.15,
+        ],
+    },
+    CitySolarData {
+        preset_id: "caxias_do_sul_rs",
+        city: "Caxias do Sul",
+        uf: "RS",
+        latitude: -29.17,
+        monthly_hsp: [
+            5.75, 5.35, 4.65, 3.75, 2.95, 2.55, 2.75, 3.45, 3.95, 4.75, 5.60, 5.95,
+        ],
+    },
 ];
 
 /// Conservative fallback HSP profile (mean 4.20 kWh/m²·dia) when no city is set.
@@ -285,9 +501,11 @@ fn resolve_city_solar(project: &Project) -> (String, bool, f64, [f64; 12]) {
     }
     // Fallback by closest latitude if coordinates were provided.
     if let Some(lat) = site.latitude
-        && let Some(entry) = BRAZIL_SOLAR_DB
-            .iter()
-            .min_by(|a, b| (a.latitude - lat).abs().total_cmp(&(b.latitude - lat).abs()))
+        && let Some(entry) = BRAZIL_SOLAR_DB.iter().min_by(|a, b| {
+            (a.latitude - lat)
+                .abs()
+                .total_cmp(&(b.latitude - lat).abs())
+        })
     {
         let label = site
             .location_label()
@@ -361,11 +579,7 @@ fn plane_orientation(downhill: Point, slope_percent: f64, latitude: f64) -> (&'s
 
 /// Packs non-overlapping axis-aligned PV modules inside a roof plane polygon,
 /// choosing whichever module orientation (portrait or landscape) yields more modules.
-fn pack_panels_on_plane(
-    polygon: &[Point],
-    mod_len: f64,
-    mod_wid: f64,
-) -> Vec<[Point; 4]> {
+fn pack_panels_on_plane(polygon: &[Point], mod_len: f64, mod_wid: f64) -> Vec<[Point; 4]> {
     if polygon.len() < 3 {
         return Vec::new();
     }
@@ -392,8 +606,16 @@ fn pack_panels_on_plane(
         let nx = ((max_x - min_x + MODULE_GAP_M) / step_x).floor().max(0.0) as usize;
         let ny = ((max_y - min_y + MODULE_GAP_M) / step_y).floor().max(0.0) as usize;
         // Center the grid within the usable bounding rectangle.
-        let used_w = if nx > 0 { nx as f64 * step_x - MODULE_GAP_M } else { 0.0 };
-        let used_h = if ny > 0 { ny as f64 * step_y - MODULE_GAP_M } else { 0.0 };
+        let used_w = if nx > 0 {
+            nx as f64 * step_x - MODULE_GAP_M
+        } else {
+            0.0
+        };
+        let used_h = if ny > 0 {
+            ny as f64 * step_y - MODULE_GAP_M
+        } else {
+            0.0
+        };
         let ox = min_x + ((max_x - min_x) - used_w) * 0.5;
         let oy = min_y + ((max_y - min_y) - used_h) * 0.5;
         for row in 0..ny {
@@ -472,7 +694,8 @@ pub fn photovoltaic_report(project: &Project) -> PhotovoltaicReport {
         Supply::Single | Supply::Auto => 30.0,
     };
     let offset_frac = (settings.target_offset_pct / 100.0).clamp(0.10, 1.0);
-    let target_gen_month = ((monthly_consumption - availability_cost_kwh).max(monthly_consumption * 0.25))
+    let target_gen_month = ((monthly_consumption - availability_cost_kwh)
+        .max(monthly_consumption * 0.25))
         * offset_frac;
     let pr = settings.performance_ratio.clamp(0.60, 0.88);
     let mod_wp = settings.module_wp.clamp(250.0, 800.0);
@@ -509,9 +732,7 @@ pub fn photovoltaic_report(project: &Project) -> PhotovoltaicReport {
     }
     plane_pool.sort_by(|a, b| b.orientation_factor.total_cmp(&a.orientation_factor));
 
-    let best_orient = plane_pool
-        .first()
-        .map_or(1.0, |p| p.orientation_factor);
+    let best_orient = plane_pool.first().map_or(1.0, |p| p.orientation_factor);
 
     // Initial required kWp and module count using best orientation.
     let daily_target = target_gen_month / 30.4167;
@@ -664,14 +885,14 @@ pub fn photovoltaic_report(project: &Project) -> PhotovoltaicReport {
         PV_ROOF_LOAD_KN_M2
     ));
 
-    let light = if refused_above_limit || (!plane_pool.is_empty() && modules_placed < modules_required)
-    {
-        Light::Red
-    } else if used_south || city_is_fallback || dc_ac_ratio > 1.25 {
-        Light::Yellow
-    } else {
-        Light::Green
-    };
+    let light =
+        if refused_above_limit || (!plane_pool.is_empty() && modules_placed < modules_required) {
+            Light::Red
+        } else if used_south || city_is_fallback || dc_ac_ratio > 1.25 {
+            Light::Yellow
+        } else {
+            Light::Green
+        };
 
     let summary_sentence = if refused_above_limit {
         format!(
@@ -799,9 +1020,8 @@ pub fn pv_plan_marks(project: &Project) -> Vec<PlanMark> {
 /// UTF-8 BOM CSV export of the monthly PV generation and system summary.
 pub fn photovoltaic_csv(project: &Project) -> String {
     let r = photovoltaic_report(project);
-    let mut csv = String::from(
-        "\u{feff}mes,dias,hsp_kwh_m2_dia,geracao_kwh,consumo_kwh,saldo_kwh\r\n",
-    );
+    let mut csv =
+        String::from("\u{feff}mes,dias,hsp_kwh_m2_dia,geracao_kwh,consumo_kwh,saldo_kwh\r\n");
     for m in &r.months {
         let _ = writeln!(
             csv,
@@ -837,7 +1057,13 @@ pub fn photovoltaic_sheet_svg(project: &Project) -> String {
          <rect width=\"{width}\" height=\"{height}\" fill=\"#ffffff\"/>\n\
          <rect x=\"10\" y=\"10\" width=\"400\" height=\"277\" fill=\"none\" stroke=\"{ink}\" stroke-width=\"0.5\"/>\n"
     );
-    let text = |svg: &mut String, x: f64, y: f64, size: f64, bold: bool, color: &str, value: &str| {
+    let text = |svg: &mut String,
+                x: f64,
+                y: f64,
+                size: f64,
+                bold: bool,
+                color: &str,
+                value: &str| {
         let _ = writeln!(
             svg,
             "<text x=\"{x:.2}\" y=\"{y:.2}\" {font} font-size=\"{size}\"{} fill=\"{color}\">{}</text>",
@@ -862,7 +1088,10 @@ pub fn photovoltaic_sheet_svg(project: &Project) -> String {
         3.0,
         false,
         muted,
-        &format!("{} · {} · {}", project.name, r.city_label, r.summary_sentence),
+        &format!(
+            "{} · {} · {}",
+            project.name, r.city_label, r.summary_sentence
+        ),
     );
 
     // Left panel: technical specification summary.
@@ -870,16 +1099,68 @@ pub fn photovoltaic_sheet_svg(project: &Project) -> String {
     text(&mut svg, 18.0, y, 3.5, true, ink, "1. Resumo do sistema");
     y += 5.5;
     let specs = [
-        ("Cidade / irradiação média", format!("{} · {} kWh/m²·dia", r.city_label, decimal(r.mean_hsp_kwh_m2_day, 2))),
-        ("Consumo mensal", format!("{:.0} kWh/mês ({})", r.monthly_consumption_kwh, if r.consumption_is_estimated { "estimado" } else { "informado" })),
-        ("Potência instalada", format!("{} kWp ({} módulos de {:.0} Wp)", decimal(r.installed_kwp, 2), r.placements.len().max(r.modules_required), r.settings.module_wp)),
-        ("Inversor sugerido", format!("{} kW CA (FDI = {})", decimal(r.inverter_kw, 1), decimal(r.dc_ac_ratio, 2))),
-        ("Proteção CA", format!("Disjuntor {} · cabo {} mm² · I = {} A",
-            r.ac_breaker_a.map_or("—".to_owned(), |b| format!("{b:.0} A")),
-            r.ac_wire_mm2.map_or("—".to_owned(), |w| decimal(w, 1)),
-            decimal(r.ac_current_a, 1))),
-        ("Geração estimada", format!("{:.0} kWh/mês ({:.0} kWh/ano · {:.0} % do consumo)", r.mean_monthly_generation_kwh, r.annual_generation_kwh, r.offset_percent)),
-        ("Área e peso no telhado", format!("{} m² · sobrecarga {:.2} kN/m² (~15 kg/m²)", decimal(r.required_roof_area_m2, 1), r.roof_load_kn_m2)),
+        (
+            "Cidade / irradiação média",
+            format!(
+                "{} · {} kWh/m²·dia",
+                r.city_label,
+                decimal(r.mean_hsp_kwh_m2_day, 2)
+            ),
+        ),
+        (
+            "Consumo mensal",
+            format!(
+                "{:.0} kWh/mês ({})",
+                r.monthly_consumption_kwh,
+                if r.consumption_is_estimated {
+                    "estimado"
+                } else {
+                    "informado"
+                }
+            ),
+        ),
+        (
+            "Potência instalada",
+            format!(
+                "{} kWp ({} módulos de {:.0} Wp)",
+                decimal(r.installed_kwp, 2),
+                r.placements.len().max(r.modules_required),
+                r.settings.module_wp
+            ),
+        ),
+        (
+            "Inversor sugerido",
+            format!(
+                "{} kW CA (FDI = {})",
+                decimal(r.inverter_kw, 1),
+                decimal(r.dc_ac_ratio, 2)
+            ),
+        ),
+        (
+            "Proteção CA",
+            format!(
+                "Disjuntor {} · cabo {} mm² · I = {} A",
+                r.ac_breaker_a
+                    .map_or("—".to_owned(), |b| format!("{b:.0} A")),
+                r.ac_wire_mm2.map_or("—".to_owned(), |w| decimal(w, 1)),
+                decimal(r.ac_current_a, 1)
+            ),
+        ),
+        (
+            "Geração estimada",
+            format!(
+                "{:.0} kWh/mês ({:.0} kWh/ano · {:.0} % do consumo)",
+                r.mean_monthly_generation_kwh, r.annual_generation_kwh, r.offset_percent
+            ),
+        ),
+        (
+            "Área e peso no telhado",
+            format!(
+                "{} m² · sobrecarga {:.2} kN/m² (~15 kg/m²)",
+                decimal(r.required_roof_area_m2, 1),
+                r.roof_load_kn_m2
+            ),
+        ),
     ];
     for (k, v) in specs {
         text(&mut svg, 18.0, y, 2.6, true, muted, k);
@@ -892,7 +1173,15 @@ pub fn photovoltaic_sheet_svg(project: &Project) -> String {
     text(&mut svg, 18.0, y, 3.5, true, ink, "2. Planos de telhado");
     y += 5.5;
     if r.planes.is_empty() {
-        text(&mut svg, 18.0, y, 2.6, false, muted, "Nenhum telhado modelado; área estimada pela planta.");
+        text(
+            &mut svg,
+            18.0,
+            y,
+            2.6,
+            false,
+            muted,
+            "Nenhum telhado modelado; área estimada pela planta.",
+        );
     } else {
         for p in &r.planes {
             text(
@@ -921,7 +1210,15 @@ pub fn photovoltaic_sheet_svg(project: &Project) -> String {
     // Right panel: 12-month bar chart.
     let cx = 215.0;
     let cy = 40.0;
-    text(&mut svg, cx, cy, 3.5, true, ink, "3. Geração mensal estimada (kWh/mês)");
+    text(
+        &mut svg,
+        cx,
+        cy,
+        3.5,
+        true,
+        ink,
+        "3. Geração mensal estimada (kWh/mês)",
+    );
     let chart_x = cx + 10.0;
     let chart_y = cy + 8.0;
     let chart_w = 176.0;
@@ -947,8 +1244,24 @@ pub fn photovoltaic_sheet_svg(project: &Project) -> String {
             "<rect x=\"{bx:.2}\" y=\"{by:.2}\" width=\"{:.2}\" height=\"{bh:.2}\" fill=\"{blue}\" fill-opacity=\"0.82\"/>",
             bar_slot - 4.4
         );
-        text(&mut svg, bx + 1.0, by - 1.5, 2.0, false, ink, &format!("{:.0}", m.generation_kwh));
-        text(&mut svg, bx + 1.5, chart_y + chart_h + 4.2, 2.2, true, muted, &m.month);
+        text(
+            &mut svg,
+            bx + 1.0,
+            by - 1.5,
+            2.0,
+            false,
+            ink,
+            &format!("{:.0}", m.generation_kwh),
+        );
+        text(
+            &mut svg,
+            bx + 1.5,
+            chart_y + chart_h + 4.2,
+            2.2,
+            true,
+            muted,
+            &m.month,
+        );
     }
     // Dashed line for monthly consumption.
     let cons_y = chart_y + chart_h - (r.monthly_consumption_kwh / max_val) * (chart_h - 10.0);
@@ -969,7 +1282,15 @@ pub fn photovoltaic_sheet_svg(project: &Project) -> String {
 
     // Monthly compact table below chart.
     let mut ty = chart_y + chart_h + 14.0;
-    text(&mut svg, cx, ty, 3.0, true, ink, "Tabela mensal (HSP · geração · saldo)");
+    text(
+        &mut svg,
+        cx,
+        ty,
+        3.0,
+        true,
+        ink,
+        "Tabela mensal (HSP · geração · saldo)",
+    );
     ty += 5.0;
     for pair in r.months.chunks(2) {
         let left = &pair[0];
@@ -1087,7 +1408,13 @@ mod tests {
         let mut proj = Project::default();
         proj.set_terrain(Point::new(0.0, 0.0), Point::new(20.0, 20.0));
         // Gable roof with ridge along X (high_side = North -> planes drain North and South).
-        let mut roof = Roof::new(Point::new(2.0, 2.0), Point::new(14.0, 12.0), RoofSide::North, 4.4, 2.8);
+        let mut roof = Roof::new(
+            Point::new(2.0, 2.0),
+            Point::new(14.0, 12.0),
+            RoofSide::North,
+            4.4,
+            2.8,
+        );
         roof.style = RoofStyle::Gable;
         roof.id = 1;
         proj.structure.roofs.push(roof);

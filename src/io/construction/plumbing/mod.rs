@@ -185,9 +185,11 @@ mod preview {
     fn render_preview() {
         let json = include_str!("../../../../examples/casa-terrea.json");
         let mut project: crate::domain::model::Project = serde_json::from_str(json).unwrap();
-        
+
         let pages = super::plumbing_pages(&project);
-        let dir = std::path::Path::new("C:/Users/Pichau/AppData/Local/Temp/claude/5668e9e00ab3e679/cb03f3e0-80f2-451d-b94c-a128c39f81e1/scratchpad/preview");
+        let dir = std::path::Path::new(
+            "C:/Users/Pichau/AppData/Local/Temp/claude/5668e9e00ab3e679/cb03f3e0-80f2-451d-b94c-a128c39f81e1/scratchpad/preview",
+        );
         std::fs::create_dir_all(dir).unwrap();
         for (i, svg) in pages.iter().enumerate() {
             std::fs::write(dir.join(format!("plumb{:02}.svg", i + 1)), svg).unwrap();
@@ -198,8 +200,14 @@ mod preview {
             let (w, h) = ((size.width() * zoom) as u32, (size.height() * zoom) as u32);
             let mut pixmap = resvg::tiny_skia::Pixmap::new(w, h).unwrap();
             pixmap.fill(resvg::tiny_skia::Color::WHITE);
-            resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(zoom, zoom), &mut pixmap.as_mut());
-            pixmap.save_png(dir.join(format!("plumb{:02}.png", i + 1))).unwrap();
+            resvg::render(
+                &tree,
+                resvg::tiny_skia::Transform::from_scale(zoom, zoom),
+                &mut pixmap.as_mut(),
+            );
+            pixmap
+                .save_png(dir.join(format!("plumb{:02}.png", i + 1)))
+                .unwrap();
         }
         println!("{} pages", pages.len());
     }

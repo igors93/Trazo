@@ -548,7 +548,13 @@ pub fn lighting_report_svg(project: &Project) -> String {
         height - 20.0
     );
 
-    let text = |svg: &mut String, x: f64, y: f64, size: f64, bold: bool, color: &str, value: &str| {
+    let text = |svg: &mut String,
+                x: f64,
+                y: f64,
+                size: f64,
+                bold: bool,
+                color: &str,
+                value: &str| {
         let _ = writeln!(
             svg,
             "<text x=\"{x:.2}\" y=\"{y:.2}\" {font} font-size=\"{size}\"{} fill=\"{color}\">{}</text>",
@@ -616,14 +622,78 @@ pub fn lighting_report_svg(project: &Project) -> String {
         };
         text(&mut svg, cols[0].1, y, 2.6, true, ink, &r.room_name);
         text(&mut svg, cols[1].1, y, 2.4, false, muted, &r.category);
-        text(&mut svg, cols[2].1, y, 2.5, false, ink, &format!("{} m²", decimal(r.area_m2, 1)));
-        text(&mut svg, cols[3].1, y, 2.5, false, ink, &decimal(r.room_index_k, 2));
-        text(&mut svg, cols[4].1, y, 2.5, false, ink, &decimal(r.utilization_factor, 2));
-        text(&mut svg, cols[5].1, y, 2.5, false, ink, &r.luminaires.to_string());
-        text(&mut svg, cols[6].1, y, 2.5, false, ink, &format!("{:.0}", r.installed_lumens));
-        text(&mut svg, cols[7].1, y, 2.6, true, color, &format!("{:.0} lx", r.calculated_lux));
-        text(&mut svg, cols[8].1, y, 2.5, false, ink, &format!("{:.0} lx", r.target_lux));
-        text(&mut svg, cols[9].1, y, 2.5, false, ink, &format!("{} un", r.recommended_luminaires));
+        text(
+            &mut svg,
+            cols[2].1,
+            y,
+            2.5,
+            false,
+            ink,
+            &format!("{} m²", decimal(r.area_m2, 1)),
+        );
+        text(
+            &mut svg,
+            cols[3].1,
+            y,
+            2.5,
+            false,
+            ink,
+            &decimal(r.room_index_k, 2),
+        );
+        text(
+            &mut svg,
+            cols[4].1,
+            y,
+            2.5,
+            false,
+            ink,
+            &decimal(r.utilization_factor, 2),
+        );
+        text(
+            &mut svg,
+            cols[5].1,
+            y,
+            2.5,
+            false,
+            ink,
+            &r.luminaires.to_string(),
+        );
+        text(
+            &mut svg,
+            cols[6].1,
+            y,
+            2.5,
+            false,
+            ink,
+            &format!("{:.0}", r.installed_lumens),
+        );
+        text(
+            &mut svg,
+            cols[7].1,
+            y,
+            2.6,
+            true,
+            color,
+            &format!("{:.0} lx", r.calculated_lux),
+        );
+        text(
+            &mut svg,
+            cols[8].1,
+            y,
+            2.5,
+            false,
+            ink,
+            &format!("{:.0} lx", r.target_lux),
+        );
+        text(
+            &mut svg,
+            cols[9].1,
+            y,
+            2.5,
+            false,
+            ink,
+            &format!("{} un", r.recommended_luminaires),
+        );
         text(&mut svg, cols[10].1, y, 2.5, true, color, r.light.label());
         let _ = writeln!(
             svg,
@@ -762,7 +832,11 @@ mod tests {
         assert!(report.rooms.iter().all(|r| r.calculated_lux > 0.0));
         let marks = project.lighting_plan_marks();
         assert_eq!(marks.len(), project.rooms.len());
-        assert!(marks.iter().all(|m| matches!(m, PlanMark::Text { text, .. } if text.contains("lx"))));
+        assert!(
+            marks
+                .iter()
+                .all(|m| matches!(m, PlanMark::Text { text, .. } if text.contains("lx")))
+        );
 
         let svg = lighting_report_svg(&project);
         assert!(svg.contains("CÁLCULO LUMINOTÉCNICO"));
