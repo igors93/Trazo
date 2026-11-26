@@ -108,6 +108,12 @@ fn hash_fixture(h: &mut DefaultHasher, f: &Fixture) {
         e.circuit.hash(h);
         hash_f64(h, e.power_va);
         hash_f64(h, e.height_m);
+        if let Some(lm) = e.lumens {
+            true.hash(h);
+            hash_f64(h, lm);
+        } else {
+            false.hash(h);
+        }
     } else {
         false.hash(h);
     }

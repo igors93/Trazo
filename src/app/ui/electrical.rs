@@ -300,6 +300,13 @@ impl FloorPlanApp {
         let mut circuit = data.circuit.unwrap_or(0);
         let mut power = data.power_va;
         let mut height = data.height_m;
+        let default_lm = if fixture.kind == crate::domain::fixtures::FixtureKind::WallLight {
+            self.project.electrical.lighting.wall_lumens
+        } else {
+            self.project.electrical.lighting.ceiling_lumens
+        };
+        let mut lumens = data.lumens.unwrap_or(default_lm);
+        let mut lumens_changed = false;
         let mut changed = false;
         section(ui, "electrical_device", "Instalação elétrica", |ui| {
             egui::Grid::new("electrical_device_grid")
@@ -340,6 +347,18 @@ impl FloorPlanApp {
                             .changed();
                         ui.end_row();
                     }
+                    if role == DeviceRole::Lighting {
+                        property_label(ui, "Fluxo (lm)");
+                        lumens_changed |= ui
+                            .add(
+                                egui::DragValue::new(&mut lumens)
+                                    .range(100.0..=50_000.0)
+                                    .speed(50.0)
+                                    .suffix(" lm"),
+                            )
+                            .changed();
+                        ui.end_row();
+                    }
                     if fixture.kind.mounts_on_wall() {
                         property_label(ui, "Altura");
                         changed |= ui
@@ -367,14 +386,21 @@ impl FloorPlanApp {
                 ACCENT,
             );
         });
-        if changed {
+        if changed || lumens_changed {
             let previous = self.project.clone();
-            let result = self.project.update_electrical(
-                fixture.id,
-                Some((circuit > 0).then_some(circuit)),
-                Some(power),
-                Some(height),
-            );
+            let mut result = if changed {
+                self.project.update_electrical(
+                    fixture.id,
+                    Some((circuit > 0).then_some(circuit)),
+                    Some(power),
+                    Some(height),
+                )
+            } else {
+                Ok(())
+            };
+            if result.is_ok() && lumens_changed {
+                result = self.project.set_device_lumens(fixture.id, Some(lumens));
+            }
             match result {
                 Ok(()) => {
                     self.record_change(previous);
@@ -453,6 +479,7 @@ impl FloorPlanApp {
                         "Quadro e diagrama unifilar",
                         "Demanda coletiva (Multifamiliar)",
                         "Lista de materiais",
+                        "Iluminação (lux)",
                     ]
                     .iter()
                     .enumerate()
@@ -466,7 +493,9 @@ impl FloorPlanApp {
                     }
                 });
                 ui.separator();
-                if tab == 3 {
+                if tab == 4 {
+                    self.electrical_lighting_tab(ui);
+                } else if tab == 3 {
                     self.electrical_shopping_list_tab(ui, ctx);
                 } else if tab == 2 {
                     self.collective_demand_tab(ui, ctx);

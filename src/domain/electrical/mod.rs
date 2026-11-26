@@ -2,6 +2,7 @@
 //! forecast, circuit sizing, automatic placement, plan symbols and load schedule.
 
 mod forecast;
+pub mod lighting;
 mod placement;
 pub mod shopping_list;
 mod sizing;
@@ -34,6 +35,9 @@ pub struct ElectricalData {
     /// Mounting height above the floor, in metres (0 for ceiling points).
     #[serde(default)]
     pub height_m: f64,
+    /// Optional luminaire luminous flux in lumens (#125, overrides project default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lumens: Option<f64>,
 }
 
 /// Project-wide electrical settings.
@@ -54,6 +58,9 @@ pub struct ElectricalSettings {
     /// Optional custom overrides for utility tables.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub custom_rules: Option<UtilityOverrides>,
+    /// Room lighting calculation parameters (NBR ISO/CIE 8995-1, #125).
+    #[serde(default, skip_serializing_if = "lighting::LightingSettings::is_default")]
+    pub lighting: lighting::LightingSettings,
 }
 
 fn default_voltage() -> f64 {
@@ -72,6 +79,7 @@ impl Default for ElectricalSettings {
             supply: crate::domain::distribution::Supply::default(),
             utility: crate::domain::distribution::UtilityProfile::default(),
             custom_rules: None,
+            lighting: lighting::LightingSettings::default(),
         }
     }
 }
@@ -163,6 +171,7 @@ impl FixtureKind {
             circuit: None,
             power_va,
             height_m,
+            lumens: None,
         })
     }
 }
@@ -299,6 +308,7 @@ impl Project {
                 circuit: None,
                 power_va: 0.0,
                 height_m: 0.0,
+                lumens: None,
             })
         });
         if let Some(power) = power_va {
@@ -319,6 +329,30 @@ impl Project {
             }
             data.circuit = circuit;
         }
+        Ok(())
+    }
+
+    /// Sets or clears a lighting fixture's luminous flux override, in lumens (#125).
+    pub fn set_device_lumens(&mut self, id: u64, lumens: Option<f64>) -> Result<(), String> {
+        let device = self
+            .fixtures
+            .iter_mut()
+            .find(|fixture| fixture.id == id && fixture.kind.role() == Some(DeviceRole::Lighting))
+            .ok_or("Ponto de iluminação não encontrado.")?;
+        if let Some(lm) = lumens
+            && (!lm.is_finite() || !(100.0..=50_000.0).contains(&lm))
+        {
+            return Err("O fluxo luminoso deve ficar entre 100 e 50000 lm.".to_owned());
+        }
+        let data = device.electrical.get_or_insert_with(|| {
+            device.kind.default_electrical().unwrap_or(ElectricalData {
+                circuit: None,
+                power_va: 100.0,
+                height_m: 0.0,
+                lumens: None,
+            })
+        });
+        data.lumens = lumens;
         Ok(())
     }
 }

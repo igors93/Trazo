@@ -8,9 +8,13 @@ use eframe::egui::{self, Color32, RichText, Ui};
 use super::super::{FloorPlanApp, theme::*};
 use super::widgets::secondary_button;
 use crate::domain::distribution::section_label;
+use crate::domain::electrical::lighting::{
+    SurfaceReflectance, lighting_report_csv, lighting_report_svg,
+};
 use crate::domain::electrical::shopping_list::{
     DEFAULT_ELECTRICAL_WASTE_PCT, electrical_shopping_list_csv, electrical_shopping_list_svg,
 };
+use crate::domain::verdict::Light;
 
 fn decimal(value: f64, places: usize) -> String {
     format!("{value:.places$}").replace('.', ",")
@@ -230,6 +234,195 @@ impl FloorPlanApp {
         self.message = match result {
             Ok(()) => format!("Lista de materiais elétricos exportada em {}", path.display()),
             Err(error) => format!("Erro ao exportar lista elétrica: {error}"),
+        };
+    }
+
+    /// Tab 4 (#125): Room lighting calculation (Lumen Method, NBR ISO/CIE 8995-1).
+    pub(super) fn electrical_lighting_tab(&mut self, ui: &mut Ui) {
+        let mut settings = self.project.electrical.lighting;
+        let mut changed = false;
+        let mut export_kind: Option<&'static str> = None;
+        let report = self.project.lighting_report();
+
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.label(
+                RichText::new(
+                    "Cálculo luminotécnico pelo Método dos Lúmens (ABNT NBR ISO/CIE 8995-1): compara a iluminância média calculada (lux) de cada cômodo com a meta normativa.",
+                )
+                .size(12.0)
+                .color(TEXT_2),
+            );
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Luminária teto:");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut settings.ceiling_lumens)
+                            .range(200.0..=20_000.0)
+                            .speed(50.0)
+                            .suffix(" lm"),
+                    )
+                    .changed();
+                ui.label("Arandela:");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut settings.wall_lumens)
+                            .range(100.0..=10_000.0)
+                            .speed(50.0)
+                            .suffix(" lm"),
+                    )
+                    .changed();
+                ui.label("Fd:");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut settings.maintenance_factor)
+                            .range(0.50..=0.95)
+                            .speed(0.01)
+                            .max_decimals(2),
+                    )
+                    .changed();
+                ui.label("Plano:");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut settings.work_plane_m)
+                            .range(0.0..=1.5)
+                            .speed(0.05)
+                            .max_decimals(2)
+                            .suffix(" m"),
+                    )
+                    .changed();
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Refletâncias:");
+                for option in SurfaceReflectance::ALL {
+                    if ui
+                        .selectable_label(settings.reflectance == option, option.short())
+                        .clicked()
+                    {
+                        settings.reflectance = option;
+                        changed = true;
+                    }
+                }
+                ui.separator();
+                changed |= ui
+                    .checkbox(&mut settings.show_plan_overlay, "Mostrar lux na planta")
+                    .changed();
+                ui.separator();
+                if secondary_button(ui, "Exportar PDF").clicked() {
+                    export_kind = Some("pdf");
+                }
+                if secondary_button(ui, "Exportar SVG").clicked() {
+                    export_kind = Some("svg");
+                }
+                if secondary_button(ui, "Exportar CSV").clicked() {
+                    export_kind = Some("csv");
+                }
+            });
+
+            ui.add_space(8.0);
+            if report.rooms.is_empty() {
+                ui.label(RichText::new("Desenhe os cômodos e insira pontos de luz para calcular.").color(MUTED));
+            } else {
+                egui::Grid::new("elec_lighting_grid")
+                    .striped(true)
+                    .spacing([12.0, 5.0])
+                    .show(ui, |ui| {
+                        for h in [
+                            "Cômodo",
+                            "Área",
+                            "K",
+                            "Fu",
+                            "Pontos",
+                            "Fluxo (lm)",
+                            "Calculado",
+                            "Meta",
+                            "Rec.",
+                            "Situação",
+                        ] {
+                            ui.label(RichText::new(h).font(strong(12.0)).color(TEXT_2));
+                        }
+                        ui.end_row();
+                        for r in &report.rooms {
+                            let color = match r.light {
+                                Light::Green => SUCCESS,
+                                Light::Yellow => WARNING,
+                                Light::Red => DANGER,
+                            };
+                            ui.label(RichText::new(&r.room_name).font(strong(12.0)));
+                            ui.label(format!("{} m²", decimal(r.area_m2, 1)));
+                            ui.label(decimal(r.room_index_k, 2));
+                            ui.label(decimal(r.utilization_factor, 2));
+                            ui.label(r.luminaires.to_string());
+                            ui.label(format!("{:.0}", r.installed_lumens));
+                            ui.label(RichText::new(format!("{:.0} lx", r.calculated_lux)).font(strong(12.0)).color(color));
+                            ui.label(format!("{:.0} lx", r.target_lux));
+                            ui.label(format!("{} un", r.recommended_luminaires));
+                            ui.label(RichText::new(r.light.label()).color(color));
+                            ui.end_row();
+                        }
+                    });
+
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(format!(
+                        "Resumo: {} de {} cômodo(s) atendem à meta · Fluxo instalado: {:.0} lm (~{:.0} W em LED).",
+                        report.rooms_passing,
+                        report.rooms.len(),
+                        report.total_installed_lumens,
+                        report.total_estimated_watts
+                    ))
+                    .font(strong(12.0))
+                    .color(ACCENT_TEXT),
+                );
+                for r in report.rooms.iter().filter(|r| r.light == Light::Red) {
+                    ui.label(RichText::new(format!("• {}", r.plain_note)).size(11.5).color(DANGER));
+                }
+            }
+
+            ui.add_space(8.0);
+            for note in &report.assumptions {
+                ui.label(RichText::new(note).size(11.0).color(MUTED));
+            }
+        });
+
+        if changed {
+            let previous = self.project.clone();
+            self.project.electrical.lighting = settings;
+            self.record_change(previous);
+        }
+        if let Some(kind) = export_kind {
+            self.export_electrical_lighting(kind);
+        }
+    }
+
+    fn export_electrical_lighting(&mut self, kind: &str) {
+        let (label, ext) = match kind {
+            "csv" => ("Planilha CSV", "csv"),
+            "pdf" => ("Documento PDF", "pdf"),
+            _ => ("Desenho SVG", "svg"),
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(format!("calculo-luminotecnico.{ext}"))
+            .save_file()
+        else {
+            return;
+        };
+        let result = match kind {
+            "csv" => std::fs::write(&path, lighting_report_csv(&self.project))
+                .map_err(|e| e.to_string()),
+            "pdf" => {
+                let markup = lighting_report_svg(&self.project);
+                crate::domain::views::export_view_pdf(&markup, &path)
+            }
+            _ => {
+                let markup = lighting_report_svg(&self.project);
+                crate::domain::views::export_view_svg(&markup, &path)
+            }
+        };
+        self.message = match result {
+            Ok(()) => format!("Cálculo luminotécnico exportado em {}", path.display()),
+            Err(error) => format!("Erro ao exportar luminotécnico: {error}"),
         };
     }
 }

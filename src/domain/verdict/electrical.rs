@@ -215,3 +215,47 @@ pub fn electrical_verdicts(schedule: &LoadSchedule) -> Vec<Verdict> {
     }
     verdicts
 }
+
+/// Project-level electrical checks beyond the load schedule: room illuminance
+/// (NBR ISO/CIE 8995-1, #125), photovoltaic pre-sizing (#126), short-circuit &
+/// selectivity (#127) and earthing / SPDA (#129), emitted only when those
+/// electrical features are present in the project.
+pub fn electrical_project_verdicts(
+    project: &crate::domain::model::Project,
+    schedule: &LoadSchedule,
+) -> Vec<Verdict> {
+    let mut verdicts = electrical_verdicts(schedule);
+
+    // #125 Lighting calculation verdicts (only when at least one light fixture is drawn).
+    let has_lights = project
+        .electrical_devices()
+        .any(|d| d.kind.role() == Some(crate::domain::electrical::DeviceRole::Lighting));
+    if has_lights {
+        let lighting = project.lighting_report();
+        for room in &lighting.rooms {
+            let check = Check::new(
+                "Iluminância (lux)",
+                room.utilisation,
+                room.plain_note.clone(),
+                format!(
+                    "E_calc = {} lx vs. meta Em = {:.0} lx ({}). K = {}, Fu = {}, Fd = {}, {} luminária(s) ({:.0} lm).",
+                    decimal(room.calculated_lux, 0),
+                    room.target_lux,
+                    room.clause,
+                    decimal(room.room_index_k, 2),
+                    decimal(room.utilization_factor, 2),
+                    decimal(room.maintenance_factor, 2),
+                    room.luminaires,
+                    room.installed_lumens
+                ),
+            );
+            verdicts.push(Verdict {
+                discipline: Discipline::Electrical,
+                element: format!("Iluminação · {}", room.room_name),
+                checks: vec![check],
+            });
+        }
+    }
+
+    verdicts
+}

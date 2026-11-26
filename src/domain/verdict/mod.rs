@@ -16,7 +16,7 @@ mod tests;
 use crate::domain::model::Project;
 
 pub use codes::code_verdicts;
-pub use electrical::electrical_verdicts;
+pub use electrical::{electrical_project_verdicts, electrical_verdicts};
 pub use structure::structure_verdicts;
 
 /// Up to this utilisation the light is green.
@@ -254,7 +254,7 @@ pub fn assumptions(project: &Project) -> Vec<String> {
 /// Every verdict of the project, worst first.
 pub fn safety_summary(project: &Project) -> SafetySummary {
     let mut verdicts = structure_verdicts(project, &project.structure_report());
-    verdicts.extend(electrical_verdicts(&project.load_schedule()));
+    verdicts.extend(electrical_project_verdicts(project, &project.load_schedule()));
     verdicts.extend(code_verdicts(project));
     verdicts.sort_by(|a, b| {
         b.light()

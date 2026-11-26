@@ -38,6 +38,7 @@ fn paint_electrical_overlay(
     }
     super::labels::paint_conduits(painter, view, project);
     super::labels::paint_electrical_tags(painter, view, project);
+    super::labels::paint_electrical_extras(painter, view, project);
 }
 
 /// Draws only the superstructure (`Planta de Forma`: columns, upper beams,

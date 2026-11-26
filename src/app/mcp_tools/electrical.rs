@@ -117,11 +117,17 @@ impl FloorPlanApp {
         let circuit = circuit_arg(args)?;
         let power = number(args, "potencia_va")?;
         let height = number(args, "altura_m")?;
-        if circuit.is_none() && power.is_none() && height.is_none() {
-            return Err("Informe circuito, potencia_va ou altura_m.".to_owned());
+        let lumens = number(args, "lumens")?;
+        if circuit.is_none() && power.is_none() && height.is_none() && lumens.is_none() {
+            return Err("Informe circuito, potencia_va, altura_m ou lumens.".to_owned());
         }
         self.apply_change(Some("Nada mudou no ponto elétrico."), |project| {
-            project.update_electrical(id, circuit, power, height)?;
+            if circuit.is_some() || power.is_some() || height.is_some() {
+                project.update_electrical(id, circuit, power, height)?;
+            }
+            if let Some(lm) = lumens {
+                project.set_device_lumens(id, (lm > 0.0).then_some(lm))?;
+            }
             let fixture = project
                 .fixtures
                 .iter()
@@ -137,6 +143,7 @@ impl FloorPlanApp {
                         "circuito": data.and_then(|d| d.circuit),
                         "potencia_va": data.map(|d| d.power_va),
                         "altura_m": data.map(|d| d.height_m),
+                        "lumens": data.and_then(|d| d.lumens),
                     })),
             )
         })
@@ -434,8 +441,151 @@ impl FloorPlanApp {
                     "premissas": list.assumptions,
                 })))
             }
+            "luminotecnico" => {
+                use crate::domain::electrical::lighting::{
+                    lighting_report_csv, lighting_report_svg,
+                };
+                let report = self.project.lighting_report();
+                let mut exported: Option<String> = None;
+                if let Some(raw) = text(args, "salvar_csv") {
+                    let path = unique_path(resolve_path(&raw, "csv"));
+                    ensure_parent(&path)?;
+                    std::fs::write(&path, lighting_report_csv(&self.project))
+                        .map_err(|e| format!("Não foi possível salvar o CSV: {e}"))?;
+                    exported = Some(path.display().to_string());
+                } else if let Some(raw) = text(args, "salvar_svg") {
+                    let path = unique_path(resolve_path(&raw, "svg"));
+                    ensure_parent(&path)?;
+                    let svg = lighting_report_svg(&self.project);
+                    crate::domain::views::export_view_svg(&svg, &path)?;
+                    exported = Some(path.display().to_string());
+                } else if let Some(raw) = text(args, "salvar_pdf") {
+                    let path = unique_path(resolve_path(&raw, "pdf"));
+                    ensure_parent(&path)?;
+                    let svg = lighting_report_svg(&self.project);
+                    crate::domain::views::export_view_pdf(&svg, &path)?;
+                    exported = Some(path.display().to_string());
+                }
+                let msg = format!(
+                    "Cálculo luminotécnico (NBR ISO/CIE 8995-1): {} de {} cômodo(s) atendem à meta de lux ({:.0} lm instalados, ~{:.0} W LED).{}",
+                    report.rooms_passing,
+                    report.rooms.len(),
+                    report.total_installed_lumens,
+                    report.total_estimated_watts,
+                    exported
+                        .as_deref()
+                        .map_or(String::new(), |p| format!(" Exportado em {p}."))
+                );
+                Ok(ToolOutput::ok(msg).with_structured(json!({
+                    "comodos_atendem": report.rooms_passing,
+                    "comodos_abaixo": report.rooms_failing,
+                    "fluxo_total_lm": report.total_installed_lumens.round(),
+                    "potencia_led_estimada_w": (report.total_estimated_watts * 10.0).round() / 10.0,
+                    "configuracao": {
+                        "lumens_teto": report.settings.ceiling_lumens,
+                        "lumens_arandela": report.settings.wall_lumens,
+                        "eficiencia_lm_w": report.settings.lamp_efficacy_lm_w,
+                        "plano_trabalho_m": report.settings.work_plane_m,
+                        "fator_manutencao": report.settings.maintenance_factor,
+                        "refletancias": report.settings.reflectance.key(),
+                        "mostrar_na_planta": report.settings.show_plan_overlay,
+                    },
+                    "comodos": report.rooms.iter().map(|r| json!({
+                        "comodo": r.room_name,
+                        "categoria": r.category,
+                        "area_m2": (r.area_m2 * 100.0).round() / 100.0,
+                        "indice_k": (r.room_index_k * 100.0).round() / 100.0,
+                        "fu": (r.utilization_factor * 100.0).round() / 100.0,
+                        "fd": r.maintenance_factor,
+                        "luminarias": r.luminaires,
+                        "fluxo_instalado_lm": r.installed_lumens.round(),
+                        "fluxo_necessario_lm": r.required_lumens.ceil(),
+                        "iluminancia_lux": r.calculated_lux.round(),
+                        "meta_lux": r.target_lux,
+                        "luminarias_recomendadas": r.recommended_luminaires,
+                        "densidade_w_m2": (r.power_density_w_m2 * 10.0).round() / 10.0,
+                        "semaforo": r.light.key(),
+                        "explicacao": r.plain_note,
+                        "norma": r.clause,
+                    })).collect::<Vec<_>>(),
+                    "arquivo_exportado": exported,
+                    "premissas": report.assumptions,
+                })))
+            }
+            "configurar_iluminacao" => {
+                use crate::domain::electrical::lighting::SurfaceReflectance;
+                let ceil_lm = number(args, "lumens_teto")?;
+                let wall_lm = number(args, "lumens_arandela")?;
+                let eff = number(args, "eficiencia_lm_w")?;
+                let work_plane = number(args, "plano_trabalho_m")?;
+                let fd = number(args, "fator_manutencao")?;
+                let refl = match text(args, "refletancias") {
+                    Some(raw) => Some(
+                        SurfaceReflectance::parse(&raw)
+                            .ok_or("'refletancias' deve ser claras, medias ou escuras.")?,
+                    ),
+                    None => None,
+                };
+                let overlay = args.get("mostrar_na_planta").and_then(Value::as_bool);
+                if let Some(v) = ceil_lm
+                    && !(100.0..=50_000.0).contains(&v)
+                {
+                    return Err("'lumens_teto' deve estar entre 100 e 50000 lm.".to_owned());
+                }
+                if let Some(v) = wall_lm
+                    && !(100.0..=20_000.0).contains(&v)
+                {
+                    return Err("'lumens_arandela' deve estar entre 100 e 20000 lm.".to_owned());
+                }
+                if let Some(v) = eff
+                    && !(20.0..=250.0).contains(&v)
+                {
+                    return Err("'eficiencia_lm_w' deve estar entre 20 e 250 lm/W.".to_owned());
+                }
+                if let Some(v) = work_plane
+                    && !(0.0..=1.5).contains(&v)
+                {
+                    return Err("'plano_trabalho_m' deve estar entre 0 e 1,5 m.".to_owned());
+                }
+                if let Some(v) = fd
+                    && !(0.50..=0.95).contains(&v)
+                {
+                    return Err("'fator_manutencao' deve estar entre 0,50 e 0,95.".to_owned());
+                }
+                self.apply_change(Some("A configuração luminotécnica já estava assim."), |project| {
+                    let cfg = &mut project.electrical.lighting;
+                    if let Some(v) = ceil_lm {
+                        cfg.ceiling_lumens = v;
+                    }
+                    if let Some(v) = wall_lm {
+                        cfg.wall_lumens = v;
+                    }
+                    if let Some(v) = eff {
+                        cfg.lamp_efficacy_lm_w = v;
+                    }
+                    if let Some(v) = work_plane {
+                        cfg.work_plane_m = v;
+                    }
+                    if let Some(v) = fd {
+                        cfg.maintenance_factor = v;
+                    }
+                    if let Some(r) = refl {
+                        cfg.reflectance = r;
+                    }
+                    if let Some(show) = overlay {
+                        cfg.show_plan_overlay = show;
+                    }
+                    Ok(Change::new(format!(
+                        "Iluminação configurada: teto {:.0} lm, arandela {:.0} lm, Fd {:.2}, refletâncias {}.",
+                        cfg.ceiling_lumens,
+                        cfg.wall_lumens,
+                        cfg.maintenance_factor,
+                        cfg.reflectance.short()
+                    )))
+                })
+            }
             _ => Err(
-                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao, definir_concessionaria, demanda_coletiva ou lista_materiais.".to_owned(),
+                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao, definir_concessionaria, demanda_coletiva, lista_materiais, luminotecnico ou configurar_iluminacao.".to_owned(),
             ),
         }
     }
@@ -607,7 +757,13 @@ impl FloorPlanApp {
             "eletrodutos": conduits,
             "pontos_sem_eletroduto": tree.unreached,
             "sem_circuito": schedule.unassigned,
-            "semaforo": super::structure::verdicts_json(&crate::domain::verdict::electrical_verdicts(&schedule)),
+            "iluminacao": self.project.lighting_report().rooms.iter().map(|r| json!({
+                "comodo": r.room_name,
+                "iluminancia_lux": r.calculated_lux.round(),
+                "meta_lux": r.target_lux,
+                "semaforo": r.light.key(),
+            })).collect::<Vec<_>>(),
+            "semaforo": super::structure::verdicts_json(&crate::domain::verdict::electrical_project_verdicts(&self.project, &schedule)),
             "alertas": schedule.warnings,
         })))
     }
@@ -784,5 +940,39 @@ mod tests {
         assert!(!data["eletrodutos"].as_array().unwrap().is_empty());
         assert!(!data["caixas_e_quadros"].as_array().unwrap().is_empty());
         assert!(!data["protecao"].as_array().unwrap().is_empty());
+    }
+
+    #[test]
+    fn mcp_computes_and_configures_room_lighting_levels() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        app.project = crate::domain::samples::SampleProject::CasaTerrea.build();
+        app.project.generate_electrical_points();
+
+        let cfg = app.run_mcp_tool(
+            "projeto_eletrico",
+            &json!({
+                "acao": "configurar_iluminacao",
+                "lumens_teto": 2400,
+                "fator_manutencao": 0.80,
+                "refletancias": "claras"
+            }),
+        );
+        assert!(!cfg.is_error, "{}", cfg.text);
+
+        let res = app.run_mcp_tool("projeto_eletrico", &json!({ "acao": "luminotecnico" }));
+        assert!(!res.is_error, "{}", res.text);
+        let data = res.structured.unwrap();
+        let rooms = data["comodos"].as_array().unwrap();
+        assert_eq!(rooms.len(), app.project.rooms.len());
+        assert!(rooms.iter().all(|r| r["iluminancia_lux"].as_f64().unwrap() > 0.0));
+
+        let board = app
+            .run_mcp_tool("quadro_de_cargas", &json!({}))
+            .structured
+            .unwrap();
+        assert_eq!(
+            board["iluminacao"].as_array().unwrap().len(),
+            app.project.rooms.len()
+        );
     }
 }

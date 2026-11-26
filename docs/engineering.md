@@ -435,6 +435,10 @@ Checked by `the_pressure_follows_nbr_6123`, `a_tall_wall_column_is_propped_by_th
 
 Checked for #124 by `sample_house_shopping_list_matches_manual_takeoff_within_five_percent`, `single_room_exact_hand_calculation_for_wires_boxes_and_breakers` and `mcp_returns_electrical_shopping_list_by_section_and_colour`.
 
+| Lighting calculation (#125) | Lumen Method: room index `K = 2·S / (hm·P)` (clear interior polygon, `hm = wall_height − 0.75 m`), utilization factor `Fu` interpolated from CIE direct-LED photometric table (`70/50/20`, `50/30/10`, `30/10/10`), maintenance factor `Fd` (default 0.80), required flux `Φ_req = Em·S / (Fu·Fd)` and maintained illuminance `E_calc = Φ_inst·Fu·Fd / S` against room targets (100 lx circulation/garage, 150 lx living/bedroom, 200 lx bathroom/dining, 300 lx kitchen/service, 500 lx office) | ABNT NBR ISO/CIE 8995-1:2013 |
+
+Checked for #125 by `worked_example_office_matches_lumen_method_hand_calculation`, `worked_example_underlit_kitchen_turns_red_and_recommends_luminaires`, `every_room_in_sample_house_shows_lighting_level_and_plan_marks` and `mcp_computes_and_configures_room_lighting_levels`.
+
 The regional utility profiles (`src/domain/utility_profiles.rs`: Generic NBR 5410, Enel SP LIG-BT 12ª ed., CPFL GED-13, CEMIG ND 5.1, COPEL NTC 901100) use explicit per-utility residential demand tables and service-entrance thresholds (no hidden scale multipliers) and carry a `UtilityStandardCitation` (standard, edition, tables and local-bulletin verification note) surfaced in the UI, single-line diagram and MCP `quadro_de_cargas` (B21). Because utilities publish periodic technical bulletins (*comunicados técnicos*), designers should still confirm the active local revision before submitting a connection request.
 
 ## Construction quantities

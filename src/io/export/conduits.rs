@@ -20,18 +20,29 @@ pub(super) fn write_conduits(
     unit: f64,
     widths: (f64, f64, f64),
 ) {
-    if project.conduits.is_empty() {
-        return;
+    if !project.conduits.is_empty() {
+        write_marks(
+            svg,
+            &project.conduit_marks(),
+            point,
+            unit,
+            widths,
+            ELECTRICAL_INK,
+            "eletrodutos",
+        );
     }
-    write_marks(
-        svg,
-        &project.conduit_marks(),
-        point,
-        unit,
-        widths,
-        ELECTRICAL_INK,
-        "eletrodutos",
-    );
+    let lux_marks = project.lighting_plan_marks();
+    if !lux_marks.is_empty() {
+        write_marks(
+            svg,
+            &lux_marks,
+            point,
+            unit,
+            widths,
+            "#b46e0a",
+            "iluminancia-lux",
+        );
+    }
 }
 
 /// Writes structural plan marks filtered by `scope` (`All`, `Superstructure`

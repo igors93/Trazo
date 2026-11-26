@@ -298,6 +298,15 @@ pub(super) fn paint_electrical_tags(painter: &Painter, view: ViewTransform, proj
     }
 }
 
+/// Room illuminance (lux) overlay marks (#125) and other electrical beyond-basics
+/// plan marks painted on screen to match exported sheets.
+pub(super) fn paint_electrical_extras(painter: &Painter, view: ViewTransform, project: &Project) {
+    let lux_marks = project.lighting_plan_marks();
+    if !lux_marks.is_empty() {
+        paint_marks(painter, view, &lux_marks, Color32::from_rgb(180, 110, 10), 32.0);
+    }
+}
+
 pub(super) fn paint_wall_labels(
     painter: &Painter,
     view: ViewTransform,
