@@ -912,6 +912,8 @@ fn catalogue() -> Vec<Tool> {
                         "agua_no_solo": boolean("Para riscos_terreno: brota água do chão ou ele fica encharcado?"),
                         "trincas_vizinhos": boolean("Para riscos_terreno: as casas vizinhas têm rachaduras?"),
                         "escavacao_vizinho": boolean("Para riscos_terreno: vai escavar perto do muro ou da fundação de um vizinho? Um \"sim\" deixa as fundações vermelhas; um \"não\" da IA só vale após a pessoa confirmar."),
+                        "sobre_casa_existente": boolean("Para riscos_terreno: vai construir em cima de uma casa que já existe?"),
+                        "base_existente_conhecida": boolean("Para riscos_terreno: a pessoa sabe como foram feitos a fundação e os pilares da casa existente? Sem isso, o Trazo recusa dimensionar; um \"sim\" da IA só vale após a pessoa confirmar."),
                         "evidencia": string("Para configurar e configurar_vento: de onde vem o valor (laudo de sondagem, nota fiscal do concreto, ensaio, fonte). Um valor mais favorável que o seguro nunca é aplicado direto: fica como proposta até a pessoa confirmar com a prova na janela Segurança."),
                         "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Para vista." },
                     }),

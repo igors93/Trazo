@@ -129,6 +129,19 @@ pub fn structure_violations(project: &Project) -> Vec<Violation> {
             ),
         });
     }
+    // A new floor over a house whose base nobody knows is refused (#157).
+    if project.protection.site_risks.unknown_existing_base() {
+        out.push(Violation {
+            scope: Scope::Structure,
+            element: "Estrutura".to_owned(),
+            value: 1.0,
+            limit: 0.0,
+            message: format!(
+                "Construção sobre uma casa que já existe, sem saber como foram feitos a fundação e os pilares dela: o Trazo não dimensiona. {}",
+                crate::domain::protection::site_risks::EXISTING_BASE_GUIDANCE
+            ),
+        });
+    }
     let tallest_wall = wall_heights.into_iter().fold(0.0, f64::max);
     if tallest_wall > MAX_TALL_WALL_HEIGHT_M + 1e-9 {
         out.push(Violation {

@@ -12,7 +12,9 @@ use crate::domain::protection::site_risks::SiteRisk;
 pub(super) fn show(ui: &mut Ui, project: &Project) -> Option<(SiteRisk, Option<bool>)> {
     let mut changed = None;
     let risks = &project.protection.site_risks;
-    let open = !risks.unanswered().is_empty() || !risks.risky().is_empty();
+    let open = !risks.unanswered().is_empty()
+        || !risks.risky().is_empty()
+        || risks.unknown_existing_base();
     egui::CollapsingHeader::new(
         RichText::new(format!(
             "Perguntas sobre o terreno{}",
@@ -28,6 +30,12 @@ pub(super) fn show(ui: &mut Ui, project: &Project) -> Option<(SiteRisk, Option<b
     .id_salt("safety_site_risks")
     .default_open(open)
     .show(ui, |ui| {
+        if risks.unknown_existing_base() {
+            ui.label(
+                RichText::new(crate::domain::protection::site_risks::EXISTING_BASE_GUIDANCE)
+                    .color(DANGER),
+            );
+        }
         ui.label(
             RichText::new(
                 "O Trazo não vê o terreno. Responda com sinceridade: um \"sim\" para as fundações até um profissional avaliar.",
@@ -36,8 +44,13 @@ pub(super) fn show(ui: &mut Ui, project: &Project) -> Option<(SiteRisk, Option<b
             .color(TEXT_2),
         );
         for risk in SiteRisk::ALL {
+            if risk == SiteRisk::ExistingBaseKnown
+                && risks.effective(SiteRisk::BuildingOnTop) != Some(true)
+            {
+                continue;
+            }
             let answer = risks.answer(risk);
-            let current = answer.filter(|a| a.yes || a.by == HypothesisSource::Person).map(|a| a.yes);
+            let current = risks.effective(risk);
             ui.horizontal_wrapped(|ui| {
                 ui.label(risk.question()).on_hover_text(risk.danger());
                 for (label, value) in [("Sim", Some(true)), ("Não", Some(false)), ("Não sei", None)] {
@@ -45,8 +58,9 @@ pub(super) fn show(ui: &mut Ui, project: &Project) -> Option<(SiteRisk, Option<b
                         changed = Some((risk, value));
                     }
                 }
-                if answer.is_some_and(|a| !a.yes && a.by != HypothesisSource::Person) {
-                    ui.label(RichText::new("a IA respondeu \"não\": confirme").color(WARNING));
+                if risks.waits_for_person(risk) {
+                    let said = if answer.is_some_and(|a| a.yes) { "sim" } else { "não" };
+                    ui.label(RichText::new(format!("a IA respondeu \"{said}\": confirme")).color(WARNING));
                 }
             });
         }

@@ -276,6 +276,7 @@ Trazo refuses to size what its methods do not cover, and says why:
 - more than three storeys;
 - a storey taller than 4 m;
 - a live load above 5 kN/m²;
+- a new floor over an existing house whose foundation and columns nobody knows;
 - a beam span over 7 m;
 - a smaller slab span over 6.5 m;
 - footings on soil weaker than 100 kPa;
@@ -284,6 +285,8 @@ Trazo refuses to size what its methods do not cover, and says why:
 A project-wide limit blocks *Gerar estrutura* and *Ajustar sapatas*; an element beyond its limit shows no numbers, only the reason and where to find help.
 
 **Perguntas sobre o terreno** in *Segurança* asks what Trazo cannot see: a slope, a nearby stream or canal, landfill, water in the ground, cracks in the neighbouring houses, digging next to a neighbour's foundation. Answer **Sim**, **Não** or **Não sei**. While a question has no answer, the *Riscos do terreno* check is yellow; a **Sim** turns every footing, ground beam, strip footing, pile cap and balance beam red with "stop and get help" instead of sizing it. An assistant can record a risk, but its "no" counts only after you confirm it.
+
+Two more questions cover building on top of a house that already exists. If you will, and nobody knows how its foundation and columns were made, Trazo refuses to size the structure and explains what to find out first: the kind and size of the foundation (dig carefully beside a column without removing soil from under it), the size and steel of the columns and beams, and any cracks, rust or sagging slab.
 
 **Onde buscar ajuda** in *Segurança* opens by itself whenever something is red: free technical assistance (ATHIS, Lei 11.888/2008) through the municipality, CAU or CREA, university model offices and the Defesa Civil (199). Type local contacts there (one per line) and **Salvar contatos**: they go into the project and the report. The methods and limits are in [Engineering methods](engineering.md).
 

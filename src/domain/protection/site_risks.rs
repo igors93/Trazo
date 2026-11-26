@@ -6,6 +6,10 @@
 //!
 //! An answer that removes a risk counts only when the person gives it: an
 //! assistant may report a risk, but its "no" waits for the person (#171).
+//!
+//! Two questions are about building on top of an existing house (#157): a
+//! new floor over a ground floor whose foundation and columns nobody knows
+//! is refused until someone finds out.
 
 use std::collections::BTreeMap;
 
@@ -23,17 +27,29 @@ pub enum SiteRisk {
     Groundwater,
     NeighbourCracks,
     DiggingNearNeighbour,
+    /// The new work goes on top of a house that already exists (#157).
+    BuildingOnTop,
+    /// How the existing house's foundation and columns were made is known.
+    ExistingBaseKnown,
 }
 
 impl SiteRisk {
-    pub const ALL: [Self; 6] = [
+    pub const ALL: [Self; 8] = [
         Self::Slope,
         Self::NearWater,
         Self::Landfill,
         Self::Groundwater,
         Self::NeighbourCracks,
         Self::DiggingNearNeighbour,
+        Self::BuildingOnTop,
+        Self::ExistingBaseKnown,
     ];
+
+    /// The answer that makes the site look safer, which only the person can
+    /// give: "no" to a risk, "yes" to knowing the existing base.
+    pub fn favourable(self) -> bool {
+        self == Self::ExistingBaseKnown
+    }
 
     /// The question, as the person reads it.
     pub fn question(self) -> &'static str {
@@ -44,6 +60,10 @@ impl SiteRisk {
             Self::Groundwater => "Brota água do chão ou ele fica encharcado mesmo sem chuva?",
             Self::NeighbourCracks => "As casas vizinhas têm rachaduras ou trincas grandes?",
             Self::DiggingNearNeighbour => "Vai escavar perto do muro ou da fundação de um vizinho?",
+            Self::BuildingOnTop => "Vai construir em cima de uma casa que já existe?",
+            Self::ExistingBaseKnown => {
+                "Você sabe como foram feitos a fundação e os pilares da casa que já existe (tipo, tamanho e ferro)?"
+            }
         }
     }
 
@@ -68,6 +88,10 @@ impl SiteRisk {
             Self::DiggingNearNeighbour => {
                 "Escavar junto à fundação do vizinho pode derrubar a casa dele; a escavação precisa de escoramento projetado."
             }
+            Self::BuildingOnTop => {
+                "Um andar novo pesa sobre a fundação e os pilares da casa de baixo, que podem ter sido feitos só para o térreo."
+            }
+            Self::ExistingBaseKnown => EXISTING_BASE_GUIDANCE,
         }
     }
 
@@ -80,9 +104,14 @@ impl SiteRisk {
             Self::Groundwater => "agua_no_solo",
             Self::NeighbourCracks => "trincas_vizinhos",
             Self::DiggingNearNeighbour => "escavacao_vizinho",
+            Self::BuildingOnTop => "sobre_casa_existente",
+            Self::ExistingBaseKnown => "base_existente_conhecida",
         }
     }
 }
+
+/// What to find out before building on top of an existing house (#157).
+pub const EXISTING_BASE_GUIDANCE: &str = "Antes de subir um andar, descubra: (1) o tipo e o tamanho da fundação, cavando ao lado de um pilar até ver a sapata ou o baldrame, com cuidado e sem tirar terra de baixo dela; (2) o tamanho e o ferro dos pilares e das vigas, pela planta antiga, pelo pedreiro que fez ou abrindo o reboco num ponto; (3) se há trincas, ferrugem ou laje com barriga. Com isso, um profissional, inclusive o da assistência técnica gratuita, avalia se a casa aguenta mais um andar.";
 
 /// One answer and who gave it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,30 +150,51 @@ impl SiteRisks {
         }
     }
 
-    /// What Trazo takes as true: a "yes" from anyone, a "no" only from the
-    /// person; `None` while nobody (or only an assistant) said "no".
+    /// What Trazo takes as true: the unfavourable answer from anyone, the
+    /// favourable one only from the person; `None` while nobody (or only an
+    /// assistant) gave the favourable answer.
     pub fn effective(&self, risk: SiteRisk) -> Option<bool> {
         let answer = self.answer(risk)?;
-        if answer.yes {
-            Some(true)
+        if answer.yes != risk.favourable() || answer.by == HypothesisSource::Person {
+            Some(answer.yes)
         } else {
-            (answer.by == HypothesisSource::Person).then_some(false)
+            None
         }
     }
 
-    /// The risks answered "yes".
+    /// Whether an answer was given by an assistant and still waits for the
+    /// person.
+    pub fn waits_for_person(&self, risk: SiteRisk) -> bool {
+        self.answer(risk).is_some() && self.effective(risk).is_none()
+    }
+
+    /// The site risks answered "yes" (the existing-house questions apart).
     pub fn risky(&self) -> Vec<SiteRisk> {
         SiteRisk::ALL
             .into_iter()
-            .filter(|&risk| self.effective(risk) == Some(true))
+            .filter(|&risk| {
+                !matches!(risk, SiteRisk::BuildingOnTop | SiteRisk::ExistingBaseKnown)
+                    && self.effective(risk) == Some(true)
+            })
             .collect()
     }
 
-    /// The questions still without an answer Trazo can take.
+    /// Building on top of an existing house whose base nobody knows (#157).
+    pub fn unknown_existing_base(&self) -> bool {
+        self.effective(SiteRisk::BuildingOnTop) == Some(true)
+            && self.effective(SiteRisk::ExistingBaseKnown) != Some(true)
+    }
+
+    /// The questions still without an answer Trazo can take. The question
+    /// about the existing base only matters when building on top.
     pub fn unanswered(&self) -> Vec<SiteRisk> {
         SiteRisk::ALL
             .into_iter()
-            .filter(|&risk| self.effective(risk).is_none())
+            .filter(|&risk| {
+                (risk != SiteRisk::ExistingBaseKnown
+                    || self.effective(SiteRisk::BuildingOnTop) == Some(true))
+                    && self.effective(risk).is_none()
+            })
             .collect()
     }
 }
@@ -176,6 +226,33 @@ mod tests {
         risks.set(SiteRisk::Landfill, Some(true), HypothesisSource::Assistant);
         assert_eq!(risks.risky(), vec![SiteRisk::Landfill]);
         risks.set(SiteRisk::Landfill, None, HypothesisSource::Person);
+        assert!(risks.risky().is_empty());
+    }
+
+    #[test]
+    fn building_on_an_unknown_base_needs_the_person_to_know_it() {
+        let mut risks = SiteRisks::default();
+        assert!(!risks.unanswered().contains(&SiteRisk::ExistingBaseKnown));
+        risks.set(
+            SiteRisk::BuildingOnTop,
+            Some(true),
+            HypothesisSource::Assistant,
+        );
+        assert!(risks.unknown_existing_base());
+        assert!(risks.unanswered().contains(&SiteRisk::ExistingBaseKnown));
+        risks.set(
+            SiteRisk::ExistingBaseKnown,
+            Some(true),
+            HypothesisSource::Assistant,
+        );
+        assert!(risks.unknown_existing_base());
+        assert!(risks.waits_for_person(SiteRisk::ExistingBaseKnown));
+        risks.set(
+            SiteRisk::ExistingBaseKnown,
+            Some(true),
+            HypothesisSource::Person,
+        );
+        assert!(!risks.unknown_existing_base());
         assert!(risks.risky().is_empty());
     }
 

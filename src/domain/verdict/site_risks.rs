@@ -42,9 +42,7 @@ pub(super) fn site_risks(project: &Project, verdicts: &mut Vec<Verdict>) {
         }
     }
     if !unanswered.is_empty() {
-        let assistant_said_no = unanswered
-            .iter()
-            .any(|&r| risks.answer(r).is_some_and(|a| !a.yes));
+        let assistant_said_no = unanswered.iter().any(|&r| risks.waits_for_person(r));
         checks.push(Check::new(
             "Perguntas sem resposta",
             0.95,
@@ -52,7 +50,7 @@ pub(super) fn site_risks(project: &Project, verdicts: &mut Vec<Verdict>) {
                 "Responda às perguntas sobre o terreno na janela Segurança ({} sem resposta{}): o Trazo não vê encostas, córregos, aterros nem trincas nos vizinhos.",
                 unanswered.len(),
                 if assistant_said_no {
-                    "; a IA respondeu \"não\" por você em alguma, confirme"
+                    "; a IA respondeu por você em alguma, confirme"
                 } else {
                     ""
                 }
