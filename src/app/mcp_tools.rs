@@ -248,6 +248,7 @@ impl FloorPlanApp {
             "projeto_eletrico" => self.tool_electrical_design(args),
             "quadro_de_cargas" => self.tool_load_schedule(),
             "instalacoes_hidraulicas" => self.tool_plumbing_report(),
+            "projeto_hidraulico" => self.tool_plumbing_design(args),
             "projeto_estrutural" => self.tool_structural_design(args),
             "pre_dimensionamento" => self.tool_presizing(),
             "abas" => self.tool_tabs(args),

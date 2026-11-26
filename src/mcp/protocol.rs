@@ -844,9 +844,9 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "projeto_eletrico",
             title: "Projeto elétrico (NBR 5410)",
-            description: "Comandos do projeto elétrico. gerar_pontos: adiciona o que a NBR 5410 exige e falta em cada cômodo. distribuir_circuitos: renumera os circuitos. definir_tensao: 127 ou 220 V. gerar_eletrodutos: liga ao quadro (QD/QDG/QDC) os pontos ainda desconectados. ligar_pontos / definir_trecho / remover_eletroduto: gerencia eletrodutos. definir_alimentacao: auto, monofasica, bifasica ou trifasica. definir_concessionaria: generico, cpfl, enel_sp, celesc, cemig, copel, energisa, equatorial, fecoergs ou hidropan. demanda_coletiva: calcula demanda coletiva multifamiliar (CODI/CEMIG/Celesc/Fecoergs/Hidropan). lista_materiais: gera a lista de compras elétrica por bitola e cor, eletrodutos, caixas, disjuntores, DR e DPS. luminotecnico / configurar_iluminacao: calcula e configura a iluminância (lux) por cômodo pelo Método dos Lúmens (NBR ISO/CIE 8995-1).",
+            description: "Comandos do projeto elétrico. gerar_pontos: adiciona o que a NBR 5410 exige e falta em cada cômodo. distribuir_circuitos: renumera os circuitos. definir_tensao: 127 ou 220 V. gerar_eletrodutos: liga ao quadro (QD/QDG/QDC) os pontos ainda desconectados. ligar_pontos / definir_trecho / remover_eletroduto: gerencia eletrodutos. definir_alimentacao: auto, monofasica, bifasica ou trifasica. definir_concessionaria: generico, cpfl, enel_sp, celesc, cemig, copel, energisa, equatorial, fecoergs ou hidropan. demanda_coletiva: calcula demanda coletiva multifamiliar (CODI/CEMIG/Celesc/Fecoergs/Hidropan). lista_materiais: gera a lista de compras elétrica por bitola e cor, eletrodutos, caixas, disjuntores, DR e DPS. luminotecnico / configurar_iluminacao: calcula e configura a iluminância (lux) por cômodo pelo Método dos Lúmens (NBR ISO/CIE 8995-1). fotovoltaico / configurar_fotovoltaico: pré-dimensionamento solar (kWp, módulos nos planos do telhado e geração mensal por cidade, INPE/CRESESB, NBR 16690). seletividade / configurar_curto_circuito: quadros QDG/QDC, curto-circuito presumido (Icc) e seletividade entre disjuntores (IEC 60909 / NBR 5410). aterramento_spda / configurar_aterramento: malha de aterramento e BEP (NBR 5410 §6.4) e triagem simplificada de risco SPDA (NBR 5419-2).",
             properties: json!({
-                "acao": { "type": "string", "enum": ["gerar_pontos", "distribuir_circuitos", "definir_tensao", "gerar_eletrodutos", "ligar_pontos", "definir_trecho", "remover_eletroduto", "definir_alimentacao", "definir_concessionaria", "demanda_coletiva", "lista_materiais", "luminotecnico", "configurar_iluminacao"], "description": "O que fazer." },
+                "acao": { "type": "string", "enum": ["gerar_pontos", "distribuir_circuitos", "definir_tensao", "gerar_eletrodutos", "ligar_pontos", "definir_trecho", "remover_eletroduto", "definir_alimentacao", "definir_concessionaria", "demanda_coletiva", "lista_materiais", "luminotecnico", "configurar_iluminacao", "fotovoltaico", "configurar_fotovoltaico", "seletividade", "configurar_curto_circuito", "aterramento_spda", "configurar_aterramento"], "description": "O que fazer." },
                 "tensao": number("Para definir_tensao: 127 ou 220."),
                 "de": integer("Para ligar_pontos: id do ponto do lado do quadro."),
                 "para": integer("Para ligar_pontos: id do outro ponto."),
@@ -872,7 +872,26 @@ fn catalogue() -> Vec<Tool> {
                 "plano_trabalho_m": number("Para configurar_iluminacao: altura do plano de trabalho (m, padrão 0,75)."),
                 "fator_manutencao": number("Para configurar_iluminacao: fator de manutenção Fd (0,50 a 0,95)."),
                 "refletancias": { "type": "string", "enum": ["claras", "medias", "escuras"], "description": "Para configurar_iluminacao: refletâncias teto/parede/piso." },
-                "mostrar_na_planta": boolean("Para configurar_iluminacao: exibir a iluminância (lux) de cada cômodo na planta elétrica."),
+                "mostrar_na_planta": boolean("Para configurar_iluminacao ou configurar_fotovoltaico: exibir na planta elétrica."),
+                "ativo": boolean("Para configurar_fotovoltaico: ativar o sistema fotovoltaico no projeto."),
+                "consumo_kwh_mes": number("Para configurar_fotovoltaico: consumo médio mensal em kWh/mês (0 para estimar pela planta)."),
+                "modulo_wp": number("Para configurar_fotovoltaico: potência de cada módulo em Wp (padrão 550)."),
+                "pr": number("Para configurar_fotovoltaico: taxa de desempenho PR entre 0,60 e 0,88 (padrão 0,78)."),
+                "compensacao_pct": number("Para configurar_fotovoltaico: percentual do consumo compensável (10 a 100 %)."),
+                "cidade": string("Para configurar_fotovoltaico: cidade brasileira para buscar a irradiação solar (ex.: São Paulo, Fortaleza)."),
+                "transformador_kva": number("Para configurar_curto_circuito: potência do transformador da rede (kVA, padrão 75)."),
+                "impedancia_pct": number("Para configurar_curto_circuito: impedância percentual Z% do transformador (padrão 3,5 %)."),
+                "ramal_poste_m": number("Para configurar_curto_circuito: distância do poste/transformador ao medidor (m, padrão 25)."),
+                "ramal_poste_mm2": number("Para configurar_curto_circuito: bitola equivalente em cobre do ramal da rede (mm², padrão 35)."),
+                "ramal_entrada_m": number("Para configurar_curto_circuito: comprimento do ramal do medidor ao QDG (m, padrão 10)."),
+                "capacidade_icn_ka": number("Para configurar_curto_circuito: capacidade de interrupção Icn dos disjuntores DIN (kA: 3, 4.5, 6, 10)."),
+                "esquema": { "type": "string", "enum": ["tn_s", "tt", "tn_c_s"], "description": "Para configurar_aterramento: esquema de aterramento NBR 5410." },
+                "resistividade_solo_ohm_m": number("Para configurar_aterramento: resistividade elétrica do solo ρ em Ω·m (padrão 300)."),
+                "numero_hastes": integer("Para configurar_aterramento: número fixo de hastes (1 a 12, ou 0 para automático)."),
+                "espacamento_m": number("Para configurar_aterramento: espaçamento entre hastes em metros (padrão 3,0)."),
+                "entorno": { "type": "string", "enum": ["cercada_mais_altos", "urbano_similar", "isolada", "topo_morro"], "description": "Para configurar_aterramento: fator de localização Cd (NBR 5419-2)." },
+                "rede_aerea": boolean("Para configurar_aterramento: entrada de energia por rede aérea (true) ou subterrânea (false)."),
+                "tem_dps": boolean("Para configurar_aterramento: presença de DPS Classe II na entrada (padrão true)."),
             }),
             required: &["acao"],
             read_only: false,
@@ -890,10 +909,29 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "instalacoes_hidraulicas",
             title: "Instalações hidrossanitárias",
-            description: "Instalações de água, esgoto e gás da planta (NBR 5626, NBR 8160): os pontos de cada aparelho (água fria AF, água quente AQ, esgoto ES com o DN, gás) com posição e altura, a contagem por tipo, o quadro de aparelhos com peso e UHC e as observações. Os aparelhos vêm de inserir_objeto (vaso, lavatorio, chuveiro, pia, lavadora, banheira, fogao).",
+            description: "Instalações de água, esgoto e gás da planta (NBR 5626, NBR 8160): os pontos de cada aparelho (água fria AF, água quente AQ, esgoto ES com o DN, gás) com posição e altura, a contagem por tipo, o quadro de aparelhos com peso e UHC e as observações; a água fria: consumo, caixa-d'água e o peso dela cheia, colunas, tubos com DN, vazão e perda, e a pressão em cada aparelho (boa, fraca ou insuficiente), com o que subir quando falta pressão. Os aparelhos vêm de inserir_objeto (vaso, lavatorio, chuveiro, pia, lavadora, banheira, fogao).",
             properties: json!({}),
             required: &[],
             read_only: true,
+            destructive: false,
+        },
+        Tool {
+            name: "projeto_hidraulico",
+            title: "Projeto hidrossanitário (configurar)",
+            description: "Configura o projeto de água, esgoto e chuva. configurar: moradores (padrão: 2 por quarto), consumo_l_pessoa_dia (padrão 150 L), dias_reserva (1 a 3, padrão 1; use 2 onde a água da rua falta), caixa_x e caixa_y (posição da caixa-d'água; padrão: a caixa do projeto estrutural ou sobre as áreas molhadas), altura_base_caixa_m (base da caixa sobre o piso; padrão: paredes + 0,20 m) e aquecimento (chuveiro_eletrico, gas ou solar). restaurar: devolve ao padrão do Trazo os campos listados em 'campos'. Depois confira a caixa e a pressão de cada aparelho em instalacoes_hidraulicas e explique à família o que subir ou mudar.",
+            properties: json!({
+                "acao": { "type": "string", "enum": ["configurar", "restaurar"], "description": "O que fazer." },
+                "moradores": integer("Pessoas que moram na casa."),
+                "consumo_l_pessoa_dia": number("Água por pessoa por dia, litros."),
+                "dias_reserva": number("Dias de água que a caixa guarda (1 a 3)."),
+                "caixa_x": number("Posição X da caixa-d'água, metros."),
+                "caixa_y": number("Posição Y da caixa-d'água, metros."),
+                "altura_base_caixa_m": number("Altura da base da caixa-d'água sobre o piso, metros."),
+                "aquecimento": { "type": "string", "enum": ["chuveiro_eletrico", "gas", "solar"], "description": "Como a água é aquecida." },
+                "campos": { "type": "array", "items": { "type": "string", "enum": ["moradores", "consumo_l_pessoa_dia", "dias_reserva", "caixa", "altura_base_caixa_m", "aquecimento"] }, "description": "Para restaurar: os campos que voltam ao padrão." },
+            }),
+            required: &["acao"],
+            read_only: false,
             destructive: false,
         },
         Tool {
@@ -1450,7 +1488,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 68);
+        assert_eq!(tools.len(), 69);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -1531,7 +1569,7 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 68);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 69);
     }
 }
 

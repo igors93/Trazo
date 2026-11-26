@@ -56,3 +56,60 @@ fn a_gas_or_solar_heater_brings_hot_water_to_the_taps() {
     // Washbasin, shower and sink.
     assert_eq!(points.count(PointKind::Hot), 3);
 }
+
+#[test]
+fn a_tank_just_over_the_slab_leaves_the_shower_weak_and_says_how_high_to_go() {
+    use super::cold_water::cold_water;
+    use super::network::Pressure;
+    let project = house();
+    let cold = cold_water(&project).unwrap();
+    // No bedroom: two people, 150 L each, one day.
+    assert_eq!(cold.residents, 2);
+    assert!((cold.daily_l - 300.0).abs() < 1e-9);
+    assert!((cold.tank_l - 310.0).abs() < 1e-9);
+    // Walls of 2.80 m and a base of 0.20 m: 0.90 m over the shower head.
+    assert!((cold.tank_base_m - 3.0).abs() < 1e-9);
+    let shower = cold
+        .network
+        .outlets
+        .iter()
+        .find(|o| o.fixture == FixtureKind::Shower)
+        .unwrap();
+    assert_eq!(shower.state, Pressure::Low);
+    assert!(cold.needed_base_m > 3.0);
+    let toilet = cold
+        .network
+        .outlets
+        .iter()
+        .find(|o| o.fixture == FixtureKind::Toilet)
+        .unwrap();
+    assert_eq!(toilet.state, Pressure::Good);
+    assert!(cold.warnings.iter().any(|w| w.contains("Suba a base")));
+
+    let mut raised = house();
+    raised.plumbing.tank_base_m = Some(cold.comfort_base_m + 0.05);
+    let cold = cold_water(&raised).unwrap();
+    assert!(cold.network.outlets.iter().all(|o| o.state == Pressure::Good));
+}
+
+#[test]
+fn a_tank_heavier_than_the_structure_expects_is_red() {
+    use crate::domain::verdict::{Light, plumbing_verdicts};
+    let mut project = house();
+    project.plumbing.residents = Some(6);
+    project
+        .add_fixture(FixtureKind::WaterTank, Point::new(3.0, 7.0), 1.2, 1.2, 0)
+        .unwrap();
+    let tank = project.fixtures.last_mut().unwrap();
+    tank.structural_load_kn = Some(5.0);
+    let verdicts = plumbing_verdicts(&project);
+    let weight = verdicts.iter().find(|v| v.element == "Caixa-d'água").unwrap();
+    assert_eq!(weight.light(), Light::Red);
+    // Pressure problems are yellow, never red.
+    assert!(
+        verdicts
+            .iter()
+            .filter(|v| v.element.starts_with("Água fria"))
+            .all(|v| v.light() != Light::Red)
+    );
+}

@@ -1,11 +1,13 @@
 //! Water, sewage and rain (roadmap section E, milestone M6): the plumbing
-//! points of every fixture (#72), and the settings the plumbing design
-//! keeps with the project.
+//! points of every fixture (#72), cold water (#118), and the settings the
+//! plumbing design keeps with the project.
 //!
 //! The tables come from the plumbing building code pack (NBR 5626, NBR 8160
 //! and NBR 10844, `data/codes/plumbing/nbr.json`); the few the pack does not
 //! carry are Trazo's, and say so where they are used.
 
+pub mod cold_water;
+pub mod network;
 pub mod points;
 pub mod rules;
 
@@ -13,6 +15,8 @@ pub mod rules;
 mod tests;
 
 use serde::{Deserialize, Serialize};
+
+use crate::domain::geometry::Point;
 
 /// How the house heats its water.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -67,6 +71,21 @@ pub struct PlumbingSettings {
     /// How the water is heated.
     #[serde(default, skip_serializing_if = "is_default_heater")]
     pub heater: Heater,
+    /// People living in the house; two per bedroom when not given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub residents: Option<u32>,
+    /// Water a person uses in a day, L.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consumption_l_day: Option<f64>,
+    /// Days of water the tank keeps (NBR 5626: one to three).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reserve_days: Option<f64>,
+    /// Where the water tank stands, in the plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tank_at: Option<Point>,
+    /// Height of the tank's base over the floor, m.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tank_base_m: Option<f64>,
 }
 
 impl PlumbingSettings {

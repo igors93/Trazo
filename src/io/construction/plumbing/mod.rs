@@ -1,7 +1,9 @@
 //! The plumbing sheets (roadmap section E), A3 landscape in one PDF: the
-//! points plan with its legend and fixture schedule (#72).
+//! points plan with its legend and fixture schedule (#72) and the water
+//! plan with the pressure at every fixture (#118).
 
 pub mod points;
+pub mod water;
 
 use std::fmt::Write as _;
 use std::path::Path;
@@ -125,7 +127,10 @@ pub(crate) fn wrap(text: &str, chars: usize) -> Vec<String> {
 
 /// The plumbing sheets, in order, waiting for their title blocks.
 pub(crate) fn plumbing_drawings(project: &Project) -> Vec<Drawn> {
-    points::points_drawing(project).into_iter().collect()
+    points::points_drawing(project)
+        .into_iter()
+        .chain(water::water_drawing(project))
+        .collect()
 }
 
 /// The plumbing sheets, numbered `01/NN`.
@@ -164,10 +169,38 @@ mod tests {
             project.add_fixture(kind, at, w, d, 0).unwrap();
         }
         let pages = plumbing_pages(&project);
-        assert_eq!(pages.len(), 1);
+        assert_eq!(pages.len(), 2);
         assert!(pages[0].contains("Quadro de aparelhos"));
         assert!(pages[0].contains("Vaso sanitário"));
-        assert!(pages[0].contains("01/01"));
+        assert!(pages[0].contains("01/02"));
+        assert!(pages[1].contains("Pressão nos aparelhos"));
         assert!(plumbing_pages(&Project::default()).is_empty());
+    }
+}
+
+// PREVIEW-BEGIN
+#[cfg(test)]
+mod preview {
+    #[test]
+    fn render_preview() {
+        let json = include_str!("../../../../examples/casa-terrea.json");
+        let mut project: crate::domain::model::Project = serde_json::from_str(json).unwrap();
+        
+        let pages = super::plumbing_pages(&project);
+        let dir = std::path::Path::new("C:/Users/Pichau/AppData/Local/Temp/claude/5668e9e00ab3e679/cb03f3e0-80f2-451d-b94c-a128c39f81e1/scratchpad/preview");
+        std::fs::create_dir_all(dir).unwrap();
+        for (i, svg) in pages.iter().enumerate() {
+            std::fs::write(dir.join(format!("plumb{:02}.svg", i + 1)), svg).unwrap();
+            let options = crate::io::export::resvg_options();
+            let tree = resvg::usvg::Tree::from_str(svg, &options).unwrap();
+            let size = tree.size();
+            let zoom = 1600.0 / size.width();
+            let (w, h) = ((size.width() * zoom) as u32, (size.height() * zoom) as u32);
+            let mut pixmap = resvg::tiny_skia::Pixmap::new(w, h).unwrap();
+            pixmap.fill(resvg::tiny_skia::Color::WHITE);
+            resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(zoom, zoom), &mut pixmap.as_mut());
+            pixmap.save_png(dir.join(format!("plumb{:02}.png", i + 1))).unwrap();
+        }
+        println!("{} pages", pages.len());
     }
 }

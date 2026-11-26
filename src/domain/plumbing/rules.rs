@@ -112,3 +112,124 @@ impl FixtureTable {
             .or_else(|| reference_figures(kind))
     }
 }
+
+/// Cold-water rules (NBR 5626): the probable flow, the speed limit, the
+/// least pressure at a point of use, the pipes and their fittings.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct ColdWaterRules {
+    /// `c` of the probable flow `Q = c·√ΣP` (L/s).
+    pub flow_coefficient: f64,
+    /// Fastest the water may run, m/s.
+    pub max_speed: f64,
+    /// Least dynamic pressure at a point of use, kPa.
+    pub min_use_kpa: f64,
+    /// Roughness of the pipe wall, mm.
+    pub roughness: f64,
+    /// PVC pipes: outside diameter (DN) and wall, mm.
+    pub pipes: Vec<[f64; 2]>,
+    /// The fittings of the equivalent-length table, in its column order.
+    pub fittings: Vec<String>,
+    /// Equivalent lengths, m: DN, then one column per fitting.
+    pub equivalent_lengths: Vec<Vec<f64>>,
+}
+
+impl Default for ColdWaterRules {
+    /// The bundled pack's values, should a custom code lack the section.
+    fn default() -> Self {
+        Self {
+            flow_coefficient: 0.3,
+            max_speed: 3.0,
+            min_use_kpa: 10.0,
+            roughness: 0.0015,
+            pipes: vec![
+                [20.0, 1.5],
+                [25.0, 1.7],
+                [32.0, 2.1],
+                [40.0, 2.4],
+                [50.0, 3.0],
+                [60.0, 3.3],
+            ],
+            fittings: [
+                "elbow90",
+                "elbow45",
+                "tee_through",
+                "tee_side",
+                "gate",
+                "globe",
+                "check",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+            equivalent_lengths: vec![
+                vec![20.0, 1.1, 0.4, 0.7, 2.3, 0.1, 11.1, 2.5],
+                vec![25.0, 1.2, 0.5, 0.8, 2.4, 0.2, 11.4, 2.7],
+                vec![32.0, 1.5, 0.7, 0.9, 3.1, 0.3, 15.0, 3.8],
+                vec![40.0, 2.0, 1.0, 1.5, 4.6, 0.4, 22.0, 4.9],
+                vec![50.0, 3.2, 1.3, 2.2, 7.3, 0.7, 35.8, 6.8],
+                vec![60.0, 3.4, 1.5, 2.3, 7.6, 0.8, 37.9, 7.1],
+            ],
+        }
+    }
+}
+
+impl ColdWaterRules {
+    pub fn for_project(project: &Project) -> Self {
+        section(project, "cold_water").unwrap_or_default()
+    }
+
+    /// Inside diameter of a PVC pipe, mm.
+    pub fn inner_mm(&self, dn: f64) -> f64 {
+        self.pipes
+            .iter()
+            .find(|[d, _]| (*d - dn).abs() < 1e-9)
+            .map_or(dn * 0.85, |[d, wall]| d - 2.0 * wall)
+    }
+
+    /// The commercial DNs, smallest first.
+    pub fn dns(&self) -> Vec<f64> {
+        let mut dns: Vec<f64> = self.pipes.iter().map(|[d, _]| *d).collect();
+        dns.sort_by(f64::total_cmp);
+        dns
+    }
+
+    /// Equivalent length of a fitting on a pipe of `dn`, m; the nearest
+    /// larger row of the table when `dn` has none.
+    pub fn equivalent_m(&self, dn: f64, fitting: &str) -> f64 {
+        let Some(column) = self.fittings.iter().position(|f| f == fitting) else {
+            return 0.0;
+        };
+        self.equivalent_lengths
+            .iter()
+            .find(|row| row.first().is_some_and(|d| *d >= dn - 1e-9))
+            .or_else(|| self.equivalent_lengths.last())
+            .and_then(|row| row.get(column + 1).copied())
+            .unwrap_or(0.0)
+    }
+
+    /// Least pressure at a point of use, metres of water (*mca*).
+    pub fn min_use_m(&self) -> f64 {
+        self.min_use_kpa / super::network::GRAVITY
+    }
+}
+
+/// How long the water tank must last (NBR 5626), days.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct ReservoirRules {
+    pub min_days: f64,
+    pub max_days: f64,
+}
+
+impl Default for ReservoirRules {
+    fn default() -> Self {
+        Self {
+            min_days: 1.0,
+            max_days: 3.0,
+        }
+    }
+}
+
+impl ReservoirRules {
+    pub fn for_project(project: &Project) -> Self {
+        section(project, "reservoir").unwrap_or_default()
+    }
+}

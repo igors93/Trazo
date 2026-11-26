@@ -873,10 +873,11 @@ impl FloorPlanApp {
                     if let Some(v) = icn_ka {
                         sc.breaker_icn_ka = v;
                     }
+                    let (trafo_val, icn_val) = (sc.transformer_kva, sc.breaker_icn_ka);
                     let rep = project.short_circuit_report();
                     Ok(Change::new(format!(
                         "Curto-circuito configurado (trafo {:.0} kVA, Icn {:.1} kA): Icc máx {:.2} kA.",
-                        sc.transformer_kva, sc.breaker_icn_ka, rep.max_icc_ka
+                        trafo_val, icn_val, rep.max_icc_ka
                     )))
                 })
             }

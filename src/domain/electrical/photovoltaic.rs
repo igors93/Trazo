@@ -195,7 +195,7 @@ pub struct PvMonthGeneration {
 }
 
 /// Complete photovoltaic pre-sizing report (#126).
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PhotovoltaicReport {
     pub settings: PvSettings,
     pub city_label: String,
@@ -480,7 +480,7 @@ pub fn photovoltaic_report(project: &Project) -> PhotovoltaicReport {
     let mod_wid = settings.module_width_m.clamp(0.6, 1.8);
 
     // Inspect available roof planes and sort best-oriented first.
-    let roof_plans = project.roof_plans();
+    let roof_plans = crate::domain::construction::roof_plan::roof_plans(project);
     struct CandidatePlane {
         roof_label: String,
         plane_index: usize,
@@ -600,15 +600,15 @@ pub fn photovoltaic_report(project: &Project) -> PhotovoltaicReport {
     let mut months = Vec::with_capacity(12);
     let mut annual_gen = 0.0;
     for (&(name, days), &hsp) in MONTHS.iter().zip(monthly_hsp.iter()) {
-        let gen = installed_kwp * hsp * f64::from(days) * pr * effective_orient;
-        annual_gen += gen;
+        let gen_kwh = installed_kwp * hsp * f64::from(days) * pr * effective_orient;
+        annual_gen += gen_kwh;
         months.push(PvMonthGeneration {
             month: name.to_owned(),
             days,
             hsp_kwh_m2_day: hsp,
-            generation_kwh: gen,
+            generation_kwh: gen_kwh,
             consumption_kwh: monthly_consumption,
-            balance_kwh: gen - monthly_consumption,
+            balance_kwh: gen_kwh - monthly_consumption,
         });
     }
     let mean_monthly = annual_gen / 12.0;
@@ -893,7 +893,6 @@ pub fn photovoltaic_sheet_svg(project: &Project) -> String {
     y += 5.5;
     if r.planes.is_empty() {
         text(&mut svg, 18.0, y, 2.6, false, muted, "Nenhum telhado modelado; área estimada pela planta.");
-        y += 6.0;
     } else {
         for p in &r.planes {
             text(

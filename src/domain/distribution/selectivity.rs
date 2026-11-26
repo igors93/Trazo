@@ -168,7 +168,7 @@ fn cable_impedance(length_m: f64, section_mm2: f64, rho: f64) -> Impedance {
 fn transformer_impedance(kva: f64, z_pct: f64, v_ll: f64) -> Impedance {
     let s_va = (kva.max(15.0)) * 1000.0;
     let z = (z_pct.clamp(1.5, 10.0) / 100.0) * v_ll * v_ll / s_va;
-    let xr = if kva <= 112.5 { 1.5 } else { 2.5 };
+    let xr: f64 = if kva <= 112.5 { 1.5 } else { 2.5 };
     let r = z / (1.0 + xr * xr).sqrt();
     Impedance { r, x: r * xr }
 }
@@ -289,7 +289,7 @@ pub struct SelectivityPair {
 }
 
 /// Full multi-board, short-circuit and breaker selectivity study (#127).
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ShortCircuitReport {
     pub settings: ShortCircuitSettings,
     pub supply: Supply,
@@ -391,8 +391,14 @@ pub fn short_circuit_report(project: &Project, schedule: &LoadSchedule) -> Short
     let mut report = ShortCircuitReport {
         settings,
         supply,
+        boards: Vec::new(),
+        circuits: Vec::new(),
+        selectivity: Vec::new(),
+        max_icc_ka: 0.0,
+        min_recommended_icn_ka: 3.0,
         light: Light::Green,
-        ..ShortCircuitReport::default()
+        warnings: Vec::new(),
+        assumptions: Vec::new(),
     };
 
     if schedule.circuits.is_empty() {

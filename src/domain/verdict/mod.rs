@@ -6,6 +6,7 @@ mod codes;
 mod cross_checks;
 mod electrical;
 mod hypotheses;
+mod plumbing;
 mod site_risks;
 mod stages;
 mod structure;
@@ -17,6 +18,7 @@ use crate::domain::model::Project;
 
 pub use codes::code_verdicts;
 pub use electrical::{electrical_project_verdicts, electrical_verdicts};
+pub use plumbing::plumbing_verdicts;
 pub use structure::structure_verdicts;
 
 /// Up to this utilisation the light is green.
@@ -117,6 +119,7 @@ impl Check {
 pub enum Discipline {
     Structure,
     Electrical,
+    Plumbing,
     Architecture,
 }
 
@@ -125,6 +128,7 @@ impl Discipline {
         match self {
             Self::Structure => "Estrutura",
             Self::Electrical => "Elétrica",
+            Self::Plumbing => "Hidráulica",
             Self::Architecture => "Arquitetura · Normas",
         }
     }
@@ -256,6 +260,7 @@ pub fn safety_summary(project: &Project) -> SafetySummary {
     let mut verdicts = structure_verdicts(project, &project.structure_report());
     verdicts.extend(electrical_project_verdicts(project, &project.load_schedule()));
     verdicts.extend(code_verdicts(project));
+    verdicts.extend(plumbing_verdicts(project));
     verdicts.sort_by(|a, b| {
         b.light()
             .cmp(&a.light())

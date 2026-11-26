@@ -241,7 +241,7 @@ pub struct EarthingRodPoint {
 }
 
 /// Complete earthing layout & simplified NBR 5419-2 SPDA risk report (#129).
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EarthingSpdaReport {
     pub settings: EarthingSettings,
     // --- Earthing (NBR 5410 §6.4) ---
