@@ -40,6 +40,7 @@ impl FloorPlanApp {
         let summary: SafetySummary = safety_summary(&self.project);
         let mut export = false;
         let mut export_guide = false;
+        let mut export_booklet = false;
         let mut hypothesis_action = None;
         let mut help_contacts = None;
         let mut site_answer = None;
@@ -102,6 +103,9 @@ impl FloorPlanApp {
                     ui.checkbox(&mut detail, "Detalhes técnicos");
                     ui.separator();
                     export = secondary_button(ui, "Exportar memorial (PDF)").clicked();
+                    export_booklet = secondary_button(ui, "Caderno da família (PDF)")
+                        .on_hover_text("Poucas páginas A4 em linguagem simples: como está a casa, lista de compras, guia de obra, quando parar e onde buscar ajuda, e a planta.")
+                        .clicked();
                     export_guide = secondary_button(ui, "Guia de obra (texto)")
                         .on_hover_text("Instruções em ordem para construir, com materiais, conferências antes de concretar e onde um profissional deve olhar.")
                         .clicked();
@@ -205,6 +209,9 @@ impl FloorPlanApp {
         if export_guide {
             self.export_building_guide();
         }
+        if export_booklet {
+            self.export_family_booklet();
+        }
         if let Some(action) = hypothesis_action {
             self.apply_hypothesis_action(action);
         }
@@ -220,6 +227,26 @@ impl FloorPlanApp {
         if !open {
             self.active_doc_dialog = DocDialog::None;
         }
+    }
+
+    /// Saves the family booklet (#163) as a PDF.
+    pub(crate) fn export_family_booklet(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Documento PDF", &["pdf"])
+            .set_file_name("caderno-da-familia.pdf")
+            .save_file()
+        else {
+            return;
+        };
+        let date = crate::io::report::today();
+        self.message = match crate::io::booklet::export_family_booklet(&self.project, &date, &path)
+        {
+            Ok(pages) => format!(
+                "Caderno da família ({pages} páginas) salvo em {}",
+                path.display()
+            ),
+            Err(error) => format!("Erro ao exportar o caderno: {error}"),
+        };
     }
 
     /// Saves the building guide (#165) as plain text, to print or share.

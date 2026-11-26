@@ -1,3 +1,4 @@
+pub mod booklet;
 pub mod container;
 pub mod crash_log;
 pub mod dwg;

@@ -25,8 +25,8 @@ const LEFT: f64 = 25.0;
 const RIGHT: f64 = 203.0;
 const TOP: f64 = 26.0;
 const BOTTOM: f64 = 280.0;
-const INK: &str = "#1d2836";
-const MUTED: &str = "#5b6b7c";
+pub(super) const INK: &str = "#1d2836";
+pub(super) const MUTED: &str = "#5b6b7c";
 const TOTAL: &str = "{{TOTAL}}";
 
 fn esc(text: &str) -> String {
@@ -75,7 +75,7 @@ fn wrap(text: &str, chars: usize) -> Vec<String> {
 }
 
 /// A4 pages written top to bottom, starting a new page when one fills up.
-struct Pages {
+pub(super) struct Pages {
     project: String,
     done: Vec<String>,
     body: String,
@@ -83,7 +83,7 @@ struct Pages {
 }
 
 impl Pages {
-    fn new(project: &str) -> Self {
+    pub(super) fn new(project: &str) -> Self {
         Self {
             project: project.to_owned(),
             done: Vec::new(),
@@ -141,7 +141,7 @@ impl Pages {
         }
     }
 
-    fn heading(&mut self, title: &str) {
+    pub(super) fn heading(&mut self, title: &str) {
         self.room(16.0);
         self.y += 4.0;
         let y = self.y;
@@ -152,7 +152,7 @@ impl Pages {
         self.y += 5.0;
     }
 
-    fn subheading(&mut self, title: &str) {
+    pub(super) fn subheading(&mut self, title: &str) {
         self.room(12.0);
         self.y += 2.0;
         let y = self.y;
@@ -160,7 +160,7 @@ impl Pages {
         self.y += 5.0;
     }
 
-    fn paragraph(&mut self, text: &str, size: f64, color: &str) {
+    pub(super) fn paragraph(&mut self, text: &str, size: f64, color: &str) {
         let chars = ((RIGHT - LEFT) / (size * 0.5)) as usize;
         for line in wrap(text, chars) {
             self.room(size * 1.5);
@@ -216,7 +216,7 @@ impl Pages {
         self.y += 3.0;
     }
 
-    fn finish(mut self) -> Vec<String> {
+    pub(super) fn finish(mut self) -> Vec<String> {
         if !self.body.is_empty() {
             self.page_break();
         }
