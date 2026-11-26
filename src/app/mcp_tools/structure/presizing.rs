@@ -717,6 +717,9 @@ impl FloorPlanApp {
                     .collect::<Vec<_>>(),
             },
             "premissas": crate::domain::verdict::assumptions(&self.project),
+            "resumo_para_a_familia": crate::domain::protection::glossary::family_summary(
+                &crate::domain::verdict::safety_summary(&self.project),
+            ),
             "hipoteses": hypotheses_json(&self.project),
             "riscos_terreno": {
                 "com_risco": self.project.protection.site_risks.risky().iter().map(|r| r.key()).collect::<Vec<_>>(),

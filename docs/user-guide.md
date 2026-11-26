@@ -269,7 +269,7 @@ Warnings name each element that needs attention, including a support that a shor
 - **yellow** passes with a small margin;
 - **red** fails.
 
-Each element is listed worst first, with its margin and one sentence on what to change. **Detalhes técnicos** adds the formula and the standard, and the assumptions close the list.
+Each element is listed worst first, with its margin and one sentence on what to change. A sentence for the family sums the whole light up, and hovering a check's name explains the technical words it uses (pilar, sapata, fck, punção…). **Detalhes técnicos** adds the formula and the standard, and the assumptions close the list.
 
 Trazo refuses to size what its methods do not cover, and says why:
 

@@ -69,6 +69,12 @@ impl FloorPlanApp {
                                 .color(light_color(worst)),
                         );
                     });
+                    // One sentence the family understands (#161).
+                    ui.label(
+                        RichText::new(crate::domain::protection::glossary::family_summary(&summary))
+                            .size(12.5)
+                            .color(TEXT),
+                    );
                 }
                 ui.add_space(6.0);
                 ui.horizontal_wrapped(|ui| {
@@ -148,7 +154,14 @@ impl FloorPlanApp {
                             for check in &verdict.checks {
                                 ui.horizontal_wrapped(|ui| {
                                     light_dot(ui, check.light);
-                                    ui.label(RichText::new(&check.name).font(strong(12.5)));
+                                    let terms = crate::domain::protection::glossary::explain(
+                                        &format!("{} {}", check.name, check.simple),
+                                    );
+                                    let name = ui.label(RichText::new(&check.name).font(strong(12.5)));
+                                    if !terms.is_empty() {
+                                        // Technical words explained on hover (#161).
+                                        name.on_hover_text(terms);
+                                    }
                                     if check.utilisation.is_finite() {
                                         ui.label(
                                             RichText::new(format!(

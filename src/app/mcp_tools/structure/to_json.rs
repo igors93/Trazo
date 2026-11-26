@@ -275,6 +275,10 @@ pub(in crate::app::mcp_tools) fn verdicts_json(
                         "folga_pct": check.utilisation.is_finite().then(|| (check.margin_percent() * 10.0).round() / 10.0),
                         "o_que_fazer": check.simple,
                         "detalhe": check.detail,
+                        "termos": crate::domain::protection::glossary::terms_in(&format!("{} {}", check.name, check.simple))
+                            .iter()
+                            .map(|t| json!({ "termo": t.word, "explicacao": t.plain }))
+                            .collect::<Vec<_>>(),
                     })).collect::<Vec<_>>(),
                 })
             })

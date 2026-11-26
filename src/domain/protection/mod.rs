@@ -5,6 +5,7 @@
 
 pub mod action_report;
 pub mod cross_checks;
+pub mod glossary;
 pub mod help;
 pub mod hypotheses;
 pub mod site_risks;
