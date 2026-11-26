@@ -870,6 +870,15 @@ fn catalogue() -> Vec<Tool> {
             destructive: false,
         },
         Tool {
+            name: "guia_de_obra",
+            title: "Guia de obra",
+            description: "Instruções claras e em ordem para construir a casa conferida, etapa por etapa (terreno e marcação, fundação, pilares e vigas, paredes, laje, telhado, elétrica), com os materiais, a lista de conferência antes de cada concretagem e onde um profissional deve olhar. Entregue isto à família em palavras simples; nunca omita os pontos que pedem um profissional.",
+            properties: json!({}),
+            required: &[],
+            read_only: true,
+            destructive: false,
+        },
+        Tool {
             name: "projeto_estrutural",
             title: "Projeto estrutural (pré-dimensionamento)",
             description: "Comandos da estrutura (planta de forma e fundações). gerar_estrutura: pilares, vigas, lajes e sapatas. inserir_pilar / inserir_sapata / inserir_bloco_broca / editar_bloco_broca (bloco sobre estaca broca, com diâmetro, profundidade, quantidade e arranque contra vento). inserir_carga / editar_carga / remover_carga: caixa-d'água ou equipamento pesado, com carga concentrada transmitida à laje ou viga. ligar_pilares e apoiar_em_viga. editar_viga / remover_viga. definir_laje / remover_laje. configurar materiais e cargas (fck, solo, classe_solo, ocupacao, pavimentos, sobrecarga, revestimento, peso_alvenaria_kn_m3, sobrecarga_por_comodo). configurar_sobreposicao: ativa/desativa na planta e na prancha cores de aproveitamento (semáforo), diagramas de momento/cortante sobre as vigas, deformada e caminho das cargas. simular_whatif: testa vão (escala_vao), seção, carga e material sem alterar o projeto (ou com aplicar=true), devolvendo comparação, Δ aço/concreto e faixas seguras. ajustar_sapatas. gerar_vigas_alavanca / ligar_viga_alavanca / remover_viga_alavanca. gerar_fundacao_paredes / definir_fundacao_parede / remover_fundacao_paredes. definir_sondagem / remover_sondagem / simular_fundacoes. definir_telhado / ajustar_paredes_telhado / remover_telhado. inserir_mourao. configurar_vento. vista: seleciona a disciplina da aba ativa.",
@@ -1364,7 +1373,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 65);
+        assert_eq!(tools.len(), 66);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -1445,7 +1454,7 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 65);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 66);
     }
 }
 

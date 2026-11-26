@@ -267,6 +267,7 @@ impl FloorPlanApp {
             "cotas" => self.tool_dimensions(args),
             "circulacao" => self.tool_circulation(args),
             "codigos_normativos" => self.tool_building_codes(args),
+            "guia_de_obra" => self.tool_building_guide(),
             "local_clima" => self.tool_site_climate(args),
             "verificar_normas" => self.tool_check_codes(args),
             "vistas_tecnicas" => self.tool_views(args),

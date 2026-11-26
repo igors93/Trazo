@@ -7,6 +7,7 @@ pub mod action_report;
 pub mod checklists;
 pub mod cross_checks;
 pub mod glossary;
+pub mod guide;
 pub mod help;
 pub mod hypotheses;
 pub mod site_risks;

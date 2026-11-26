@@ -39,6 +39,7 @@ impl FloorPlanApp {
         let mut filter: u8 = ctx.data(|d| d.get_temp(filter_id)).unwrap_or(0);
         let summary: SafetySummary = safety_summary(&self.project);
         let mut export = false;
+        let mut export_guide = false;
         let mut hypothesis_action = None;
         let mut help_contacts = None;
         let mut site_answer = None;
@@ -101,6 +102,9 @@ impl FloorPlanApp {
                     ui.checkbox(&mut detail, "Detalhes técnicos");
                     ui.separator();
                     export = secondary_button(ui, "Exportar memorial (PDF)").clicked();
+                    export_guide = secondary_button(ui, "Guia de obra (texto)")
+                        .on_hover_text("Instruções em ordem para construir, com materiais, conferências antes de concretar e onde um profissional deve olhar.")
+                        .clicked();
                 });
                 if summary.verdicts.is_empty() {
                     ui.add_space(8.0);
@@ -198,6 +202,9 @@ impl FloorPlanApp {
         if export {
             self.export_presizing_report();
         }
+        if export_guide {
+            self.export_building_guide();
+        }
         if let Some(action) = hypothesis_action {
             self.apply_hypothesis_action(action);
         }
@@ -213,6 +220,23 @@ impl FloorPlanApp {
         if !open {
             self.active_doc_dialog = DocDialog::None;
         }
+    }
+
+    /// Saves the building guide (#165) as plain text, to print or share.
+    pub(crate) fn export_building_guide(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Texto", &["txt"])
+            .set_file_name("guia-de-obra.txt")
+            .save_file()
+        else {
+            return;
+        };
+        let guide = crate::domain::protection::guide::building_guide(&self.project);
+        let text = crate::domain::protection::guide::guide_text(&guide);
+        self.message = match std::fs::write(&path, text) {
+            Ok(()) => format!("Guia de obra salvo em {}", path.display()),
+            Err(error) => format!("Erro ao salvar o guia de obra: {error}"),
+        };
     }
 
     /// Saves the pre-sizing report (#103) for a professional to review.

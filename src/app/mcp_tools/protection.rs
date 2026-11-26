@@ -1,12 +1,13 @@
 //! What the protection layer adds to every assistant answer (roadmap M0):
 //! the hypotheses Trazo held back for the person (#171) and what the action
-//! made worse (#170).
+//! made worse (#170); and the building guide tool (#165).
 
 use serde_json::{Value, json};
 
 use crate::app::FloorPlanApp;
 use crate::domain::model::Project;
 use crate::domain::protection::action_report::action_report;
+use crate::domain::protection::guide::{building_guide, guide_text};
 use crate::domain::protection::hypotheses::HypothesisProposal;
 use crate::mcp::ToolOutput;
 
@@ -112,5 +113,27 @@ impl FloorPlanApp {
         // On screen too: the status bar shows it over the AI's message.
         self.edit_notice = Some(format!("IA · {summary}"));
         output
+    }
+
+    /// `guia_de_obra`: the checked house as ordered instructions to build.
+    pub(super) fn tool_building_guide(&self) -> Result<ToolOutput, String> {
+        let guide = building_guide(&self.project);
+        let stages: Vec<Value> = guide
+            .iter()
+            .map(|stage| {
+                json!({
+                    "etapa": stage.title,
+                    "passos": stage.steps,
+                    "materiais": stage.materials,
+                    "conferir_antes_de_concretar": stage.checklist.as_ref().map(|list| json!({
+                        "titulo": list.title,
+                        "elementos": list.elements,
+                        "itens": list.items,
+                    })),
+                    "onde_um_profissional_deve_olhar": stage.professional,
+                })
+            })
+            .collect();
+        Ok(ToolOutput::ok(guide_text(&guide)).with_structured(json!({ "etapas": stages })))
     }
 }
