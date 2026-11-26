@@ -43,6 +43,22 @@ const MAX_HISTORY_STEPS: usize = 100;
 /// Soft incremental heap budget for retained undo snapshots (128 MiB).
 const MAX_HISTORY_BYTES: usize = 128 << 20;
 
+/// Undo memory budget in light mode, for modest computers (#164).
+pub const LIGHT_HISTORY_BYTES: usize = 32 << 20;
+
+/// The undo memory budget every history respects, lowered in light mode.
+static HISTORY_BUDGET: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(MAX_HISTORY_BYTES);
+
+/// Sets the undo memory budget for every history (light mode, #164).
+pub fn set_history_budget(bytes: usize) {
+    HISTORY_BUDGET.store(bytes.max(1), std::sync::atomic::Ordering::Relaxed);
+}
+
+fn history_budget() -> usize {
+    HISTORY_BUDGET.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 #[derive(Clone, Debug, PartialEq, serde::Serialize)]
 struct ProjectMetadata {
     version: u32,
@@ -411,7 +427,7 @@ impl History {
         self.undo_bytes = self.undo_bytes.saturating_add(snap.incremental_bytes);
         self.undo.push(snap);
         while self.undo.len() > self.max_steps
-            || (self.undo.len() > 1 && self.undo_bytes > self.max_bytes)
+            || (self.undo.len() > 1 && self.undo_bytes > self.max_bytes.min(history_budget()))
         {
             let removed = self.undo.remove(0);
             self.undo_bytes = self.undo_bytes.saturating_sub(removed.incremental_bytes);

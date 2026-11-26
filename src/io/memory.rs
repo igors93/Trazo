@@ -96,6 +96,21 @@ pub fn install_system_meter(used_bytes: fn() -> usize) {
     install_pressure(system_pressure);
 }
 
+/// Memory at or below which a computer is treated as modest (#164): the
+/// 4 GB laptops many families have, with what the system reserves.
+pub const MODEST_COMPUTER_BYTES: u64 = 4_600 * 1024 * 1024;
+
+/// Whether this computer has little memory, so Trazo should start in light
+/// mode. `false` when the memory cannot be read.
+pub fn is_modest_computer() -> bool {
+    let Ok(mut sys) = sysinfo::System::new() else {
+        return false;
+    };
+    sys.refresh_memory();
+    let total = sys.total_memory();
+    total > 0 && total <= MODEST_COMPUTER_BYTES
+}
+
 fn system_free_memory() -> Option<u64> {
     let mut sys = sysinfo::System::new().ok()?;
     sys.refresh_memory();

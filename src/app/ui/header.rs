@@ -595,6 +595,12 @@ impl FloorPlanApp {
         if menu_check(ui, "Faixa de opções (Ribbon)", "", !self.ribbon_collapsed).clicked() {
             self.ribbon_collapsed = !self.ribbon_collapsed;
         }
+        if menu_check(ui, "Modo leve (computador simples)", "", self.light_mode)
+            .on_hover_text("Sem animações contínuas e com menos memória para desfazer, para notebooks com 4 GB de RAM.")
+            .clicked()
+        {
+            self.set_light_mode(!self.light_mode);
+        }
         menu_separator(ui);
         submenu(ui, Icon::Plan, "Disciplina ativa", |ui| {
             use crate::domain::discipline::Discipline;

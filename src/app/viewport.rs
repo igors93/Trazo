@@ -146,4 +146,26 @@ impl FloorPlanApp {
             self.zoom_target = Some(bounds);
         }
     }
+
+    /// Turns light mode on or off and remembers the choice (#164).
+    pub(super) fn set_light_mode(&mut self, on: bool) {
+        self.light_mode = on;
+        self.light_mode_chosen = Some(on);
+        self.apply_light_mode();
+        self.message = if on {
+            "Modo leve ligado: sem animações contínuas e com menos memória para desfazer."
+                .to_owned()
+        } else {
+            "Modo leve desligado.".to_owned()
+        };
+    }
+
+    /// Applies light mode to what it changes outside the frame loop.
+    pub(super) fn apply_light_mode(&self) {
+        crate::domain::history::set_history_budget(if self.light_mode {
+            crate::domain::history::LIGHT_HISTORY_BYTES
+        } else {
+            usize::MAX
+        });
+    }
 }

@@ -31,6 +31,9 @@ pub struct Settings {
     pub follow_ai: bool,
     /// Check GitHub Releases for a newer version at startup.
     pub check_updates: bool,
+    /// Light mode for modest computers (#164); `None` lets Trazo decide by
+    /// the computer's memory.
+    pub light_mode: Option<bool>,
 }
 
 impl Default for Settings {
@@ -49,6 +52,7 @@ impl Default for Settings {
             selection_filter: SelectionFilter::default(),
             follow_ai: true,
             check_updates: true,
+            light_mode: None,
         }
     }
 }

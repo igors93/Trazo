@@ -219,6 +219,10 @@ pub struct FloorPlanApp {
     report_include_log: bool,
     show_updates_dialog: bool,
     check_updates_on_start: bool,
+    /// Light mode for modest computers (#164); `light_mode_chosen` keeps the
+    /// person's own choice, `None` while Trazo decides by memory.
+    light_mode: bool,
+    light_mode_chosen: Option<bool>,
     update_status: crate::io::updates::UpdateStatus,
     update_receiver: Option<mpsc::Receiver<crate::io::updates::UpdateStatus>>,
     active_doc_dialog: DocDialog,
@@ -424,7 +428,11 @@ impl eframe::App for FloorPlanApp {
                 .category_visible(crate::domain::layers::LayerCategory::Structure)
             && (!self.project.structure.beams.is_empty()
                 || !self.project.structure.slabs.is_empty());
-        if !self.show_start_page && (self.ai_activity.animating() || load_path_animating) {
+        // Light mode skips the continuous animations on modest computers (#164).
+        if !self.light_mode
+            && !self.show_start_page
+            && (self.ai_activity.animating() || load_path_animating)
+        {
             ui.ctx().request_repaint_after(frame_delay);
         }
     }

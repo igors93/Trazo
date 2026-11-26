@@ -119,6 +119,10 @@ impl FloorPlanApp {
             report_include_log: true,
             show_updates_dialog: false,
             check_updates_on_start: preferences.check_updates,
+            light_mode: preferences
+                .light_mode
+                .unwrap_or_else(|| !cfg!(test) && crate::io::memory::is_modest_computer()),
+            light_mode_chosen: preferences.light_mode,
             update_status: crate::io::updates::UpdateStatus::Idle,
             update_receiver: None,
             active_doc_dialog: DocDialog::None,
@@ -233,6 +237,10 @@ impl FloorPlanApp {
             app.restore_tab_drafts();
         }
         app.sync_masonry_fields();
+        // Light mode lowers the undo memory of every project (#164).
+        if app.light_mode {
+            app.apply_light_mode();
+        }
         if let Some(path) = initial_file {
             app.open_file(&path);
         }
@@ -345,6 +353,7 @@ impl FloorPlanApp {
             selection_filter: self.selection_filter,
             follow_ai: self.follow_ai,
             check_updates: self.check_updates_on_start,
+            light_mode: self.light_mode_chosen,
         }
     }
 

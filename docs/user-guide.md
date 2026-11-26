@@ -43,6 +43,8 @@ Conventions: lengths are in metres, Portuguese decimal commas are accepted in ev
 
 Grid, snapping, ortho mode, modulation, dimension chains, open panels and the folded ribbon are remembered between sessions.
 
+**Modo leve (computador simples)**, in *Exibir*, is for modest computers: it stops the continuous animations (the AI highlight pulse and the animated load path) and keeps less memory for undo (32 MiB instead of 128 MiB). It turns itself on when the computer has about 4 GB of RAM or less; your own choice is remembered.
+
 ## Drawing a plan
 
 ### 1. The lot

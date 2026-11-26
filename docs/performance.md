@@ -1,6 +1,8 @@
 # Baseline de desempenho (T-07)
 
 > **Por que o desempenho importa.** O Trazo é feito para famílias que vão construir a própria casa com poucos recursos (veja [a proposta](proposta.md)). Muitas delas usam computadores antigos ou modestos, então o Trazo precisa abrir e responder bem num notebook com 4 GB de RAM e vídeo integrado (item #164 do [roadmap](../ROADMAP.md)). Estas medições servem para garantir isso.
+>
+> **Modo leve.** Em computadores com até cerca de 4 GB de RAM, o Trazo liga sozinho o *Modo leve* (menu *Exibir*): sem animações contínuas (o pulso do destaque da IA e o caminho das cargas animado) e com 32 MiB para desfazer, em vez de 128 MiB. A pessoa pode ligar ou desligar e a escolha fica salva.
 
 O comando `trazo --bench` executa um cenário sintético e determinístico, sem abrir
 janela ou carregar arquivos do usuário. O modelo contém três pavimentos, 585
