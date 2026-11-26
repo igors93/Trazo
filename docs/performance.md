@@ -1,5 +1,7 @@
 # Baseline de desempenho (T-07)
 
+> **Por que o desempenho importa.** O Trazo é feito para famílias que vão construir a própria casa com poucos recursos (veja [a proposta](proposta.md)). Muitas delas usam computadores antigos ou modestos, então o Trazo precisa abrir e responder bem num notebook com 4 GB de RAM e vídeo integrado (item #164 do [roadmap](../ROADMAP.md)). Estas medições servem para garantir isso.
+
 O comando `trazo --bench` executa um cenário sintético e determinístico, sem abrir
 janela ou carregar arquivos do usuário. O modelo contém três pavimentos, 585
 paredes no total (195 no pavimento ativo), 4 cômodos, 88 aberturas e 414 objetos.

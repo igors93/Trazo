@@ -1,14 +1,19 @@
 # Architecture
 
-Trazo is a single Rust crate (edition 2024) of about 52,000 lines. It builds one native executable with no runtime services. This document maps the code for contributors.
+Trazo is a single Rust crate (edition 2024). It builds one native executable with no runtime services. This document maps the code for contributors.
+
+Trazo exists so that a lack of money and technical knowledge does not leave a family unprotected against the risks of building its own home (see [the proposal](proposta.md)). Its first users have never studied engineering or used a CAD, and an AI assistant connected through MCP does the intellectual work of design for them. The architecture follows from that.
 
 ## Design principles
 
-1. **Architecture, not just lines.** The model knows what a wall, a room and a door are and how they relate. Moving a wall between two rooms updates both rooms, their openings and the dimensions.
-2. **One engine, one file.** Simple and advanced workflows edit the same project, with the same real measurements.
-3. **The domain has no UI.** Everything in `src/domain` is plain Rust with no egui types, so the canvas, the exporters and the AI tools share the same rules. The room-label placement in `domain/label_layout.rs` is an example: one rule serves both the screen and the PDF.
-4. **Every edit is transactional.** Changes run on a copy of the project; if a rule rejects the result (an overlap, a broken constraint, the buildable limit), the copy is dropped and the project is untouched.
-5. **Code in English, interface in Portuguese.** Identifiers, comments and docs are in English; text shown to users and returned by MCP tools is in Brazilian Portuguese.
+1. **MCP is the operational centre.** Every capability is reachable as an MCP tool that runs against the open project (`app/mcp_tools`). The interface is where the person sees, confirms and adjusts what the assistant did; a feature that only exists behind a button is unfinished.
+2. **The domain contests the AI.** The assistant supplies inputs, never results: every check is computed by the deterministic rules in `src/domain` (`verdict`, `limits`, `structure`, …), which no tool can bypass. Hypotheses (soil, concrete, loads, wind) are inputs to contest, not to trust: recording their origin and refusing green for favourable hypotheses without evidence belongs in the domain too (rule 10 of the [safety contract](../ROADMAP.md#engineering-in-trazo-the-safety-contract), #168–#172).
+3. **Protection before features.** Results show a traffic light and a plain sentence before the formula; outside a method's limits the domain refuses instead of extrapolating.
+4. **Architecture, not just lines.** The model knows what a wall, a room and a door are and how they relate. Moving a wall between two rooms updates both rooms, their openings and the dimensions.
+5. **One engine, one file.** Simple and advanced workflows edit the same project, with the same real measurements.
+6. **The domain has no UI.** Everything in `src/domain` is plain Rust with no egui types, so the canvas, the exporters and the AI tools share the same rules. The room-label placement in `domain/label_layout.rs` is an example: one rule serves both the screen and the PDF.
+7. **Every edit is transactional.** Changes run on a copy of the project; if a rule rejects the result (an overlap, a broken constraint, the buildable limit), the copy is dropped and the project is untouched.
+8. **Code in English, interface in Portuguese.** Identifiers, comments and technical docs are in English (the proposal, `docs/proposta.md`, is in Portuguese for the families it is written for); text shown to users and returned by MCP tools is in Brazilian Portuguese.
 
 ## Layers
 
@@ -54,14 +59,14 @@ flowchart LR
 
 | Module | Responsibility |
 | --- | --- |
-| `mod.rs` | `FloorPlanApp` state, commands, shortcuts, data-protection flows, MCP startup |
+| `mod.rs` | `FloorPlanApp` state and the frame loop; its methods live in `lifecycle.rs` (startup, MCP, settings), `documents.rs` (new, open, save, close), `exports.rs`, `creation.rs`, `properties.rs`, `selection_rules.rs`, `undo.rs`, `edit_commands.rs`, `terrain.rs`, `viewport.rs` and `shortcuts.rs` |
 | `interaction.rs` | Canvas mouse input: drawing state machine, picking, dragging, snapping, context menu |
 | `selection.rs` | Multiple selection, window and crossing boxes, select similar and inverse |
 | `tools/` | Drawing tools, free-shape rooms, typed numeric input, modify, arrange and constraint tools |
 | `canvas.rs`, `canvas/` | Rendering of the plan, labels, overlays (scale bar, north arrow, crosshair, snap markers) and drafts |
 | `ui/` | Menu bar, ribbon, options bar, project browser, properties, status bar, dialogs, icons and shared widgets |
 | `theme.rs` | Colours, spacing, system fonts with symbol fallbacks |
-| `mcp_tools.rs`, `mcp_tools/` | The MCP tools, run against the open project; batches; CAD editing tools |
+| `mcp_tools.rs`, `mcp_tools/` | Trazo's operational centre: the MCP tools, run against the open project through the same transactional edits as the interface; argument parsing, one file per tool family, batches and CAD editing tools |
 | `ai_activity.rs`, `plan_sync.rs` | Live highlight and log of AI actions; plan revisions and change notifications |
 
 ### `src/io` and `src/mcp`
@@ -72,7 +77,7 @@ flowchart LR
 | `io/recovery.rs`, `io/settings.rs` | Crash-recovery draft; interface preferences |
 | `io/instance.rs` | Window slots (an OS file lock each): per-window recovery draft and MCP port |
 | `io/export.rs`, `io/export/` | SVG generation (plan, labels, drawings, sheets), PDF via `svg2pdf`, PNG via `resvg`, CSV schedules |
-| `mcp/protocol.rs` | JSON-RPC handling, the tool catalogue and server instructions |
+| `mcp/protocol.rs` | JSON-RPC handling, the tool catalogue and the server instructions that tell every assistant how to treat a family without engineering training |
 | `mcp/server.rs` | Streamable HTTP endpoint (`tiny_http`) and the event stream |
 | `mcp/bridge.rs` | `--mcp-stdio`: relays stdio clients to the window's server |
 | `mcp/events.rs` | Broadcasts plan-change notifications to open streams |

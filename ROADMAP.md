@@ -1,6 +1,6 @@
 # Trazo Roadmap
 
-*Last updated 2026-11-21, after the electrical design, the structure and the discipline views. This update adds the engineering and simulation track and a bug assessment.*
+*Last updated 2026-11-26. This update reframes Trazo around its mission (see [the proposal](docs/proposta.md)): the first user is the family that builds without a professional. It adds milestone [M0: Protection for self-builders](#m0-protection-for-self-builders) as the first priority.*
 
 This is the plan for what comes next. Work through it **milestone by milestone, in order**: each milestone builds on the previous one and ends with a concrete test of "done". [Next up](#next-up) lists the first ten items on that path, and [Bug assessment](#bug-assessment) lists what to fix along the way. Everything already shipped is in the [changelog](CHANGELOG.md).
 
@@ -18,39 +18,68 @@ This is the plan for what comes next. Work through it **milestone by milestone, 
 
 ## Vision
 
-> From the first sketch to a safe building site: a 2D CAD that draws the house, designs its installations and structure, simulates how they behave, lists the materials and plans the work, so that someone who knows nothing about engineering can build with a minimum of safety, and a professional can do it faster.
+> **Trazo exists so that a lack of money and technical knowledge does not leave a family completely unprotected against the risks of building its own home.**
+>
+> *O Trazo existe para que a falta de dinheiro e de conhecimento técnico não deixe uma família completamente desamparada diante dos riscos de construir a própria casa.*
 
-Trazo is not the engineer, and never pretends to be. It is the tool that lets both ends of the spectrum work on the same project and file:
+Most homes in Brazil's favelas, peripheries and poorer neighbourhoods are built without an engineer or an architect. Design tools are made for people who already know how to design, so the people who most need guidance get none. That is the gap Trazo exists to close.
 
-- **Newcomers** draw a whole house without learning CAD, see in plain language what each wall, beam, wire and pipe needs, run simulations with one click, and arrive at the professional with a well-prepared project instead of a blank page.
-- **Professionals** get exact drawings, fast pre-sizing of every discipline, simulations they can inspect and adjust, quantities and a calculation report to review and sign.
+**Trazo is built for people who build without a professional:** families building or extending their own home with little money and little technical knowledge, the bricklayers who build for them, and the community groups that support them. It is not built for the engineer who already knows how to design. It draws the house, checks every risky decision, refuses what it cannot size safely, explains in plain language, and shows when to stop and get help, including the free technical assistance low-income families are entitled to (ATHIS, Lei 11.888/2008).
+
+**MCP is Trazo's operational centre.** An AI assistant connected through MCP does the intellectual work of design: it turns a family's description into a plan, compares alternatives, runs and reviews every check, and organises the documents. The person does not need to learn CAD or engineering to start; they receive clear instructions to build. The drawing tools stay for anyone who wants to adjust by hand.
+
+**Trazo contests the AI.** An assistant that designs alone can call a simulation with wrong hypotheses (a firm soil nobody surveyed, a live load below the standard, a stronger concrete than the site will mix) and receive a result that looks safe. So the essential condition is that Trazo's deterministic rules check and contest every AI decision, the hypotheses included: the AI supplies inputs, never results; every hypothesis records its origin; a favourable hypothesis without evidence cannot produce green; normative minimums cannot be lowered; and changing a hypothesis needs the person. Today Trazo computes every result itself and refuses what lies outside its limits, but it does not yet contest hypotheses: closing that gap is the first item of [M0](#m0-protection-for-self-builders).
+
+Trazo is not the engineer, and never pretends to be. **Professionals are allies:** Trazo prepares exact drawings, a calculation report and a review box so that an engineer or architect, often a volunteer or a public technical-assistance service, can review a family's project quickly and cheaply. When a decision has to choose between the family and the specialist, Trazo chooses the family.
+
+The full proposal, written for everyone in Portuguese, is in [docs/proposta.md](docs/proposta.md).
 
 ### Principles
 
-1. **Architecture before command count.** Moving a wall and seeing rooms, doors, dimensions, beams and conduits follow is worth more than a hundred generic commands.
-2. **Built for the construction site.** Drawings leave Trazo ready for the site: dimensions in centimetres, located openings, modular masonry, quantities, printing to scale.
-3. **Screen equals paper.** What you see is what you export; rules shared by both live in the domain.
-4. **One model, every discipline.** Architecture, electrical, plumbing and structure are views of the same project, and a change in one shows up in the others.
-5. **Safety you can see.** Every engineering number shows where it came from, how close it is to its limit and what to do when it fails (see the [safety contract](#engineering-in-trazo-the-safety-contract)).
-6. **AI as a collaborator.** Anything a person can do, an assistant can do through MCP, visibly, reversibly and with the person in control.
-7. **Ease is a feature.** Every new capability, including safety measures, should add as few steps as possible.
+1. **Protect before impressing.** A check that prevents a serious mistake is worth more than ten new commands.
+2. **MCP at the centre, Trazo as the challenger.** The AI does the intellectual work (designing, comparing, reviewing, organising) through MCP. Trazo's rules check and contest everything it does, hypotheses included, and cannot be bypassed. The person sees every change, stays in control and receives clear instructions to build.
+3. **Write for the family, not the engineer.** The plain sentence comes first; the formula and the standard are one click away for the reviewer. An unexplained technical term is a defect.
+4. **No dangerous decision passes in silence.** Red is never hidden, rounded away or switched off (see the [safety contract](#engineering-in-trazo-the-safety-contract)).
+5. **The safe side when unsure.** Missing data takes the unfavourable value, and the result says so.
+6. **Accessible for real.** Free, offline, fast on a modest computer, in Portuguese, with the files in the family's hands.
+7. **Professionals are allies.** Everything Trazo produces should make a professional's review easier, including the free review of public technical assistance.
+8. **Respect, without judgement.** People who build without an engineer are doing what they can. Trazo's role is to reduce the risk of that reality, not to blame those who live in it.
+9. **Architecture before command count.** Moving a wall and seeing rooms, doors, dimensions, beams and conduits follow is worth more than a hundred generic commands.
+10. **Built for the construction site.** Drawings leave Trazo ready for the site: dimensions in centimetres, located openings, modular masonry, quantities, printing to scale.
+11. **Screen equals paper.** What you see is what you export; rules shared by both live in the domain.
+12. **One model, every discipline.** Architecture, electrical, plumbing and structure are views of the same project, and a change in one shows up in the others.
+13. **Every capability through MCP.** Anything a person can do, an assistant can do through MCP, visibly, reversibly, in plain language and with the person in control.
+14. **Ease is a feature.** Every new capability, including safety measures, should add as few steps as possible.
 
 ## Engineering in Trazo: the safety contract
 
-Engineering features follow these rules. They apply to everything in milestones M3 to M9, and an item that breaks them is not done.
+Engineering features follow these rules. They apply to everything in milestones M0 and M3 to M9, and an item that breaks them is not done. They matter most for the families Trazo is built for: for many of them, Trazo is the only check their house will get before it is built, so none of these rules is optional.
 
-1. **Pre-sizing, not design.** Results guide decisions and the conversation with a professional. Building still requires a licensed professional's responsibility (ART or RRT) and the municipal permits; Trazo says so wherever a result could be mistaken for a final design.
+1. **Pre-sizing, not design.** Results guide decisions and the conversation with a professional. Building still requires a licensed professional's responsibility (ART or RRT) and the municipal permits; Trazo says so wherever a result could be mistaken for a final design, and never presents green as a guarantee.
 2. **Show the work.** Every number can be opened to see its formula, the standard it follows (NBR 6118, 5410, 5626, 8160…), the inputs and the assumptions.
 3. **Traffic light with margins.** Green has a comfortable margin, yellow passes with a small one, red fails or lies outside the method's limits. Red is never hidden, rounded away or silenced.
 4. **Known limits.** Each method declares where it applies (storeys, spans, loads, soils). Outside them Trazo refuses to size and explains why, instead of guessing.
 5. **Verified.** Each method is checked in CI against published worked examples and, for analyses, against a reference program.
-6. **Conservative when unsure.** Missing data takes the safer default, and the result says that it did.
-7. **Two depths of explanation.** A plain-language summary for newcomers ("this beam is too shallow for its span: make it 40 cm tall") and the full detail for professionals.
+6. **Conservative when unsure.** Missing data takes the safer default, and the result says that it did (#160 audits the defaults that do not yet, starting with the soil pressure).
+7. **Plain language first.** The first explanation is for someone who never studied engineering ("this beam is too shallow for its span: make it 40 cm tall"); the full detail is for the reviewing professional.
+8. **A way forward.** Every red result and every refusal says what to change, or where to find help: a professional, free technical assistance (ATHIS) or, for site risks, the Defesa Civil (#159).
+9. **Ask about what Trazo cannot see.** Risks outside the model, such as a slope, a nearby stream, landfill or an unknown existing foundation, are asked about and never assumed away (#156, #157).
+10. **Trazo contests the AI.** An assistant must not be able to reach a reassuring result through wrong hypotheses:
+    - the AI supplies inputs, never results: every check is computed by Trazo's deterministic, tested rules;
+    - every hypothesis (soil pressure, concrete, loads, room use, wind, terrain category) records its origin: Trazo's conservative default, data from the person (a soil survey, a concrete specification, the city) or the AI (#168);
+    - a result that depends on a hypothesis more favourable than the conservative default, without evidence, is **contested**: never green, with the reason (#169);
+    - normative minimums (NBR 6120 live loads for the room's use, the regional NBR 6123 wind speed) cannot be lowered (#169);
+    - changing a hypothesis needs the person's confirmation in the window, with its evidence (#171);
+    - simple independent cross-checks (total weight against foundation capacity, span-to-depth rules) contest a detailed simulation that disagrees with them (#172);
+    - every AI action reports what it made worse: checks that changed colour, structural elements removed and hypotheses changed, in the tool answer and on screen (#170).
+
+    Today Trazo meets only the first point. Through MCP, an assistant can still raise the soil pressure without a survey, raise the concrete strength or lower a live load and receive green. Closing that gap comes before every other item.
 
 ## Where Trazo stands
 
 | Area | Status |
 | --- | --- |
+| Protection for self-builders (M0) | 🟡 Traffic light with plain sentences, refusal outside the limits, declared assumptions, the review report, a logged AI activity and protective MCP server instructions exist; contesting the AI's hypotheses (#168–#172), safe defaults, help paths, the building guide, the plain-language pass, site-risk questions, building on top and in stages, and the guided first house remain |
 | Drawing engine (#01–#10) | ✅ Complete: `f64` geometry, free-shape rooms, snaps, typed input, CAD modify tools, constraints, multiple selection |
 | Architecture (#11–#25) | ✅ Complete: junctions, shared walls, multilayer walls, door and window types, stairs, floors, library, finishes, circulation checks |
 | Documentation (#26–#37, #71, #151–#155) | 🟡 Core complete (#26–#37: associative dimensions, layers, sheets, scales, title blocks, hatches, schedules, schematic sections, sheet sets, ABNT styles); multi-viewport mixed-scale sheet composer, executive sections, site/roof/location plans, urban occupancy/permeability tables and 3D sheet perspective remain (#71, #151–#155) |
@@ -71,7 +100,7 @@ Engineering features follow these rules. They apply to everything in milestones 
 
 | Field | Meaning |
 | --- | --- |
-| **#** | Item number. Items keep their number for life; new items continue from #97. Use it in commits and pull requests: `feat: add lintels per opening (#111)`. |
+| **#** | Item number. Items keep their number for life; new items continue from #173. Use it in commits and pull requests: `feat: add lintels per opening (#111)`. |
 | **Priority** | **P0** required for its milestone · **P1** important · **P2** valuable, can slip |
 | **Size** | Rough effort for one developer: **S** ≤ 2 days · **M** ≤ 1 week · **L** ≤ 3 weeks · **XL** more than 3 weeks |
 | **Status** | ⬜ not started · 🟡 partial (the note says what exists) · 🔵 in progress · ✅ done |
@@ -375,18 +404,35 @@ The first ten items on the path, in order. The other items of each milestone fit
 
 | Order | # | Item | Milestone | Why now |
 | --- | --- | --- | --- | --- |
-| 1 | #97 | CI on Windows and macOS | M1 | The build must not break on the platforms people actually use (B02). |
-| 2 | #99 | Load path across floors | M3 | Two-storey houses are the common case, and today their columns are under-informed (B03). |
-| 3 | #100 | Engineering methods guide and validation suite | M3 | Nothing else in the engineering track is trustworthy until the methods are written down and tested against published examples. |
-| 4 | #101 | Traffic-light results with margins and explanations | M3 | The core of the safety contract, and what newcomers will read first. |
-| 5 | #102 | Applicability limits per module | M3 | Refusing outside the limits is safer than any warning. |
-| 6 | #103 | Pre-sizing report for professional review | M3 | Turns Trazo's results into something an engineer can check and sign. |
-| 7 | #56 | Construction quantities | M2 | Turns the drawing into a shopping list, and feeds the material catalogue. |
-| 8 | #53 | Opening dimension chains | M2 | The construction-site deliverable builders use most. |
-| 9 | #113 | Point loads: water tank and heavy equipment | M5 | A water tank on a slab is the most common unsafe decision in self-built houses. |
-| 10 | #94 | 2D frame analysis | M4 | The base of every structural simulation that follows. |
+| 1 | #168 | Hypothesis provenance | M0 | Trazo cannot contest a hypothesis if it does not know who set it and on what evidence. |
+| 2 | #169 | Contested hypotheses | M0 | Today an assistant can raise the soil pressure or lower a load through MCP and receive green: the most dangerous gap once the AI is at the centre. |
+| 3 | #171 | Hypotheses need the person | M0 | The AI may propose a hypothesis; only the person, with evidence, may adopt it. |
+| 4 | #160 | Safe defaults audit | M0 | A default that is too optimistic is a dangerous decision nobody sees. The soil pressure without a survey (200 kPa) is the first one. |
+| 5 | #170 | AI action report | M0 | An edit that makes the house less safe must be impossible to miss, for the assistant and for the person. |
+| 6 | #159 | Where to get help | M0 | A red light with no way forward leaves the family alone. Cheap to build, and it changes every result. |
+| 7 | #166 | From a description to a checked house | M0 | The family's way in: a conversation, not a drawing tool. |
+| 8 | #142 | The assistant explains any result | M0 | Each result must reach the family as a sentence it understands, with the change that fixes it. |
+| 9 | #165 | Building guide | M0 | What the family takes to the site: clear instructions to build, stage by stage. |
+| 10 | #172 | Independent cross-checks | M0 | A second, simpler opinion catches a detailed simulation fed with the wrong geometry or loads. |
+
+The rest of M0 (#161 plain language, #156 site risks, #157 building on top, #158 building in stages, #50 and #76 for the AI workflow, #65 and #66 for those who draw by hand, #162, #163, #164 and #167) fits in around them.
 
 ## Milestones
+
+### M0: Protection for self-builders
+
+The first priority, ahead of every other milestone: a family without engineering training describes its house to an AI assistant, the assistant designs it through MCP, Trazo checks and contests every decision, and the family receives clear instructions to build, is warned in words it understands before any dangerous decision, and knows where to find help.
+
+- **Items:** #168, #169, #171, #160, #170, #159, #166, #142, #165, #172, #161, #156, #157, #158, #50, #76, #65, #66, #162, #163, #164, #167
+- **Done when:**
+  - a family describes its house in a conversation (lot, rooms, budget, future floor, site) and, through MCP only, receives a drawn and checked plan, a comparison of at least two layouts, a plain-language review and a step-by-step building guide, without touching a drawing tool;
+  - an assistant that raises the soil pressure, raises the concrete strength, lowers a live load or picks a lighter room use without evidence never gets a green result: the tool answer, *Segurança* and the review report all show the contested hypothesis and the conservative value used instead;
+  - every AI edit that turns a check worse, removes a structural element or changes a hypothesis is reported in its tool answer and on screen;
+  - in a usability test with three people who never studied engineering or used a CAD, at least one of them planning to build their own house, each gets a checked two-bedroom house (by conversation or by drawing), reads every red result as one sentence, fixes it or understands why the work must stop, and names where to find free help, without assistance, in under 30 minutes;
+  - a lot on a slope or next to a stream, or a second floor over an unknown foundation, is never sized silently: it ends in a red "stop and get help";
+  - every refusal, every red result and the review report point to a free help path;
+  - every value assumed for missing data is on the unfavourable side and listed as an assumption;
+  - Trazo opens and draws the sample house smoothly on a 4 GB RAM laptop with integrated graphics.
 
 ### M1: Ready to share (finishing)
 
@@ -475,22 +521,22 @@ Materials detected from the model, costs, the work plan and the safety of the si
   - every material used by a calculation comes from the editable catalogue;
   - the site safety and permits guide covers every stage.
 
-### M10: AI co-pilot
+### M10: MCP for the whole model
 
-Assistants that can do everything, explain problems and leave the person in control.
+M0 puts the assistant at the centre for a family's first house; M10 extends it to every part of the model, with the person in control.
 
-- **Items:** #74, #75, #46, #51, #49, #73, #148, #48, #76, #50, #52, #142
+- **Items:** #74, #75, #46, #51, #49, #73, #148, #48, #52 (#142, #50 and #76 moved to M0)
 - **Done when:**
   - an assistant draws a two-storey house with stairs, finishes, installations, structure and a sheet set **using MCP only**;
   - the person approves each proposed change, can compare and revert any AI action, and gets every warning and simulation explained in plain language with a suggested fix.
 
-### M11: Progressive experience
+### M11: Depth on demand
 
-Simple for newcomers, fast for professionals.
+Simple by default for families (M0); depth on demand for the professionals who review their projects.
 
-- **Items:** #65, #66, #67, #68, #69, #82
+- **Items:** #67, #68, #69, #82 (#65 and #66 moved to M0)
 - **Done when:**
-  - in a usability test with three people new to CAD, each completes *Minha primeira casa* (my first house), including its structure check, without help in under 20 minutes;
+  - a guided documentation flow builds and reviews a sheet set before export;
   - professional mode offers a command line;
   - the interface is available in English.
 
@@ -527,6 +573,28 @@ Everything needed to assemble a complete Brazilian municipal permit / executive 
 Worth prototyping when the core is solid: #85, #86, #109, #139.
 
 ## Backlog
+
+### 0. Protection for self-builders
+
+| # | Item | Priority | Size | Milestone | Status |
+| --- | --- | --- | --- | --- | --- |
+| 156 | Site risk questions before any structure is sized: slope, a nearby stream or canal, landfill, water in the ground, cracks in neighbouring houses, digging next to a neighbour's wall. A risky answer turns the foundation red with "stop and get help" (Defesa Civil 199, a professional) instead of sizing it | P0 | M | M0 | ⬜ |
+| 157 | Building on top of an existing house: an upper floor over a ground floor whose foundation and columns are unknown is refused until they are surveyed, with plain-language guidance on what to find out and how | P0 | M | M0 | ⬜ |
+| 158 | Building in stages: plan the future floor today so the first stage's footings, columns and slab already carry it, and warn when an extension exceeds what the house was sized for | P0 | M | M0 | ⬜ |
+| 159 | Where to get help: every red result, every refusal and the review report name the free paths (ATHIS under Lei 11.888/2008, through the municipality, CAU or CREA; university model offices; Defesa Civil 199), with a regional list editable through #140 | P0 | S | M0 | ⬜ |
+| 160 | Safe defaults audit: every value Trazo assumes when data is missing takes the unfavourable side and is listed as an assumption; first case, the allowable soil pressure without a survey (today 200 kPa, medium sand) | P0 | S | M0 | ⬜ |
+| 161 | Plain-language pass: every message, check and refusal has a one-sentence version that a person without engineering training understands, technical terms are explained on hover, and the texts are reviewed with self-builders | P0 | M | M0 | ⬜ |
+| 162 | Before-the-pour checklists: printable, plain-language checklists for each concrete pour (footing, column, beam, slab) taken from the bar schedule: bar count and diameter, cover, formwork, shoring and curing time | P1 | M | M0 | ⬜ |
+| 163 | Family booklet: the plan, the shopping list, the traffic-light summary and "when to stop and get help" on a few A4 pages to take to the hardware store, the builder and the reviewer | P1 | M | M0 | ⬜ |
+| 164 | Modest computers: smooth on a 4 GB RAM laptop with integrated graphics, measured with `trazo --bench` | P1 | M | M0 | ⬜ |
+| 165 | Building guide: step-by-step instructions to build the checked house, in plain language and in order (setting out, foundations, columns and beams, slab, walls, roof, electrical), each stage with its materials, its checklist (#162) and the points where a professional should look; produced through MCP from the model | P0 | L | M0 | ⬜ |
+| 166 | From a description to a checked house: an MCP prompt and workflow where the assistant turns a family's description (lot, rooms, budget, future floor, site risks) into a drawn plan, compares alternatives (#50), runs every check, fixes what it can and reports in plain language what it cannot, without the person touching the drawing tools (builds on #76) | P0 | L | M0 | ⬜ |
+| 167 | Affordable AI: the guidance works with free assistant tiers and local models, and every check, refusal and contestation keeps working with no AI connected | P1 | M | M0 | ⬜ |
+| 168 | Hypothesis provenance: every structural and electrical hypothesis records who set it (Trazo's default, the person, the AI) and its evidence (a soil survey, a specification, the city's wind map), shown in *Segurança*, the review report and every MCP result | P0 | M | M0 | ⬜ |
+| 169 | Contested hypotheses: a result that depends on a hypothesis more favourable than the conservative default without evidence is shown as contested (never green); NBR minimums for loads and the regional wind cannot be lowered; implausible combinations are flagged (for example, a soil pressure that contradicts the survey's soil type) | P0 | M | M0 | ⬜ |
+| 170 | AI action report: each MCP edit returns and shows what it made worse (checks that changed colour, structural elements removed, hypotheses changed), so neither the assistant nor the person can miss it | P0 | S | M0 | 🟡 The plan log records each AI action and its origin; the safety difference is not reported |
+| 171 | Hypotheses need the person: an assistant's change to a hypothesis is proposed, not applied, until the person confirms it in the window with its evidence (the first use of approval mode, #46) | P0 | M | M0 | ⬜ |
+| 172 | Independent cross-checks: simplified global checks (total weight against the sum of foundation capacities, span-to-depth rules for beams and slabs, column load per floor) contest a detailed simulation that disagrees beyond a tolerance | P1 | M | M0 | ⬜ |
 
 ### A. Construction site
 
@@ -631,29 +699,29 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | --- | --- | --- | --- | --- | --- |
 | 74 | MCP covers the whole model: floors, stairs and ramps, finishes, layers, dimensions, notes, hatches, library items, sheets and views | P0 | L | M10 | 🟡 43 tools cover lot, walls, rooms, openings and gates, fixtures, the electrical design, the structure, drawings and CAD editing |
 | 75 | Read-only switch in *Conectar uma IA*, for assistants that should only analyse | P1 | S | M10 | ⬜ |
-| 46 | Approval mode: the assistant proposes, the plan shows a preview, the person accepts or rejects | P1 | M | M10 | ⬜ |
+| 46 | Approval mode: the assistant proposes, the plan shows a preview, the person accepts or rejects (hypothesis changes come first, #171) | P1 | M | M10 | ⬜ |
 | 51 | AI history with a diff per action, comparison and selective revert | P1 | M | M10 | 🟡 Live highlight, action log, revisions and version comparison (#45) exist |
 | 49 | Plan validation with explanations and one-click fixes: unclosed rooms, overlaps, rooms without doors, unreachable spaces | P1 | M | M10 | 🟡 The circulation check (#25) covers clearances and door swings |
 | 73 | Building-code checks: minimum room areas and widths, lighting and ventilation ratios, door widths; rule sets configurable per municipality | P1 | L | M10 | ⬜ |
 | 148 | Boundary and neighbour rules: openings in walls less than 1.5 m from the boundary (Código Civil art. 1.301; only ventilation openings up to 10 × 20 cm above 2 m), roofs that drain onto a neighbour (art. 1.300) and municipal limits on boundary wall height, as traffic-light checks | P1 | M | M10 | ⬜ |
 | 48 | Built-in assistant panel: natural-language commands inside Trazo, using the user's own AI provider | P1 | L | M10 | 🟡 Works today through external assistants over MCP |
-| 76 | MCP prompts (for example "draw a house from this brief") and richer resources: sheet images, schedules | P2 | S | M10 | ⬜ |
-| 50 | Room layout proposals from a brief (rooms, areas, adjacencies), shown as alternatives | P2 | L | M10 | ⬜ |
+| 76 | MCP prompts (for example "draw a house from this brief") and richer resources: sheet images, schedules | P0 | S | M0 | ⬜ |
+| 50 | Room layout proposals from a brief (rooms, areas, adjacencies), shown as alternatives the assistant compares with the family | P1 | L | M0 | ⬜ |
 | 52 | An assistant that teaches the editor: context tips and guided exercises | P2 | M | M10 | ⬜ |
-| 142 | Explain any result: the assistant reads a simulation or warning, explains it in plain language and proposes the change that turns it green | P1 | M | M10 | ⬜ |
+| 142 | Explain any result: the assistant reads a simulation or warning, explains it in plain language and proposes the change that turns it green | P0 | M | M0 | 🟡 The MCP server instructions already ask assistants to speak simply, never play down red and point to help |
 
 ### J. Experience
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 65 | Simple, Intermediate and Professional interface levels on the same project and file, engineering results included | P1 | L | M11 | ⬜ |
-| 66 | Guided flow *Minha primeira casa*: lot, desired rooms, adjustable layout, openings, structure and a final check | P1 | L | M11 | ⬜ |
+| 65 | Simple, Intermediate and Professional interface levels on the same project and file, engineering results included; **Simple is the default** | P0 | L | M0 | ⬜ |
+| 66 | Guided flow *Minha primeira casa*: lot, desired rooms, adjustable layout, openings, structure, the site risk questions and a final check that ends with where to get help | P0 | L | M0 | ⬜ |
 | 67 | Guided documentation flow: build and review a sheet set before exporting | P2 | M | M11 | ⬜ |
 | 68 | English interface (internationalisation), keeping Brazilian Portuguese as the default | P1 | L | M11 | ⬜ |
 | 69 | Command line and command palette with typed commands, aliases and recent commands | P1 | M | M11 | ⬜ |
 | 82 | Dark theme, interface scale and full keyboard navigation | P2 | M | M11 | ⬜ |
 
-A chosen level must never be a wall. A newcomer can open an advanced tool when needed, and a professional keeps the simple actions. For example, *check this beam*:
+Trazo opens at the Simple level, because its first users are families, not engineers. A chosen level must never be a wall: a family can open an advanced tool when needed, and a reviewing professional keeps the simple actions. For example, *check this beam*:
 
 - **Simple:** a green, yellow or red badge and one sentence on what to change.
 - **Professional:** the same beam with its loads, diagrams, margins, formulas and the standard's clauses.
@@ -699,6 +767,7 @@ A chosen level must never be a wall. A newcomer can open an advanced tool when n
 
 An item is done when:
 
+- someone without engineering training can understand what it does and every message it shows (the plain sentence comes first);
 - it works on screen **and** in every export it touches (screen equals paper);
 - it has tests, including a regression test for each bug fixed along the way;
 - assistants can use it through MCP, when it changes the model;
@@ -709,13 +778,14 @@ An **engineering or simulation** item also needs:
 
 - its method in `docs/engineering.md`: formula, standard, assumptions and limits;
 - at least two published worked examples reproduced in tests, or agreement with a reference program;
-- results that follow the [safety contract](#engineering-in-trazo-the-safety-contract): traffic light, margin, plain-language explanation and refusal outside the limits.
+- results that follow the [safety contract](#engineering-in-trazo-the-safety-contract): traffic light, margin, plain-language explanation, refusal outside the limits and a way forward (what to change or where to get help).
 
 ## Out of scope
 
-To stay an approachable tool that helps people build safely, these are not planned:
+Trazo protects; it does not certify. To stay an approachable tool that helps families build more safely, these are not planned:
 
 - signing, approving or replacing a licensed professional: Trazo never issues a final design, an ART or RRT, or a permit;
+- deciding whether a site is safe to build on (slopes, flood zones, risk areas): Trazo cannot see the ground, so it asks and sends these cases to the Defesa Civil and to professionals (#156);
 - buildings beyond the limits of #102, such as more than three storeys, spans over 7 m, prestressed or special structures, or retaining walls taller than 1.5 m. These belong to professionals and dedicated software, and Trazo says so;
 - photorealistic 3D rendering (a simple massing view is #85 and clean technical 3D perspective for sheets is #155);
 - full BIM authoring (IFC export is exploratory, #86);

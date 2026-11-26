@@ -2,29 +2,90 @@
 
 # Trazo
 
-**A native 2D architectural CAD for floor plans:**<br>
-**precise enough for the construction site, simple enough for a first house, and built to work with AI.**
+**Planeje sua casa com mais segurança.**<br>
+**A free tool that guides families with little money and no engineering training to plan their own house with a minimum of safety.**
 
 [![CI](https://github.com/igors93/Trazo/actions/workflows/ci.yml/badge.svg)](https://github.com/igors93/Trazo/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Rust 2024](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org)
 [![MCP: 43 tools](https://img.shields.io/badge/MCP-43%20tools-7C3AED.svg)](docs/mcp.md)
 
-[Features](#features) · [Getting started](#getting-started) · [AI assistants](#ai-assistants) · [Documentation](#documentation) · [Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md)
+[A proposta](docs/proposta.md) · [Who it is for](#who-trazo-is-for) · [How it works](#how-trazo-works) · [How it protects](#how-trazo-protects) · [Getting started](#getting-started) · [AI assistants](#ai-assistants) · [Documentation](#documentation) · [Roadmap](ROADMAP.md)
 
 </div>
+
+> **O Trazo existe para que a falta de dinheiro e de conhecimento técnico não deixe uma família completamente desamparada diante dos riscos de construir a própria casa.**
+>
+> *Trazo exists so that a lack of money and technical knowledge does not leave a family completely unprotected against the risks of building its own home.*
+
+## Por que o Trazo existe
+
+No Brasil, a maior parte das obras de moradia é feita sem engenheiro e sem arquiteto, principalmente nas favelas, nas periferias e nos bairros mais pobres. As ferramentas de projeto foram feitas para quem já sabe projetar; quem mais precisa de orientação fica sem nenhuma.
+
+O Trazo não foi feito para o engenheiro que já sabe projetar. Ele foi feito para quem não sabe e vai construir mesmo assim: para orientar, avisar dos riscos, recusar decisões perigosas e mostrar quando é hora de parar e pedir ajuda, inclusive a assistência técnica gratuita a que famílias de baixa renda têm direito.
+
+O centro do Trazo é uma conversa: um assistente de IA, conectado pelo MCP, faz o trabalho intelectual de projetar, comparar, revisar e organizar. O Trazo confere **e contesta** cada decisão da IA, inclusive as hipóteses que ela usou, e a família recebe orientações claras para construir, sem precisar aprender CAD ou engenharia para começar.
+
+**Leia a proposta completa, em português: [A proposta do Trazo](docs/proposta.md).**
 
 ![Trazo with a furnished single-storey house: ribbon, project browser, plan with dimensions and door and window tags, and the area schedule](docs/images/workspace.png)
 
 > [!NOTE]
-> Trazo's interface is in **Brazilian Portuguese** and follows Brazilian standards (ABNT NBR 6492, NBR 9050). The code and documentation are in English. An English interface is on the [roadmap](ROADMAP.md) (#68).
+> Trazo's interface is in **Brazilian Portuguese** and follows Brazilian standards (ABNT NBR 6118, NBR 5410, NBR 9050, NBR 6492). [The proposal](docs/proposta.md) is in Portuguese because it is written for the families Trazo protects; the technical documentation is in English for contributors anywhere. An English interface is on the [roadmap](ROADMAP.md) (#68).
 
-## Why Trazo
+## Who Trazo is for
 
-- **It understands architecture, not just lines.** Walls, rooms, doors and windows know about each other. Drag the wall between two bedrooms and both rooms, their doors and every dimension follow.
-- **It is made for the construction site.** Real bricks and blocks, wall thicknesses that include plaster, dimensions in centimetres, door and window schedules, and sheets printed at exact scale.
-- **AI is a first-class collaborator.** A built-in [MCP](https://modelcontextprotocol.io) server lets Claude, ChatGPT and other assistants draw and edit the open plan live, with every change visible and undoable.
-- **It is fast and self-contained.** A single native executable written in Rust. No account and no cloud service required; your projects stay as plain JSON files on your computer.
+**First, the people who build without a professional:**
+
+- **families** building, extending or renovating their own home with little money and little technical knowledge;
+- **bricklayers and site foremen** who build for their neighbours and want to check what they are about to do;
+- **community leaders, self-help building groups (*mutirões*) and housing movements** following many works at once.
+
+**Then, their allies:** engineers, architects and students who give technical assistance to these families. Trazo hands them an organised plan and a calculation report to review, which makes their help faster and cheaper.
+
+Trazo is not built for the engineer who already knows how to design. Professionals are welcome and Trazo stays precise enough for them, but when a design decision has to choose between the family and the specialist, it chooses the family.
+
+## How Trazo works
+
+**MCP is Trazo's operational centre.** Nobody needs to learn CAD or engineering to start:
+
+1. **The family describes the house** in plain Portuguese to an AI assistant connected to Trazo: the lot, the rooms, the budget, a future floor, whether the lot is on a slope or near a stream.
+2. **The AI does the intellectual work.** Through MCP it draws the plan, compares alternatives, lays out the structure, runs every check, fixes what it can and organises the documents.
+3. **Trazo checks and contests every AI decision** with deterministic, tested rules (see below).
+4. **The family sees everything and decides.** Each AI step shows live on the plan, can be undone, and is never applied halfway.
+5. **The family receives clear instructions to build:** what to do, in what order, with which materials, what to check before each pour, and when to stop and get help.
+
+The drawing tools remain for anyone who wants to adjust by hand, and every check works the same with no AI connected.
+
+### Trazo contests the AI
+
+An AI that designs alone can call a simulation with **wrong hypotheses** (a firm soil nobody surveyed, a live load below the standard, a stronger concrete than the site will mix) and receive a result that **looks safe**. The essential condition of Trazo is that it can contest the AI's decisions:
+
+- **The AI supplies inputs, never results.** Every check is computed by Trazo.
+- **Every hypothesis has an origin:** Trazo's conservative default, data from the person (a soil survey, a specification) or the AI.
+- **No evidence, no green.** A result that depends on a favourable hypothesis without evidence is shown as *contested*, never green.
+- **Standards do not go down.** Minimum loads and the regional wind speed cannot be lowered.
+- **Hypotheses need the person.** The AI may propose; the person confirms, with the evidence.
+- **Independent cross-checks** contest a detailed simulation that disagrees with simple global checks.
+- **Every AI action reports what it made worse.**
+
+**Status:** today Trazo already computes every result itself, refuses what lies outside its methods' limits, lists the hypotheses in the report and logs every AI action. It does **not yet contest hypotheses**: through MCP an assistant can still raise the soil pressure without a survey or lower a live load and receive green. Closing this gap is the first item of the [roadmap](ROADMAP.md#m0-protection-for-self-builders).
+
+## How Trazo protects
+
+Trazo does not promise that a house will not fall. It does everything it can so that a family never takes a dangerous decision without knowing it is dangerous.
+
+- **Draw without learning technical drawing.** Lot, rooms, walls, doors and windows with real measurements. Draw the house as you imagine it; Trazo takes care of walls, junctions and dimensions.
+- **Every risky decision is checked.** Slabs, beams, columns, footings, tall walls, roofs, the water tank and the electrical installation.
+- **A traffic light you can read.** Green passes with a margin, yellow passes at the limit, red cannot stay that way. Each result comes with one plain sentence on what to change: *"this beam is too shallow for its span: make it 40 cm tall"*.
+- **It refuses what it cannot size safely.** More than three storeys, very long spans, heavy loads or very weak soil: Trazo gives no number, explains why and says a professional is needed.
+- **Assumptions on the table.** Every result lists what it assumed (concrete, soil pressure, loads, wind). Making every missing value default to the safe side is part of the next milestone: today, without a soil survey, Trazo assumes a medium soil (200 kPa), which can be optimistic on landfill or soft clay.
+- **The load path, made visible.** Slab to beam, beam to column, column to footing, footing to soil, on screen and on paper.
+- **Plain words first, the full calculation one click away.** The family reads the sentence; the reviewing professional opens the formula, the standard and the assumptions.
+- **A shopping list.** Blocks, cement, sand, steel and tiles with waste, so the money goes to the right material.
+- **Ready for a professional's review.** The calculation report (*memorial*) in PDF gathers inputs, results and warnings, with a box for the reviewer's name, CREA or CAU registration and opinion.
+- **Honest about its limits.** Trazo never claims to be an engineer, never issues an ART, RRT or permit, and says what it cannot see: the slope of the ground, a nearby stream, landfill, the quality of the concrete. Green is not a guarantee. **Red always means stop.**
+- **Accessible.** Free, works without internet, runs on a modest computer, speaks Portuguese, and the files stay with the family.
 
 ## Features
 
@@ -32,49 +93,54 @@
 <tr>
 <td width="50%" valign="top">
 
+**Safety checks (pre-sizing)**
+- Traffic light with margins and one plain sentence per result
+- Refusal outside each method's limits, with the reason
+- Columns, beams, slabs, footings, ground beams and balance beams (NBR 6118, NBR 6122)
+- Water tanks and heavy loads on slabs, lintels and sills, masonry panels (NBR 16868)
+- Tall walls and roofs under wind, timber roofs and posts (NBR 6123, NBR 7190)
+- Stairs, balconies and cantilevers; soil surveys and foundation comparison
+- Calculation report (*memorial*) in PDF for a professional's review
+
 **Drawing**
 - Lots, walls and rooms with real measurements; L, U and free-shape rooms
 - Object snaps, ortho mode and typed distances, angles and coordinates
 - Copy, move, rotate, mirror, offset, trim, extend, divide, join
-- Align, distribute, group and repeat; window and crossing selection
-- Geometric constraints: parallel, perpendicular, coincident, fixed distance
-- Lines, polylines, arcs, circles and splines for 2D drafting
+- Align, distribute, group and repeat; geometric constraints
 
 **Architecture**
 - Wall junctions at any angle; shared walls that move with both rooms
 - Masonry with real bricks and blocks, modulation and block estimates
-- Multilayer walls; walls placed by axis or by face
-- Hinged, sliding, pocket, pivot, bifold and saloon doors; seven window types
-- Entrance gates: pedestrian (from 0.80 m) and vehicle (up to 8 m), sliding or swinging
+- Hinged, sliding, pocket, pivot, bifold and saloon doors; seven window types; gates
 - Stairs, accessible ramps, landings, railings and multiple floors
 - Irregular lots, setbacks, and usable, built and lot areas
 
 </td>
 <td width="50%" valign="top">
 
-**Electrical design (NBR 5410)**
-- Outlets (low, mid, high, specific use), switches, lights, panel and data points
-- Minimum points per room generated from the norm: lighting by area, outlets by perimeter
-- Automatic circuits, and a load schedule with current, wire gauge, breaker and RCD
-- An electrical-only view, and the same symbols and tags on screen and on paper
+**Electrical installation (NBR 5410)**
+- Outlets, switches, lights, distribution board and data points
+- Minimum points per room generated from the standard
+- Automatic circuits and a load schedule with current, wire gauge, breaker and RCD
+- Conduits with wiring, phase balancing, voltage drop and single-line diagram
 
-**Interiors**
+**Building materials**
+- Construction quantities: blocks with waste, half blocks, lintels, mortar, plaster, finishes
+- Bar schedule with a CA-50 summary by diameter
+- Per-room finishes, baseboards and waterproofing
+
+**Interiors and comfort**
 - Furniture and fixtures that stand against the nearest wall face
-- A customisable library of furniture, equipment and symbols
-- Per-room finishes, baseboards and waterproofing, with quantities
 - Circulation, door-swing and clearance checks (NBR 9050)
 
 **Documentation**
-- Dimension chains and associative dimensions
-- Door and window tags ("P1 80/210") and schedules
-- Layers, hatches, texts, leaders and architectural symbols
-- Sheets from A4 to A0 at exact scale, title blocks, sheet sets and revisions
-- Sections, elevations and details with cross-references
-- Export to PDF, PNG, editable SVG and CSV
+- Dimension chains, door and window tags and schedules
+- Sheets from A4 to A0 at exact scale, title blocks, sections and elevations
+- Export to PDF, PNG, SVG, DXF and CSV
 
-**Safety**
+**Your work is safe**
 - Atomic saves with a backup, crash recovery, and undo for every edit
-- Several projects in tabs, side by side with synchronised views (`Ctrl+T`, `Ctrl+Tab`)
+- Several projects in tabs, side by side
 
 </td>
 </tr>
@@ -89,7 +155,7 @@
 
 ### Download and run
 
-Download a portable build from [GitHub Releases](https://github.com/igors93/Trazo/releases/latest). No Rust installation is needed.
+Download a portable build from [GitHub Releases](https://github.com/igors93/Trazo/releases/latest). No installation of other software is needed.
 
 - **Windows 10/11 (x64):** download `trazo-<version>-x86_64-pc-windows-msvc.zip`, extract the entire ZIP, then open `trazo.exe` inside the extracted folder. No installer or administrator privileges are required.
 - **Linux (x64):** extract the `x86_64-unknown-linux-gnu.tar.gz` archive and run `./trazo`.
@@ -97,12 +163,20 @@ Download a portable build from [GitHub Releases](https://github.com/igors93/Traz
 
 The downloads are **unsigned community builds**. Windows SmartScreen or macOS Gatekeeper may warn or block execution. Compare the archive's SHA-256 hash with `SHA256SUMS.txt` from the same release using `Get-FileHash <archive> -Algorithm SHA256` (Windows), `sha256sum <archive>` (Linux) or `shasum -a 256 <archive>` (macOS). Checksums verify integrity, not publisher identity.
 
-### Build requirements
+### Your first plan
 
-- [Rust](https://rustup.rs) 1.85 or newer (stable).
-- Windows 10 or 11 is the main platform. Linux and macOS builds should work but are less tested. On Debian or Ubuntu, first install `libxkbcommon-dev libgl1-mesa-dev libgtk-3-dev`.
+1. **Terreno** (`T`): type the lot's width and length, for example 5 × 25 m.
+2. **Cômodo** (`C`): drag a room and name it by its use (*Sala*, *Quarto*, *Cozinha*, *Banheiro*): the checks change with the kind of room. Its walls are created and joined to the existing ones.
+3. **Porta** (`R`) and **Janela** (`J`): drag them onto a wall.
+4. **Estrutura** tab: **Gerar estrutura** lays out columns, beams, slabs and footings over the walls.
+5. **Segurança**: read the traffic light. Fix every red result before thinking about building, and read [when to stop and get help](docs/proposta.md#quando-parar-e-procurar-ajuda).
+6. **Exportar memorial (PDF)**: take it, with the plan, to a professional or to free technical assistance.
 
-### Build and run
+The [user guide](docs/user-guide.md) covers every tool and shortcut.
+
+### Build from source
+
+Requirements: [Rust](https://rustup.rs) 1.85 or newer (stable). Windows 10 or 11 is the main platform; Linux and macOS builds should work but are less tested. On Debian or Ubuntu, first install `libxkbcommon-dev libgl1-mesa-dev libgtk-3-dev`.
 
 ```sh
 git clone https://github.com/igors93/Trazo.git
@@ -110,31 +184,21 @@ cd Trazo
 cargo run --release
 ```
 
-The window opens maximised, with an empty plan.
-
-### Your first plan
-
-1. **Terreno** (`T`): type the lot's width and length, for example 12 × 25 m.
-2. **Cômodo** (`C`): drag a room and name it. Its walls are created and joined to the existing ones.
-3. **Porta** (`R`) and **Janela** (`J`): drag them onto a wall.
-4. **Interiores** tab: place a table, a sink or a bed. Near a wall, each one turns its back to it.
-5. **Exportar**: save a PDF or PNG, or open **Prancha** on the *Saída* tab for an A3 sheet at exact 1:50 scale.
-
-The [user guide](docs/user-guide.md) covers every tool and shortcut.
-
 ## AI assistants
 
-Trazo runs an MCP server while it is open, at `http://127.0.0.1:7799/mcp`. Connect Claude Desktop with one click, Claude Code with one command, or ChatGPT through a protected tunnel, then ask in plain language:
+Trazo runs an MCP server while it is open, at `http://127.0.0.1:7799/mcp`. Connect Claude Desktop with one click, Claude Code with one command, or ChatGPT through a protected tunnel, then ask in plain Portuguese:
 
-> *"Create a 12 × 25 m lot, a 5 × 5 m living room with a door facing the street, and a 4 × 5 m kitchen next to it with a counter under the window."*
+> *"Quero uma casa de dois quartos num terreno de 5 por 25 metros, com laje para fazer um andar em cima depois. Confere se a estrutura aguenta."*
+>
+> (*"I want a two-bedroom house on a 5 by 25 metre lot, with a slab to build a floor on top later. Check whether the structure holds."*)
 
 ![An assistant adding a porch: the new room flashes purple and a badge shows the tool at work](docs/images/ai-live-edit.png)
 
-- **43 tools** cover reading the plan, rooms, walls, openings and gates, fixtures, the electrical design, the structure, CAD editing, constraints, batches, files and export.
-- **Several projects at once.** Assistants list, switch, create and duplicate tabs with `abas`; each Trazo window also has its own server (7799, 7800, …).
+- **The operational centre.** The assistant designs, compares, reviews and organises; the person does not need to know the commands.
+- **Told to protect.** Trazo instructs every assistant that the person may have no engineering training: speak simply, never play down a red result or a refusal, never change a hypothesis (soil, concrete, loads) without evidence from the person, and point to a professional or free technical assistance when one is needed.
+- **Contested by Trazo.** Instructions are not enough, so Trazo's own rules check every AI edit, and contesting the AI's hypotheses is the first item of the roadmap (see [Trazo contests the AI](#trazo-contests-the-ai)).
 - **Live and visible.** Each AI edit flashes on the plan, and *Conectar uma IA* logs what the assistant did.
 - **Safe to try.** Every tool call is one undo step, and failed calls change nothing.
-- **Real-time collaboration.** Revisions and change notifications let the assistant notice your edits instead of overwriting them.
 
 See the [MCP guide](docs/mcp.md) for setup and the full tool list.
 
@@ -142,7 +206,9 @@ See the [MCP guide](docs/mcp.md) for setup and the full tool list.
 
 | Document | For |
 | --- | --- |
+| [A proposta do Trazo](docs/proposta.md) | Why Trazo exists, who it is for, how it protects and where it stops (in Portuguese, for everyone) |
 | [User guide](docs/user-guide.md) | Every tool, workflow and keyboard shortcut |
+| [Engineering methods](docs/engineering.md) | Every calculation: formula, standard, assumptions, limits and tests |
 | [MCP guide](docs/mcp.md) | Connecting AI assistants, tools, real-time collaboration and security |
 | [Architecture](docs/architecture.md) | How the code is organised, for contributors |
 | [Roadmap](ROADMAP.md) | What comes next, milestone by milestone |
@@ -152,19 +218,20 @@ See the [MCP guide](docs/mcp.md) for setup and the full tool list.
 
 ## Roadmap
 
-The next milestones are:
+The next milestone is **M0: Protection for self-builders**:
 
-1. **Ready to share:** downloadable releases, an installer and crash reports.
-2. **Works with other CAD:** DXF import and export, printing to scale, image underlays.
-3. **The construction-site set:** opening dimensions, a first-course plan, setting-out and quantities, in one click.
-4. **Engineering disciplines:** wiring and single-line diagrams for the electrical design, plumbing, and 2D structural design with pre-sizing.
-5. **AI co-pilot:** MCP for the whole model, approval mode, and explained validation.
+1. **Trazo contests the AI:** every hypothesis has an origin, no evidence means no green, standards cannot be lowered, and hypothesis changes need the person.
+2. **Safe defaults:** every missing value takes the unfavourable side, starting with the soil pressure.
+3. **From a description to a checked house:** the assistant designs, compares and reviews through MCP, and reports in plain language.
+4. **A building guide:** clear, stage-by-stage instructions to build the checked house.
+5. **Where to get help:** every red result and refusal points to free technical assistance (ATHIS) and the Defesa Civil.
+6. **Site risks Trazo cannot see, building on top and building in stages.**
 
 Read the full [roadmap](ROADMAP.md) for details and the order of work.
 
 ## Contributing
 
-Contributions of all sizes are welcome: bug reports, ideas, documentation and code. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and please follow the [Code of Conduct](CODE_OF_CONDUCT.md). To report a security problem, see [SECURITY.md](SECURITY.md).
+Contributions of all sizes are welcome: stories from real building sites, bug reports, ideas, plain-language text, documentation and code. Start with [the proposal](docs/proposta.md) and [CONTRIBUTING.md](CONTRIBUTING.md), and please follow the [Code of Conduct](CODE_OF_CONDUCT.md). To report a security problem, see [SECURITY.md](SECURITY.md).
 
 ## License
 

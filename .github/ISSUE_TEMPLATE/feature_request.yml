@@ -10,15 +10,15 @@ body:
     id: problem
     attributes:
       label: What problem would this solve?
-      description: Describe the situation in your work where Trazo falls short.
-      placeholder: I send plans to an engineer who uses AutoCAD, and I have to redraw everything there.
+      description: Describe the situation where Trazo falls short. Trazo is built for families who build their own home without an engineer, so stories from real building sites are especially welcome. Portuguese is fine.
+      placeholder: Vamos subir um andar em cima da casa da minha mãe e ninguém sabe como foi feita a fundação. O Trazo calculou como se a fundação aguentasse.
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
       label: What would you like to happen?
-      placeholder: Export the plan as DXF with walls, doors and dimensions on separate layers, in metres.
+      placeholder: Ask how the existing house was built before sizing a new floor on top, and stop with a clear warning when nobody knows.
     validations:
       required: true
   - type: textarea
@@ -35,8 +35,8 @@ body:
     attributes:
       label: Who benefits most?
       options:
-        - People new to CAD
-        - Architecture and engineering professionals
-        - Builders and construction sites
+        - Families building their own home
+        - Bricklayers, site foremen and community groups
+        - Professionals giving technical assistance to families
         - AI assistant users
         - Everyone

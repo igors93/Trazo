@@ -4,6 +4,10 @@ This guide documents every engineering calculation in Trazo: the formula, the st
 
 > **Pre-sizing, not design.** Every result here is a first estimate to guide decisions and the conversation with a licensed professional. Building requires a professional's responsibility (ART or RRT) and the municipal permits.
 
+> **Who reads these results.** Trazo is built for families who build without an engineer (see [the proposal](proposta.md)). For many of them, these methods are the only check their house will get. That is why they are conservative, why they refuse instead of extrapolating outside their limits, why every result carries a plain sentence before the formula, and why red is never hidden.
+
+> **Hypotheses are inputs to contest, not to trust.** With MCP at the centre of Trazo, an AI assistant may set the inputs of these methods. The methods are only as safe as their hypotheses: a soil pressure, concrete strength or live load chosen without evidence can turn a red result green. Trazo computes every result itself, but it does not yet record the origin of each hypothesis or contest favourable ones without evidence; that is rule 10 of the [safety contract](../ROADMAP.md#engineering-in-trazo-the-safety-contract) and the first items of M0 (#168, #169, #171). Today's default allowable soil pressure without a survey is 200 kPa (medium sand), which the safe-defaults audit (#160) will revisit.
+
 > **Normative edition notice (2026).** The structural methods already present in Trazo were implemented and traced against ABNT NBR 6118:2023. The ABNT catalogue now lists NBR 6118:2026. The new edition has not yet received a clause-by-clause audit in Trazo, so no output claims compliance with the 2026 edition; every structural result remains explicitly preliminary until that audit and professional review are complete.
 
 - [Conventions](#conventions)

@@ -1,11 +1,13 @@
 # Working with AI assistants (MCP)
 
-Trazo includes a [Model Context Protocol](https://modelcontextprotocol.io) server. Claude, ChatGPT and any other MCP client can read and edit the plan that is open on screen from plain instructions, such as *"create a 12 × 20 m lot with a 6 × 5 m living room and a door on the left wall"*.
+Trazo includes a [Model Context Protocol](https://modelcontextprotocol.io) server. Claude, ChatGPT and any other MCP client can read and edit the plan that is open on screen from plain instructions, such as *"quero uma casa de dois quartos num terreno de 5 por 25 metros, com laje para subir um andar depois"*.
 
 Everything the assistant does appears live in the window. Each tool call is one undo step, so `Ctrl+Z` takes it back.
 
 ![An assistant adding a porch: the new room flashes purple and a badge names the tool at work](images/ai-live-edit.png)
 
+- [MCP at the centre of Trazo](#mcp-at-the-centre-of-trazo)
+- [How Trazo contests the assistant](#how-trazo-contests-the-assistant)
 - [How it works](#how-it-works)
 - [Connecting a client](#connecting-a-client)
 - [Tools](#tools)
@@ -13,6 +15,40 @@ Everything the assistant does appears live in the window. Each tool call is one 
 - [Conventions](#conventions)
 - [Security](#security)
 - [Troubleshooting](#troubleshooting)
+
+## MCP at the centre of Trazo
+
+Trazo exists so that a lack of money and technical knowledge does not leave a family unprotected against the risks of building its own home (see [the proposal](proposta.md)). Most of the people it serves have never used a CAD and never studied engineering. For them, **MCP is Trazo's operational centre**: the assistant does the intellectual work of design, and the family receives clear instructions to build.
+
+| The assistant does | Trazo does | The person does |
+| --- | --- | --- |
+| Turns the family's description into a plan; compares layouts; lays out the structure and the electrical installation; runs every check; fixes what it can; organises the sheets, the report and the shopping list; explains each result in plain Portuguese | Computes every result with deterministic, tested rules; refuses what lies outside its methods; checks and contests every assistant edit and hypothesis; keeps every change visible and undoable | Describes the house and the site; provides real data (a soil survey, the concrete actually bought); confirms hypotheses; decides; takes the report to a professional or to free technical assistance |
+
+Trazo tells every assistant how to behave through the MCP server instructions (`INSTRUCTIONS` in `src/mcp/protocol.rs`), sent when the client connects. In short, an assistant connected to Trazo must:
+
+- assume the person may have no engineering training and may be building with few resources, and speak plain Portuguese, explaining any technical term;
+- design, compare and review on the person's behalf, then deliver clear, ordered instructions to build;
+- never play down, hide or work around a red result or a refusal; explain the risk in one sentence and propose the change that fixes it;
+- never change a hypothesis (soil pressure, concrete strength, loads, room use, wind) to make a result pass; change one only with real data from the person, and say so;
+- say clearly when a professional is needed, and remind low-income families of free technical assistance (ATHIS, Lei 11.888/2008, through the municipality, CAU or CREA) and, for slopes, streams, landfill or cracked neighbouring houses, the Defesa Civil (199);
+- never present Trazo's pre-sizing as a final design, or green as a guarantee.
+
+## How Trazo contests the assistant
+
+Instructions are not enough: an assistant can be wrong, and an assistant that designs alone can call a simulation with **wrong hypotheses** and receive a result that **looks safe**. So the essential condition is that Trazo's own rules can contest the assistant's decisions (rule 10 of the [safety contract](../ROADMAP.md#engineering-in-trazo-the-safety-contract)):
+
+| Rule | Status |
+| --- | --- |
+| The assistant supplies inputs, never results: every check is computed by Trazo | ✅ Today: tools return Trazo's own results; there is no way to write one |
+| Every assistant edit goes through the same validation as a person's, and is logged with its origin (`ia` and the tool) | ✅ Today: transactional edits, constraints, applicability limits, and `mudancas_desde` |
+| Every hypothesis records its origin and evidence (#168) | ⬜ |
+| A favourable hypothesis without evidence makes the result *contested*, never green; NBR minimums cannot be lowered (#169) | ⬜ |
+| A hypothesis change by the assistant is proposed, and applied only when the person confirms it with its evidence (#171) | ⬜ |
+| Each tool answer reports what the edit made worse: checks that changed colour, structural elements removed, hypotheses changed (#170) | 🟡 Logged, not yet reported as a safety difference |
+| Simple independent cross-checks contest a detailed simulation that disagrees (#172) | ⬜ |
+
+> [!WARNING]
+> Until #169 and #171 ship, `projeto_estrutural` → `configurar` accepts broad ranges (for example a soil pressure up to 600 kPa or a live load down to 0.5 kN/m²) without asking for evidence, so an assistant can still reach green with optimistic hypotheses. When you read a green result, check the hypotheses in *Segurança* or in the report (`memorial_pdf`).
 
 ## How it works
 

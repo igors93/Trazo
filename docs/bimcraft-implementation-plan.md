@@ -4,6 +4,8 @@
 >
 > **Objetivo deste documento:** servir como **fila de implementação item a item** (`T-01` a `T-56`), ordenada rigorosamente por **dependências arquiteturais**, **risco técnico** e **retorno prático** para o usuário brasileiro de arquitetura, engenharia e obra.
 
+> **Alinhamento com a proposta (26/11/2026).** A prioridade de cada item deste plano passa a ser medida pela [proposta do Trazo](proposta.md): proteger famílias que constroem sem engenheiro, com o MCP como centro operacional e o Trazo contestando as decisões da IA. Itens que reforçam a contestação de hipóteses, os valores padrão seguros e a orientação em linguagem simples vêm antes dos demais; veja o marco M0 do [roadmap](../ROADMAP.md#m0-protection-for-self-builders).
+
 ---
 
 ## 1. Diagnóstico Comparativo: Trazo vs. BIMCraft

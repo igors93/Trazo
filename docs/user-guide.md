@@ -2,6 +2,15 @@
 
 This guide walks through Trazo's interface and workflow. The application interface is in **Brazilian Portuguese**; every label below is quoted as it appears on screen, followed by its English meaning the first time it shows up.
 
+## Before you start
+
+Trazo is built for people who will build or extend their own home without an engineer or an architect, often with little money (see [the proposal](proposta.md), in Portuguese). Keep three things in mind:
+
+1. **You do not need to learn the tools to start.** The easiest way in is to connect an AI assistant ([MCP guide](mcp.md)) and describe the house you want: the assistant draws, checks and explains, and this guide is there for when you want to adjust something by hand.
+2. **Read the traffic light** (*Segurança*, see [Safety and limits](#safety-and-limits)). Red means stop: never build an element that is red, and never accept a green that depends on a soil, concrete or load value nobody can back with data.
+3. **Trazo is a protection, not an engineer.** It does not see the ground, the neighbours' walls or the quality of the work. When it refuses, when something stays red, or when the lot is on a slope, near a stream or on landfill, stop and look for help: low-income families are entitled to free technical assistance (ATHIS), and the Defesa Civil answers on 199. Take the report (*memorial*) with you.
+
+- [Before you start](#before-you-start)
 - [The workspace](#the-workspace)
 - [Drawing a plan](#drawing-a-plan)
 - [Selecting and editing](#selecting-and-editing)
@@ -250,7 +259,7 @@ In the *Estrutura* ribbon's **Simulação na planta** group, you can overlay liv
 
 On a wall along the lot line, columns and footings stand flush inside the lot, so the footing is off centre from its column. **Vigas alavanca** ties each such footing to the nearest interior column with a balance beam: the footing is then centred under the lever's reaction, the interior column is relieved, and the beam is sized with its top steel. If the interior column is too light, the traffic light shows that the beam would lift it.
 
-Warnings name each element that needs attention, including a support that a short span next to a long one would lift. Sheets that show the structure add a *Quadro de pilares e sapatas* table. This is pre-sizing for a first layout: the structural design belongs to a licensed engineer.
+Warnings name each element that needs attention, including a support that a short span next to a long one would lift. Sheets that show the structure add a *Quadro de pilares e sapatas* table. This is pre-sizing for a first layout: the structural design belongs to a licensed engineer. If the family cannot pay for one, free technical assistance (ATHIS, Lei 11.888/2008) is available through the municipality, CAU or CREA; see [where to find free help](proposta.md#onde-encontrar-ajuda-gratuita).
 
 ### Safety and limits
 
@@ -273,6 +282,8 @@ Trazo refuses to size what its methods do not cover, and says why:
 - an electrical demand above 75 kVA.
 
 A project-wide limit blocks *Gerar estrutura* and *Ajustar sapatas*; an element beyond its limit shows no numbers, only the reason and a pointer to a professional. The methods and limits are in [Engineering methods](engineering.md).
+
+**Check the hypotheses behind a green.** Every result rests on the values listed at the end of *Segurança* and in the report: concrete strength, allowable soil pressure, loads and wind. Without a soil survey, Trazo currently assumes a medium soil (200 kPa), which can be optimistic on landfill, soft clay or near water. If an AI assistant or anyone else changed one of these values, make sure it came from real data (a soil survey, the concrete actually ordered). Trazo will soon contest favourable hypotheses that have no evidence ([roadmap, M0](../ROADMAP.md#m0-protection-for-self-builders)); until then, a green that depends on an unbacked value is not a green.
 
 **Exportar memorial (PDF)**, in the same window, saves the pre-sizing report (*memorial de pré-dimensionamento*) for a licensed professional to review. It contains:
 

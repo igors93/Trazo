@@ -4,6 +4,13 @@ All notable changes to Trazo are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+### Changed
+
+- **Trazo's mission is now written down and drives the whole documentation.** Trazo exists so that a lack of money and technical knowledge does not leave a family completely unprotected against the risks of building its own home. Its first users are families, bricklayers and community groups who build without an engineer, not engineers who already know how to design. The new [proposal](docs/proposta.md), in Portuguese for everyone, explains who Trazo is for, how it works, how it protects, what it does not do, when to stop and get help, and where to find free technical assistance (ATHIS, Lei 11.888/2008) and the Defesa Civil (199). The README, roadmap, user guide, engineering methods, MCP guide, architecture notes, contributing guide and GitHub templates follow it.
+- **MCP is Trazo's operational centre, and Trazo contests the AI.** An AI assistant does the intellectual work of designing, comparing, reviewing and organising; Trazo's deterministic rules check every assistant decision, hypotheses included, and the family receives clear instructions to build. The roadmap's safety contract gains rule 10 (*Trazo contests the AI*), and the new milestone **M0: Protection for self-builders** comes first, led by hypothesis provenance (#168), contested hypotheses (#169) and hypothesis changes that need the person (#171). The documentation states the current gap: through MCP an assistant can still raise the soil pressure or lower a live load without evidence and receive green.
+- The MCP server instructions now tell every assistant that the person may be a family with no engineering training and few resources: speak plain Portuguese, design and organise on the family's behalf, never play down a red result or a refusal, never change a hypothesis without real data from the person, state the hypotheses behind each result, and point to a professional, free technical assistance or the Defesa Civil when needed.
+- The start page subtitle and the package description present Trazo as a tool to plan a house more safely.
+
 ## [0.1.0] - 2026-11-25
 
 First public release. Portable archives for Windows, Linux and macOS are distributed as unsigned community builds with SHA-256 checksums; no installer or code-signing certificate is required.
