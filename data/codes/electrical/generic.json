@@ -1,0 +1,124 @@
+{
+ "code": "generic",
+ "discipline": "electrical",
+ "name": "No building code",
+ "default": true,
+ "note": "No code's numbers. The sections a module reads come from the first of BIMCraft's codes that has them, and say so.",
+ "sections": {
+  "voltages": {
+   "230 V": {
+    "nominal": 230,
+    "min": 207,
+    "max": 253
+   },
+   "400 V": {
+    "nominal": 400,
+    "min": 360,
+    "max": 440
+   }
+  },
+  "distribution_systems": {
+   "230/400 V": {
+    "phases": 3,
+    "wires": 4,
+    "l_l": "400 V",
+    "l_n": "230 V",
+    "l_g": "230 V",
+    "ground": "TN-S"
+   }
+  },
+  "utility_profile": {
+   "single_phase_max_kva": 8.0,
+   "two_phase_max_kva": 15.0,
+   "max_bt_kva": 75.0,
+   "min_breaker_a": 32.0,
+   "min_wire_mm2": 6.0,
+   "general_table": [
+    [
+     1.0,
+     0.86
+    ],
+    [
+     2.0,
+     0.75
+    ],
+    [
+     3.0,
+     0.66
+    ],
+    [
+     4.0,
+     0.59
+    ],
+    [
+     5.0,
+     0.52
+    ],
+    [
+     6.0,
+     0.45
+    ],
+    [
+     7.0,
+     0.4
+    ],
+    [
+     8.0,
+     0.35
+    ],
+    [
+     9.0,
+     0.31
+    ],
+    [
+     10.0,
+     0.27
+    ]
+   ],
+   "general_over_max": 0.24,
+   "specific_table": [
+    1.0,
+    1.0,
+    0.84,
+    0.76,
+    0.7,
+    0.65,
+    0.6,
+    0.57,
+    0.54,
+    0.52,
+    0.49,
+    0.48,
+    0.46,
+    0.45,
+    0.44,
+    0.43,
+    0.42,
+    0.41,
+    0.4,
+    0.4,
+    0.39,
+    0.39,
+    0.39,
+    0.38,
+    0.38
+   ],
+   "citation": {
+    "standard": "ABNT NBR 5410:2004",
+    "edition": "Referência genérica residencial",
+    "tables": "Faixas usuais de iluminação/TUG (0,86–0,24) e TUE (1,00–0,38)",
+    "nominal_system": "127/220 V",
+    "verification_note": "Confirme os limites e tabelas na norma da distribuidora local."
+   }
+  }
+ },
+ "sources": {
+  "voltages": "IEC 60038, the 230/400 V system of Europe and most of the world; a band of 10 % either way",
+  "distribution_systems": "IEC 60038, the 230/400 V system of Europe and most of the world; a band of 10 % either way",
+  "utility_profile": "ABNT NBR 5410:2004 — Faixas usuais de iluminação/TUG (0,86–0,24) e TUE (1,00–0,38)"
+ },
+ "kinds": {
+  "voltages": "practice",
+  "distribution_systems": "practice"
+ }
+}

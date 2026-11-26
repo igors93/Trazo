@@ -176,6 +176,13 @@ pub struct Project {
     #[serde(default, skip_serializing_if = "super::guid::GuidRegistry::is_empty")]
     pub guids: super::guid::GuidRegistry,
 
+    /// Data-driven layered building codes, pinned editions and shared site/climate parameters (T-08, T-09).
+    #[serde(
+        default,
+        skip_serializing_if = "super::codes::BuildingCodes::is_default"
+    )]
+    pub codes: super::codes::BuildingCodes,
+
     next_id: u64,
 }
 
@@ -257,8 +264,38 @@ impl Default for Project {
 
             guids: super::guid::GuidRegistry::default(),
 
+            codes: super::codes::BuildingCodes::default(),
+
             next_id: 1,
         }
+    }
+}
+
+impl Project {
+    /// Apply a bundled Brazilian city climate preset and propagate `V0` to
+    /// `project.structure.wind.v0_ms` (T-09).
+    pub fn apply_site_preset(
+        &mut self,
+        query: &str,
+    ) -> Result<&'static super::codes::SitePreset, String> {
+        let preset = super::codes::SiteClimate::find_preset(query)
+            .ok_or_else(|| format!("Preset de cidade '{query}' não encontrado."))?;
+        let site = preset.to_site_climate();
+        self.set_site_climate(site)?;
+        Ok(preset)
+    }
+
+    /// Validate and store site & climate settings, syncing `V0` to structural wind
+    /// when within the NBR 6123 structural wind range.
+    pub fn set_site_climate(&mut self, site: super::codes::SiteClimate) -> Result<(), String> {
+        site.validate()?;
+        if let Some(v0) = site.wind_v0_ms
+            && (25.0..=65.0).contains(&v0)
+        {
+            self.structure.wind.v0_ms = v0;
+        }
+        self.codes.site = site;
+        Ok(())
     }
 }
 

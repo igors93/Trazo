@@ -215,6 +215,20 @@ pub fn electrical_fingerprint(project: &Project) -> u64 {
     hash_f64(&mut h, project.electrical.specific_voltage_v);
     (project.electrical.supply as u8).hash(&mut h);
     (project.electrical.utility as u8).hash(&mut h);
+    project.codes.electrical.code.hash(&mut h);
+    project.codes.electrical.amendments.hash(&mut h);
+    project.codes.own.len().hash(&mut h);
+    for pack in &project.codes.own {
+        if pack.discipline == super::codes::CodeDiscipline::Electrical {
+            pack.code.hash(&mut h);
+            pack.edition.hash(&mut h);
+            if let Some(val) = pack.sections.get("utility_profile")
+                && let Ok(s) = serde_json::to_string(val)
+            {
+                s.hash(&mut h);
+            }
+        }
+    }
     if let Some(o) = project.electrical.custom_rules {
         true.hash(&mut h);
         for opt in [
@@ -420,7 +434,11 @@ pub fn structure_fingerprint(project: &Project) -> u64 {
             for v in [width_m, total_rise_m, tread_m, landing_depth_m] {
                 hash_f64(&mut h, v);
             }
+            circ.stair_details.risers.hash(&mut h);
         }
+    }
+    if let Some(v0) = project.codes.site.wind_v0_ms {
+        hash_f64(&mut h, v0);
     }
     // Include upper floors in the fingerprint so multi-storey load-path
     // caches invalidate when an upper storey changes.

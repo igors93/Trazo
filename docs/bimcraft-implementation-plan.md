@@ -98,7 +98,7 @@ Ambos os projetos são escritos em **Rust puro + `egui`/`eframe`** com licença 
 
 ### FASE 2 — Motor de Normas Orientado a Dados (`codes`) e Códigos de Obra (`#73`, `#140`)
 
-- [ ] **T-08 · Motor de Códigos de Obra em Camadas (`Base → Emendas → Projeto`) com Pinagem e XML** *(Tamanho: M · Atende `#140`)*
+- [x] **T-08 · Motor de Códigos de Obra em Camadas (`Base → Emendas → Projeto`) com Pinagem e XML** *(Tamanho: M · Atende `#140`)*
   - **Ref. BIMCraft:** `crates/core/src/codes.rs`, `codes/{command, xml, rule_tests}.rs`, `crates/core/data/codes/`.
   - **O que implementar:**
     - Criar `src/domain/codes/` suportando 5 disciplinas (`Arquitetura`, `Estrutura`, `Elétrica`, `Hidrossanitário`, `Conforto/Mecânica`) com resolução em camadas: `Base` (ex.: ABNT NBR) → até 16 `Emendas` ordenadas (ex.: Código de Obras municipal, IT do Corpo de Bombeiros, norma da concessionária) → `Ajustes do projeto`.
@@ -107,14 +107,14 @@ Ambos os projetos são escritos em **Rust puro + `egui`/`eframe`** com licença 
     - Exportação/importação de pacotes de normas em JSON/XML para compartilhamento entre escritórios e municípios.
   - **Critério de pronto:** carregar/emendar uma regra altera a verificação instantaneamente, sem recompilar; export/import round-trip testado; projetos antigos preservam sua edição pinada.
 
-- [ ] **T-09 · Parâmetros Climáticos e de Sítio Compartilhados (`Site & Climate`)** *(Tamanho: S · Base de `#122`, `#130`, `#131`, `#140`)*
+- [x] **T-09 · Parâmetros Climáticos e de Sítio Compartilhados (`Site & Climate`)** *(Tamanho: S · Base de `#122`, `#130`, `#131`, `#140`)*
   - **Ref. BIMCraft:** `crates/core/src/codes.rs` (`Site`, comando `site_climate`).
   - **O que implementar:**
     - Centralizar no projeto os dados do local: cidade/UF, latitude/longitude, zona bioclimática NBR 15220 (1–8), velocidade básica do vento `V0` (NBR 6123), intensidade pluviométrica `I` (mm/h, NBR 10844), índice ceráunico `AQ1/AQ2/AQ3` (dias de trovoada/ano para DPS/SPDA), e temperaturas de projeto.
     - Integrar com presets regionais brasileiros editáveis e conectar automaticamente ao vento estrutural já existente, à futura drenagem pluvial e ao módulo de DPS/SPDA.
   - **Critério de pronto:** escolher uma cidade/preset atualiza `V0`, chuva `I` e nível ceráunico em um único local, com sincronização via UI e MCP.
 
-- [ ] **T-10 · Verificação em Tempo Real de Códigos de Obra: Escadas (26 regras + Solver), Rampas, Portas e Habitabilidade/Iluminação (`#73`, `#132`)** *(Tamanho: L)*
+- [x] **T-10 · Verificação em Tempo Real de Códigos de Obra: Escadas (26 regras + Solver), Rampas, Portas e Habitabilidade/Iluminação (`#73`, `#132`)** *(Tamanho: L)*
   - **Ref. BIMCraft:** `crates/core/src/codes/{stairs.rs, checks.rs}`, `data/codes/architectural/nbr-9050.json` e `nbr-9077.json`.
   - **O que implementar:**
     - Embarcar regras JSON auditadas para **NBR 9050:2020**, **NBR 9077:2001** e template de **Código de Obras Municipal Brasileiro** (áreas mínimas, menor lado inscrito, pé-direito mínimo, razão de iluminação e ventilação natural `ΣA_janelas / A_piso` com busca espacial nas paredes do cômodo, vãos livres de porta descontando batente).
@@ -122,7 +122,7 @@ Ambos os projetos são escritos em **Rust puro + `egui`/`eframe`** com licença 
     - Exibir achados no *Segurança* (semáforo) e em tempo real ao desenhar/arrastar, sem nunca bloquear o desenho.
   - **Critério de pronto:** cômodos sem iluminação suficiente, portas estreitas, rampas fora da NBR 9050 e escadas com baixo headroom acendem no semáforo e no MCP com explicação + solução sugerida.
 
-- [ ] **T-11 · Expansão das Concessionárias Elétricas Brasileiras + Demanda Coletiva Multifamiliar** *(Tamanho: M · Evolui B21 e `#140`)*
+- [x] **T-11 · Expansão das Concessionárias Elétricas Brasileiras + Demanda Coletiva Multifamiliar** *(Tamanho: M · Evolui B21 e `#140`)*
   - **Ref. BIMCraft:** `crates/core/src/demand.rs`, `entrance.rs`, `building_demand.rs`, `data/codes/electrical/{cpfl, enel, celesc, cemig, copel, energisa, equatorial, fecoergs, hidropan}.json`.
   - **O que implementar:**
     - Migrar `src/domain/utility_profiles.rs` para o motor `codes` em JSON versionado e expandir de 4 para **9 concessionárias brasileiras** (CPFL GED-13 completo `D = a..i`, Enel GRI-0017, Celesc N-321.0001, CEMIG ND-5.1/ND-5.2, COPEL NTC 901100 + rural, Energisa NDU-001 por distribuidora, Equatorial NT.00001, Fecoergs + cooperativas, Hidropan).

@@ -205,10 +205,10 @@ impl Project {
             }
         }
 
-        // Demand, using the selected regional utility profile (and any overrides).
+        // Demand, using the selected regional utility profile (and any project code pack / overrides).
         let rules = settings
             .utility
-            .rules()
+            .rules_from_codes(Some(&self.codes))
             .with_overrides(settings.custom_rules);
         let mut demand = Demand::default();
         for row in &schedule.circuits {

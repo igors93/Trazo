@@ -124,5 +124,63 @@ pub(super) fn catalogue() -> Vec<Tool> {
             false,
             true,
         ),
+        tool(
+            "codigos_normativos",
+            "Motor de normas e códigos de obra",
+            "Gerencia códigos de obra em camadas (Base → até 16 Emendas → Projeto) para 5 disciplinas, edição pinada, sobrescrita de regras e importação/exportação em XML Formato 2 ou JSON.",
+            json!({
+                "acao":choices(&["listar","aplicar_preset","definir_base","adicionar_emenda","remover_emenda","definir_regra","resetar_regra","consultar_regras","exportar_xml","exportar_json","importar"]),
+                "preset":string("Id do preset regional (ex.: generic, brasil, brasil-emergencia)."),
+                "disciplina":choices(&["architectural","structural","electrical","plumbing","mechanical"]),
+                "codigo":string("Chave da norma base ou emenda."),
+                "secao":string("Seção da norma (ex.: stairs, ramps, doors, rooms, utility_profile)."),
+                "regra":string("Nome da regra dentro da seção."),
+                "valor":{"description":"Novo valor JSON da regra (número, booleano, texto ou objeto)."},
+                "conteudo":string("Conteúdo XML ou JSON para importar."),
+                "ativar":boolean("Ativar automaticamente o pacote importado (padrão true).")
+            }),
+            false,
+            false,
+        ),
+        tool(
+            "local_clima",
+            "Parâmetros climáticos e de sítio",
+            "Consulta ou define parâmetros compartilhados do local (cidade/UF, zona bioclimática NBR 15220, vento V0 NBR 6123 sincronizado com a estrutura, chuva I NBR 10844, nível ceráunico AQ1–AQ3) ou aplica presets de cidades brasileiras.",
+            json!({
+                "acao":choices(&["consultar","listar_cidades","aplicar_cidade","definir"]),
+                "cidade":string("Id ou nome da cidade brasileira."),
+                "uf":string("Sigla do estado (UF)."),
+                "latitude":number("Latitude em graus (-90 a 90)."),
+                "longitude":number("Longitude em graus (-180 a 180)."),
+                "altitude_m":number("Altitude em metros."),
+                "zona_bioclimatica":integer("Zona bioclimática NBR 15220 (1 a 8)."),
+                "v0_ms":number("Velocidade básica do vento V0 em m/s (NBR 6123)."),
+                "chuva_mm_h":number("Intensidade pluviométrica I em mm/h (NBR 10844)."),
+                "periodo_retorno_anos":number("Período de retorno da chuva em anos."),
+                "ceraunico":choices(&["AQ1","AQ2","AQ3"]),
+                "dias_trovoada":number("Dias de trovoada por ano."),
+                "temp_verao_c":number("Temperatura de projeto de verão (°C)."),
+                "temp_inverno_c":number("Temperatura de projeto de inverno (°C).")
+            }),
+            false,
+            false,
+        ),
+        tool(
+            "verificar_normas",
+            "Verificação de códigos de obra e Solver de Escadas",
+            "Executa verificação em tempo real de códigos de obra (26 regras de escada + headroom 3D, rampas NBR 9050, vão livre de portas, área/lado/pé-direito/iluminação/ventilação de cômodos) e executa o Solver Interativo de Escadas (resolver_escada) com travas.",
+            json!({
+                "acao":choices(&["verificar","resolver_escada"]),
+                "id":integer("Id da escada para resolver_escada."),
+                "travar_espelhos":boolean("Mantém número atual de espelhos fixo."),
+                "travar_piso":boolean("Mantém piso atual fixo."),
+                "travar_largura":boolean("Mantém largura atual fixa."),
+                "travar_patamares":boolean("Mantém patamares atuais fixos."),
+                "aplicar":boolean("Aplica automaticamente a proposta escolhida na escada."),
+                "indice_proposta":integer("Índice (0-based) da proposta a aplicar (padrão 0).")
+            }),
+            false,
+            false,
+        ),
     ]
 }

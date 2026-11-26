@@ -106,7 +106,10 @@ pub fn single_line_svg(project: &Project) -> String {
         "start",
         "DIAGRAMA UNIFILAR · QUADRO DE DISTRIBUIÇÃO (QD)",
     );
-    let citation = settings.utility.citation();
+    let citation = settings
+        .utility
+        .rules_from_codes(Some(&project.codes))
+        .citation;
     text(
         &mut svg,
         20.0,

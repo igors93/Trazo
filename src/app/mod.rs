@@ -77,6 +77,7 @@ enum DocDialog {
     Underlay,
     Xref,
     Compare,
+    Codes,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

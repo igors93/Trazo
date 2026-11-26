@@ -124,6 +124,28 @@ impl FloorPlanApp {
                 }
 
                 let mut remove_id = None;
+                let mut apply_proposal: Option<(u64, crate::domain::codes::StairProposal)> = None;
+
+                // Precompute 26-rule stair findings and solver proposals before mutably iterating.
+                let mut stair_data: std::collections::BTreeMap<
+                    u64,
+                    (
+                        Vec<crate::domain::codes::StairFinding>,
+                        Vec<crate::domain::codes::StairProposal>,
+                        crate::domain::codes::StairLocks,
+                    ),
+                > = std::collections::BTreeMap::new();
+                for elem in &self.project.circulations {
+                    if matches!(elem.kind, CirculationKind::Stair { .. }) {
+                        let lock_id = egui::Id::unique(("trazo_stair_locks", elem.id));
+                        let locks: crate::domain::codes::StairLocks =
+                            ctx.data(|d| d.get_temp(lock_id)).unwrap_or_default();
+                        let findings = crate::domain::codes::stair_findings(&self.project, elem);
+                        let proposals = crate::domain::codes::solve_stair(&self.project, elem, locks);
+                        stair_data.insert(elem.id, (findings, proposals, locks));
+                    }
+                }
+
                 egui::ScrollArea::vertical()
                     .max_height(370.0)
                     .show(ui, |ui| {
@@ -346,10 +368,143 @@ impl FloorPlanApp {
                                             }
                                         }
                                     });
+                                    // 26-rule normative compliance & interactive stair solver (T-10)
+                                    if let Some((findings, proposals, mut locks)) =
+                                        stair_data.get(&id).cloned()
+                                    {
+                                        ui.add_space(4.0);
+                                        if findings.is_empty() {
+                                            ui.label(
+                                                RichText::new(
+                                                    "✓ Escada conforme às 26 regras normativas ativas.",
+                                                )
+                                                .size(11.5)
+                                                .color(SUCCESS),
+                                            );
+                                        } else {
+                                            ui.label(
+                                                RichText::new(format!(
+                                                    "⚠ {} desvio(s) normativo(s) encontrado(s):",
+                                                    findings.len()
+                                                ))
+                                                .size(11.5)
+                                                .color(DANGER),
+                                            );
+                                            for f in findings.iter().take(4) {
+                                                ui.label(
+                                                    RichText::new(format!("• {}", f.message))
+                                                        .size(11.0)
+                                                        .color(TEXT_2),
+                                                );
+                                            }
+                                            if findings.len() > 4 {
+                                                ui.label(
+                                                    RichText::new(format!(
+                                                        "… e mais {} achado(s) em Normas / Segurança.",
+                                                        findings.len() - 4
+                                                    ))
+                                                    .size(11.0)
+                                                    .color(MUTED),
+                                                );
+                                            }
+                                        }
+                                        egui::CollapsingHeader::new(
+                                            RichText::new("Solver de Escadas (soluções sugeridas)")
+                                                .size(11.5)
+                                                .color(ACCENT_TEXT),
+                                        )
+                                        .id_salt(("stair_solver_hdr", id))
+                                        .default_open(!findings.is_empty())
+                                        .show(ui, |ui| {
+                                            ui.horizontal_wrapped(|ui| {
+                                                ui.label(
+                                                    RichText::new("Travas:").font(strong(11.0)),
+                                                );
+                                                let mut lock_changed = false;
+                                                lock_changed |=
+                                                    ui.checkbox(&mut locks.risers, "Espelhos").changed();
+                                                lock_changed |=
+                                                    ui.checkbox(&mut locks.tread, "Piso").changed();
+                                                lock_changed |=
+                                                    ui.checkbox(&mut locks.width, "Largura").changed();
+                                                lock_changed |= ui
+                                                    .checkbox(&mut locks.landings, "Patamares")
+                                                    .changed();
+                                                if lock_changed {
+                                                    let lock_id =
+                                                        egui::Id::unique(("trazo_stair_locks", id));
+                                                    ctx.data_mut(|d| d.insert_temp(lock_id, locks));
+                                                }
+                                            });
+                                            if proposals.is_empty() {
+                                                ui.label(
+                                                    RichText::new(
+                                                        "Sem ajustes necessários ou travas muito restritivas.",
+                                                    )
+                                                    .size(11.0)
+                                                    .color(MUTED),
+                                                );
+                                            } else {
+                                                for (p_idx, prop) in proposals.iter().enumerate() {
+                                                    ui.horizontal_wrapped(|ui| {
+                                                        let badge = if prop.compliant {
+                                                            RichText::new("OK").color(SUCCESS).font(strong(11.0))
+                                                        } else {
+                                                            RichText::new(format!(
+                                                                "{} pend.",
+                                                                prop.remaining_findings
+                                                            ))
+                                                            .color(WARNING)
+                                                            .font(strong(11.0))
+                                                        };
+                                                        ui.label(badge);
+                                                        let desc = if prop.changes.is_empty() {
+                                                            "Mantém medidas atuais".to_owned()
+                                                        } else {
+                                                            prop.changes.join(" · ")
+                                                        };
+                                                        ui.label(
+                                                            RichText::new(format!(
+                                                                "#{} · {} (e={:.1} cm, p={:.0} cm, Blondel {:.0} cm)",
+                                                                p_idx + 1,
+                                                                desc,
+                                                                prop.riser_height_m * 100.0,
+                                                                prop.tread_m * 100.0,
+                                                                prop.blondel_m * 100.0
+                                                            ))
+                                                            .size(11.0),
+                                                        );
+                                                        if !prop.changes.is_empty()
+                                                            && ui.small_button("Aplicar").clicked()
+                                                        {
+                                                            apply_proposal = Some((id, prop.clone()));
+                                                        }
+                                                    });
+                                                }
+                                            }
+                                        });
+                                    }
                                 });
                             ui.add_space(6.0);
                         }
                     });
+                if let Some((stair_id, proposal)) = apply_proposal {
+                    let prev = self.project.clone();
+                    if let Some(el) = self
+                        .project
+                        .circulations
+                        .iter_mut()
+                        .find(|c| c.id == stair_id)
+                        && crate::domain::codes::apply_stair_proposal(el, &proposal).is_ok()
+                    {
+                        self.record_change(prev);
+                        self.message = format!(
+                            "Proposta do Solver aplicada à escada ({} espelhos, piso {:.0} cm).",
+                            proposal.risers,
+                            proposal.tread_m * 100.0
+                        );
+                    }
+                }
                 if let Some(id) = remove_id {
                     let prev = self.project.clone();
                     self.project.remove_circulation(id);

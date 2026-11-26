@@ -14,23 +14,13 @@ use crate::domain::distribution::{Supply, UtilityProfile, phase_label};
 use crate::domain::fixtures::{Fixture, FixtureKind};
 
 fn parse_utility_profile(raw: &str) -> Option<UtilityProfile> {
-    match raw.trim().to_lowercase().as_str() {
-        "generico" | "genérico" | "generic" | "nbr5410" => Some(UtilityProfile::Generic),
-        "enel_sp" | "enel" => Some(UtilityProfile::EnelSp),
-        "cpfl" => Some(UtilityProfile::Cpfl),
-        "cemig" => Some(UtilityProfile::Cemig),
-        "copel" | "celesc" => Some(UtilityProfile::Copel),
-        _ => None,
-    }
+    UtilityProfile::parse(raw)
 }
 
 fn utility_profile_key(profile: UtilityProfile) -> &'static str {
     match profile {
         UtilityProfile::Generic => "generico",
-        UtilityProfile::EnelSp => "enel_sp",
-        UtilityProfile::Cpfl => "cpfl",
-        UtilityProfile::Cemig => "cemig",
-        UtilityProfile::Copel => "copel",
+        other => other.api_key(),
     }
 }
 
@@ -251,17 +241,112 @@ impl FloorPlanApp {
             "definir_concessionaria" => {
                 let profile = text(args, "concessionaria")
                     .and_then(|key| parse_utility_profile(&key))
-                    .ok_or("'concessionaria' deve ser generico, enel_sp, cpfl, cemig ou copel.")?;
+                    .ok_or("'concessionaria' deve ser generico, cpfl, enel_sp, celesc, cemig, copel, energisa, equatorial, fecoergs ou hidropan.")?;
                 self.apply_change(Some("O perfil de concessionária já era esse."), |project| {
                     project.electrical.utility = profile;
+                    let _ = project.codes.set_base(
+                        crate::domain::codes::CodeDiscipline::Electrical,
+                        if profile == UtilityProfile::Generic {
+                            "generic"
+                        } else {
+                            "nbr-5410"
+                        },
+                    );
+                    if profile == UtilityProfile::Generic {
+                        let _ = project.codes.set_amendments(
+                            crate::domain::codes::CodeDiscipline::Electrical,
+                            Vec::new(),
+                        );
+                    } else {
+                        let _ = project.codes.set_amendments(
+                            crate::domain::codes::CodeDiscipline::Electrical,
+                            vec![profile.code_key().to_owned()],
+                        );
+                    }
                     Ok(Change::new(format!(
                         "Perfil de concessionária: {}.",
                         profile.label()
                     )))
                 })
             }
+            "demanda_coletiva" => {
+                let util = text(args, "concessionaria")
+                    .and_then(|key| parse_utility_profile(&key))
+                    .unwrap_or(self.project.electrical.utility);
+                let method = util
+                    .building_demand_method(Some(&self.project.codes))
+                    .ok_or_else(|| {
+                        format!(
+                            "A concessionária '{}' não possui tabela de demanda coletiva embutida. Use celesc, cemig, fecoergs ou hidropan.",
+                            util.label()
+                        )
+                    })?;
+                let mut dwellings = Vec::new();
+                if let Some(arr) = args.get("unidades").and_then(Value::as_array) {
+                    for item in arr {
+                        let count = item
+                            .get("quantidade")
+                            .and_then(Value::as_u64)
+                            .unwrap_or(0) as usize;
+                        let area = item
+                            .get("area_m2")
+                            .and_then(Value::as_f64)
+                            .unwrap_or(0.0);
+                        if count > 0 && area > 0.0 {
+                            dwellings.push(crate::domain::codes::DwellingGroup {
+                                count,
+                                area_m2: area,
+                            });
+                        }
+                    }
+                } else {
+                    let count = number(args, "quantidade")?.unwrap_or(0.0) as usize;
+                    let area = number(args, "area_m2")?.unwrap_or(0.0);
+                    if count > 0 && area > 0.0 {
+                        dwellings.push(crate::domain::codes::DwellingGroup {
+                            count,
+                            area_m2: area,
+                        });
+                    }
+                }
+                let mut common_kw = std::collections::BTreeMap::new();
+                if let Some(v) = number(args, "iluminacao_comum_kw")?
+                    && v > 0.0
+                {
+                    common_kw.insert("lighting".to_owned(), v);
+                }
+                if let Some(v) = number(args, "tomadas_comum_kw")?
+                    && v > 0.0
+                {
+                    common_kw.insert("outlets".to_owned(), v);
+                }
+                let input = crate::domain::codes::BuildingDemandInput {
+                    dwellings,
+                    common_installed_kw: common_kw,
+                    common_demand_extra: number(args, "demanda_comum_kva")?.unwrap_or(0.0),
+                    special_demand: number(args, "demanda_especial_kva")?.unwrap_or(0.0),
+                    commercial_demand: number(args, "demanda_comercial_kva")?.unwrap_or(0.0),
+                    as_printed: args
+                        .get("como_impresso")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                };
+                let res = crate::domain::codes::calculate_building_demand(&method, &input)?;
+                let msg = format!(
+                    "Demanda coletiva ({}): {} unidades (área média {:.1} m²) → {:.2} {} (F(n)={:.2}, d={:.2}, fator {:.2}).",
+                    res.standard,
+                    res.total_dwellings,
+                    res.weighted_mean_area_m2,
+                    res.total_demand,
+                    res.unit,
+                    res.diversity_factor_f,
+                    res.dwelling_demand_d,
+                    res.safety_factor
+                );
+                Ok(ToolOutput::ok(msg).with_structured(serde_json::to_value(&res).unwrap_or_else(|_| json!({}))))
+            }
             _ => Err(
-                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao ou definir_concessionaria.".to_owned(),
+                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao, definir_concessionaria ou demanda_coletiva.".to_owned(),
             ),
         }
     }
@@ -374,13 +459,31 @@ impl FloorPlanApp {
             .project
             .electrical
             .utility
-            .rules()
+            .rules_from_codes(Some(&self.project.codes))
             .with_overrides(self.project.electrical.custom_rules);
         let cite = rules.citation;
+        let category_summary = self.project.electrical.utility.entrance_category_summary(
+            Some(&self.project.codes),
+            schedule.total_va / 1000.0,
+            demand.demand_va / 1000.0,
+            self.project.electrical.voltage_v,
+            schedule.supply.phases().max(1),
+            None,
+        );
+        let member_ids: Vec<String> = self
+            .project
+            .electrical
+            .utility
+            .members()
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect();
         Ok(ToolOutput::ok(text).with_structured(json!({
             "projeto_id": self.active_project_id(),
             "tensao_v": self.project.electrical.voltage_v,
             "concessionaria": utility_profile_key(self.project.electrical.utility),
+            "categoria_concessionaria": category_summary,
+            "distribuidoras_membro": member_ids,
             "norma_concessionaria": {
                 "norma": cite.standard,
                 "edicao": cite.edition,

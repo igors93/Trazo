@@ -5,6 +5,7 @@ pub mod blocks;
 pub mod cache;
 pub mod cantilevers;
 pub mod circulation;
+pub mod codes;
 pub mod compare;
 pub mod conduits;
 pub mod curves;

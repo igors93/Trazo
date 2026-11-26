@@ -1,0 +1,201 @@
+{
+ "code": "codigo-obras-br",
+ "discipline": "architectural",
+ "name": "Código de Obras Municipal Brasileiro (modelo base)",
+ "region": "Brasil",
+ "edition": "2024 (referência)",
+ "amends": "nbr-9050",
+ "checked": "Parâmetros de referência baseados em códigos de obras municipais brasileiros (SP Lei 16.642/2017, RJ, BH, Curitiba, Porto Alegre) e NBR 15575. Confirme as exigências do município da obra.",
+ "references": [
+  "Referência municipal brasileira (COE-SP Lei 16.642/2017, COE-BH, COE-Curitiba) combinada à ABNT NBR 9050:2020 e ABNT NBR 15575:2021"
+ ],
+ "note": "Modelo configurável de Código de Obras Municipal brasileiro como emenda sobre a NBR 9050:2020. Define áreas mínimas, menor dimensão inscrita, pé-direito mínimo, iluminação natural (ΣA_janelas / A_piso), ventilação natural efetiva e desconto de batente para vão livre de portas.",
+ "documents": {
+  "coe_br": {
+   "title": "Código de Obras Municipal Brasileiro (modelo de referência)",
+   "edition": "2024",
+   "publisher": "Prefeituras Municipais (referência consolidada)"
+  },
+  "nbr9050": {
+   "title": "ABNT NBR 9050",
+   "edition": "2020",
+   "publisher": "ABNT"
+  },
+  "nbr15575": {
+   "title": "ABNT NBR 15575-1",
+   "edition": "2021",
+   "publisher": "ABNT"
+  }
+ },
+ "sections": {
+  "doors": {
+   "clear_width_min": 800.0,
+   "clear_height_min": 2100.0,
+   "leaf_width_max": 0.0,
+   "frame_allowance": 40.0,
+   "exempt": [
+    "box",
+    "armario",
+    "armário",
+    "shaft"
+   ]
+  },
+  "rooms": {
+   "window_vent_factors": {
+    "sliding": 0.50,
+    "basculante": 0.70,
+    "maxim_ar": 0.70,
+    "casement": 0.90,
+    "tilt_turn": 0.85,
+    "fixed": 0.0,
+    "bay_window": 0.50
+   },
+   "kinds": [
+    {
+     "kind": "sala",
+     "names": [
+      "sala",
+      "estar",
+      "living",
+      "jantar"
+     ],
+     "area_min": 10.0,
+     "side_min": 2400.0,
+     "height_min": 2500.0,
+     "light_min": 0.125,
+     "vent_min": 0.0625
+    },
+    {
+     "kind": "dormitorio",
+     "names": [
+      "quarto",
+      "dormitório",
+      "dormitorio",
+      "suíte",
+      "suite"
+     ],
+     "area_min": 8.0,
+     "side_min": 2400.0,
+     "height_min": 2500.0,
+     "light_min": 0.125,
+     "vent_min": 0.0625
+    },
+    {
+     "kind": "escritorio",
+     "names": [
+      "escritório",
+      "escritorio",
+      "home office",
+      "estudo",
+      "gabinete"
+     ],
+     "area_min": 6.0,
+     "side_min": 2000.0,
+     "height_min": 2500.0,
+     "light_min": 0.125,
+     "vent_min": 0.0625
+    },
+    {
+     "kind": "cozinha",
+     "names": [
+      "cozinha",
+      "copa",
+      "gourmet"
+     ],
+     "area_min": 4.0,
+     "side_min": 1500.0,
+     "height_min": 2400.0,
+     "light_min": 0.10,
+     "vent_min": 0.05
+    },
+    {
+     "kind": "area_servico",
+     "names": [
+      "serviço",
+      "servico",
+      "lavanderia"
+     ],
+     "area_min": 2.5,
+     "side_min": 1200.0,
+     "height_min": 2400.0,
+     "light_min": 0.10,
+     "vent_min": 0.05
+    },
+    {
+     "kind": "banheiro",
+     "names": [
+      "banheiro",
+      "bwc",
+      "wc",
+      "sanitário",
+      "sanitario"
+     ],
+     "area_min": 2.0,
+     "side_min": 1100.0,
+     "height_min": 2200.0,
+     "light_min": 0.08,
+     "vent_min": 0.04
+    },
+    {
+     "kind": "lavabo",
+     "names": [
+      "lavabo"
+     ],
+     "area_min": 1.2,
+     "side_min": 900.0,
+     "height_min": 2200.0,
+     "light_min": 0.0,
+     "vent_min": 0.04
+    },
+    {
+     "kind": "circulacao",
+     "names": [
+      "corredor",
+      "circulação",
+      "circulacao",
+      "hall"
+     ],
+     "area_min": 0.0,
+     "side_min": 900.0,
+     "height_min": 2300.0,
+     "light_min": 0.0,
+     "vent_min": 0.0
+    }
+   ]
+  }
+ },
+ "sources": {
+  "doors.clear_width_min": {
+   "doc": "nbr9050",
+   "item": "6.11.2.4",
+   "page": "68",
+   "note": "Vão livre mínimo de 0,80 m para rota acessível"
+  },
+  "doors.clear_height_min": {
+   "doc": "nbr9050",
+   "item": "6.11.2.4",
+   "page": "68",
+   "note": "Altura livre mínima de 2,10 m"
+  },
+  "doors.frame_allowance": {
+   "doc": "coe_br",
+   "item": "Batente e folha",
+   "note": "Desconto de referência de 40 mm para apuração do vão livre efetivo"
+  },
+  "rooms.kinds": {
+   "doc": "coe_br",
+   "item": "Tabela de Compartimentos",
+   "note": "Permanência prolongada (1/8 iluminação, 1/16 ventilação) e transitória (1/10 a 1/12)"
+  },
+  "rooms.window_vent_factors": {
+   "doc": "nbr15575",
+   "item": "Anexo D / Ventilação efetiva",
+   "note": "Fração útil de abertura por tipologia de caixilho"
+  }
+ },
+ "kinds": {
+  "doors.frame_allowance": "assumption",
+  "rooms.kinds": "recommendation",
+  "rooms.window_vent_factors": "practice"
+ }
+}

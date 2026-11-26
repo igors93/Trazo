@@ -398,6 +398,37 @@ impl FloorPlanApp {
                 }
             });
         });
+        vertical_divider(ui, RIBBON_PANEL_HEIGHT);
+        ribbon_panel(ui, "Normas", |ui| {
+            ribbon_stack(ui, |ui| {
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::Ruler,
+                        "Normas e Clima",
+                        self.active_doc_dialog == super::super::DocDialog::Codes,
+                    ),
+                    "Motor de códigos de obra (Base → Emendas → Projeto), local/clima e verificação normativa",
+                )
+                .clicked()
+                {
+                    self.active_doc_dialog = super::super::DocDialog::Codes;
+                }
+                if tip(
+                    ribbon_small(
+                        ui,
+                        Icon::CirculationCheck,
+                        "Segurança",
+                        self.active_doc_dialog == super::super::DocDialog::Safety,
+                    ),
+                    "Semáforo unificado de estrutura, elétrica e códigos de obra",
+                )
+                .clicked()
+                {
+                    self.active_doc_dialog = super::super::DocDialog::Safety;
+                }
+            });
+        });
     }
 
     fn fixture_button(&mut self, ui: &mut Ui, kind: FixtureKind, label: &str) {

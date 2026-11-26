@@ -103,6 +103,70 @@ fn default_railing_height() -> f64 {
     1.10
 }
 
+/// Intermediate landing inserted along a stair (used by normative checks and `solve_stair`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct StairLandingSpec {
+    /// Riser index after which this landing occurs (1-based).
+    pub at_riser: usize,
+    /// Landing length along the direction of travel, in metres.
+    pub length_m: f64,
+    /// Optional number of winder steps on this landing (`0` = flat landing).
+    #[serde(default)]
+    pub winder_steps: usize,
+}
+
+/// Optional detailed architectural stair properties for the 26-rule code engine
+/// and interactive stair solver (T-10).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct StairDetails {
+    /// Explicit riser count (when `None`, derived automatically from `total_rise_m`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub risers: Option<usize>,
+    /// Tread nosing projection in metres (`0.0` = no nosing).
+    #[serde(skip_serializing_if = "is_zero_f64")]
+    pub nosing_m: f64,
+    /// Whether the stair has open risers (*espelhos vazados*).
+    #[serde(skip_serializing_if = "is_false")]
+    pub open_risers: bool,
+    /// Handrail height above the tread nosing line in metres.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub handrail_height_m: Option<f64>,
+    /// Guardrail height above the tread/landing in metres.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub guard_height_m: Option<f64>,
+    /// Additional intermediate landings along the stair flights.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub intermediate_landings: Vec<StairLandingSpec>,
+    /// Optional length of the overhead slab opening starting from the top of the stair (m).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slab_opening_len_m: Option<f64>,
+    /// Optional non-uniform riser variation (m) if modelled across storeys.
+    #[serde(skip_serializing_if = "is_zero_f64")]
+    pub riser_variation_m: f64,
+}
+
+impl StairDetails {
+    pub fn is_default(&self) -> bool {
+        self.risers.is_none()
+            && self.nosing_m == 0.0
+            && !self.open_risers
+            && self.handrail_height_m.is_none()
+            && self.guard_height_m.is_none()
+            && self.intermediate_landings.is_empty()
+            && self.slab_opening_len_m.is_none()
+            && self.riser_variation_m == 0.0
+    }
+}
+
+fn is_zero_f64(v: &f64) -> bool {
+    *v == 0.0
+}
+
+fn is_false(v: &bool) -> bool {
+    !*v
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CirculationElement {
     pub id: u64,
@@ -113,6 +177,8 @@ pub struct CirculationElement {
     #[serde(default)]
     pub railing: RailingSide,
     pub kind: CirculationKind,
+    #[serde(default, skip_serializing_if = "StairDetails::is_default")]
+    pub stair_details: StairDetails,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -152,7 +218,11 @@ impl CirculationElement {
         else {
             return None;
         };
-        let risers = (total_rise_m / 0.175).round().clamp(2.0, 40.0) as usize;
+        let risers = self
+            .stair_details
+            .risers
+            .map(|r| r.clamp(2, 60))
+            .unwrap_or_else(|| (total_rise_m / 0.175).round().clamp(2.0, 40.0) as usize);
         let riser_height_m = total_rise_m / risers as f64;
         let blondel_m = 2.0 * riser_height_m + tread_m;
         let blondel_ok =
@@ -164,6 +234,175 @@ impl CirculationElement {
             blondel_m,
             blondel_ok,
         })
+    }
+
+    /// World-space 2D polygon and top elevation (m above floor) for each tread
+    /// and landing of a stair — used by the 3D headroom clearance check (T-10).
+    pub fn stair_step_polygons(&self) -> Vec<(Vec<Point>, f64)> {
+        let CirculationKind::Stair {
+            shape,
+            width_m,
+            tread_m,
+            landing_depth_m,
+            ..
+        } = self.kind
+        else {
+            return Vec::new();
+        };
+        let Some(m) = self.stair_metrics() else {
+            return Vec::new();
+        };
+        let treads = m.risers.saturating_sub(1).max(1);
+        let w = width_m.max(0.6);
+        let p = tread_m.max(0.22);
+        let ld = landing_depth_m.max(w);
+        let r = m.riser_height_m;
+        let mut out = Vec::with_capacity(m.risers + 2);
+
+        let push_rect = |out: &mut Vec<(Vec<Point>, f64)>,
+                         x0: f64,
+                         y0: f64,
+                         dx: f64,
+                         dy: f64,
+                         nx: f64,
+                         ny: f64,
+                         len: f64,
+                         width: f64,
+                         z: f64| {
+            let a = self.to_world(Point::new(x0, y0));
+            let b = self.to_world(Point::new(x0 + dx * len, y0 + dy * len));
+            let c = self.to_world(Point::new(
+                x0 + dx * len + nx * width,
+                y0 + dy * len + ny * width,
+            ));
+            let d = self.to_world(Point::new(x0 + nx * width, y0 + ny * width));
+            out.push((vec![a, b, c, d], z));
+        };
+
+        match shape {
+            StairShape::Straight => {
+                let mut cursor = 0.0;
+                for i in 0..treads {
+                    let riser_idx = i + 1;
+                    push_rect(
+                        &mut out,
+                        cursor,
+                        0.0,
+                        1.0,
+                        0.0,
+                        0.0,
+                        1.0,
+                        p,
+                        w,
+                        riser_idx as f64 * r,
+                    );
+                    cursor += p;
+                    if let Some(land) = self
+                        .stair_details
+                        .intermediate_landings
+                        .iter()
+                        .find(|l| l.at_riser == riser_idx)
+                    {
+                        push_rect(
+                            &mut out,
+                            cursor,
+                            0.0,
+                            1.0,
+                            0.0,
+                            0.0,
+                            1.0,
+                            land.length_m.max(0.3),
+                            w,
+                            riser_idx as f64 * r,
+                        );
+                        cursor += land.length_m.max(0.3);
+                    }
+                }
+            }
+            StairShape::LShaped => {
+                let first = treads / 2;
+                let second = treads - first;
+                for i in 0..first {
+                    push_rect(
+                        &mut out,
+                        i as f64 * p,
+                        0.0,
+                        1.0,
+                        0.0,
+                        0.0,
+                        1.0,
+                        p,
+                        w,
+                        (i + 1) as f64 * r,
+                    );
+                }
+                let l1 = first as f64 * p;
+                let landing_z = (first + 1) as f64 * r;
+                push_rect(&mut out, l1, 0.0, 1.0, 0.0, 0.0, 1.0, ld, w, landing_z);
+                for j in 0..second {
+                    push_rect(
+                        &mut out,
+                        l1,
+                        w + j as f64 * p,
+                        0.0,
+                        1.0,
+                        1.0,
+                        0.0,
+                        p,
+                        w,
+                        (first + 1 + j + 1) as f64 * r,
+                    );
+                }
+            }
+            StairShape::UShaped => {
+                let first = treads / 2;
+                let second = treads - first;
+                let gap = 0.15;
+                for i in 0..first {
+                    push_rect(
+                        &mut out,
+                        i as f64 * p,
+                        0.0,
+                        1.0,
+                        0.0,
+                        0.0,
+                        1.0,
+                        p,
+                        w,
+                        (i + 1) as f64 * r,
+                    );
+                }
+                let l1 = first as f64 * p;
+                let landing_z = (first + 1) as f64 * r;
+                push_rect(
+                    &mut out,
+                    l1,
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.0,
+                    1.0,
+                    ld,
+                    w * 2.0 + gap,
+                    landing_z,
+                );
+                for j in 0..second {
+                    push_rect(
+                        &mut out,
+                        l1 - j as f64 * p,
+                        w + gap,
+                        -1.0,
+                        0.0,
+                        0.0,
+                        1.0,
+                        p,
+                        w,
+                        (first + 1 + j + 1) as f64 * r,
+                    );
+                }
+            }
+        }
+        out
     }
 
     pub fn ramp_metrics(&self) -> Option<RampMetrics> {
@@ -500,6 +739,7 @@ impl Project {
                 tread_m,
                 landing_depth_m: width_m.max(1.20),
             },
+            stair_details: StairDetails::default(),
         });
         Ok(id)
     }
@@ -531,6 +771,7 @@ impl Project {
                 total_rise_m,
                 landing_depth_m: 1.20,
             },
+            stair_details: StairDetails::default(),
         });
         Ok(id)
     }
@@ -560,6 +801,7 @@ impl Project {
                 depth_m,
                 elevation_m,
             },
+            stair_details: StairDetails::default(),
         });
         Ok(id)
     }
@@ -579,6 +821,7 @@ impl Project {
                 end: end.rounded(),
                 height_m: height_m.clamp(0.80, 1.80),
             },
+            stair_details: StairDetails::default(),
         });
         Ok(id)
     }
@@ -605,6 +848,7 @@ impl Project {
                 from_elev_m,
                 to_elev_m,
             },
+            stair_details: StairDetails::default(),
         });
         Ok(id)
     }

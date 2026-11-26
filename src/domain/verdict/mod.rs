@@ -2,6 +2,7 @@
 //! electrical pre-sizing results into plain-language green/yellow/red verdicts
 //! with margins and declared assumptions.
 
+mod codes;
 mod electrical;
 mod structure;
 
@@ -10,6 +11,7 @@ mod tests;
 
 use crate::domain::model::Project;
 
+pub use codes::code_verdicts;
 pub use electrical::electrical_verdicts;
 pub use structure::structure_verdicts;
 
@@ -111,6 +113,7 @@ impl Check {
 pub enum Discipline {
     Structure,
     Electrical,
+    Architecture,
 }
 
 impl Discipline {
@@ -118,6 +121,7 @@ impl Discipline {
         match self {
             Self::Structure => "Estrutura",
             Self::Electrical => "Elétrica",
+            Self::Architecture => "Arquitetura · Normas",
         }
     }
 }
@@ -193,7 +197,7 @@ pub(super) fn limit_detail(violation: &crate::domain::limits::Violation) -> Stri
 /// The assumptions every structural and electrical result rests on.
 pub fn assumptions(project: &Project) -> Vec<String> {
     let s = project.structure.settings;
-    vec![
+    let mut lines = vec![
         "Pré-dimensionamento, não projeto final: construir exige um profissional habilitado (ART ou RRT) e o alvará da prefeitura.".to_owned(),
         format!(
             "Concreto fck {:.0} MPa, aço CA-50, solo com tensão admissível de {:.0} kPa.",
@@ -221,13 +225,31 @@ pub fn assumptions(project: &Project) -> Vec<String> {
         "Métodos estruturais documentados para a NBR 6118:2023; a edição 2026 ainda requer auditoria e revisão profissional.".to_owned(),
         "Fios de cobre com isolação de PVC, método B1, 30 °C; queda de tensão até 4 %.".to_owned(),
         "Métodos, normas e limites: docs/engineering.md.".to_owned(),
-    ]
+    ];
+    if let Some(site_line) = project.codes.site.assumption_line() {
+        lines.push(site_line);
+    }
+    let arch_base = project
+        .codes
+        .active_base_key(crate::domain::codes::CodeDiscipline::Architectural);
+    if arch_base != "generic" || !project.codes.architectural.amendments.is_empty() {
+        let amends = if project.codes.architectural.amendments.is_empty() {
+            String::new()
+        } else {
+            format!(" + {}", project.codes.architectural.amendments.join(" + "))
+        };
+        lines.push(format!(
+            "Códigos de obra ativos (Arquitetura): {arch_base}{amends}."
+        ));
+    }
+    lines
 }
 
 /// Every verdict of the project, worst first.
 pub fn safety_summary(project: &Project) -> SafetySummary {
     let mut verdicts = structure_verdicts(project, &project.structure_report());
     verdicts.extend(electrical_verdicts(&project.load_schedule()));
+    verdicts.extend(code_verdicts(project));
     verdicts.sort_by(|a, b| {
         b.light()
             .cmp(&a.light())

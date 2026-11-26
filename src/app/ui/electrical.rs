@@ -448,9 +448,13 @@ impl FloorPlanApp {
                 });
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    for (index, title) in ["Cargas e circuitos", "Quadro e diagrama unifilar"]
-                        .iter()
-                        .enumerate()
+                    for (index, title) in [
+                        "Cargas e circuitos",
+                        "Quadro e diagrama unifilar",
+                        "Demanda coletiva (Multifamiliar)",
+                    ]
+                    .iter()
+                    .enumerate()
                     {
                         if ui
                             .selectable_label(tab == index as u8, RichText::new(*title).font(strong(12.5)))
@@ -461,7 +465,9 @@ impl FloorPlanApp {
                     }
                 });
                 ui.separator();
-                if tab == 1 {
+                if tab == 2 {
+                    self.collective_demand_tab(ui, ctx);
+                } else if tab == 1 {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
                             ui.label("Alimentação:");
@@ -500,7 +506,7 @@ impl FloorPlanApp {
                             .project
                             .electrical
                             .utility
-                            .rules()
+                            .rules_from_codes(Some(&self.project.codes))
                             .with_overrides(self.project.electrical.custom_rules);
                         let cite = rules.citation;
                         ui.label(
@@ -518,6 +524,40 @@ impl FloorPlanApp {
                             .size(11.0)
                             .color(MUTED),
                         );
+                        let members = self.project.electrical.utility.members();
+                        if !members.is_empty() {
+                            let names: Vec<&str> =
+                                members.iter().map(|(id, _)| id.as_str()).collect();
+                            ui.label(
+                                RichText::new(format!(
+                                    "Distribuidoras/cooperativas cobertas ({}): {}",
+                                    members.len(),
+                                    names.join(", ")
+                                ))
+                                .size(10.5)
+                                .color(MUTED),
+                            );
+                        }
+                        if schedule.total_va > 0.0
+                            && let Some(cat_line) = self
+                                .project
+                                .electrical
+                                .utility
+                                .entrance_category_summary(
+                                    Some(&self.project.codes),
+                                    schedule.total_va / 1000.0,
+                                    schedule.demand.demand_va / 1000.0,
+                                    self.project.electrical.voltage_v,
+                                    schedule.supply.phases().max(1),
+                                    None,
+                                )
+                        {
+                            ui.label(
+                                RichText::new(format!("Tabela oficial da concessionária: {cat_line}"))
+                                    .size(11.5)
+                                    .color(ACCENT_TEXT),
+                            );
+                        }
                         ui.add_space(6.0);
                         let d = schedule.demand;
                         egui::Grid::new("electrical_board")
@@ -723,6 +763,25 @@ impl FloorPlanApp {
         {
             let previous = self.project.clone();
             self.project.electrical.utility = profile;
+            let _ = self.project.codes.set_base(
+                crate::domain::codes::CodeDiscipline::Electrical,
+                if profile == UtilityProfile::Generic {
+                    "generic"
+                } else {
+                    "nbr-5410"
+                },
+            );
+            if profile == UtilityProfile::Generic {
+                let _ = self
+                    .project
+                    .codes
+                    .set_amendments(crate::domain::codes::CodeDiscipline::Electrical, Vec::new());
+            } else {
+                let _ = self.project.codes.set_amendments(
+                    crate::domain::codes::CodeDiscipline::Electrical,
+                    vec![profile.code_key().to_owned()],
+                );
+            }
             self.record_change(previous);
             self.message = format!("Distribuidora: {}.", profile.label());
         }
@@ -741,5 +800,193 @@ impl FloorPlanApp {
         if !open {
             self.active_doc_dialog = DocDialog::None;
         }
+    }
+
+    /// Tab 2: Collective residential building demand (CODI / CEMIG ND-5.2 / Celesc N-321.0003 / Fecoergs / Hidropan).
+    fn collective_demand_tab(&mut self, ui: &mut Ui, ctx: &egui::Context) {
+        let count_id = egui::Id::unique("trazo_coll_count");
+        let area_id = egui::Id::unique("trazo_coll_area");
+        let light_id = egui::Id::unique("trazo_coll_light");
+        let spec_id = egui::Id::unique("trazo_coll_spec");
+        let printed_id = egui::Id::unique("trazo_coll_printed");
+        let util_id = egui::Id::unique("trazo_coll_util");
+
+        let mut count: usize = ctx.data(|d| d.get_temp(count_id)).unwrap_or(6);
+        let mut area_m2: f64 = ctx.data(|d| d.get_temp(area_id)).unwrap_or(70.0);
+        let mut common_light_kw: f64 = ctx.data(|d| d.get_temp(light_id)).unwrap_or(2.0);
+        let mut special_kva: f64 = ctx.data(|d| d.get_temp(spec_id)).unwrap_or(0.0);
+        let mut as_printed: bool = ctx.data(|d| d.get_temp(printed_id)).unwrap_or(false);
+        let default_util = if self
+            .project
+            .electrical
+            .utility
+            .building_demand_method(Some(&self.project.codes))
+            .is_some()
+        {
+            self.project.electrical.utility
+        } else {
+            UtilityProfile::Celesc
+        };
+        let mut chosen_util: UtilityProfile =
+            ctx.data(|d| d.get_temp(util_id)).unwrap_or(default_util);
+
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.label(
+                RichText::new(
+                    "Cálculo de demanda coletiva para pequenos edifícios residenciais (até 3 pavimentos) com tabelas oficiais CODI / CEMIG ND-5.2 / Celesc N-321.0003 / Fecoergs / Hidropan.",
+                )
+                .size(12.0)
+                .color(TEXT_2),
+            );
+            ui.add_space(8.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new("Norma coletiva:").font(strong(12.0)));
+                for prof in [
+                    UtilityProfile::Celesc,
+                    UtilityProfile::Cemig,
+                    UtilityProfile::Fecoergs,
+                    UtilityProfile::Hidropan,
+                ] {
+                    if ui
+                        .selectable_label(chosen_util == prof, prof.label())
+                        .clicked()
+                    {
+                        chosen_util = prof;
+                    }
+                }
+            });
+            ui.add_space(6.0);
+            egui::Grid::new("collective_demand_inputs")
+                .num_columns(2)
+                .spacing([16.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label("Número de unidades residenciais:");
+                    ui.add(egui::DragValue::new(&mut count).range(2..=200));
+                    ui.end_row();
+
+                    ui.label("Área média por unidade:");
+                    ui.add(
+                        egui::DragValue::new(&mut area_m2)
+                            .range(15.0..=800.0)
+                            .speed(1.0)
+                            .suffix(" m²"),
+                    );
+                    ui.end_row();
+
+                    ui.label("Iluminação de área comum (instalada):");
+                    ui.add(
+                        egui::DragValue::new(&mut common_light_kw)
+                            .range(0.0..=100.0)
+                            .speed(0.5)
+                            .suffix(" kW"),
+                    );
+                    ui.end_row();
+
+                    ui.label("Cargas especiais (bombas, elevador, etc.):");
+                    ui.add(
+                        egui::DragValue::new(&mut special_kva)
+                            .range(0.0..=200.0)
+                            .speed(0.5)
+                            .suffix(" kVA"),
+                    );
+                    ui.end_row();
+
+                    ui.label("Erratas publicadas em tabelas oficiais:");
+                    ui.checkbox(&mut as_printed, "Usar valor impresso literal (comparação)");
+                    ui.end_row();
+                });
+
+            ui.add_space(8.0);
+            if let Some(method) = chosen_util.building_demand_method(Some(&self.project.codes)) {
+                let mut common_kw = std::collections::BTreeMap::new();
+                if common_light_kw > 0.0 {
+                    common_kw.insert("lighting".to_owned(), common_light_kw);
+                }
+                let input = crate::domain::codes::BuildingDemandInput {
+                    dwellings: vec![crate::domain::codes::DwellingGroup { count, area_m2 }],
+                    common_installed_kw: common_kw,
+                    special_demand: special_kva,
+                    as_printed,
+                    ..Default::default()
+                };
+                match crate::domain::codes::calculate_building_demand(&method, &input) {
+                    Ok(res) => {
+                        ui.separator();
+                        ui.label(
+                            RichText::new(format!(
+                                "Demanda total coletiva: {:.2} {}  ({} · {})",
+                                res.total_demand, res.unit, res.standard, chosen_util.label()
+                            ))
+                            .font(strong(14.0))
+                            .color(ACCENT_TEXT),
+                        );
+                        ui.add_space(4.0);
+                        egui::Grid::new("collective_demand_results")
+                            .num_columns(2)
+                            .spacing([16.0, 4.0])
+                            .show(ui, |ui| {
+                                ui.label("Demanda unitária por área (d):");
+                                ui.label(
+                                    format!("{:.2} {}", res.dwelling_demand_d, res.unit)
+                                        .replace('.', ","),
+                                );
+                                ui.end_row();
+                                ui.label("Fator de diversidade F(n):");
+                                ui.label(
+                                    format!("{:.2}", res.diversity_factor_f).replace('.', ","),
+                                );
+                                ui.end_row();
+                                ui.label("Fator de segurança / majoração:");
+                                ui.label(format!("{:.2}", res.safety_factor).replace('.', ","));
+                                ui.end_row();
+                                ui.label("Parcela das unidades:");
+                                ui.label(
+                                    format!("{:.2} {}", res.dwellings_total_demand, res.unit)
+                                        .replace('.', ","),
+                                );
+                                ui.end_row();
+                                ui.label("Parcela de área comum:");
+                                ui.label(
+                                    format!("{:.2} {}", res.common_demand, res.unit)
+                                        .replace('.', ","),
+                                );
+                                ui.end_row();
+                                if let Some(brk) = res.entrance_breaker_a {
+                                    ui.label("Disjuntor geral da entrada coletiva:");
+                                    ui.label(
+                                        RichText::new(format!("{brk:.0} A")).font(strong(12.5)),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
+                        if let Some(erratum) = &res.erratum_applied {
+                            ui.add_space(4.0);
+                            ui.label(RichText::new(erratum).size(11.0).color(WARNING));
+                        }
+                        for w in &res.warnings {
+                            ui.label(RichText::new(format!("• {w}")).size(11.0).color(WARNING));
+                        }
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new(format!("Fonte: {}", res.source))
+                                .size(11.0)
+                                .color(MUTED),
+                        );
+                    }
+                    Err(err) => {
+                        ui.label(RichText::new(err).color(DANGER));
+                    }
+                }
+            }
+        });
+
+        ctx.data_mut(|d| {
+            d.insert_temp(count_id, count);
+            d.insert_temp(area_id, area_m2);
+            d.insert_temp(light_id, common_light_kw);
+            d.insert_temp(spec_id, special_kva);
+            d.insert_temp(printed_id, as_printed);
+            d.insert_temp(util_id, chosen_util);
+        });
     }
 }

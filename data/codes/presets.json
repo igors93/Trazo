@@ -1,0 +1,44 @@
+[
+ {
+  "id": "generic",
+  "name": "Genérico (permissivo)",
+  "region": "Geral",
+  "note": "Faixas amplas sem restrições municipais rígidas. Padrão para projetos novos ou estudos livres.",
+  "architectural": "generic",
+  "structural": "generic",
+  "electrical": "generic",
+  "plumbing": "generic",
+  "mechanical": "generic"
+ },
+ {
+  "id": "brasil",
+  "name": "Brasil (ABNT + Código de Obras)",
+  "region": "Brasil",
+  "note": "NBR 9050:2020 + Código de Obras Municipal (habitabilidade, iluminação e ventilação), NBR 6118:2023, NBR 5410:2004 e NBR 5626/8160/10844.",
+  "architectural": "nbr-9050",
+  "architectural_amendments": [
+   "codigo-obras-br"
+  ],
+  "structural": "nbr-6118",
+  "electrical": "nbr-5410",
+  "plumbing": "nbr",
+  "plumbing_amendments": [
+   "cbpmesp-it22"
+  ],
+  "mechanical": "generic"
+ },
+ {
+  "id": "brasil-emergencia",
+  "name": "Brasil · Saídas de Emergência (NBR 9077)",
+  "region": "Brasil",
+  "note": "NBR 9077:2001 para escadas de emergência, NBR 6118:2023, NBR 5410:2004 e NBR hidrossanitária + CBPMESP IT-22.",
+  "architectural": "nbr-9077",
+  "structural": "nbr-6118",
+  "electrical": "nbr-5410",
+  "plumbing": "nbr",
+  "plumbing_amendments": [
+   "cbpmesp-it22"
+  ],
+  "mechanical": "generic"
+ }
+]

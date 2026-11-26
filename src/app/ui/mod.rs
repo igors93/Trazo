@@ -2,6 +2,7 @@ use eframe::egui::{self, Margin, Ui};
 
 mod browser;
 mod circulation;
+mod codes;
 mod command_palette;
 mod compare;
 pub(in crate::app) use compare::CompareUiState;
@@ -161,6 +162,7 @@ impl FloorPlanApp {
         self.poll_xrefs(&context);
         self.xref_dialog(&context);
         self.compare_dialog(&context);
+        self.codes_dialog(&context);
     }
 
     fn show_ribbon_panel(&mut self, ui: &mut Ui) -> egui::InnerResponse<()> {

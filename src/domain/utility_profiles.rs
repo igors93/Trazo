@@ -1,225 +1,323 @@
 //! Regional Brazilian electrical utility profiles, published standard citations
-//! and per-utility residential demand tables (B21).
+//! and data-driven residential demand tables (`T-11` / B21 / `#140`).
 //!
-//! Each built-in [`UtilityProfile`] replaces arbitrary scaling multipliers with
-//! explicit residential demand tables and service-entrance thresholds traced to
-//! the utility's secondary-distribution standard. Because utilities issue
-//! periodic technical bulletins (*comunicados técnicos*), every profile also
-//! carries an explicit [`UtilityStandardCitation`] shown in the UI, single-line
-//! diagram and MCP output so the designer can confirm the active local revision.
+//! Every built-in [`UtilityProfile`] reads its thresholds, residential demand
+//! tables and standard citations directly from the versioned JSON packs under
+//! `data/codes/electrical/*.json` via [`crate::domain::codes`]. Project-owned
+//! custom packs installed in [`BuildingCodes::own`] override built-in rules
+//! immediately without recompiling.
 
 use serde::{Deserialize, Serialize};
 
-/// Traceability metadata for a built-in utility profile.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+use super::codes::{
+    BuildingCodes, CodeDiscipline,
+    data::builtin_codes,
+    electrical_demand::{
+        BuildingDemandMethod, EntranceUtility, UnitDemandStandard, UtilityProfileData,
+    },
+};
+
+const EPS: f64 = 1e-9;
+
+/// Traceability metadata for a utility profile (sourced from JSON packs).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct UtilityStandardCitation {
-    pub standard: &'static str,
-    pub edition: &'static str,
-    pub tables: &'static str,
-    pub nominal_system: &'static str,
-    pub verification_note: &'static str,
+    pub standard: String,
+    pub edition: String,
+    pub tables: String,
+    pub nominal_system: String,
+    pub verification_note: String,
 }
 
-/// Standard residential lighting + general-use outlet (TUG) demand table
-/// (`kVA` upper bound → demand factor), common across NBR 5410 practice,
-/// Enel SP LIG-BT, CPFL GED-13 Tabela 3 and COPEL NTC 901100 Tabela 5.
-pub const STANDARD_GENERAL_DEMAND_TABLE: [(f64, f64); 10] = [
-    (1.0, 0.86),
-    (2.0, 0.75),
-    (3.0, 0.66),
-    (4.0, 0.59),
-    (5.0, 0.52),
-    (6.0, 0.45),
-    (7.0, 0.40),
-    (8.0, 0.35),
-    (9.0, 0.31),
-    (10.0, 0.27),
-];
-pub const STANDARD_GENERAL_DEMAND_OVER_10: f64 = 0.24;
-
-/// CEMIG ND 5.1 residential lighting + general-use outlet demand table
-/// (more conservative curve for Minas Gerais residential units).
-pub const CEMIG_GENERAL_DEMAND_TABLE: [(f64, f64); 10] = [
-    (1.0, 0.86),
-    (2.0, 0.81),
-    (3.0, 0.76),
-    (4.0, 0.72),
-    (5.0, 0.68),
-    (6.0, 0.64),
-    (7.0, 0.60),
-    (8.0, 0.57),
-    (9.0, 0.54),
-    (10.0, 0.52),
-];
-pub const CEMIG_GENERAL_DEMAND_OVER_10: f64 = 0.45;
-
-/// Standard residential specific-use appliance (TUE) demand table by circuit count.
-pub const STANDARD_SPECIFIC_DEMAND_TABLE: [f64; 25] = [
-    1.00, 1.00, 0.84, 0.76, 0.70, 0.65, 0.60, 0.57, 0.54, 0.52, 0.49, 0.48, 0.46, 0.45, 0.44, 0.43,
-    0.42, 0.41, 0.40, 0.40, 0.39, 0.39, 0.39, 0.38, 0.38,
-];
-
-/// Enel SP LIG-BT residential heating/TUE simultaneity table by equipment count.
-pub const ENEL_SP_SPECIFIC_DEMAND_TABLE: [f64; 12] = [
-    1.00, 0.92, 0.84, 0.76, 0.70, 0.65, 0.60, 0.57, 0.54, 0.52, 0.49, 0.48,
-];
-
-/// COPEL NTC 901100 residential TUE simultaneity table by equipment count.
-pub const COPEL_SPECIFIC_DEMAND_TABLE: [f64; 12] = [
-    1.00, 0.75, 0.65, 0.60, 0.55, 0.52, 0.49, 0.47, 0.45, 0.44, 0.43, 0.42,
-];
-
-/// Regional Brazilian utility profile controlling residential demand tables
-/// and service-entrance thresholds.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Regional Brazilian utility profile controlling residential demand tables,
+/// service-entrance categories and collective multifamily demand.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UtilityProfile {
     /// Generic Brazilian dwelling baseline (ABNT NBR 5410).
     #[default]
     Generic,
-    /// Enel SP — LIG-BT (12ª ed., 2014): 127/220 V, mono ≤ 12 kVA, bi ≤ 25 kVA.
+    /// Enel (RJ & SP) — GRI-0017 / LIG-BT.
+    #[serde(alias = "enel")]
     EnelSp,
-    /// CPFL — GED-13: 127/220 V, mono ≤ 12 kVA, bi ≤ 25 kVA.
+    /// CPFL (Paulista, Piratininga, Santa Cruz e RGE) — GED-13 v46.0 (`D = a..i`).
     Cpfl,
-    /// CEMIG — ND 5.1: 127/220 V, mono (Tipo A) ≤ 8 kVA, bi (Tipo B) ≤ 16 kVA.
+    /// Celesc Distribuição (SC) — N-321.0001 / N-321.0003 (individual + coletiva).
+    Celesc,
+    /// CEMIG (MG) — ND-5.1 / ND-5.2 (individual + coletiva).
     Cemig,
-    /// COPEL — NTC 901100: 127/220 V (PR), mono ≤ 9 kVA, bi ≤ 15 kVA.
+    /// COPEL Distribuição (PR) — NTC 901100 (urbano 127/220 V + rural 127/254 V).
     Copel,
+    /// Energisa Group — NDU-001 (9 distribuidoras).
+    Energisa,
+    /// Equatorial Group — NT.00001.EQTL.
+    Equatorial,
+    /// Fecoergs (RS) — REGD 035.01.06 (15 cooperativas + demanda coletiva).
+    Fecoergs,
+    /// Hidropan (Panambi, RS) — RIC 2014 (individual + demanda coletiva).
+    Hidropan,
 }
 
 impl UtilityProfile {
-    pub const ALL: [UtilityProfile; 5] = [
+    /// All 10 built-in entries: Generic NBR 5410 + 9 Brazilian utilities.
+    pub const ALL: [UtilityProfile; 10] = [
         UtilityProfile::Generic,
-        UtilityProfile::EnelSp,
         UtilityProfile::Cpfl,
+        UtilityProfile::EnelSp,
+        UtilityProfile::Celesc,
         UtilityProfile::Cemig,
         UtilityProfile::Copel,
+        UtilityProfile::Energisa,
+        UtilityProfile::Equatorial,
+        UtilityProfile::Fecoergs,
+        UtilityProfile::Hidropan,
     ];
+
+    /// Stable key matching `data/codes/electrical/<code>.json`.
+    pub fn code_key(self) -> &'static str {
+        match self {
+            Self::Generic => "generic",
+            Self::EnelSp => "enel",
+            Self::Cpfl => "cpfl",
+            Self::Celesc => "celesc",
+            Self::Cemig => "cemig",
+            Self::Copel => "copel",
+            Self::Energisa => "energisa",
+            Self::Equatorial => "equatorial",
+            Self::Fecoergs => "fecoergs",
+            Self::Hidropan => "hidropan",
+        }
+    }
+
+    /// Key used by legacy MCP / JSON APIs.
+    pub fn api_key(self) -> &'static str {
+        match self {
+            Self::Generic => "generic",
+            Self::EnelSp => "enel_sp",
+            Self::Cpfl => "cpfl",
+            Self::Celesc => "celesc",
+            Self::Cemig => "cemig",
+            Self::Copel => "copel",
+            Self::Energisa => "energisa",
+            Self::Equatorial => "equatorial",
+            Self::Fecoergs => "fecoergs",
+            Self::Hidropan => "hidropan",
+        }
+    }
+
+    pub fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "generic" | "generico" | "genérico" | "nbr5410" | "nbr-5410" => Some(Self::Generic),
+            "enel" | "enel_sp" | "enel-sp" | "enel_rj" => Some(Self::EnelSp),
+            "cpfl" | "rge" => Some(Self::Cpfl),
+            "celesc" => Some(Self::Celesc),
+            "cemig" => Some(Self::Cemig),
+            "copel" => Some(Self::Copel),
+            "energisa" => Some(Self::Energisa),
+            "equatorial" => Some(Self::Equatorial),
+            "fecoergs" => Some(Self::Fecoergs),
+            "hidropan" => Some(Self::Hidropan),
+            _ => None,
+        }
+    }
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Generic => "Padrão genérico (NBR 5410)",
-            Self::EnelSp => "Enel SP (LIG-BT)",
+            Self::EnelSp => "Enel (GRI-0017 / LIG-BT)",
             Self::Cpfl => "CPFL (GED-13)",
-            Self::Cemig => "CEMIG (ND 5.1)",
+            Self::Celesc => "Celesc (N-321.0001 / .0003)",
+            Self::Cemig => "CEMIG (ND-5.1 / ND-5.2)",
             Self::Copel => "COPEL (NTC 901100)",
+            Self::Energisa => "Energisa (NDU-001 · 9 dist.)",
+            Self::Equatorial => "Equatorial (NT.00001)",
+            Self::Fecoergs => "Fecoergs (REGD · 15 coop.)",
+            Self::Hidropan => "Hidropan (RIC 2014)",
         }
     }
 
-    pub fn citation(self) -> UtilityStandardCitation {
-        match self {
-            Self::Generic => UtilityStandardCitation {
-                standard: "ABNT NBR 5410:2004",
-                edition: "Referência genérica residencial",
-                tables: "Faixas usuais de iluminação/TUG (0,86–0,24) e TUE (1,00–0,38)",
-                nominal_system: "127/220 V",
-                verification_note: "Confirme os limites e tabelas na norma da distribuidora local.",
-            },
-            Self::EnelSp => UtilityStandardCitation {
-                standard: "Enel SP LIG-BT",
-                edition: "12ª edição (2014)",
-                tables: "Tabelas de categorias BT (mono ≤ 12 kVA, bi ≤ 25 kVA) e demanda residencial",
-                nominal_system: "127/220 V",
-                verification_note: "Verifique comunicados técnicos vigentes (CT / ET 1569) da Enel SP antes da execução.",
-            },
-            Self::Cpfl => UtilityStandardCitation {
-                standard: "CPFL GED-13",
-                edition: "Fornecimento em Tensão Secundária",
-                tables: "Tabelas 1A–1C (categorias mono ≤ 12 kVA, bi ≤ 25 kVA), Tabela 3 (luz/TUG) e Tabela 4 (TUE)",
-                nominal_system: "127/220 V",
-                verification_note: "Confirme a revisão vigente da GED-13 para a distribuidora do grupo CPFL.",
-            },
-            Self::Cemig => UtilityStandardCitation {
-                standard: "CEMIG ND 5.1",
-                edition: "Edificações Individuais — Rede Aérea",
-                tables: "Padrões Tipo A (≤ 8 kVA), Tipo B (≤ 16 kVA), Tipo C (≤ 75 kVA) e tabelas de demanda residencial",
-                nominal_system: "127/220 V",
-                verification_note: "Aparelhos em 220 V exigem no mínimo padrão Tipo B (bifásico) na ND 5.1; confirme a revisão vigente.",
-            },
-            Self::Copel => UtilityStandardCitation {
-                standard: "COPEL NTC 901100",
-                edition: "Fornecimento em Tensão Secundária",
-                tables: "Tabela 2 (categorias: mono ≤ 9 kVA, bi ≤ 15 kVA, tri ≤ 75 kVA) e Tabela 5 (fatores de demanda g1/TUE)",
-                nominal_system: "127/220 V",
-                verification_note: "Confirme a revisão vigente da NTC 901100 na COPEL antes do pedido de ligação.",
-            },
+    /// Resolve `UtilityProfileData` from the embedded JSON pack (or project-owned override).
+    fn load_profile_data(self, codes: Option<&BuildingCodes>) -> UtilityProfileData {
+        let key = self.code_key();
+        // 1. If a project-owned or active amendment provides `utility_profile` for this code, prefer it.
+        if let Some(c) = codes {
+            if let Some(pack) = c.find_code(CodeDiscipline::Electrical, key)
+                && let Some(val) = pack.sections.get("utility_profile")
+                && let Ok(parsed) = serde_json::from_value::<UtilityProfileData>(val.clone())
+            {
+                return parsed;
+            }
+            // Also check active electrical layered section if user selected a custom amendment directly.
+            if self == Self::Generic
+                && let Some(parsed) = c.resolve_typed::<UtilityProfileData>(
+                    CodeDiscipline::Electrical,
+                    "utility_profile",
+                )
+            {
+                return parsed;
+            }
         }
+        // 2. Built-in JSON pack
+        if let Some(pack) = builtin_codes()
+            .iter()
+            .find(|c| c.discipline == CodeDiscipline::Electrical && c.code == key)
+            && let Some(val) = pack.sections.get("utility_profile")
+            && let Ok(parsed) = serde_json::from_value::<UtilityProfileData>(val.clone())
+        {
+            return parsed;
+        }
+        UtilityProfileData::default()
+    }
+
+    #[allow(dead_code)]
+    pub fn citation(self) -> UtilityStandardCitation {
+        self.rules().citation
     }
 
     pub fn rules(self) -> UtilityRules {
-        match self {
-            Self::Generic => UtilityRules {
-                single_phase_max_kva: 8.0,
-                two_phase_max_kva: 15.0,
-                max_bt_kva: 75.0,
-                min_breaker_a: 32.0,
-                min_wire_mm2: 6.0,
-                general_demand_scale: 1.0,
-                specific_demand_scale: 1.0,
-                general_table: &STANDARD_GENERAL_DEMAND_TABLE,
-                general_over_max: STANDARD_GENERAL_DEMAND_OVER_10,
-                specific_table: &STANDARD_SPECIFIC_DEMAND_TABLE,
-                citation: self.citation(),
-            },
-            Self::EnelSp => UtilityRules {
-                single_phase_max_kva: 12.0,
-                two_phase_max_kva: 25.0,
-                max_bt_kva: 75.0,
-                min_breaker_a: 40.0,
-                min_wire_mm2: 10.0,
-                general_demand_scale: 1.0,
-                specific_demand_scale: 1.0,
-                general_table: &STANDARD_GENERAL_DEMAND_TABLE,
-                general_over_max: STANDARD_GENERAL_DEMAND_OVER_10,
-                specific_table: &ENEL_SP_SPECIFIC_DEMAND_TABLE,
-                citation: self.citation(),
-            },
-            Self::Cpfl => UtilityRules {
-                single_phase_max_kva: 12.0,
-                two_phase_max_kva: 25.0,
-                max_bt_kva: 75.0,
-                min_breaker_a: 40.0,
-                min_wire_mm2: 10.0,
-                general_demand_scale: 1.0,
-                specific_demand_scale: 1.0,
-                general_table: &STANDARD_GENERAL_DEMAND_TABLE,
-                general_over_max: STANDARD_GENERAL_DEMAND_OVER_10,
-                specific_table: &STANDARD_SPECIFIC_DEMAND_TABLE,
-                citation: self.citation(),
-            },
-            Self::Cemig => UtilityRules {
-                single_phase_max_kva: 8.0,
-                two_phase_max_kva: 16.0,
-                max_bt_kva: 75.0,
-                min_breaker_a: 40.0,
-                min_wire_mm2: 10.0,
-                general_demand_scale: 1.0,
-                specific_demand_scale: 1.0,
-                general_table: &CEMIG_GENERAL_DEMAND_TABLE,
-                general_over_max: CEMIG_GENERAL_DEMAND_OVER_10,
-                specific_table: &STANDARD_SPECIFIC_DEMAND_TABLE,
-                citation: self.citation(),
-            },
-            Self::Copel => UtilityRules {
-                single_phase_max_kva: 9.0,
-                two_phase_max_kva: 15.0,
-                max_bt_kva: 75.0,
-                min_breaker_a: 40.0,
-                min_wire_mm2: 10.0,
-                general_demand_scale: 1.0,
-                specific_demand_scale: 1.0,
-                general_table: &STANDARD_GENERAL_DEMAND_TABLE,
-                general_over_max: STANDARD_GENERAL_DEMAND_OVER_10,
-                specific_table: &COPEL_SPECIFIC_DEMAND_TABLE,
-                citation: self.citation(),
+        self.rules_from_codes(None)
+    }
+
+    pub fn rules_from_codes(self, codes: Option<&BuildingCodes>) -> UtilityRules {
+        let data = self.load_profile_data(codes);
+        UtilityRules {
+            single_phase_max_kva: data.single_phase_max_kva,
+            two_phase_max_kva: data.two_phase_max_kva,
+            max_bt_kva: data.max_bt_kva,
+            min_breaker_a: data.min_breaker_a,
+            min_wire_mm2: data.min_wire_mm2,
+            general_demand_scale: 1.0,
+            specific_demand_scale: 1.0,
+            general_table: data.general_table,
+            general_over_max: data.general_over_max,
+            specific_table: data.specific_table,
+            citation: UtilityStandardCitation {
+                standard: data.citation.standard,
+                edition: data.citation.edition,
+                tables: data.citation.tables,
+                nominal_system: data.citation.nominal_system,
+                verification_note: data.citation.verification_note,
             },
         }
+    }
+
+    /// Load the utility's full `unit_demand` method (CPFL `D=a..i`, Enel annexes, Celesc table).
+    pub fn unit_demand_standard(self, codes: Option<&BuildingCodes>) -> Option<UnitDemandStandard> {
+        let key = self.code_key();
+        let pack = codes
+            .and_then(|c| c.find_code(CodeDiscipline::Electrical, key))
+            .or_else(|| {
+                builtin_codes()
+                    .iter()
+                    .find(|c| c.discipline == CodeDiscipline::Electrical && c.code == key)
+            })?;
+        let val = pack.sections.get("unit_demand")?;
+        serde_json::from_value(val.clone()).ok()
+    }
+
+    /// Load the utility's full data-driven `entrance` table (COPEL, Energisa, Equatorial, Fecoergs, Hidropan).
+    pub fn entrance_utility(self, codes: Option<&BuildingCodes>) -> Option<EntranceUtility> {
+        let key = self.code_key();
+        let pack = codes
+            .and_then(|c| c.find_code(CodeDiscipline::Electrical, key))
+            .or_else(|| {
+                builtin_codes()
+                    .iter()
+                    .find(|c| c.discipline == CodeDiscipline::Electrical && c.code == key)
+            })?;
+        let val = pack.sections.get("entrance")?;
+        serde_json::from_value(val.clone()).ok()
+    }
+
+    /// Load the utility's collective residential demand method (`building_demand`: CEMIG, Celesc, Fecoergs, Hidropan).
+    pub fn building_demand_method(
+        self,
+        codes: Option<&BuildingCodes>,
+    ) -> Option<BuildingDemandMethod> {
+        let key = self.code_key();
+        let pack = codes
+            .and_then(|c| c.find_code(CodeDiscipline::Electrical, key))
+            .or_else(|| {
+                builtin_codes()
+                    .iter()
+                    .find(|c| c.discipline == CodeDiscipline::Electrical && c.code == key)
+            })?;
+        let val = pack.sections.get("building_demand")?;
+        serde_json::from_value(val.clone()).ok()
+    }
+
+    /// Member distributors / cooperatives declared in the utility's JSON pack (e.g. Energisa 9, Fecoergs 15).
+    pub fn members(self) -> Vec<(String, String)> {
+        self.entrance_utility(None)
+            .map(|e| e.members.into_iter().map(|m| (m.id, m.seat)).collect())
+            .unwrap_or_default()
+    }
+
+    /// Resolve the official utility service-entrance category (e.g. CPFL `B2`, Enel `B2`,
+    /// COPEL `14`, Energisa/Equatorial/Fecoergs/Hidropan) from the active JSON pack.
+    pub fn entrance_category_summary(
+        self,
+        codes: Option<&BuildingCodes>,
+        installed_kw: f64,
+        demand_kva: f64,
+        voltage_v: f64,
+        min_phases: u8,
+        member: Option<&str>,
+    ) -> Option<String> {
+        let system = if voltage_v < 170.0 {
+            "127/220"
+        } else {
+            "220/380"
+        };
+        if let Some(std) = self.unit_demand_standard(codes) {
+            let res = super::codes::electrical_demand::calculate_unit_demand(
+                &std,
+                &super::codes::electrical_demand::UnitDemandInput {
+                    system: system.to_owned(),
+                    installed_kw_override: Some(installed_kw),
+                    min_phases: Some(min_phases),
+                    ..Default::default()
+                },
+            );
+            if let Some(cat) = res.category {
+                let brk = res
+                    .breaker_a
+                    .map(|b| format!(" · disjuntor {b:.0} A"))
+                    .unwrap_or_default();
+                return Some(format!("Categoria {cat} ({system} V{brk})"));
+            }
+        }
+        if let Some(util) = self.entrance_utility(codes)
+            && let Some(pick) = super::codes::electrical_demand::pick_entrance_category(
+                &util,
+                &super::codes::electrical_demand::EntrancePickInput {
+                    system: system.to_owned(),
+                    use_kind: "individual".to_owned(),
+                    member: member.map(ToOwned::to_owned),
+                    installed_kw: Some(installed_kw),
+                    demand_kva: Some(demand_kva),
+                    min_phases: Some(min_phases),
+                },
+            )
+            && let Some(cat) = pick.category
+        {
+            let brk = pick
+                .breaker_a
+                .first()
+                .map(|b| format!(" · disjuntor {b:.0} A"))
+                .unwrap_or_default();
+            return Some(format!(
+                "Categoria {cat} ({} V{brk} · {})",
+                pick.system, pick.table_source
+            ));
+        }
+        None
     }
 }
 
 /// Service-entrance limits, explicit residential demand tables and standard
-/// citation for a utility profile.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// citation resolved from the utility's versioned JSON pack.
+#[derive(Clone, Debug, PartialEq)]
 pub struct UtilityRules {
     pub single_phase_max_kva: f64,
     pub two_phase_max_kva: f64,
@@ -230,9 +328,9 @@ pub struct UtilityRules {
     pub general_demand_scale: f64,
     /// Optional user override multiplier (always `1.0` for built-in standards).
     pub specific_demand_scale: f64,
-    pub general_table: &'static [(f64, f64)],
+    pub general_table: Vec<(f64, f64)>,
     pub general_over_max: f64,
-    pub specific_table: &'static [f64],
+    pub specific_table: Vec<f64>,
     pub citation: UtilityStandardCitation,
 }
 
@@ -297,7 +395,7 @@ impl UtilityRules {
         let base = self
             .general_table
             .iter()
-            .find(|(up_to, _)| kva <= *up_to + 1e-9)
+            .find(|(up_to, _)| kva <= *up_to + EPS)
             .map_or(self.general_over_max, |(_, factor)| *factor);
         (base * self.general_demand_scale).clamp(0.10, 1.0)
     }
@@ -318,12 +416,13 @@ mod tests {
 
     #[test]
     fn every_builtin_profile_cites_a_standard_and_uses_no_hidden_multipliers() {
+        assert_eq!(UtilityProfile::ALL.len(), 10);
         for profile in UtilityProfile::ALL {
             let rules = profile.rules();
-            assert!(!rules.citation.standard.is_empty());
-            assert!(!rules.citation.edition.is_empty());
-            assert!(!rules.citation.tables.is_empty());
-            assert!(!rules.citation.verification_note.is_empty());
+            assert!(!rules.citation.standard.is_empty(), "{profile:?}");
+            assert!(!rules.citation.edition.is_empty(), "{profile:?}");
+            assert!(!rules.citation.tables.is_empty(), "{profile:?}");
+            assert!(!rules.citation.verification_note.is_empty(), "{profile:?}");
             assert!((rules.general_demand_scale - 1.0).abs() < 1e-12);
             assert!((rules.specific_demand_scale - 1.0).abs() < 1e-12);
             assert!(!rules.general_table.is_empty());
@@ -350,5 +449,25 @@ mod tests {
         assert!((copel.single_phase_max_kva - 9.0).abs() < 1e-9);
         assert!((copel.two_phase_max_kva - 15.0).abs() < 1e-9);
         assert!((copel.specific_demand_factor(2) - 0.75).abs() < 1e-9);
+
+        // New utilities: Energisa (9 members), Fecoergs (15 cooperatives), Celesc/Hidropan collective demand.
+        assert_eq!(UtilityProfile::Energisa.members().len(), 9);
+        assert_eq!(UtilityProfile::Fecoergs.members().len(), 15);
+        assert!(
+            UtilityProfile::Celesc
+                .building_demand_method(None)
+                .is_some()
+        );
+        assert!(UtilityProfile::Cemig.building_demand_method(None).is_some());
+        assert!(
+            UtilityProfile::Fecoergs
+                .building_demand_method(None)
+                .is_some()
+        );
+        assert!(
+            UtilityProfile::Hidropan
+                .building_demand_method(None)
+                .is_some()
+        );
     }
 }

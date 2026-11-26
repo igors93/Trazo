@@ -822,16 +822,24 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "projeto_eletrico",
             title: "Projeto elétrico (NBR 5410)",
-            description: "Comandos do projeto elétrico. gerar_pontos: adiciona o que a NBR 5410 exige e falta em cada cômodo. distribuir_circuitos: renumera os circuitos. definir_tensao: 127 ou 220 V. gerar_eletrodutos: liga ao quadro (QD/QDG/QDC) os pontos ainda desconectados. ligar_pontos / definir_trecho / remover_eletroduto: gerencia eletrodutos. definir_alimentacao: auto, monofasica, bifasica ou trifasica. definir_concessionaria: generico, enel_sp, cpfl, cemig ou copel.",
+            description: "Comandos do projeto elétrico. gerar_pontos: adiciona o que a NBR 5410 exige e falta em cada cômodo. distribuir_circuitos: renumera os circuitos. definir_tensao: 127 ou 220 V. gerar_eletrodutos: liga ao quadro (QD/QDG/QDC) os pontos ainda desconectados. ligar_pontos / definir_trecho / remover_eletroduto: gerencia eletrodutos. definir_alimentacao: auto, monofasica, bifasica ou trifasica. definir_concessionaria: generico, cpfl, enel_sp, celesc, cemig, copel, energisa, equatorial, fecoergs ou hidropan. demanda_coletiva: calcula demanda coletiva multifamiliar (CODI/CEMIG/Celesc/Fecoergs/Hidropan).",
             properties: json!({
-                "acao": { "type": "string", "enum": ["gerar_pontos", "distribuir_circuitos", "definir_tensao", "gerar_eletrodutos", "ligar_pontos", "definir_trecho", "remover_eletroduto", "definir_alimentacao", "definir_concessionaria"], "description": "O que fazer." },
+                "acao": { "type": "string", "enum": ["gerar_pontos", "distribuir_circuitos", "definir_tensao", "gerar_eletrodutos", "ligar_pontos", "definir_trecho", "remover_eletroduto", "definir_alimentacao", "definir_concessionaria", "demanda_coletiva"], "description": "O que fazer." },
                 "tensao": number("Para definir_tensao: 127 ou 220."),
                 "de": integer("Para ligar_pontos: id do ponto do lado do quadro."),
                 "para": integer("Para ligar_pontos: id do outro ponto."),
                 "id": integer("Para definir_trecho e remover_eletroduto: id do eletroduto."),
                 "trecho": { "type": "string", "enum": ["teto", "piso"], "description": "Onde o eletroduto passa: teto (ou parede, linha cheia) ou piso (tracejado). Padrão teto." },
                 "alimentacao": { "type": "string", "enum": ["auto", "monofasica", "bifasica", "trifasica"], "description": "Para definir_alimentacao." },
-                "concessionaria": { "type": "string", "enum": ["generico", "enel_sp", "cpfl", "cemig", "copel"], "description": "Para definir_concessionaria: perfil regional de demanda e entrada." },
+                "concessionaria": { "type": "string", "enum": ["generico", "cpfl", "enel_sp", "celesc", "cemig", "copel", "energisa", "equatorial", "fecoergs", "hidropan"], "description": "Para definir_concessionaria ou demanda_coletiva: perfil regional de demanda e entrada." },
+                "quantidade": integer("Para demanda_coletiva: número de unidades residenciais."),
+                "area_m2": number("Para demanda_coletiva: área média por unidade em m²."),
+                "iluminacao_comum_kw": number("Para demanda_coletiva: iluminação instalada das áreas comuns (kW)."),
+                "tomadas_comum_kw": number("Para demanda_coletiva: tomadas instaladas das áreas comuns (kW)."),
+                "demanda_comum_kva": number("Para demanda_coletiva: demanda adicional de áreas comuns (kVA)."),
+                "demanda_especial_kva": number("Para demanda_coletiva: cargas especiais como elevadores/bombas (kVA)."),
+                "demanda_comercial_kva": number("Para demanda_coletiva: demanda comercial (kVA)."),
+                "como_impresso": boolean("Para demanda_coletiva: usar valor impresso literal em caso de errata publicada."),
             }),
             required: &["acao"],
             read_only: false,
@@ -1330,7 +1338,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 62);
+        assert_eq!(tools.len(), 65);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -1411,7 +1419,7 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 62);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 65);
     }
 }
 
