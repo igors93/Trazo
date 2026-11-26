@@ -299,7 +299,7 @@ pub fn room_live_load_kn_m2(room_name: &str, base_live: f64) -> f64 {
 pub struct StructureSettings {
     /// Concrete strength, MPa.
     pub fck_mpa: f64,
-    /// Allowable soil pressure, kPa (200 kPa = 0.2 MPa).
+    /// Allowable soil pressure, kPa (100 kPa = 0.1 MPa = 1 kgf/cm²).
     pub soil_kpa: f64,
     /// Floors the columns carry (each with its slab, beams and walls).
     pub floors: u32,
@@ -325,9 +325,11 @@ pub struct StructureSettings {
 
 impl Default for StructureSettings {
     fn default() -> Self {
+        // Missing data takes the safe side (#160): soil without a survey
+        // at 1 kgf/cm² and the lowest reinforced-concrete class, C20.
         Self {
-            fck_mpa: 25.0,
-            soil_kpa: 200.0,
+            fck_mpa: crate::domain::protection::hypotheses::CONSERVATIVE_FCK_MPA,
+            soil_kpa: crate::domain::protection::hypotheses::CONSERVATIVE_SOIL_KPA,
             floors: 1,
             live_kn_m2: 1.5,
             finish_kn_m2: 1.0,

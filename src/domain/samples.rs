@@ -664,7 +664,7 @@ fn build_area_gourmet() -> Project {
     let _ = project.generate_wall_foundations();
     let _ = project.size_footings();
 
-    // NBR 6123 site wind (V0 = 35 m/s, terrain category III).
+    // NBR 6123 site wind (Trazo's safe V0 while the city is unknown, terrain category III).
     let _ = project.set_wind(WindSettings {
         v0_ms: 35.0,
         category: 3,

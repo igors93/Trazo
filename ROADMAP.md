@@ -407,7 +407,7 @@ The first ten items on the path, in order. The other items of each milestone fit
 | 1 | #168 | Hypothesis provenance | M0 | Trazo cannot contest a hypothesis if it does not know who set it and on what evidence. |
 | 2 | #169 | Contested hypotheses | M0 | Today an assistant can raise the soil pressure or lower a load through MCP and receive green: the most dangerous gap once the AI is at the centre. |
 | 3 | #171 | Hypotheses need the person | M0 | The AI may propose a hypothesis; only the person, with evidence, may adopt it. |
-| 4 | #160 | Safe defaults audit | M0 | A default that is too optimistic is a dangerous decision nobody sees. The soil pressure without a survey (200 kPa) is the first one. |
+| 4 | #160 | Safe defaults audit | M0 | A default that is too optimistic is a dangerous decision nobody sees. ✅ Soil 100 kPa, C20 and V0 45 m/s without data. |
 | 5 | #170 | AI action report | M0 | An edit that makes the house less safe must be impossible to miss, for the assistant and for the person. |
 | 6 | #159 | Where to get help | M0 | A red light with no way forward leaves the family alone. Cheap to build, and it changes every result. |
 | 7 | #166 | From a description to a checked house | M0 | The family's way in: a conversation, not a drawing tool. |
@@ -582,7 +582,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 157 | Building on top of an existing house: an upper floor over a ground floor whose foundation and columns are unknown is refused until they are surveyed, with plain-language guidance on what to find out and how | P0 | M | M0 | ⬜ |
 | 158 | Building in stages: plan the future floor today so the first stage's footings, columns and slab already carry it, and warn when an extension exceeds what the house was sized for | P0 | M | M0 | ⬜ |
 | 159 | Where to get help: every red result, every refusal and the review report name the free paths (ATHIS under Lei 11.888/2008, through the municipality, CAU or CREA; university model offices; Defesa Civil 199), with a regional list editable through #140 | P0 | S | M0 | ⬜ |
-| 160 | Safe defaults audit: every value Trazo assumes when data is missing takes the unfavourable side and is listed as an assumption; first case, the allowable soil pressure without a survey (today 200 kPa, medium sand) | P0 | S | M0 | ⬜ |
+| 160 | Safe defaults audit: every value Trazo assumes when data is missing takes the unfavourable side and is listed as an assumption; soil 100 kPa without a survey, C20 concrete and V0 45 m/s while the city is unknown | P0 | S | M0 | ✅ |
 | 161 | Plain-language pass: every message, check and refusal has a one-sentence version that a person without engineering training understands, technical terms are explained on hover, and the texts are reviewed with self-builders | P0 | M | M0 | ⬜ |
 | 162 | Before-the-pour checklists: printable, plain-language checklists for each concrete pour (footing, column, beam, slab) taken from the bar schedule: bar count and diameter, cover, formwork, shoring and curing time | P1 | M | M0 | ⬜ |
 | 163 | Family booklet: the plan, the shopping list, the traffic-light summary and "when to stop and get help" on a few A4 pages to take to the hardware store, the builder and the reviewer | P1 | M | M0 | ⬜ |

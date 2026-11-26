@@ -307,20 +307,21 @@ pub fn cite_evidence(previous: &Project, current: &mut Project, cited: &str) {
 /// One line per hypothesis for the assumptions list: value, origin and
 /// evidence.
 pub fn origin_lines(project: &Project) -> Vec<String> {
-    HypothesisKey::ALL
-        .into_iter()
-        .map(|key| {
-            let record = project.protection.hypotheses.record(key);
-            let evidence = evidence(key, project)
-                .map_or_else(|| "sem prova".to_owned(), |e| format!("prova: {e}"));
-            format!(
-                "{}: {} · {} · {evidence}.",
-                key.label(),
-                key.display(project),
-                record.source.label()
-            )
-        })
-        .collect()
+    let mut lines = vec![format!(
+        "Sem dados reais, o Trazo fica do lado seguro (#160): solo de {CONSERVATIVE_SOIL_KPA:.0} kPa sem sondagem, concreto C{CONSERVATIVE_FCK_MPA:.0}, V0 de {CONSERVATIVE_V0_MS:.0} m/s enquanto a cidade não é definida. Um valor mais otimista só vale com prova."
+    )];
+    lines.extend(HypothesisKey::ALL.into_iter().map(|key| {
+        let record = project.protection.hypotheses.record(key);
+        let evidence = evidence(key, project)
+            .map_or_else(|| "sem prova".to_owned(), |e| format!("prova: {e}"));
+        format!(
+            "{}: {} · {} · {evidence}.",
+            key.label(),
+            key.display(project),
+            record.source.label()
+        )
+    }));
+    lines
 }
 
 /// Allowable soil pressure Trazo can assume without a soil survey: the
@@ -817,6 +818,20 @@ mod tests {
     }
 
     #[test]
+    fn trazo_defaults_are_the_safe_values_and_are_never_contested() {
+        let project = Project::default();
+        for key in HypothesisKey::ALL {
+            if let Some(reference) = reference(key, &project) {
+                assert!(
+                    !key.more_favourable(key.value(&project), reference),
+                    "{key:?} default is more favourable than the safe value"
+                );
+            }
+        }
+        assert!(contests(&project).is_empty());
+    }
+
+    #[test]
     fn origin_lines_name_the_source_and_the_evidence() {
         let mut project = Project::default();
         project.protection.hypotheses.set(
@@ -827,8 +842,8 @@ mod tests {
             },
         );
         let lines = origin_lines(&project);
-        assert_eq!(lines.len(), HypothesisKey::ALL.len());
-        assert!(lines[0].contains("definido pela IA"));
-        assert!(lines[0].contains("sem prova"));
+        assert_eq!(lines.len(), HypothesisKey::ALL.len() + 1);
+        assert!(lines[1].contains("definido pela IA"));
+        assert!(lines[1].contains("sem prova"));
     }
 }

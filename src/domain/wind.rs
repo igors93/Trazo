@@ -26,8 +26,9 @@ use super::geometry::{Point, distance_to_segment};
 use super::model::Project;
 use super::structure::StructureReport;
 
+/// While the city is unknown, the wind takes the safe side (#160).
 fn default_v0() -> f64 {
-    35.0
+    crate::domain::protection::hypotheses::CONSERVATIVE_V0_MS
 }
 fn default_category() -> u8 {
     3

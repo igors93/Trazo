@@ -79,7 +79,7 @@ Trazo does not promise that a house will not fall. It does everything it can so 
 - **Every risky decision is checked.** Slabs, beams, columns, footings, tall walls, roofs, the water tank and the electrical installation.
 - **A traffic light you can read.** Green passes with a margin, yellow passes at the limit, red cannot stay that way. Each result comes with one plain sentence on what to change: *"this beam is too shallow for its span: make it 40 cm tall"*.
 - **It refuses what it cannot size safely.** More than three storeys, very long spans, heavy loads or very weak soil: Trazo gives no number, explains why and says a professional is needed.
-- **Assumptions on the table.** Every result lists what it assumed (concrete, soil pressure, loads, wind). Making every missing value default to the safe side is part of the next milestone: today, without a soil survey, Trazo assumes a medium soil (200 kPa), which can be optimistic on landfill or soft clay.
+- **The safe side when data is missing.** Without a soil survey Trazo assumes 100 kPa (1 kgf/cm²), without a specification C20 concrete, and while the city is unknown a wind speed of 45 m/s. Every result lists what it assumed, who set it and on what evidence.
 - **The load path, made visible.** Slab to beam, beam to column, column to footing, footing to soil, on screen and on paper.
 - **Plain words first, the full calculation one click away.** The family reads the sentence; the reviewing professional opens the formula, the standard and the assumptions.
 - **A shopping list.** Blocks, cement, sand, steel and tiles with waste, so the money goes to the right material.
