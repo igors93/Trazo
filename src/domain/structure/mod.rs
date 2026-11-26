@@ -36,10 +36,12 @@ pub use model::{
     StructureSettings, room_live_load_kn_m2,
 };
 pub use output::{beam_diagrams_svg, build_columns_schedule};
+#[cfg(test)]
+pub use results::footing_uplift_resistance_kn;
 pub use results::{
     BeamLine, BeamLineResult, ColumnPosition, ColumnResult, ConcentratedLoadResult, FootingResult,
     MisalignedColumn, PileCapResult, SlabResult, SpanPointLoad, SpanResult, StructureGeneration,
-    StructureReport, beam_moment_at, beam_shear_at,
+    StructureReport, UPLIFT_SOIL_KN_M3, beam_moment_at, beam_shear_at,
 };
 pub use slab_geometry::{decompose_slab_panels, yield_line_shares};
 

@@ -11,8 +11,11 @@
 //!   contínua*, 6–20 m, allowed below the water table).
 //! - [`study`]: comparative study across footings, raft (*radier*), brocas and
 //!   deep piles for the structure's real loads.
+//! - [`presumed`]: the presumed profile from a qualitative description when
+//!   there is no survey yet; it only ever makes the calculations safer.
 
 pub mod piles;
+pub mod presumed;
 pub mod settlement;
 pub mod study;
 pub mod survey;
@@ -23,6 +26,7 @@ mod tests;
 use serde::{Deserialize, Serialize};
 
 pub use piles::PileCapacity;
+pub use presumed::{Likelihood, PresumedLayer, PresumedSoil, PresumedSoilType};
 pub use settlement::{MAX_FOOTING_SETTLEMENT_MM, estimate_footing_settlement_mm};
 pub use study::FoundationStudy;
 pub use survey::{Borehole, MAX_FOOTING_KPA, SoilSurvey, SptReading};

@@ -13,11 +13,11 @@ use crate::domain::plumbing::network::Pressure;
 use super::{Check, Discipline, Light, Verdict, decimal};
 
 pub fn plumbing_verdicts(project: &Project) -> Vec<Verdict> {
+    let mut verdicts: Vec<Verdict> = septic_verdict(project).into_iter().collect();
     let Some(cold) = cold_water(project) else {
-        return Vec::new();
+        return verdicts;
     };
     let network = &cold.network;
-    let mut verdicts = Vec::new();
     for (index, group) in network.groups.iter().enumerate() {
         let checks: Vec<Check> = network
             .outlets
@@ -80,37 +80,21 @@ pub fn plumbing_verdicts(project: &Project) -> Vec<Verdict> {
             checks,
         });
     }
-    let tank = project
-        .fixtures
-        .iter()
-        .find(|f| f.kind == crate::domain::fixtures::FixtureKind::WaterTank);
-    if let Some(load) =
-        tank.and_then(|t| t.structural_load_kn.or(t.kind.default_structural_load_kn()))
-    {
-        let utilisation = cold.tank_full_kn / load.max(1e-9);
-        let short = load + 0.05 < cold.tank_full_kn;
+    if let Some(check) = crate::domain::plumbing::cold_water::tank_weight(
+        project,
+        cold.reserve_l,
+        cold.tank_l,
+        cold.tank_full_kn,
+    ) {
+        let short = check.short;
         verdicts.push(Verdict {
             discipline: Discipline::Plumbing,
             element: "Caixa-d'água".to_owned(),
             checks: vec![Check {
                 name: "Peso na estrutura".to_owned(),
-                utilisation,
+                utilisation: check.utilisation,
                 light: if short { Light::Red } else { Light::Green },
-                simple: if short {
-                    format!(
-                        "A caixa de {} L cheia pesa {} kN, mas a laje foi conferida para {} kN: corrija a carga da caixa no projeto estrutural e confira de novo.",
-                        decimal(cold.tank_l, 0),
-                        decimal(cold.tank_full_kn, 1),
-                        decimal(load, 1)
-                    )
-                } else {
-                    format!(
-                        "A estrutura foi conferida para {} kN; a caixa de {} L cheia pesa {} kN.",
-                        decimal(load, 1),
-                        decimal(cold.tank_l, 0),
-                        decimal(cold.tank_full_kn, 1)
-                    )
-                },
+                simple: check.message,
                 detail: format!(
                     "{} morador(es) × {} L/dia × {} dia(s) = {} L → caixa comercial de {} L; peso cheia = água + 1,0 kN de caixa e conexões.",
                     cold.residents,
@@ -123,4 +107,157 @@ pub fn plumbing_verdicts(project: &Project) -> Vec<Verdict> {
         });
     }
     verdicts
+}
+
+/// The septic tank and the soakaway (NBR 7229, NBR 13969): the distances
+/// the norm asks are red when broken; an absorption rate nobody measured is
+/// yellow, because the percolation test decides the soakaway's size.
+fn septic_verdict(project: &Project) -> Option<Verdict> {
+    use crate::domain::plumbing::septic::{
+        AbsorptionSource, MAX_SOAKAWAY_DEPTH_M, WATER_TABLE_CLEARANCE_M, septic_design,
+    };
+    let design = septic_design(project)?;
+    let mut checks = vec![Check {
+        name: "Tamanho do tanque".to_owned(),
+        utilisation: 0.0,
+        light: Light::Green,
+        simple: format!(
+            "Tanque séptico de {} L úteis para {} pessoa(s): cilíndrico (anéis) de {} m de diâmetro com {} m de água, ou retangular de {} × {} m com {} m de água.",
+            decimal(design.volume_l, 0),
+            design.people,
+            decimal(design.diameter_m, 2),
+            decimal(design.cylinder_depth_m, 2),
+            decimal(design.length_m, 2),
+            decimal(design.width_m, 2),
+            decimal(design.depth_m, 2)
+        ),
+        detail: format!(
+            "NBR 7229: V = 1000 + N·(C·T + K·Lf); N = {}, C = {} L/dia, T = {} dia, K = {} dias, Lf = 1 L/dia → {} L. Profundidade útil de {} a {} m (Tabela 4); largura mínima 0,80 m, comprimento 2 a 4 vezes a largura.",
+            design.people,
+            decimal(design.per_person_l, 0),
+            decimal(design.detention_days, 2),
+            decimal(design.sludge_k_days, 0),
+            decimal(design.volume_l, 0),
+            decimal(design.depth_m, 2),
+            decimal(design.max_depth_m, 2)
+        ),
+    }];
+    if design.placed {
+        for distance in &design.distances {
+            let utilisation = distance.needed_m / distance.distance_m.max(1e-9);
+            let light = if !distance.ok() {
+                Light::Red
+            } else if !distance.comfortable() {
+                Light::Yellow
+            } else {
+                Light::from_utilisation(utilisation)
+            };
+            let simple = if !distance.ok() {
+                format!(
+                    "O {} fica a {} m da {}: a norma pede pelo menos {} m. Mude o lugar dele.",
+                    distance.element,
+                    decimal(distance.distance_m, 2),
+                    distance.to,
+                    decimal(distance.normative_m, 2)
+                )
+            } else if !distance.comfortable() {
+                format!(
+                    "O {} fica a {} m da {}: atende a norma, mas em solo colapsível o Trazo pede {} m para a água não chegar às fundações. Afaste-o se puder, ou apoie as fundações vizinhas em brocas.",
+                    distance.element,
+                    decimal(distance.distance_m, 2),
+                    distance.to,
+                    decimal(distance.needed_m, 2)
+                )
+            } else {
+                format!(
+                    "O {} fica a {} m da {} (mínimo {} m).",
+                    distance.element,
+                    decimal(distance.distance_m, 2),
+                    distance.to,
+                    decimal(distance.needed_m, 2)
+                )
+            };
+            checks.push(Check {
+                name: format!("Distância · {} → {}", distance.element, distance.to),
+                utilisation: if distance.ok() {
+                    utilisation.min(1.0)
+                } else {
+                    utilisation
+                },
+                light,
+                simple,
+                detail: "NBR 7229 §5.1: 1,50 m de construções, divisas, sumidouros e ramal de água; 3,0 m de árvores e da rede pública de água; 15 m de poços e corpos d'água. Medido da face externa do tanque cilíndrico e do sumidouro (paredes de 10 cm).".to_owned(),
+            });
+        }
+    } else {
+        checks.push(Check {
+            name: "Posição".to_owned(),
+            utilisation: 1.0,
+            light: Light::Yellow,
+            simple: "Marque onde ficam o tanque séptico e o sumidouro (projeto_hidraulico → configurar_fossa) para o Trazo conferir as distâncias da norma.".to_owned(),
+            detail: "Sem posição, as distâncias a construções, divisas e entre o tanque e o sumidouro não são conferidas.".to_owned(),
+        });
+    }
+    let depth_ratio = design.soakaway_height_m / MAX_SOAKAWAY_DEPTH_M;
+    let tested = design.absorption_source == AbsorptionSource::Tested;
+    checks.push(Check {
+        name: "Sumidouro".to_owned(),
+        utilisation: depth_ratio,
+        light: if !tested && depth_ratio <= 1.0 + 1e-9 {
+            Light::Yellow
+        } else {
+            Light::from_utilisation(depth_ratio)
+        },
+        simple: if depth_ratio > 1.0 + 1e-9 {
+            format!(
+                "{} sumidouro(s) de {} m de diâmetro precisariam de {} m de altura útil: fundo demais para cavar. Use mais sumidouros, um diâmetro maior ou valas de infiltração, e faça o teste de infiltração.",
+                design.soakaway_count,
+                decimal(design.soakaway_diameter_m, 2),
+                decimal(design.soakaway_height_m, 1)
+            )
+        } else if tested {
+            format!(
+                "{} sumidouro(s) de {} m de diâmetro com {} m de altura útil abaixo da entrada (escavação de {} m).",
+                design.soakaway_count,
+                decimal(design.soakaway_diameter_m, 2),
+                decimal(design.soakaway_height_m, 1),
+                decimal(design.soakaway_depth_m, 1)
+            )
+        } else {
+            format!(
+                "Estimativa: {} sumidouro(s) de {} m de diâmetro com {} m de altura útil (escavação de {} m). A taxa de infiltração ({} L/m²·dia) não foi medida: faça o teste de infiltração no lugar do sumidouro antes de cavar.",
+                design.soakaway_count,
+                decimal(design.soakaway_diameter_m, 2),
+                decimal(design.soakaway_height_m, 1),
+                decimal(design.soakaway_depth_m, 1),
+                decimal(design.absorption_l_m2_day, 0)
+            )
+        },
+        detail: format!(
+            "Q = {} L/dia; TAS = {} L/m²·dia → A = Q/TAS = {} m²; por sumidouro A = π·D²/4 + π·D·H (NBR 13969). Fundo a pelo menos {} m acima do lençol; 20 m de poços.",
+            decimal(design.daily_l, 0),
+            decimal(design.absorption_l_m2_day, 0),
+            decimal(design.area_needed_m2, 1),
+            decimal(WATER_TABLE_CLEARANCE_M, 2)
+        ),
+    });
+    if let Some(water) = design.water_table_m {
+        let needed = design.soakaway_depth_m + WATER_TABLE_CLEARANCE_M;
+        checks.push(Check::new(
+            "Lençol freático",
+            needed / water.max(1e-9),
+            format!(
+                "O fundo do sumidouro ({} m) precisa ficar {} m acima do lençol ({} m).",
+                decimal(design.soakaway_depth_m, 1),
+                decimal(WATER_TABLE_CLEARANCE_M, 1),
+                decimal(water, 1)
+            ),
+            "NBR 13969: distância mínima de 1,50 m entre o fundo do sumidouro e o nível máximo do lençol freático.".to_owned(),
+        ));
+    }
+    Some(Verdict {
+        discipline: Discipline::Plumbing,
+        element: "Fossa séptica e sumidouro".to_owned(),
+        checks,
+    })
 }

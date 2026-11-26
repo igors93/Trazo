@@ -8,6 +8,7 @@ mod electrical;
 mod hypotheses;
 mod plumbing;
 mod site_risks;
+mod site_works;
 mod stages;
 mod structure;
 
@@ -19,6 +20,7 @@ use crate::domain::model::Project;
 pub use codes::code_verdicts;
 pub use electrical::{electrical_project_verdicts, electrical_verdicts};
 pub use plumbing::plumbing_verdicts;
+pub use site_works::site_works_verdicts;
 pub use structure::structure_verdicts;
 
 /// Up to this utilisation the light is green.
@@ -258,6 +260,7 @@ pub fn assumptions(project: &Project) -> Vec<String> {
 /// Every verdict of the project, worst first.
 pub fn safety_summary(project: &Project) -> SafetySummary {
     let mut verdicts = structure_verdicts(project, &project.structure_report());
+    verdicts.extend(site_works_verdicts(project));
     verdicts.extend(electrical_project_verdicts(
         project,
         &project.load_schedule(),

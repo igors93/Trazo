@@ -1448,6 +1448,9 @@ impl Project {
             }
         }
         report.balance_beams = balance.results;
+        // The global wind screening founds walls on their ground beams and
+        // strip footings: it needs them before the wind runs.
+        report.wall_foundations = ground.results.clone();
         // Wind on the tall walls and the roofs (#147).
         let wind = self.wind_effects(&report);
         for column in wind.columns.iter().filter(|c| c.ratio > 1.0 + 1e-9) {
@@ -1486,8 +1489,10 @@ impl Project {
         }
         for global in wind.global.iter().filter(|global| !global.ok()) {
             report.warnings.push(format!(
-                "Estabilidade global {}: α = {:.2}/{:.2}, deslocamento = {:.1}/{:.1} mm, momento estabilizante/solicitante = {:.2}; confira apoios, travamento e fundações.",
-                global.direction, global.alpha, global.alpha_limit,
+                "Estabilidade global {}{}: α = {:.2}/{:.2}, deslocamento = {:.1}/{:.1} mm, momento estabilizante/solicitante = {:.2}; confira apoios, travamento e fundações.",
+                global.direction,
+                if global.block.is_empty() { String::new() } else { format!(" ({})", global.block) },
+                global.alpha, global.alpha_limit,
                 global.drift_mm, global.drift_limit_mm, global.overturning_ratio
             ));
         }
@@ -1655,6 +1660,9 @@ impl Project {
             }
             if frame.envelope.has_column_uplift
                 && report.frame_uplift_anchored_by_piles(frame).is_none()
+                && report
+                    .frame_uplift_held_by_footings(frame, self.footing_base_depth_m())
+                    .is_none()
             {
                 report.warnings.push(format!(
                     "{}: tração/arrancamento em pilar sob vento ({}, N_mín = {} kN); verifique ancoragem e contrapeso na fundação.",

@@ -199,6 +199,7 @@ pub(super) fn wind_json(
         })).collect::<Vec<_>>(),
         "estabilidade_global": effects.global.iter().map(|global| json!({
             "direcao": global.direction,
+            "bloco": (!global.block.is_empty()).then(|| global.block.clone()),
             "altura_m": round2(global.height_m),
             "fachada_m": round2(global.facade_m),
             "vento_kn": round2(global.wind_kn),

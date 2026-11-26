@@ -112,6 +112,99 @@ pub fn tank_full_kn(litres: f64) -> f64 {
     litres * GRAVITY / 1000.0 + TANK_SELF_KN
 }
 
+/// The largest commercial tank whose full weight fits a checked load, L.
+pub fn tank_fitting_load_l(load_kn: f64) -> f64 {
+    TANKS_L
+        .iter()
+        .copied()
+        .filter(|litres| tank_full_kn(*litres) <= load_kn + 0.05)
+        .fold(0.0, f64::max)
+}
+
+/// The water tanks the structure was checked for, against the water the
+/// family needs.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TankWeightCheck {
+    pub short: bool,
+    /// Demand over what the checked loads hold.
+    pub utilisation: f64,
+    pub message: String,
+}
+
+/// One tank must take the whole commercial tank's weight. Several tanks
+/// share the reserve: each checked load takes the largest commercial tank
+/// it fits, and together they must keep the reserve. `None` without tanks.
+pub fn tank_weight(
+    project: &Project,
+    reserve_l: f64,
+    tank_l: f64,
+    full_kn: f64,
+) -> Option<TankWeightCheck> {
+    let loads: Vec<f64> = project
+        .fixtures
+        .iter()
+        .filter(|f| f.kind == FixtureKind::WaterTank)
+        .filter_map(|t| t.structural_load_kn.or(t.kind.default_structural_load_kn()))
+        .collect();
+    match loads.as_slice() {
+        [] => None,
+        [load] => {
+            let short = load + 0.05 < full_kn;
+            Some(TankWeightCheck {
+                short,
+                utilisation: full_kn / load.max(1e-9),
+                message: if short {
+                    format!(
+                        "A caixa-d'água de {} L cheia pesa {} kN, mas a estrutura foi conferida para {} kN: corrija a carga da caixa no projeto estrutural.",
+                        decimal(tank_l, 0),
+                        decimal(full_kn, 1),
+                        decimal(*load, 1)
+                    )
+                } else {
+                    format!(
+                        "A estrutura foi conferida para {} kN; a caixa de {} L cheia pesa {} kN.",
+                        decimal(*load, 1),
+                        decimal(tank_l, 0),
+                        decimal(full_kn, 1)
+                    )
+                },
+            })
+        }
+        many => {
+            let fits: Vec<f64> = many.iter().map(|l| tank_fitting_load_l(*l)).collect();
+            let capacity: f64 = fits.iter().sum();
+            let short = capacity + 1e-6 < reserve_l;
+            let each = many
+                .iter()
+                .zip(&fits)
+                .map(|(load, litres)| {
+                    format!("{} kN → até {} L", decimal(*load, 1), decimal(*litres, 0))
+                })
+                .collect::<Vec<_>>()
+                .join("; ");
+            Some(TankWeightCheck {
+                short,
+                utilisation: reserve_l / capacity.max(1e-9),
+                message: if short {
+                    format!(
+                        "As {} caixas-d'água conferidas na estrutura guardam juntas só {} L ({each}), e a família precisa de {} L: aumente a carga de uma delas no projeto estrutural ou acrescente outra caixa.",
+                        many.len(),
+                        decimal(capacity, 0),
+                        decimal(reserve_l, 0)
+                    )
+                } else {
+                    format!(
+                        "As {} caixas-d'água dividem a reserva: juntas guardam até {} L ({each}) para os {} L de que a família precisa. Compre cada caixa no tamanho que a carga dela aceita.",
+                        many.len(),
+                        decimal(capacity, 0),
+                        decimal(reserve_l, 0)
+                    )
+                },
+            })
+        }
+    }
+}
+
 /// The cold-water design, or `None` when no fixture takes water.
 pub fn cold_water(project: &Project) -> Option<ColdWater> {
     let points = plumbing_points(project);
@@ -203,13 +296,8 @@ pub fn cold_water(project: &Project) -> Option<ColdWater> {
             decimal(comfort_base_m - tank_base_m, 2)
         ));
     }
-    match tank_fixture.and_then(|t| t.structural_load_kn.or(t.kind.default_structural_load_kn())) {
-        Some(load) if load + 0.05 < full_kn => warnings.push(format!(
-            "A caixa-d'água de {} L cheia pesa {} kN, mas a estrutura foi conferida para {} kN: corrija a carga da caixa no projeto estrutural.",
-            decimal(tank_l, 0),
-            decimal(full_kn, 1),
-            decimal(load, 1)
-        )),
+    match tank_weight(project, reserve_l, tank_l, full_kn) {
+        Some(check) if check.short => warnings.push(check.message),
         Some(_) => {}
         None => warnings.push(format!(
             "A caixa-d'água ({} L, {} kN cheia) não está no projeto estrutural: coloque-a sobre a laje ou a base para que o peso dela seja conferido.",

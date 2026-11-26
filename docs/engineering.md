@@ -166,7 +166,9 @@ Validated in CI by `cantilever_column_matches_exact_moment_and_tip_deflection`, 
 
 `masonry_structure_report` derives these elements from the live architectural model, so moving a wall or opening changes them without a second stored copy. The method is a conservative pre-sizing interpretation of ABNT NBR 16868-1:2020 for small buildings; it does not replace the masonry designer's specification of unit/prism tests, grouting, bond beams and reinforcement details.
 
-**Lintels and sills.** Every opening that leaves masonry above it receives a lintel (`VA`); full-height open spans do not. Every window with a sill receives a sill band (`CV`). Both extend up to the preferred 30 cm into the wall on each side and fail the check below 20 cm. The simplified lintel method stops at a 3.0 m clear span.
+**Open sides and pool walls.** A wall whose full-height spans (open spans without a height, or openings reaching its top) take 90 % or more of its length is an open side: what is left are short stubs, not a panel, so it gets no panel, lintel or out-of-plane wind check (and it needs no masonry foundation in the global stability screening). Pool walls are concrete in the ground and are checked as pools.
+
+**Lintels and sills.** Every opening that leaves masonry above it receives a lintel (`VA`); full-height open spans do not. A concrete beam that runs along the wall between two columns beyond both sides of the opening and reaches down to its top is the lintel (*viga-verga*), so no masonry lintel is added under it (`a_beam_reaching_down_to_a_gate_is_its_lintel`). Every window with a sill receives a sill band (`CV`). Both extend up to the preferred 30 cm into the wall on each side and fail the check below 20 cm. The simplified lintel method stops at a 3.0 m clear span.
 
 - width = the raw masonry width;
 - depth = whole masonry courses, rounded up from `max(10 cm, L/12)`;
@@ -309,7 +311,7 @@ Every ground-floor wall reaches the soil through a ground beam or a strip footin
 | Quantity | Rule |
 | --- | --- |
 | Wall load | q = γ · t · (net wall area) / L, kN/m, with each wall's own (mean) height and the openings discounted; ground beams iterate self-weight against their actual sized height `h`, and strip footings solve closed-form width for `25 cm` thickness without double-counting the 5% factor |
-| Choice | a ground beam (*viga baldrame*) when a column stands within 30 cm of each end of the wall, or when both ends reach columns or previously grounded beams at transverse T-junctions; a strip footing (*sapata corrida*) otherwise; walls whose openings take 90 % or more of their length are left out |
+| Choice | a ground beam (*viga baldrame*) when a column stands within 30 cm of each end of the wall, or when both ends reach columns or previously grounded beams at transverse T-junctions; a strip footing (*sapata corrida*) otherwise; walls whose openings take 90 % or more of their length are left out, and so are pool walls (they bear on the pool's floor slab) |
 | Ground beam | a continuous beam over the columns on the wall's line; each loaded overhang imposes `M = −q·a²/2` at its end support, which enters the continuous-span stiffness solution and changes all support reactions. Its load `q·a` also enters the end support reaction. The maximum span/overhang moment and shear size the section from 30 to 80 cm for Md = 1.4 M and Vd = 1.4 V, with its steel; signed reactions reach the footings (and P₁ of a balance beam). A negative reaction raises a red support check and a warning to review the beam-column connection and the combined support stability |
 | Strip footing | closed-form `B = 1.05·q_wall / (σadm − 25·0.25)` (at least 40 cm, in 5 cm steps); pressure `(1.05·q_wall + 25·0.25·B) / B` checked against σadm |
 
@@ -354,6 +356,65 @@ The foundation study (`foundation_study`) takes the column loads with the ground
 - **bored piles & CFA piles with ground beams**: the pile that takes the least concrete while meeting the 15 mm settlement limit, with at most three per column (cap length `3d + side` for two piles), and piles at most 2.5 m apart under the strip walls.
 
 It recommends the viable option that takes the least concrete. Checked by `the_footing_pressure_follows_the_mean_blow_count_in_the_bulb`, `decourt_quaresma_matches_a_hand_calculation`, `brocas_stay_above_the_water_table_and_within_six_metres`, `good_soil_recommends_footings_and_soft_soil_rules_them_out`, `the_study_picks_footings_on_firm_soil_brocas_on_soft_top_and_deep_piles_under_water`, `elastic_settlement_matches_hand_calculation` and `the_survey_sets_the_soil_pressure_of_the_structure`.
+
+### Presumed soil profile (no survey yet)
+
+Families often know what the ground is *expected* to be (the regional geology, a neighbour's survey) long before anyone pays for an SPT. `src/domain/soil/presumed.rs` turns such a qualitative profile, layers with a likelihood (*provável*, *possível*, *possível em profundidade*), into conservative calculation values. A presumed profile is **never evidence**: it only ever makes the calculations safer, and a survey always takes precedence.
+
+| Soil type (`solo`) | N (usual, near surface) | γ kN/m³ | φ' | TAS L/m²·dia | Collapsible |
+| --- | --- | --- | --- | --- | --- |
+| `argila_arenosa_vermelha` (porous red sandy clay) | 3–6 | 16 | 26° | 40 | yes |
+| `areia_argilosa_vermelha` (porous red clayey sand) | 3–8 | 17 | 28° | 40 | yes |
+| `argila_silto_arenosa` | 4–8 | 17 | 24° | 40 | no |
+| `argila_siltosa` | 3–6 | 16.5 | 22° | 20 | no |
+| `solo_concrecoes_lateriticas` | 6–15 | 18 | 30° | 40 | no |
+| `alteracao_arenito_basalto` (saprolite) | 15–40 | 19 | 32° | 20 | no |
+| `argila_mole` | 1–3 | 15 | 18° | 20 | no |
+| `areia` (fine to medium) | 4–10 | 18 | 30° | 60 | no |
+
+| Quantity | Rule |
+| --- | --- |
+| Allowable pressure | `σ = 20 · N_low` of the weakest layer near the surface (probable or possible), rounded down to 10 kPa, **never above the 100 kPa** Trazo assumes without a survey |
+| Applied | `definir_solo_provavel` lowers the structure's soil pressure to it only when there is no survey and no evidence behind a higher value; it never raises it |
+| Earth pressure | the heaviest γ and the weakest φ' of the shallow layers (used by pools) |
+| Sewage absorption | the lowest TAS of the probable layers for design; the lowest of all shallow layers is reported as the possible worst; the percolation test decides (NBR 13969 Annex A) |
+| Collapsible soil | porous red lateritic soils may collapse when soaked: a yellow *Solo colapsível* check while shallow footings or strip footings remain, plus care in the pool and septic checks |
+
+The ranges are the lower ends of usual Brazilian practice (Teixeira & Godoy for N, NBR 7229/13969 practice for TAS: about 40 L/m²·dia in sandy or silty clays, 20 in compact clays). A *Solo provável (sem sondagem)* verdict stays yellow until a survey replaces it. Checked by `a_red_porous_profile_is_weaker_than_the_survey_free_default_and_collapsible`, `applying_a_presumed_profile_only_lowers_a_pressure_nothing_backs` and `a_presumed_profile_never_allows_more_than_the_safe_default`.
+
+## In-ground swimming pools
+
+A room named *Piscina* (or with an explicit spec from `configurar_piscina`) is an in-ground reinforced-concrete pool (`src/domain/pool.rs`; defaults: 1.40 m deep, 15 cm walls and floor, 2.5 kN/m² at the edge). Its walls are concrete in the ground: they leave the masonry panel and lintel checks, the wall foundations and the global stability screening, and are checked here per metre of wall:
+
+| Check | Rule |
+| --- | --- |
+| Full pool, no backfill | `M = γw·H³/6`, `V = γw·H²/2`, γw = 10 kN/m³ |
+| Empty pool, earth at rest | `K0 = 1 − sin φ'` (presumed soil, or φ' = 25°, γ = 18 kN/m³); `M = K0·γ·H³/6 + K0·q·H²/2`; with groundwater the submerged weight plus water; q = edge surcharge, +10 kN/m² when a foundation or the lot boundary is inside the excavation's influence zone |
+| Section | cantilever fixed in the floor, `Md = 1.4·M`, μ = Md/(0.85 fcd d²) ≤ 0.295, d = t − 3.5 cm; As = max(ULS, service σs ≤ 160 MPa for watertightness, 0.15 % per face, NBR 6118 Table 17.3); shear `V_Rd1 = τRd·k·(1.2 + 40ρ1)·d` (NBR 6118 §19.4.1); at least 12 cm; the thinnest wall that passes is reported |
+| Floor | water + slab + walls spread over the outer area ≤ σadm |
+| Flotation | with a survey water table, or when the family says water springs from the ground (level at the surface): `1.1·U ≤ 0.9·G`; unknown groundwater is yellow |
+| Foundations nearby | NBR 6122, foundations at different levels: a footing (base 1.0 m), timber post (0.6 m), strip footing (0.5 m) or pile cap whose piles stop above the pool bottom + 0.5 m is inside the zone when its clearance to the outer face is less than `(excavation − base)·tan α`, α = 60° from the vertical in weak soil (N < 10), 45° otherwise. Yellow: build the pool first, backfill in compacted layers, or put those foundations on piles below the pool |
+| Lot boundary | clearance less than `excavation·tan α`: yellow, shore the trench and warn the neighbour |
+| Durability | fck below 25 MPa is yellow (NBR 6118 Table 7.1, CAA II) |
+
+The result lists the care that keeps a family safe: waterproofing and the 72 h tightness test, treated construction joints, anti-entrapment suction (NBR 10339), a fence with a self-closing gate, non-slip edges, NBR 5410 §9.2 electrics, and, in collapsible soil, a compacted soil-cement base and a leak-detection drain. The filter flow for a six-hour turnover is reported as usual practice. Checked by `the_wall_matches_a_hand_calculation` (H = 1.40 m: water 4.57, soil 6.17 kN·m/m), `a_thin_deep_wall_fails_and_names_the_thickness_it_needs`, `groundwater_makes_an_empty_pool_float_and_a_footing_nearby_is_in_the_zone` and `a_collapsible_presumed_soil_adds_its_care_and_weak_soil_widens_the_zone`.
+
+## Septic tank and soakaway
+
+Where there is no public sewer, `projeto_hidraulico` → `configurar_fossa` sizes the septic tank and the soakaway (`src/domain/plumbing/septic.rs`):
+
+| Quantity | Rule | Source |
+| --- | --- | --- |
+| People | residents (given, or two per bedroom) + frequent guests | — |
+| Volume | `V = 1000 + N·(C·T + K·Lf)` L; C = 160 / 130 / 100 L/person·day (high / medium / low standard), Lf = 1 | NBR 7229:1993 Table 1 |
+| Detention T | 1.00 day up to 1500 L/day, then 0.92, 0.83, 0.75, 0.67, 0.58 and 0.50 above 9000 L/day | Table 2 |
+| Sludge K | 94 / 65 / 57 days for one year between cleanings (coldest month ≤ 10, 10–20, > 20 °C), +40 days per extra year | Table 3 |
+| Shape | useful depth 1.20–2.20 m up to 6 m³, 1.50–2.50 m to 10 m³, 1.80–2.80 m above; prismatic with width ≥ 0.80 m and length 2–4 × width, or cylindrical 1.10 m ≤ D ≤ 2H | Table 4, §5 |
+| Distances | 1.50 m from buildings, lot limits and soakaways (red below); Trazo asks 3.0 m from a soakaway to foundations in collapsible soil (yellow); 3 m from trees and the public water network and 15 m from wells are listed for the family | NBR 7229 §5.1 |
+| Soakaway | `A = Q/TAS`, per soakaway `A = π·D²/4 + π·D·H` (bottom + wall below the inlet); H rounded up to 10 cm; deeper than 6 m is red (use more soakaways or infiltration trenches); bottom 1.50 m above the water table when it is known | NBR 13969:1997 |
+| TAS | the percolation test when given; otherwise the presumed soil's (yellow: the test decides), or 20 L/m²·dia | NBR 13969 Annex A |
+
+Checked by `the_tables_match_nbr_7229`, `eight_people_of_medium_standard_need_about_three_thousand_litres` (N = 8: 2560 L) and `a_tested_absorption_rate_sizes_the_soakaway_and_distances_are_measured` (26 m², D = 1.50 m → H = 5.2 m).
 
 ## Timber roofs
 
@@ -404,17 +465,17 @@ All exterior posts and eave beams must be marked as preservative-treated for the
 | S2 | b · Fr · (max(z, 5 m) / 10)^p with b, Fr and p of the terrain category (I to V, III by default) and the building class (A ≤ 20 m, B 20–50 m, C > 50 m), z the top of the wall or roof | NBR 6123, tables 1 & 2 |
 | Tall-wall columns | a column standing in a wall taller than the storey (+ 20 cm) takes w = 1.3 · q · (its share of the wall); 1.3 is the net coefficient of a wall of an open-sided building | NBR 6123 (walls, dominant openings) |
 | Tall-wall masonry | one-way out-of-plane flexure between proposed reinforced-concrete intermediate ties and a crown beam, with the lowest listed flexural tensile strength; walls without end columns, a continuous base or without a local opening check fail; every opening in a tall wind-loaded wall also receives a preliminary grouted vertical concrete jamb (*montante grauteado*) sized for `w = 1.3·q·(0.5·L_open + 0.30 m)` | NBR 16868-1, Tables 2–3 and Annex E |
-| Top condition | propped by the roof only when its main beam bears on the column, at least two roof supports reach footings and the declared design resistance of the entire lateral bracing path exceeds the demand; then M = w H² / 8, otherwise the column is a cantilever with M = w H² / 2 | — |
+| Top condition | propped by the roof only when its main beam bears on the column, at least two roof supports reach footings or pile caps over bored piles and the declared design resistance of the entire lateral bracing path exceeds the demand; then M = w H² / 8, otherwise the column is a cantilever with M = w H² / 2 | — |
 | Column & footing check | bending across the wall, Md = 1.4 M, `d = h − 5 cm`, μ = Md / (0.85 fcd b d²) ≤ 0.295 (x/d ≤ 0.45), steel per face Md / (z fyd); when a footing exists under the column, Trazo also checks base eccentricity `e = M_base / (0.9·N_col) ≤ B/3` and peak wind soil pressure `σmax ≤ 1.30·σadm` | NBR 6118 + NBR 6122 |
 | Roof uplift | (−Cpe + Cpi) · q with Cpe = −1.0 (conservative for one slope) and Cpi = +0.8 when a side is open (a beam end on a post or on nothing), else +0.2 for closed buildings | NBR 6123, 6.2.5 |
 | Anchorage & bolts | net 1.4 · uplift − 0.9 · g; when positive, each beam end is anchored for it over its share of the roof, tiles are tied, and ASTM A307 / SAE 1020 anchor bolts (`fu = 400 MPa`, `γa2 = 1.35`) are sized under combined uplift + wind shear `(Nd/NRd)² + (Vd/VRd)² ≤ 1.0` | NBR 8681 + NBR 8800 §6.3.3 |
-| Roof bracing & tie rod | 1.4 times the sum of the top reactions (3/8 of each propped column's lateral load) and the projected wind force on the roof's high-to-low vertical face, with a preliminary 45° CA-50 X-bracing diagonal tie rod sized for `N_diag = √2 · F_d`. The entered `lateral_bracing_kn` must be a verified design resistance of the complete roof-plane → connections → vertical supports → foundation path; it defaults to absent | Conservative preliminary load path |
-| Global wind screening & soil sliding | ±X and ±Y: F = 1.3 q H · projected facade width, M = FH/2; stabilizing moment is 0.9 times explicit permanent weights less 1.4 times roof suction about the leeward support edge, against 1.4 M; soil sliding safety factor `FS = μ·(0.9·G − 1.4·U) / W_k ≥ 1.50` using conservative concrete-to-soil friction `μ` (0.30–0.55 by soil allowable pressure); without founded supports the check fails | NBR 6123 + NBR 8681 + NBR 6122 |
+| Roof bracing & tie rod | 1.4 times the sum of the top reactions (3/8 of each propped column's lateral load) and the projected wind force on the roof's high-to-low vertical face, with a preliminary 45° CA-50 X-bracing diagonal tie rod sized for `N_diag = √2 · F_d`. The entered `lateral_bracing_kn` must be a verified design resistance of the complete roof-plane → connections → vertical supports → foundation path; it defaults to absent | Conservative preliminary load path `contraventamento_barra_mm` lets Trazo compute the declared resistance from the specified bar, `F_Rd = n·As·fyd/√2`. |
+| Global wind screening & soil sliding | Each structurally independent block of the site (columns and posts tied by beams, roofs, timber eave beams or room walls; free-standing boundary walls, pool walls and open sides belong to none) is screened on its own, and each direction reports the governing block; walls count as founded on their ground beams and strip footings, and pile caps count as grounded supports. ±X and ±Y: F = 1.3 q H · projected facade width, M = FH/2; stabilizing moment is 0.9 times explicit permanent weights less 1.4 times roof suction about the leeward support edge, against 1.4 M; soil sliding safety factor `FS = μ·(0.9·G − 1.4·U) / W_k ≥ 1.50` using conservative concrete-to-soil friction `μ` (0.30–0.55 by soil allowable pressure); without founded supports the check fails | NBR 6123 + NBR 8681 + NBR 6122 |
 | Second-order indicator | α = H√(Nk/EIeq) compared with α1 = 0.2 + 0.1n for n ≤ 3; EIeq sums cantilever-column stiffness in the wind direction at the highest level with a deliberately reduced 0.4 EcsIc. The service drift F H³/(3 EIeq) is compared with the internal H/850 limit | NBR 6118:2023 §15.5.2; conservative screening assumption |
 
 The α check is a conservative indicator for the short, sometimes asymmetric structures in Trazo, not a complete classification of movable/fixed nodes. NBR 6118 limits γz to structures with at least four storeys, so Trazo does not apply γz to its 1–3 storey scope. All suggested tie rods, anchor bolts, grouted jambs and footing wind checks are preliminary sizing aids; final connection detailing and foundation design remain the licensed engineer's responsibility. [NBR 6118:2023 §15.5](https://ikigai.eco.br/download/nbr-6118.pdf); [NBR 6123:2023 §4.3.3](https://normadedesempenho.com.br/wp-content/uploads/2024/01/NBR-6123-2023.pdf).
 
-Checked by `the_pressure_follows_nbr_6123`, `a_tall_wall_column_is_propped_by_the_roof_or_stands_as_a_cantilever`, `roof_bearing_alone_cannot_brace_the_wall_or_pass_global_stability`, `roof_bracing_needs_two_grounded_supports_and_enough_capacity`, `a_tall_wall_gets_wind_and_bond_beams_with_balanced_lateral_load`, `tall_wall_wind_fails_without_base_or_when_openings_interrupt_the_panel` and `soil_sliding_bracing_tie_anchor_bolts_and_footing_wind_match_hand_calculations`. For the gourmet area (4.30 m wall, V0 = 35 m/s, category III), the 14 cm column across the wall is accepted as propped only after the roof's verified lateral path is entered.
+Checked by `the_pressure_follows_nbr_6123`, `a_tall_wall_column_is_propped_by_the_roof_or_stands_as_a_cantilever`, `roof_bearing_alone_cannot_brace_the_wall_or_pass_global_stability`, `roof_bracing_needs_two_grounded_supports_and_enough_capacity`, `columns_on_bored_piles_are_grounded_like_columns_on_footings`, `a_tall_wall_gets_wind_and_bond_beams_with_balanced_lateral_load`, `tall_wall_wind_fails_without_base_or_when_openings_interrupt_the_panel` and `soil_sliding_bracing_tie_anchor_bolts_and_footing_wind_match_hand_calculations`. For the gourmet area (4.30 m wall, V0 = 35 m/s, category III), the 14 cm column across the wall is accepted as propped only after the roof's verified lateral path is entered.
 
 ## Electrical installation
 

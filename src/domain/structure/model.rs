@@ -404,6 +404,13 @@ pub struct ProjectStructure {
     /// Explicit cantilever balcony slabs and cantilever beams (#115).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cantilevers: Vec<crate::domain::cantilevers::CantileverSpec>,
+    /// The presumed soil profile when there is no survey yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub presumed_soil: Option<crate::domain::soil::PresumedSoil>,
+    /// In-ground swimming pools set by hand (rooms named "Piscina" are pools
+    /// with the default spec even without one).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pools: Vec<crate::domain::pool::PoolSpec>,
 }
 
 impl Default for ProjectStructure {
@@ -421,6 +428,8 @@ impl Default for ProjectStructure {
             wind: crate::domain::wind::WindSettings::default(),
             overlay: crate::domain::plan_results::SimulationOverlay::default(),
             cantilevers: Vec::new(),
+            presumed_soil: None,
+            pools: Vec::new(),
         }
     }
 }
@@ -455,6 +464,8 @@ impl ProjectStructure {
             && is_default_wind(&self.wind)
             && self.overlay.is_empty()
             && self.cantilevers.is_empty()
+            && self.presumed_soil.is_none()
+            && self.pools.is_empty()
     }
 }
 

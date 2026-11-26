@@ -17,7 +17,7 @@
 //!   net uplift 1.4 · (1.0 + Cpi) · q − 0.9 · g, when positive, is the
 //!   anchorage each roof beam end needs.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -295,6 +295,9 @@ impl RoofBracingResult {
 #[derive(Clone, Debug, PartialEq)]
 pub struct GlobalStabilityResult {
     pub direction: &'static str,
+    /// The structural block that governs ("bloco Garagem"); empty when the
+    /// site is screened as one block.
+    pub block: String,
     pub height_m: f64,
     pub facade_m: f64,
     pub wind_kn: f64,
@@ -326,6 +329,89 @@ impl GlobalStabilityResult {
             && self.alpha <= self.alpha_limit + 1e-9
             && self.drift_mm <= self.drift_limit_mm + 1e-9
     }
+}
+
+/// One structurally independent part of the site, by element ids; `None`
+/// means every element (the whole site as one block).
+#[derive(Clone, Debug, Default)]
+struct StructuralBlock {
+    label: String,
+    columns: Option<HashSet<u64>>,
+    posts: Option<HashSet<u64>>,
+    walls: Option<HashSet<u64>>,
+    roofs: Option<HashSet<u64>>,
+}
+
+impl StructuralBlock {
+    fn whole() -> Self {
+        Self::default()
+    }
+
+    fn empty() -> Self {
+        Self::default()
+    }
+
+    fn has_column(&self, id: u64) -> bool {
+        self.columns.as_ref().is_none_or(|set| set.contains(&id))
+    }
+
+    fn has_post(&self, id: u64) -> bool {
+        self.posts.as_ref().is_none_or(|set| set.contains(&id))
+    }
+
+    fn has_wall(&self, id: u64) -> bool {
+        self.walls.as_ref().is_none_or(|set| set.contains(&id))
+    }
+
+    fn has_roof(&self, id: u64) -> bool {
+        self.roofs.as_ref().is_none_or(|set| set.contains(&id))
+    }
+}
+
+fn find(parent: &mut HashMap<u64, u64>, id: u64) -> u64 {
+    let mut root = id;
+    while let Some(&next) = parent.get(&root) {
+        if next == root {
+            break;
+        }
+        root = next;
+    }
+    let mut node = id;
+    while let Some(&next) = parent.get(&node) {
+        if next == root {
+            break;
+        }
+        parent.insert(node, root);
+        node = next;
+    }
+    root
+}
+
+fn union(parent: &mut HashMap<u64, u64>, a: u64, b: u64) {
+    if !parent.contains_key(&a) || !parent.contains_key(&b) {
+        return;
+    }
+    let (ra, rb) = (find(parent, a), find(parent, b));
+    if ra != rb {
+        parent.insert(ra, rb);
+    }
+}
+
+/// How badly a screening row fails: failing first, then the worst ratio.
+fn severity(row: &GlobalStabilityResult) -> (u8, f64) {
+    let ratios = [
+        row.alpha / row.alpha_limit.max(1e-9),
+        row.drift_mm / row.drift_limit_mm.max(1e-9),
+        1.0 / row.overturning_ratio.max(1e-9),
+        1.50 / row.sliding_fs.max(1e-9),
+    ];
+    (
+        u8::from(!row.ok()),
+        ratios
+            .into_iter()
+            .map(|r| if r.is_finite() { r } else { 1e9 })
+            .fold(0.0, f64::max),
+    )
 }
 
 /// Conservative concrete-to-soil friction coefficient `μ = tan(δ)` (NBR 6122).
@@ -362,6 +448,16 @@ pub fn size_bracing_tie(demand_kn: f64) -> (f64, f64, String) {
         as_req_cm2,
         format!("2×Ø25 mm CA-50 ou perfil metálico (As req. {as_req_cm2:.2} cm²)"),
     )
+}
+
+/// Design resistance of `crosses` X-braced bays of CA-50 tie rods `bar_mm`
+/// thick at 45° in the roof plane, kN: only the tension diagonal works,
+/// `F_Rd = n · As · fyd / √2` (the inverse of [`size_bracing_tie`]). The
+/// connections must be detailed for the same force.
+pub fn bracing_tie_capacity_kn(bar_mm: f64, crosses: u32) -> f64 {
+    let area_cm2 = std::f64::consts::PI * (bar_mm / 10.0).powi(2) / 4.0;
+    let fyd_kn_cm2 = 50.0 / 1.15;
+    f64::from(crosses.max(1)) * area_cm2 * fyd_kn_cm2 / std::f64::consts::SQRT_2
 }
 
 /// Sizes ASTM A307 / SAE 1020 anchor bolts (`fu = 400 MPa`, `γ_a2 = 1.35`, NBR 8800 §6.3.3)
@@ -431,12 +527,212 @@ impl Project {
         if wind.columns.is_empty() && report.roofs.is_empty() {
             return Vec::new();
         }
+        let blocks = self.structural_blocks(report);
+        if blocks.len() <= 1 {
+            return self.block_wind_stability(report, wind, &StructuralBlock::whole());
+        }
+        // Separate buildings on one lot (house, leisure pavilion, garage)
+        // stand on their own: screen each one and report, per direction,
+        // the block that governs.
+        let mut governing: Vec<GlobalStabilityResult> = Vec::new();
+        for block in &blocks {
+            for row in self.block_wind_stability(report, wind, block) {
+                match governing.iter_mut().find(|g| g.direction == row.direction) {
+                    Some(current) if severity(&row) > severity(current) => *current = row,
+                    Some(_) => {}
+                    None => governing.push(row),
+                }
+            }
+        }
+        governing
+    }
+
+    /// The structurally independent parts of the site: columns and timber
+    /// posts tied by beams, roofs, timber eave beams or the walls of a room.
+    /// Free-standing walls (boundary walls without a room), pool walls and
+    /// open sides belong to no block.
+    fn structural_blocks(&self, report: &StructureReport) -> Vec<StructuralBlock> {
+        let mut parent: HashMap<u64, u64> = HashMap::new();
+        for id in report
+            .columns
+            .iter()
+            .map(|c| c.id)
+            .chain(report.timber_posts.iter().map(|p| p.id))
+        {
+            parent.insert(id, id);
+        }
+        let mut labels: HashMap<String, u64> = report
+            .columns
+            .iter()
+            .map(|c| (c.label.clone(), c.id))
+            .chain(report.timber_posts.iter().map(|p| (p.label.clone(), p.id)))
+            .collect();
+        for line in &report.beams {
+            if let Some(first) = line.joints.first() {
+                labels.entry(line.label.clone()).or_insert(*first);
+            }
+            for pair in line.joints.windows(2) {
+                union(&mut parent, pair[0], pair[1]);
+            }
+        }
+        let column_of = |support: super::structure::BeamSupport| match support {
+            super::structure::BeamSupport::Column { id } => Some(id),
+            super::structure::BeamSupport::Beam { beam_id, .. } => self
+                .structure
+                .beams
+                .iter()
+                .find(|b| b.id == beam_id)
+                .map(|b| b.from),
+        };
+        for beam in &self.structure.beams {
+            if let (Some(a), Some(b)) = (
+                column_of(beam.start_support()),
+                column_of(beam.end_support()),
+            ) {
+                union(&mut parent, a, b);
+            }
+        }
+        let mut roof_member = Vec::new();
+        for roof in &report.roofs {
+            let ids: Vec<u64> = roof
+                .reactions
+                .iter()
+                .filter_map(|r| r.support.as_ref().and_then(|l| labels.get(l)).copied())
+                .filter(|id| parent.contains_key(id))
+                .collect();
+            for id in ids.iter().skip(1) {
+                union(&mut parent, ids[0], *id);
+            }
+            if let Some(first) = ids.first() {
+                roof_member.push((roof.id, *first));
+            }
+        }
+        for beam in &report.eave_beams {
+            if let (Some(a), Some(b)) = (labels.get(&beam.from_post), labels.get(&beam.to_post)) {
+                let (a, b) = (*a, *b);
+                union(&mut parent, a, b);
+            }
+        }
+        let pool_walls = self.pool_wall_ids();
+        let room_walls: HashSet<u64> = self
+            .rooms
+            .iter()
+            .flat_map(|room| room.wall_ids.iter().copied())
+            .collect();
+        let mut wall_member = Vec::new();
+        for wall in &self.walls {
+            if pool_walls.contains(&wall.id)
+                || self.wall_is_open_side(wall)
+                || !room_walls.contains(&wall.id)
+            {
+                continue;
+            }
+            let on: Vec<u64> = self
+                .structural_columns()
+                .filter(|c| {
+                    parent.contains_key(&c.id)
+                        && distance_to_segment(c.center, wall.start, wall.end)
+                            <= c.width.max(c.depth) / 2.0 + 0.08
+                })
+                .map(|c| c.id)
+                .collect();
+            for pair in on.windows(2) {
+                union(&mut parent, pair[0], pair[1]);
+            }
+            if let Some(first) = on.first() {
+                wall_member.push((wall.id, *first));
+            }
+        }
+        let column_ids: HashSet<u64> = report.columns.iter().map(|c| c.id).collect();
+        let mut groups: HashMap<u64, StructuralBlock> = HashMap::new();
+        let ids: Vec<u64> = parent.keys().copied().collect();
+        for id in ids {
+            let root = find(&mut parent, id);
+            let block = groups.entry(root).or_insert_with(StructuralBlock::empty);
+            if column_ids.contains(&id) {
+                block.columns.get_or_insert_with(HashSet::new).insert(id);
+            } else {
+                block.posts.get_or_insert_with(HashSet::new).insert(id);
+            }
+        }
+        for (wall, member) in wall_member {
+            let root = find(&mut parent, member);
+            if let Some(block) = groups.get_mut(&root) {
+                block.walls.get_or_insert_with(HashSet::new).insert(wall);
+            }
+        }
+        for (roof, member) in roof_member {
+            let root = find(&mut parent, member);
+            if let Some(block) = groups.get_mut(&root) {
+                block.roofs.get_or_insert_with(HashSet::new).insert(roof);
+            }
+        }
+        let mut blocks: Vec<StructuralBlock> = groups
+            .into_values()
+            .filter(|b| b.walls.is_some() || b.roofs.is_some())
+            .map(|mut block| {
+                block.columns.get_or_insert_with(HashSet::new);
+                block.posts.get_or_insert_with(HashSet::new);
+                block.walls.get_or_insert_with(HashSet::new);
+                block.roofs.get_or_insert_with(HashSet::new);
+                let walls = block.walls.clone().unwrap_or_default();
+                block.label = self
+                    .rooms
+                    .iter()
+                    .filter(|room| room.wall_ids.iter().any(|w| walls.contains(w)))
+                    .map(|room| {
+                        (
+                            room.display_name().to_owned(),
+                            self.room_area(room).unwrap_or(0.0),
+                        )
+                    })
+                    .max_by(|a, b| a.1.total_cmp(&b.1))
+                    .map_or_else(|| "bloco".to_owned(), |(name, _)| format!("bloco {name}"));
+                block
+            })
+            .collect();
+        blocks.sort_by(|a, b| a.label.cmp(&b.label));
+        blocks
+    }
+
+    /// The global screening of one structural block (`StructuralBlock::whole`
+    /// for the whole site).
+    fn block_wind_stability(
+        &self,
+        report: &StructureReport,
+        wind: &WindReport,
+        block: &StructuralBlock,
+    ) -> Vec<GlobalStabilityResult> {
+        let column_id = |label: &str| {
+            report
+                .columns
+                .iter()
+                .find(|c| c.label == label)
+                .map(|c| c.id)
+        };
+        let footing_in = |footing: &super::structure::FootingResult| {
+            block.columns.is_none()
+                || footing
+                    .column
+                    .as_deref()
+                    .and_then(column_id)
+                    .is_some_and(|id| block.has_column(id))
+        };
+        let cap_in = |cap: &super::structure::PileCapResult| {
+            block.columns.is_none() || cap.column_id.is_some_and(|id| block.has_column(id))
+        };
         let mut points: Vec<Point> = self
             .walls
             .iter()
+            .filter(|wall| block.has_wall(wall.id))
             .flat_map(|wall| [wall.start, wall.end])
             .collect();
-        for roof in &self.structure.roofs {
+        for roof in self
+            .structure
+            .roofs
+            .iter()
+            .filter(|roof| block.has_roof(roof.id))
+        {
             points.extend([roof.min, roof.max]);
         }
         let Some(first) = points.first().copied() else {
@@ -451,22 +747,51 @@ impl Project {
         let height = self
             .walls
             .iter()
+            .filter(|wall| block.has_wall(wall.id))
             .map(|wall| {
                 let (a, b) = wall.heights(self.wall_height);
                 a.max(b)
             })
-            .chain(self.structure.roofs.iter().map(|roof| roof.high_m))
+            .chain(
+                self.structure
+                    .roofs
+                    .iter()
+                    .filter(|roof| block.has_roof(roof.id))
+                    .map(|roof| roof.high_m),
+            )
             .fold(self.wall_height, f64::max);
+        let size = if block.columns.is_none() {
+            self.building_size()
+        } else {
+            (hi.x - lo.x).max(hi.y - lo.y)
+        };
         let mut supports = Vec::new();
         let mut gravity = Vec::new();
         let mut uplift = Vec::new();
-        let mut supports_ok = !report.footings.is_empty()
-            || !report.timber_posts.is_empty()
+        let mut supports_ok = report.footings.iter().any(footing_in)
+            || report.pile_caps.iter().any(cap_in)
+            || report.timber_posts.iter().any(|p| block.has_post(p.id))
             || report.wall_foundations.iter().any(|f| {
                 f.kind == super::wall_foundations::WallFoundationKind::StripFooting
                     && !f.unsupported
+                    && block.has_wall(f.wall_id)
             });
-        for footing in &report.footings {
+        // Pile caps over bored piles are grounded supports too: they hold
+        // down better than footings (shaft friction, anchored starter bars).
+        for cap in report.pile_caps.iter().filter(|cap| cap_in(cap)) {
+            if let Some(fixture) = self.fixtures.iter().find(|f| f.id == cap.id) {
+                supports.push((fixture.center, cap.width_m / 2.0, cap.depth_m / 2.0));
+                let pile = std::f64::consts::PI
+                    * (cap.pile_diameter_m / 2.0).powi(2)
+                    * cap.pile_depth_m
+                    * f64::from(cap.pile_count);
+                gravity.push((
+                    fixture.center,
+                    25.0 * (cap.width_m * cap.depth_m * cap.height_m + pile),
+                ));
+            }
+        }
+        for footing in report.footings.iter().filter(|f| footing_in(f)) {
             if let Some(fixture) = self.fixtures.iter().find(|f| f.id == footing.id) {
                 supports.push((fixture.center, footing.width_m / 2.0, footing.depth_m / 2.0));
                 gravity.push((
@@ -475,7 +800,7 @@ impl Project {
                 ));
             }
         }
-        for post in &report.timber_posts {
+        for post in report.timber_posts.iter().filter(|p| block.has_post(p.id)) {
             if let Some(fixture) = self.fixtures.iter().find(|f| f.id == post.id) {
                 supports.push((fixture.center, post.base_m / 2.0, post.base_m / 2.0));
                 gravity.push((
@@ -485,7 +810,9 @@ impl Project {
             }
         }
         for strip in report.wall_foundations.iter().filter(|f| {
-            f.kind == super::wall_foundations::WallFoundationKind::StripFooting && !f.unsupported
+            f.kind == super::wall_foundations::WallFoundationKind::StripFooting
+                && !f.unsupported
+                && block.has_wall(f.wall_id)
         }) {
             if let Some(wall) = self.walls.iter().find(|w| w.id == strip.wall_id) {
                 supports.push((wall.start, strip.width_m / 2.0, strip.width_m / 2.0));
@@ -496,19 +823,34 @@ impl Project {
                 ));
             }
         }
+        // Pool walls stand on the pool's floor slab; an open side has no
+        // masonry panel to found.
+        let pool_walls = self.pool_wall_ids();
         for wall in &self.walls {
+            if pool_walls.contains(&wall.id)
+                || self.wall_is_open_side(wall)
+                || !block.has_wall(wall.id)
+            {
+                continue;
+            }
+            let grounded_at = |end: &Point| {
+                report.footings.iter().any(|f| {
+                    self.fixtures
+                        .iter()
+                        .find(|fix| fix.id == f.id)
+                        .is_some_and(|fix| fix.center.distance(*end) < 0.35)
+                }) || report.pile_caps.iter().any(|c| {
+                    self.fixtures
+                        .iter()
+                        .find(|fix| fix.id == c.id)
+                        .is_some_and(|fix| fix.center.distance(*end) < 0.35)
+                })
+            };
             let founded = report
                 .wall_foundations
                 .iter()
                 .any(|f| f.wall_id == wall.id && !f.unsupported)
-                || [wall.start, wall.end].iter().all(|end| {
-                    report.footings.iter().any(|f| {
-                        self.fixtures
-                            .iter()
-                            .find(|fix| fix.id == f.id)
-                            .is_some_and(|fix| fix.center.distance(*end) < 0.35)
-                    })
-                });
+                || [wall.start, wall.end].iter().all(grounded_at);
             supports_ok &= founded;
             if founded {
                 gravity.push((
@@ -519,20 +861,24 @@ impl Project {
                 ));
             }
         }
-        for column in &report.columns {
+        for column in report.columns.iter().filter(|c| block.has_column(c.id)) {
             let Some(fixture) = self.structural_columns().find(|f| f.id == column.id) else {
                 continue;
             };
             supports_ok &= report
                 .footings
                 .iter()
-                .any(|f| f.column.as_deref() == Some(column.label.as_str()));
+                .any(|f| f.column.as_deref() == Some(column.label.as_str()))
+                || report
+                    .pile_caps
+                    .iter()
+                    .any(|c| c.column.as_deref() == Some(column.label.as_str()));
             gravity.push((
                 fixture.center,
                 25.0 * fixture.width * fixture.depth * column.height_m,
             ));
         }
-        for roof in &report.roofs {
+        for roof in report.roofs.iter().filter(|r| block.has_roof(r.id)) {
             if let Some(model) = self.structure.roofs.iter().find(|r| r.id == roof.id) {
                 supports_ok &= roof.unsupported() == 0;
                 let area = (model.max.x - model.min.x) * (model.max.y - model.min.y);
@@ -551,11 +897,16 @@ impl Project {
         let nk: f64 = report
             .columns
             .iter()
+            .filter(|column| block.has_column(column.id))
             .map(|column| column.load_kn.max(0.0))
             .sum();
         let n_storeys = self.structure.settings.floors.clamp(1, 3) as f64;
         let alpha_limit = 0.2 + 0.1 * n_storeys;
-        let bracing_ok = wind.bracing.iter().all(RoofBracingResult::ok);
+        let bracing_ok = wind
+            .bracing
+            .iter()
+            .filter(|b| block.has_roof(b.roof_id))
+            .all(RoofBracingResult::ok);
         let mut rows = Vec::new();
         for (direction, along_x, positive) in [
             ("+X", true, true),
@@ -567,10 +918,7 @@ impl Project {
             if facade < 0.1 {
                 continue;
             }
-            let q = self
-                .structure
-                .wind
-                .pressure_kpa(height, self.building_size());
+            let q = self.structure.wind.pressure_kpa(height, size);
             let force = WALL_CP * q * facade * height;
             let moment = force * height / 2.0;
             let edge = supports
@@ -604,6 +952,7 @@ impl Project {
             let ei: f64 = report
                 .columns
                 .iter()
+                .filter(|column| block.has_column(column.id))
                 .filter_map(|column| {
                     if column.height_m < height - 0.30 {
                         return None;
@@ -640,6 +989,7 @@ impl Project {
             let sliding_fs = sliding_resistance_kn / force.max(1e-9);
             rows.push(GlobalStabilityResult {
                 direction,
+                block: block.label.clone(),
                 height_m: height,
                 facade_m: facade,
                 wind_kn: force,
@@ -889,6 +1239,10 @@ impl Project {
                             .footings
                             .iter()
                             .any(|footing| footing.column.as_ref() == Some(label))
+                            || report
+                                .pile_caps
+                                .iter()
+                                .any(|cap| cap.column.as_ref() == Some(label))
                     })
                 })
                 .map(|reaction| reaction.point)
@@ -1097,6 +1451,128 @@ mod tests {
         let ungrounded = project.structure_report();
         assert!(!ungrounded.wind.bracing[0].path_ok);
         assert!(ungrounded.wind.columns.iter().all(|column| !column.braced));
+    }
+
+    #[test]
+    fn separate_buildings_on_one_lot_are_screened_on_their_own() {
+        let mut project = Project::default();
+        project.set_terrain(Point::new(-2.0, -2.0), Point::new(10.0, 40.0));
+        for (y0, name) in [(0.0, "Sala"), (24.0, "Gourmet")] {
+            project
+                .add_room(Point::new(0.0, y0), Point::new(4.0, y0 + 4.0), name)
+                .unwrap();
+            for x in [0.0, 4.0] {
+                for y in [y0, y0 + 2.0, y0 + 4.0] {
+                    project
+                        .add_fixture(FixtureKind::Column, Point::new(x, y), 0.80, 0.80, 0)
+                        .unwrap();
+                    project
+                        .add_fixture(FixtureKind::Footing, Point::new(x, y), 1.50, 1.50, 0)
+                        .unwrap();
+                }
+            }
+            let mut roof = Roof::new(
+                Point::new(0.0, y0),
+                Point::new(4.0, y0 + 4.0),
+                RoofSide::West,
+                3.0,
+                2.5,
+            );
+            roof.lateral_bracing_kn = Some(1000.0);
+            project.add_roof(roof).unwrap();
+        }
+        let wind = project.structure_report().wind;
+        assert_eq!(wind.global.len(), 4);
+        assert!(wind.global.iter().all(|g| g.block.starts_with("bloco ")));
+        // Each building faces the wind with its own 4 m, not the 28 m the
+        // two of them span together.
+        assert!(
+            wind.global.iter().all(|g| g.facade_m < 5.0),
+            "{:?}",
+            wind.global
+        );
+        assert!(
+            wind.global.iter().all(GlobalStabilityResult::ok),
+            "{:?}",
+            wind.global
+        );
+    }
+
+    #[test]
+    fn the_global_screening_counts_walls_on_their_own_foundations() {
+        let mut project = gourmet(true);
+        // Footings away from the wall's ends: only a wall foundation founds it.
+        project.fixtures.retain(|f| {
+            !(f.kind == FixtureKind::Footing && (f.center.y < 0.5 || f.center.y > 14.0))
+        });
+        let without = project.structure_report().wind.global[0].gravity_kn;
+        let wall = project.walls[0].id;
+        project
+            .set_wall_foundation(
+                wall,
+                crate::domain::wall_foundations::WallFoundationKind::StripFooting,
+                None,
+            )
+            .unwrap();
+        let with = project.structure_report().wind.global[0].gravity_kn;
+        assert!(with > without + 1.0, "{without} → {with}");
+    }
+
+    #[test]
+    fn a_tie_rod_resistance_is_the_inverse_of_its_sizing() {
+        // Ø20 CA-50: 3.14 cm² × 43.5 kN/cm² = 136.6 kN along the diagonal,
+        // 96.6 kN across the roof.
+        assert!((bracing_tie_capacity_kn(20.0, 1) - 96.6).abs() < 0.1);
+        assert!(
+            (bracing_tie_capacity_kn(20.0, 2) - 2.0 * bracing_tie_capacity_kn(20.0, 1)).abs()
+                < 1e-9
+        );
+        let (bar, _, _) = size_bracing_tie(67.0);
+        assert!(bracing_tie_capacity_kn(bar, 1) >= 67.0);
+    }
+
+    #[test]
+    fn columns_on_bored_piles_are_grounded_like_columns_on_footings() {
+        let mut project = gourmet(true);
+        let columns: Vec<Point> = project
+            .fixtures
+            .iter()
+            .filter(|f| f.kind == FixtureKind::Column)
+            .map(|f| f.center)
+            .collect();
+        project
+            .fixtures
+            .retain(|fixture| fixture.kind != FixtureKind::Footing);
+        for at in columns {
+            let cap = project
+                .add_fixture(FixtureKind::PileCap, at, 0.45, 0.45, 0)
+                .unwrap();
+            project
+                .set_pile_cap_spec(
+                    cap,
+                    crate::domain::fixtures::PileCapSpec {
+                        diameter_m: 0.25,
+                        depth_m: 4.0,
+                        count: 1,
+                        anchor_depth_m: 2.0,
+                    },
+                )
+                .unwrap();
+        }
+        let report = project.structure_report();
+        assert_eq!(report.pile_caps.len(), 6);
+        // The roof's lateral path reaches the ground through the pile caps.
+        assert!(report.wind.bracing[0].path_ok);
+        assert!(report.wind.bracing[0].ok());
+        assert!(report.wind.columns.iter().all(|column| column.braced));
+        // No column is left "without foundation" in the global screening.
+        assert!(
+            report
+                .wind
+                .global
+                .iter()
+                .all(|global| global.gravity_kn > 0.0)
+        );
     }
 
     #[test]

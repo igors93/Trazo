@@ -383,7 +383,70 @@ pub struct StructureReport {
     pub warnings: Vec<String>,
 }
 
+impl crate::domain::model::Project {
+    /// Depth of the footings' base: the survey's, or 1.0 m.
+    pub fn footing_base_depth_m(&self) -> f64 {
+        self.structure
+            .soil_survey
+            .as_ref()
+            .map_or(1.0, |survey| survey.footing_depth_m)
+    }
+}
+
+/// Unit weight Trazo counts for the soil over a footing holding it down,
+/// kN/m³ (the light end of porous soils: the favourable side).
+pub const UPLIFT_SOIL_KN_M3: f64 = 15.0;
+
+/// What holds a footing down against uplift, kN: its own concrete and the
+/// soil over it, a vertical prism only (no cone), times 0.9 as a favourable
+/// permanent action (NBR 6122 shallow foundations in tension, NBR 8681).
+pub fn footing_uplift_resistance_kn(
+    width_m: f64,
+    depth_m: f64,
+    height_m: f64,
+    base_depth_m: f64,
+) -> f64 {
+    let area = width_m * depth_m;
+    let concrete = super::CONCRETE_KN_M3 * area * height_m;
+    let soil = UPLIFT_SOIL_KN_M3 * area * (base_depth_m - height_m).max(0.0);
+    0.9 * (concrete + soil)
+}
+
 impl StructureReport {
+    /// Returns `Some(min_resistance_kn)` when every column in `frame` stands
+    /// on a footing whose own weight and the soil over it hold the frame's
+    /// governing wind uplift (`elu_min_column_axial_kn`), footings based at
+    /// `base_depth_m`.
+    pub fn frame_uplift_held_by_footings(
+        &self,
+        frame: &crate::domain::frame2d::FrameLineResult,
+        base_depth_m: f64,
+    ) -> Option<f64> {
+        if frame.columns.is_empty() || self.footings.is_empty() {
+            return None;
+        }
+        let demand = frame.envelope.elu_min_column_axial_kn.max(0.0);
+        let mut min_resistance = f64::INFINITY;
+        for col in &frame.columns {
+            let label = &self.columns.iter().find(|c| c.id == col.column_id)?.label;
+            let footing = self
+                .footings
+                .iter()
+                .find(|f| f.column.as_deref() == Some(label.as_str()))?;
+            let resistance = footing_uplift_resistance_kn(
+                footing.width_m,
+                footing.depth_m,
+                footing.height_m,
+                base_depth_m,
+            );
+            if resistance + 1e-3 < demand {
+                return None;
+            }
+            min_resistance = min_resistance.min(resistance);
+        }
+        min_resistance.is_finite().then_some(min_resistance)
+    }
+
     /// Returns `Some(min_uplift_capacity_kn)` when every column in `frame`
     /// stands on an anchored [`PileCapResult`] (*bloco sobre broca*) whose
     /// shaft-friction uplift resistance covers the frame's governing wind

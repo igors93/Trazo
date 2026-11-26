@@ -4,6 +4,7 @@
 
 mod args;
 mod presizing;
+mod site_works;
 #[cfg(test)]
 mod tests;
 mod to_json;
@@ -712,6 +713,78 @@ impl FloorPlanApp {
                     .data(foundation_study_json(&study)))
                 })
             }
+            "definir_solo_provavel" => {
+                let profile = site_works::presumed_soil_arg(args)?;
+                self.apply_change(None, |project| {
+                    let layers = profile.layers.len();
+                    let applied = project.set_presumed_soil(Some(profile));
+                    let kpa = project.structure.settings.soil_kpa;
+                    let message = match applied {
+                        Some(kpa) => format!(
+                            "Solo provável definido ({layers} camada(s)). Sem sondagem, a tensão do solo baixou para {kpa:.0} kPa, o lado seguro para esse solo."
+                        ),
+                        None if project.structure.soil_survey.is_some() => format!(
+                            "Solo provável guardado ({layers} camada(s)); a sondagem prevalece ({kpa:.0} kPa)."
+                        ),
+                        None => format!(
+                            "Solo provável guardado ({layers} camada(s)); a tensão do solo continua em {kpa:.0} kPa."
+                        ),
+                    };
+                    Ok(Change::new(message).data(json!({
+                        "solo_provavel": site_works::presumed_soil_json(project),
+                        "hipoteses": hypotheses_json(project),
+                    })))
+                })
+            }
+            "remover_solo_provavel" => self.apply_change(None, |project| {
+                if project.structure.presumed_soil.is_none() {
+                    return Err("O projeto não tem solo provável.".to_owned());
+                }
+                let _ = project.set_presumed_soil(None);
+                Ok(Change::new(
+                    "Solo provável removido; a tensão do solo ficou como estava.".to_owned(),
+                ))
+            }),
+            "configurar_piscina" => {
+                let room = room_arg(&self.project, args)?;
+                let mut spec = self
+                    .project
+                    .structure
+                    .pools
+                    .iter()
+                    .find(|p| p.room_id == room)
+                    .copied()
+                    .unwrap_or_else(|| crate::domain::pool::PoolSpec::new(room));
+                if let Some(depth) = number(args, "profundidade_m")? {
+                    spec.depth_m = depth;
+                }
+                if let Some(wall) = centimetres(args, "espessura_parede_cm")? {
+                    spec.wall_thickness_m = wall;
+                }
+                if let Some(floor) = centimetres(args, "espessura_fundo_cm")? {
+                    spec.floor_thickness_m = floor;
+                }
+                if let Some(edge) = number(args, "sobrecarga_borda_kn_m2")? {
+                    spec.edge_surcharge_kpa = edge;
+                }
+                spec.validate()?;
+                self.apply_change(Some("A piscina já estava assim."), |project| {
+                    project.set_pool_spec(spec)?;
+                    let pools = site_works::pools_json(project);
+                    let this = pools
+                        .iter()
+                        .find(|p| p.get("comodo_id").and_then(Value::as_u64) == Some(room))
+                        .cloned()
+                        .unwrap_or(Value::Null);
+                    Ok(Change::new(format!(
+                        "Piscina configurada: {} m de profundidade, parede de {:.0} cm e fundo de {:.0} cm.",
+                        format!("{:.2}", spec.depth_m).replace('.', ","),
+                        spec.wall_thickness_m * 100.0,
+                        spec.floor_thickness_m * 100.0
+                    ))
+                    .data(json!({ "piscina": this })))
+                })
+            }
             "remover_sondagem" => self.apply_change(None, |project| {
                 if project.structure.soil_survey.is_none() {
                     return Err("O projeto não tem sondagem.".to_owned());
@@ -1050,7 +1123,7 @@ impl FloorPlanApp {
                 })
             }
             _ => Err(
-                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_bloco_broca, editar_bloco_broca, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, configurar_sobreposicao, simular_whatif, definir_balanco, remover_balanco, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao, configurar_vento, ajustar_paredes_telhado ou vista.".to_owned(),
+                "Informe 'acao': gerar_estrutura, inserir_pilar, inserir_sapata, inserir_bloco_broca, editar_bloco_broca, inserir_carga, editar_carga, remover_carga, ligar_pilares, apoiar_em_viga, editar_viga, remover_viga, definir_laje, remover_laje, configurar, configurar_sobreposicao, simular_whatif, definir_balanco, remover_balanco, ajustar_sapatas, gerar_vigas_alavanca, ligar_viga_alavanca, remover_viga_alavanca, gerar_fundacao_paredes, definir_fundacao_parede, remover_fundacao_paredes, definir_sondagem, remover_sondagem, definir_solo_provavel, remover_solo_provavel, configurar_piscina, simular_fundacoes, definir_telhado, remover_telhado, inserir_mourao, configurar_vento, ajustar_paredes_telhado ou vista.".to_owned(),
             ),
         }
     }

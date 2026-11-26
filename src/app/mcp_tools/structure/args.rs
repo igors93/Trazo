@@ -160,6 +160,26 @@ pub(super) fn roof_arg(
     if let Some(v) = number(args, "espacamento_vigas_m")? {
         roof.beam_spacing_m = v;
     }
+    if let Some(bar) = number(args, "contraventamento_barra_mm")? {
+        // Trazo computes the resistance of the bracing the designer specifies.
+        if args.get("contraventamento_kn").is_some() {
+            return Err(
+                "Informe contraventamento_barra_mm (o Trazo calcula a resistência) ou contraventamento_kn, não os dois."
+                    .to_owned(),
+            );
+        }
+        if !(8.0..=32.0).contains(&bar) {
+            return Err("'contraventamento_barra_mm' deve ficar entre 8 e 32 mm.".to_owned());
+        }
+        let crosses = match number(args, "contraventamento_x")? {
+            Some(n) if n.fract() == 0.0 && (1.0..=8.0).contains(&n) => n as u32,
+            Some(_) => {
+                return Err("'contraventamento_x' deve ser um inteiro de 1 a 8.".to_owned());
+            }
+            None => 1,
+        };
+        roof.lateral_bracing_kn = Some(crate::domain::wind::bracing_tie_capacity_kn(bar, crosses));
+    }
     if let Some(value) = args.get("contraventamento_kn") {
         roof.lateral_bracing_kn = if value.is_null() {
             None

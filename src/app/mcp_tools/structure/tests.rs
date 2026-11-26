@@ -50,6 +50,77 @@ fn pre_dimensionamento_exposes_tall_panel_wind_and_ground_beam_reactions() {
 }
 
 #[test]
+fn an_assistant_records_a_presumed_soil_and_checks_a_pool_and_a_septic_system() {
+    let mut app = FloorPlanApp::new(&egui::Context::default());
+    let built = app.run_mcp_tool(
+        "executar_lote",
+        &json!({ "acoes": [
+            { "ferramenta": "definir_terreno", "argumentos": { "largura": 10, "comprimento": 30 } },
+            { "ferramenta": "criar_comodo", "argumentos": { "nome": "Quarto", "x": 1, "y": 1, "largura": 3, "comprimento": 3 } },
+            { "ferramenta": "criar_comodo", "argumentos": { "nome": "Piscina", "x": 3, "y": 10, "largura": 3, "comprimento": 6 } },
+        ]}),
+    );
+    assert!(!built.is_error, "{}", built.text);
+    app.project.structure.settings.soil_kpa = 200.0;
+
+    let soil = app.run_mcp_tool(
+        "projeto_estrutural",
+        &json!({ "acao": "definir_solo_provavel", "camadas": [
+            { "solo": "argila_arenosa_vermelha", "expectativa": "provavel" },
+            { "solo": "Areia argilosa vermelha", "expectativa": "provavel" },
+            { "solo": "alteracao_arenito_basalto", "expectativa": "possivel_em_profundidade" },
+        ]}),
+    );
+    assert!(!soil.is_error, "{}", soil.text);
+    // The presumed red porous soil brings an unbacked 200 kPa down to 60 kPa.
+    assert!((app.project.structure.settings.soil_kpa - 60.0).abs() < 1e-9);
+    let structured = soil.structured.unwrap();
+    assert_eq!(structured["solo_provavel"]["colapsivel"], true);
+
+    let pool = app.run_mcp_tool(
+        "projeto_estrutural",
+        &json!({ "acao": "configurar_piscina", "comodo": "Piscina", "profundidade_m": 1.5, "espessura_parede_cm": 18 }),
+    );
+    assert!(!pool.is_error, "{}", pool.text);
+    let report = app
+        .run_mcp_tool("pre_dimensionamento", &json!({}))
+        .structured
+        .unwrap();
+    assert_eq!(report["piscinas"][0]["profundidade_m"], 1.5);
+    assert_eq!(report["piscinas"][0]["parede"]["espessura_cm"], 18.0);
+    assert!(
+        report["solo_provavel"]["observacoes"]
+            .as_array()
+            .unwrap()
+            .len()
+            > 1
+    );
+    assert!(report["semaforo"].as_array().unwrap().iter().any(|v| {
+        v["elemento"]
+            .as_str()
+            .is_some_and(|e| e.starts_with("Piscina"))
+    }));
+
+    let septic = app.run_mcp_tool(
+        "projeto_hidraulico",
+        &json!({ "acao": "configurar_fossa", "fossa_x": 3, "fossa_y": 27.5, "sumidouros": [{ "x": 7, "y": 27.5 }] }),
+    );
+    assert!(!septic.is_error, "{}", septic.text);
+    let septic = septic.structured.unwrap();
+    // No test yet: the presumed soil's rate, and the soil is collapsible.
+    assert_eq!(
+        septic["fossa_septica"]["infiltracao_origem"],
+        "solo provável (estimativa)"
+    );
+    assert_eq!(septic["fossa_septica"]["solo_colapsivel"], true);
+    let bad = app.run_mcp_tool(
+        "projeto_hidraulico",
+        &json!({ "acao": "configurar_fossa", "intervalo_limpeza_anos": 9 }),
+    );
+    assert!(bad.is_error);
+}
+
+#[test]
 fn an_assistant_lays_out_and_checks_the_structure() {
     let mut app = FloorPlanApp::new(&egui::Context::default());
     let built = app.run_mcp_tool(

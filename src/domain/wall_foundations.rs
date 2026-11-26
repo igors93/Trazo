@@ -273,6 +273,26 @@ impl Project {
         resolved
     }
 
+    /// An open side: full-height spans with no masonry above them (open
+    /// spans without a height, or openings reaching the top of the wall)
+    /// take 90 % of the wall. What is left are short stubs, not a panel.
+    pub fn wall_is_open_side(&self, wall: &super::model::Wall) -> bool {
+        let open: f64 = self
+            .openings
+            .iter()
+            .filter(|o| o.wall_id == wall.id)
+            .filter(|o| match o.height() {
+                None => true,
+                Some(h) => {
+                    let top = wall.height_over(self.wall_height, o);
+                    o.sill() + h >= top - 0.10
+                }
+            })
+            .map(|o| o.width())
+            .sum();
+        open >= 0.9 * wall.length()
+    }
+
     fn wall_is_open(&self, wall: &super::model::Wall) -> bool {
         let open: f64 = self
             .openings
@@ -293,6 +313,7 @@ impl Project {
         let mut beams = 0;
         let mut strips = 0;
         let walls = self.walls.clone();
+        let pool_walls = self.pool_wall_ids();
         let mut remaining = Vec::new();
         for wall in &walls {
             if self
@@ -301,6 +322,7 @@ impl Project {
                 .iter()
                 .any(|f| f.wall_id == wall.id)
                 || self.wall_is_open(wall)
+                || pool_walls.contains(&wall.id)
             {
                 continue;
             }
@@ -422,7 +444,14 @@ impl Project {
         let (mut beam_no, mut strip_no) = (0, 0);
         let resolved = self.resolved_ground_beams();
         let mut incoming: HashMap<u64, Vec<(f64, f64)>> = HashMap::new();
-        let mut ordered: Vec<&WallFoundation> = self.structure.wall_foundations.iter().collect();
+        // Pool walls bear on the pool's own floor slab (see `pool`).
+        let pool_walls = self.pool_wall_ids();
+        let mut ordered: Vec<&WallFoundation> = self
+            .structure
+            .wall_foundations
+            .iter()
+            .filter(|f| !pool_walls.contains(&f.wall_id))
+            .collect();
         ordered.sort_by(|a, b| {
             let mid = |f: &WallFoundation| {
                 self.walls

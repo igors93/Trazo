@@ -892,3 +892,13 @@ fn pile_cap_on_boundary_wall_sizes_broca_and_resolves_wind_uplift_verdict() {
             .all(|v| v.light() == Light::Red)
     );
 }
+
+#[test]
+fn a_footing_holds_uplift_with_its_weight_and_the_soil_over_it() {
+    use crate::domain::structure::footing_uplift_resistance_kn;
+    // 0.80 × 0.80 × 0.25 m based at 1.0 m: concrete 25·0.16 = 4.0 kN, soil
+    // 15·0.64·0.75 = 7.2 kN; 0.9·11.2 = 10.08 kN.
+    assert!((footing_uplift_resistance_kn(0.8, 0.8, 0.25, 1.0) - 10.08).abs() < 1e-9);
+    // A footing at the surface holds only its own concrete.
+    assert!((footing_uplift_resistance_kn(0.8, 0.8, 0.25, 0.25) - 3.6).abs() < 1e-9);
+}

@@ -121,3 +121,39 @@ fn a_tank_heavier_than_the_structure_expects_is_red() {
             .all(|v| v.light() != Light::Red)
     );
 }
+
+#[test]
+fn several_tanks_share_the_reserve_by_what_each_checked_load_holds() {
+    use super::cold_water::tank_fitting_load_l;
+    use crate::domain::verdict::{Light, plumbing_verdicts};
+    // A 500 L tank full weighs 5.9 kN; a 1000 L one 10.81 kN.
+    assert!((tank_fitting_load_l(6.0) - 500.0).abs() < 1e-9);
+    assert!((tank_fitting_load_l(10.0) - 750.0).abs() < 1e-9);
+    assert!((tank_fitting_load_l(10.81) - 1000.0).abs() < 1e-9);
+
+    let mut project = house();
+    // Eight people, 150 L each, one day: 1200 L of reserve.
+    project.plumbing.residents = Some(8);
+    for (at, load) in [(Point::new(3.0, 7.0), 6.0), (Point::new(6.0, 7.0), 6.0)] {
+        project
+            .add_fixture(FixtureKind::WaterTank, at, 1.2, 1.2, 0)
+            .unwrap();
+        project.fixtures.last_mut().unwrap().structural_load_kn = Some(load);
+    }
+    let weight = |project: &Project| {
+        plumbing_verdicts(project)
+            .into_iter()
+            .find(|v| v.element == "Caixa-d'água")
+            .unwrap()
+    };
+    // Two 500 L tanks keep 1000 L: short of 1200 L.
+    assert_eq!(weight(&project).light(), Light::Red);
+    project
+        .add_fixture(FixtureKind::WaterTank, Point::new(5.0, 8.0), 1.2, 1.2, 0)
+        .unwrap();
+    project.fixtures.last_mut().unwrap().structural_load_kn = Some(10.0);
+    // 500 + 500 + 750 = 1750 L ≥ 1200 L.
+    let shared = weight(&project);
+    assert_eq!(shared.light(), Light::Green);
+    assert!(shared.checks[0].simple.contains("dividem a reserva"));
+}

@@ -123,6 +123,16 @@ fn hash_fixture(h: &mut DefaultHasher, f: &Fixture) {
     } else {
         false.hash(h);
     }
+    // A pile cap's piles change its capacity and its hold against uplift.
+    if let Some(pile) = f.pile {
+        true.hash(h);
+        hash_f64(h, pile.diameter_m);
+        hash_f64(h, pile.depth_m);
+        pile.count.hash(h);
+        hash_f64(h, pile.anchor_depth_m);
+    } else {
+        false.hash(h);
+    }
 }
 
 fn hash_beam(h: &mut DefaultHasher, b: &Beam) {
@@ -424,6 +434,11 @@ pub fn structure_fingerprint(project: &Project) -> u64 {
                 }
             }
         }
+    }
+    // Pools take their walls out of the masonry and wall-foundation checks.
+    project.structure.pools.len().hash(&mut h);
+    for pool in &project.structure.pools {
+        pool.room_id.hash(&mut h);
     }
     project.circulations.len().hash(&mut h);
     for circ in &project.circulations {

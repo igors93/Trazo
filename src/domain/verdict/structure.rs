@@ -89,7 +89,8 @@ fn limited_structure_verdicts(project: &Project, report: &StructureReport) -> Ve
     }
     let elements = crate::domain::limits::element_violations(report);
     let reinforcement = crate::domain::reinforcement::build_reinforcement_report(project, report);
-    let mut verdicts = sized_structure_verdicts(report, &reinforcement);
+    let mut verdicts =
+        sized_structure_verdicts(report, &reinforcement, project.footing_base_depth_m());
     for verdict in &mut verdicts {
         let refused: Vec<Check> = elements
             .iter()
@@ -107,6 +108,7 @@ fn limited_structure_verdicts(project: &Project, report: &StructureReport) -> Ve
 fn sized_structure_verdicts(
     report: &StructureReport,
     reinforcement: &crate::domain::reinforcement::ReinforcementReport,
+    footing_base_depth_m: f64,
 ) -> Vec<Verdict> {
     let mut verdicts = Vec::new();
     for failure in &report.frame_failures {
@@ -176,6 +178,27 @@ fn sized_structure_verdicts(
                         frame.envelope.elu_min_column_axial_combo,
                         decimal(demand, 1),
                         decimal(min_cap, 1)
+                    ),
+                ));
+            } else if let Some(min_weight) =
+                report.frame_uplift_held_by_footings(frame, footing_base_depth_m)
+            {
+                let demand = frame.envelope.elu_min_column_axial_kn.max(0.0);
+                checks.push(Check::new(
+                    "Arrancamento segurado pelas sapatas (ELU)",
+                    demand / min_weight.max(1e-6),
+                    format!(
+                        "Tração sob vento ({}, N = +{} kN) segurada pelo peso da sapata e da terra sobre ela (mín. {} kN): amarre bem a ferragem do pilar na sapata.",
+                        frame.envelope.elu_min_column_axial_combo,
+                        decimal(demand, 1),
+                        decimal(min_weight, 1)
+                    ),
+                    format!(
+                        "Combinação {} (NBR 8681, G favorável + 1,40·W): tração de {} kN ≤ 0,9·(concreto da sapata + solo sobre ela, {} kN/m³, prisma vertical sem cone) = {} kN (NBR 6122, fundação rasa à tração).",
+                        frame.envelope.elu_min_column_axial_combo,
+                        decimal(demand, 1),
+                        decimal(crate::domain::structure::UPLIFT_SOIL_KN_M3, 0),
+                        decimal(min_weight, 1)
                     ),
                 ));
             } else {
@@ -1402,7 +1425,11 @@ fn sized_structure_verdicts(
     for global in &report.wind.global {
         verdicts.push(Verdict {
             discipline: Discipline::Structure,
-            element: format!("Estabilidade global {}", global.direction),
+            element: if global.block.is_empty() {
+                format!("Estabilidade global {}", global.direction)
+            } else {
+                format!("Estabilidade global {} · {}", global.direction, global.block)
+            },
             checks: vec![
                 Check::new("Apoios e travamento", if global.supports_ok && global.bracing_ok { 0.0 } else { 2.0 },
                     if global.supports_ok && global.bracing_ok { "Caminho lateral e apoios declarados." } else { "Faltam fundações, apoios do telhado ou resistência de contraventamento." }.to_owned(),

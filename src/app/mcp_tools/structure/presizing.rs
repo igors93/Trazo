@@ -664,6 +664,8 @@ impl FloorPlanApp {
                 "cargas_kn": b.loads.iter().map(|(_, p)| round1(*p)).collect::<Vec<_>>(),
             })).collect::<Vec<_>>(),
             "sondagem": soil_survey,
+            "solo_provavel": super::site_works::presumed_soil_json(&self.project),
+            "piscinas": super::site_works::pools_json(&self.project),
             "estudo_fundacoes": foundation_study,
             "fundacao_paredes": report.wall_foundations.iter().map(|f| json!({
                 "rotulo": f.label,
@@ -705,10 +707,12 @@ impl FloorPlanApp {
                 "total_barras_12m": reinforcement.total_bars_12m(),
                 "avisos": reinforcement.warnings,
             },
-            "semaforo": verdicts_json(&crate::domain::verdict::structure_verdicts(
-                &self.project,
-                &report,
-            )),
+            "semaforo": verdicts_json(&{
+                let mut verdicts =
+                    crate::domain::verdict::structure_verdicts(&self.project, &report);
+                verdicts.extend(crate::domain::verdict::site_works_verdicts(&self.project));
+                verdicts
+            }),
             "limites": {
                 "recusado": crate::domain::limits::structural_refusal(&self.project),
                 "elementos_fora": crate::domain::limits::element_violations(&report)

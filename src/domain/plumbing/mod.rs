@@ -10,6 +10,7 @@ pub mod cold_water;
 pub mod network;
 pub mod points;
 pub mod rules;
+pub mod septic;
 
 #[cfg(test)]
 mod tests;
@@ -86,6 +87,9 @@ pub struct PlumbingSettings {
     /// Height of the tank's base over the floor, m.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tank_base_m: Option<f64>,
+    /// Septic tank and soakaway, where there is no public sewer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub septic: Option<septic::SepticSettings>,
 }
 
 impl PlumbingSettings {

@@ -9,6 +9,9 @@ use crate::app::FloorPlanApp;
 use crate::domain::plumbing::Heater;
 use crate::domain::plumbing::cold_water::{ColdWater, TankPlace, cold_water};
 use crate::domain::plumbing::points::{PointKind, plumbing_points};
+use crate::domain::plumbing::septic::{
+    AbsorptionSource, ColdestMonth, SepticDesign, SewageStandard, septic_design,
+};
 
 impl FloorPlanApp {
     /// `instalacoes_hidraulicas`: the plumbing points, their counts and
@@ -118,6 +121,19 @@ impl FloorPlanApp {
             .iter()
             .map(|k| (k.key().to_owned(), json!(points.count(*k))))
             .collect();
+        let septic = septic_design(project);
+        if let Some(design) = &septic {
+            text.push_str(&format!(
+                "\nFossa séptica: tanque de {} L úteis ({} × {} m, {} m de água) e {} sumidouro(s) de {} m com {} m de altura útil.",
+                round(design.volume_l),
+                round(design.length_m),
+                round(design.width_m),
+                round(design.depth_m),
+                design.soakaway_count,
+                round(design.soakaway_diameter_m),
+                round(design.soakaway_height_m)
+            ));
+        }
         Ok(ToolOutput::ok(text).with_structured(json!({
             "aquecimento": project.plumbing.heater.key(),
             "pontos": list,
@@ -127,8 +143,60 @@ impl FloorPlanApp {
             "soma_uhc": round(points.total_uhc),
             "observacoes": points.notes,
             "agua_fria": cold.as_ref().map(cold_water_json),
+            "fossa_septica": septic.as_ref().map(septic_json),
         })))
     }
+}
+
+/// The septic tank and soakaway for the report.
+pub(super) fn septic_json(design: &SepticDesign) -> Value {
+    json!({
+        "padrao": design.standard.key(),
+        "padrao_nome": design.standard.label(),
+        "clima": design.coldest_month.key(),
+        "mes_mais_frio": design.coldest_month.label(),
+        "intervalo_limpeza_anos": design.cleaning_years,
+        "moradores": design.residents,
+        "pessoas": design.people,
+        "contribuicao_l_pessoa_dia": round(design.per_person_l),
+        "contribuicao_diaria_l": round(design.daily_l),
+        "tempo_detencao_dias": round(design.detention_days),
+        "taxa_lodo_k_dias": round(design.sludge_k_days),
+        "volume_util_l": round(design.volume_l),
+        "tanque_prismatico": {
+            "comprimento_m": round(design.length_m),
+            "largura_m": round(design.width_m),
+            "profundidade_util_m": round(design.depth_m),
+            "profundidade_util_maxima_m": round(design.max_depth_m),
+        },
+        "tanque_cilindrico": {
+            "diametro_m": round(design.diameter_m),
+            "profundidade_util_m": round(design.cylinder_depth_m),
+        },
+        "infiltracao_l_m2_dia": round(design.absorption_l_m2_day),
+        "infiltracao_origem": match design.absorption_source {
+            AbsorptionSource::Tested => "teste de infiltração",
+            AbsorptionSource::PresumedSoil => "solo provável (estimativa)",
+            AbsorptionSource::Fallback => "padrão seguro do Trazo (estimativa)",
+        },
+        "area_infiltracao_m2": round(design.area_needed_m2),
+        "sumidouros": design.soakaway_count,
+        "sumidouro_diametro_m": round(design.soakaway_diameter_m),
+        "sumidouro_altura_util_m": round(design.soakaway_height_m),
+        "sumidouro_escavacao_m": round(design.soakaway_depth_m),
+        "lencol_m": design.water_table_m.map(round),
+        "solo_colapsivel": design.collapsible,
+        "posicionado": design.placed,
+        "distancias": design.distances.iter().map(|d| json!({
+            "de": d.element,
+            "ate": d.to,
+            "distancia_m": round(d.distance_m),
+            "minimo_norma_m": round(d.normative_m),
+            "minimo_trazo_m": round(d.needed_m),
+            "atende_norma": d.ok(),
+        })).collect::<Vec<_>>(),
+        "observacoes": design.notes,
+    })
 }
 
 /// The settings `restaurar` can put back to Trazo's defaults.
@@ -144,8 +212,74 @@ const FIELDS: [&str; 6] = [
 impl FloorPlanApp {
     /// `projeto_hidraulico`: the plumbing design's settings.
     pub(super) fn tool_plumbing_design(&mut self, args: &Value) -> Result<ToolOutput, String> {
-        let action = text(args, "acao").ok_or("Informe 'acao': configurar ou restaurar.")?;
+        let action = text(args, "acao")
+            .ok_or("Informe 'acao': configurar, restaurar, configurar_fossa ou remover_fossa.")?;
         let output = match action.as_str() {
+            "configurar_fossa" => {
+                let mut settings = self.project.plumbing.septic.clone().unwrap_or_default();
+                match (number(args, "fossa_x")?, number(args, "fossa_y")?) {
+                    (Some(x), Some(y)) => settings.tank_at = Some(to_model(x, y)),
+                    (None, None) => {}
+                    _ => return Err("Informe fossa_x e fossa_y juntos.".to_owned()),
+                }
+                if let Some(list) = args.get("sumidouros").and_then(Value::as_array) {
+                    let mut points = Vec::with_capacity(list.len());
+                    for (i, item) in list.iter().enumerate() {
+                        let x = number(item, "x")?
+                            .ok_or_else(|| format!("Sumidouro {}: falta 'x'.", i + 1))?;
+                        let y = number(item, "y")?
+                            .ok_or_else(|| format!("Sumidouro {}: falta 'y'.", i + 1))?;
+                        points.push(to_model(x, y));
+                    }
+                    settings.soakaways_at = points;
+                }
+                if let Some(d) = number(args, "diametro_sumidouro_m")? {
+                    settings.soakaway_diameter_m = d;
+                }
+                if let Some(raw) = text(args, "padrao") {
+                    settings.standard = SewageStandard::parse(&raw)
+                        .ok_or("padrao deve ser alto, medio ou baixo (NBR 7229).")?;
+                }
+                if let Some(years) = optional_count(args, "intervalo_limpeza_anos")? {
+                    settings.cleaning_years = years as u32;
+                }
+                if let Some(raw) = text(args, "clima") {
+                    settings.coldest_month = ColdestMonth::parse(&raw).ok_or(
+                        "clima deve ser frio (mês mais frio até 10 °C), ameno (10 a 20 °C) ou quente (acima de 20 °C).",
+                    )?;
+                }
+                if let Some(extra) = optional_count(args, "pessoas_extras")? {
+                    settings.extra_people = extra as u32;
+                }
+                match args.get("taxa_infiltracao_l_m2_dia") {
+                    Some(Value::Null) => settings.tested_absorption_l_m2_day = None,
+                    Some(_) => {
+                        settings.tested_absorption_l_m2_day =
+                            number(args, "taxa_infiltracao_l_m2_dia")?;
+                    }
+                    None => {}
+                }
+                settings.validate()?;
+                self.apply_change(Some("A fossa já estava assim."), |project| {
+                    project.plumbing.septic = Some(settings);
+                    let design = septic_design(project).ok_or("Fossa não configurada.")?;
+                    Ok(Change::new(format!(
+                        "Fossa séptica: tanque de {} L úteis para {} pessoa(s) e {} sumidouro(s) de {} m com {} m de altura útil.",
+                        round(design.volume_l),
+                        design.people,
+                        design.soakaway_count,
+                        round(design.soakaway_diameter_m),
+                        round(design.soakaway_height_m)
+                    ))
+                    .data(json!({ "fossa_septica": septic_json(&design) })))
+                })?
+            }
+            "remover_fossa" => self.apply_change(None, |project| {
+                if project.plumbing.septic.take().is_none() {
+                    return Err("O projeto não tem fossa configurada.".to_owned());
+                }
+                Ok(Change::new("Fossa séptica removida do projeto."))
+            })?,
             "configurar" => {
                 let residents = optional_count(args, "moradores")?;
                 let consumption = number(args, "consumo_l_pessoa_dia")?;
@@ -245,7 +379,7 @@ impl FloorPlanApp {
             }
             other => {
                 return Err(format!(
-                    "Ação desconhecida: {other}. Use configurar ou restaurar."
+                    "Ação desconhecida: {other}. Use configurar, restaurar, configurar_fossa ou remover_fossa."
                 ));
             }
         };
@@ -261,8 +395,21 @@ impl FloorPlanApp {
                 text.push_str(&format!("\n{warning}"));
             }
         }
+        let septic = septic_design(&self.project);
+        if let Some(design) = &septic {
+            for distance in design.distances.iter().filter(|d| !d.ok()) {
+                text.push_str(&format!(
+                    "\nO {} fica a {} m da {}: a NBR 7229 pede {} m.",
+                    distance.element,
+                    round(distance.distance_m),
+                    distance.to,
+                    round(distance.normative_m)
+                ));
+            }
+        }
         Ok(ToolOutput::ok(text).with_structured(json!({
             "configuracao": self.project.plumbing,
+            "fossa_septica": septic.as_ref().map(septic_json),
         })))
     }
 }

@@ -656,8 +656,10 @@ fn wind_section(ui: &mut Ui, project: &Project, report: &StructureReport) -> Opt
     }
     for global in &report.wind.global {
         ui.label(RichText::new(format!(
-            "Estabilidade {}: vento {} kN, α {:.2}/{:.2}, deslocamento {} / {} mm, tombamento {:.2}, deslizamento FS {:.2} · {}",
-            global.direction, decimal(global.wind_kn, 1), global.alpha, global.alpha_limit,
+            "Estabilidade {}{}: vento {} kN, α {:.2}/{:.2}, deslocamento {} / {} mm, tombamento {:.2}, deslizamento FS {:.2} · {}",
+            global.direction,
+            if global.block.is_empty() { String::new() } else { format!(" ({})", global.block) },
+            decimal(global.wind_kn, 1), global.alpha, global.alpha_limit,
             decimal(global.drift_mm, 1), decimal(global.drift_limit_mm, 1),
             global.overturning_ratio,
             global.sliding_fs,

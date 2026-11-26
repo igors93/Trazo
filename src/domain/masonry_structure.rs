@@ -245,6 +245,38 @@ fn lintel_bars(moment_knm: f64, height_m: f64) -> (String, f64) {
 }
 
 impl Project {
+    /// The height of the deepest concrete beam that runs along `wall`
+    /// between two columns and covers `[from, to]` (metres along the wall).
+    fn beam_over_span(&self, wall: &super::model::Wall, from: f64, to: f64) -> Option<f64> {
+        let direction = wall.end.minus(wall.start).normalized()?;
+        let reach = wall.thickness() / 2.0 + 0.10;
+        let column_at = |support: super::structure::BeamSupport| match support {
+            super::structure::BeamSupport::Column { id } => self
+                .structural_columns()
+                .find(|column| column.id == id)
+                .map(|column| column.center),
+            super::structure::BeamSupport::Beam { .. } => None,
+        };
+        self.structure
+            .beams
+            .iter()
+            .filter_map(|beam| {
+                let a = column_at(beam.start_support())?;
+                let b = column_at(beam.end_support())?;
+                if distance_to_segment(a, wall.start, wall.end) > reach
+                    || distance_to_segment(b, wall.start, wall.end) > reach
+                {
+                    return None;
+                }
+                let (sa, sb) = (
+                    a.minus(wall.start).dot(direction),
+                    b.minus(wall.start).dot(direction),
+                );
+                (sa.min(sb) <= from + 1e-6 && sa.max(sb) >= to - 1e-6).then_some(beam.height_m)
+            })
+            .reduce(f64::max)
+    }
+
     fn masonry_panel_wind(
         &self,
         wall: &super::model::Wall,
@@ -389,8 +421,14 @@ impl Project {
         let settings = self.structure.settings;
         let mut lintel_no = 0usize;
         let mut sill_no = 0usize;
+        // Pool walls are concrete in the ground (checked in `pool`), and an
+        // open side is full-height spans with stubs, not a masonry panel.
+        let pool_walls = self.pool_wall_ids();
 
         for (wall_index, wall) in self.walls.iter().enumerate() {
+            if pool_walls.contains(&wall.id) || self.wall_is_open_side(wall) {
+                continue;
+            }
             let masonry = wall.masonry.as_ref().unwrap_or(&self.masonry);
             let kind = if load_bearing(masonry) {
                 MasonryWallKind::LoadBearing
@@ -556,10 +594,15 @@ impl Project {
                 let top = wall.height_over(storey, opening);
                 let opening_top = opening.sill() + opening.height().unwrap_or(top);
                 let clear_above = (top - opening_top).max(0.0);
+                // A concrete beam along the wall that spans past the opening
+                // and reaches down to its top is the lintel (*viga-verga*).
+                let beam_is_lintel = self
+                    .beam_over_span(wall, centre_along - half, centre_along + half)
+                    .is_some_and(|beam_height| beam_height + 0.02 >= clear_above);
 
                 // A full-height opening has no wall above it and therefore no
                 // lintel. Every other opening, including gates, gets one.
-                if clear_above > (masonry.block_height + masonry.joint) * 0.5 {
+                if clear_above > (masonry.block_height + masonry.joint) * 0.5 && !beam_is_lintel {
                     lintel_no += 1;
                     let l0 = opening.width();
                     let depth = next_course((l0 / 12.0).max(0.10), masonry);
@@ -828,6 +871,76 @@ mod tests {
             .unwrap();
         assert!(lintel.bearing_left_m < MIN_LINTEL_BEARING_M);
         assert!(!lintel.ok());
+    }
+
+    #[test]
+    fn a_beam_reaching_down_to_a_gate_is_its_lintel() {
+        let lintels = |beam_height: f64| {
+            let mut project = Project::default();
+            let wall = project
+                .add_wall(Point::new(0.0, 0.0), Point::new(6.0, 0.0))
+                .unwrap();
+            let a = project
+                .add_fixture(FixtureKind::Column, Point::new(0.5, 0.0), 0.20, 0.14, 0)
+                .unwrap();
+            let b = project
+                .add_fixture(FixtureKind::Column, Point::new(5.5, 0.0), 0.20, 0.14, 0)
+                .unwrap();
+            project.add_beam(a, b, 0.14, beam_height).unwrap();
+            // A 4 m gate 2.10 m high under a 2.80 m wall: 0.70 m above it.
+            let gate = project
+                .add_opening_sized(wall, OpeningKind::Gate, 0.5, Some(4.0))
+                .unwrap();
+            project
+                .masonry_structure_report()
+                .bands
+                .iter()
+                .filter(|band| band.opening_id == gate && band.kind == MasonryBandKind::Lintel)
+                .count()
+        };
+        // A 40 cm beam leaves 30 cm of masonry hanging: it needs a lintel.
+        assert_eq!(lintels(0.40), 1);
+        // A 70 cm beam reaches the gate: the beam is the lintel.
+        assert_eq!(lintels(0.70), 0);
+    }
+
+    #[test]
+    fn an_open_side_and_a_pool_wall_are_not_masonry_panels() {
+        let mut project = Project::default();
+        // An open side: a full-height span over 95 % of a 6 m wall.
+        let open = project
+            .add_wall(Point::new(0.0, 0.0), Point::new(6.0, 0.0))
+            .unwrap();
+        project
+            .add_opening_sized(open, OpeningKind::Gap, 0.5, Some(5.70))
+            .unwrap();
+        // A wall with a window keeps its panel.
+        let closed = project
+            .add_wall(Point::new(0.0, 3.0), Point::new(6.0, 3.0))
+            .unwrap();
+        project
+            .add_opening_sized(closed, OpeningKind::Window, 0.5, Some(1.20))
+            .unwrap();
+        // The walls of a room named Piscina are concrete in the ground.
+        let pool = project
+            .add_room(Point::new(10.0, 0.0), Point::new(13.0, 8.0), "Piscina")
+            .unwrap();
+        let pool_walls = project
+            .rooms
+            .iter()
+            .find(|r| r.id == pool)
+            .unwrap()
+            .wall_ids
+            .clone();
+        let report = project.masonry_structure_report();
+        assert!(report.panels.iter().all(|p| p.wall_id != open));
+        assert!(report.panels.iter().any(|p| p.wall_id == closed));
+        assert!(
+            report
+                .panels
+                .iter()
+                .all(|p| !pool_walls.contains(&p.wall_id))
+        );
     }
 
     #[test]
