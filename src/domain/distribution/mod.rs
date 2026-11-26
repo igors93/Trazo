@@ -3,6 +3,7 @@
 
 mod calculations;
 mod schedule_svg;
+pub mod selectivity;
 
 #[cfg(test)]
 mod tests;

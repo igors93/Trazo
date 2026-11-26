@@ -8,6 +8,7 @@ use eframe::egui::{self, Color32, RichText, Ui};
 use super::super::{FloorPlanApp, theme::*};
 use super::widgets::secondary_button;
 use crate::domain::distribution::section_label;
+use crate::domain::distribution::selectivity::{short_circuit_csv, short_circuit_sheet_svg};
 use crate::domain::electrical::lighting::{
     SurfaceReflectance, lighting_report_csv, lighting_report_svg,
 };
@@ -689,6 +690,247 @@ impl FloorPlanApp {
         self.message = match result {
             Ok(()) => format!("Estudo fotovoltaico exportado em {}", path.display()),
             Err(error) => format!("Erro ao exportar estudo fotovoltaico: {error}"),
+        };
+    }
+
+    /// Tab 6 (#127): Multi-board hierarchy, short-circuit estimate (Icc) and breaker selectivity.
+    pub(super) fn electrical_selectivity_tab(&mut self, ui: &mut Ui) {
+        let mut sc = self.project.electrical.short_circuit;
+        let mut changed = false;
+        let mut export_kind: Option<&'static str> = None;
+        let report = self.project.short_circuit_report();
+
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.label(
+                RichText::new(
+                    "Quadros principal e secundários (QDG/QDC), estimativa de corrente de curto-circuito (IEC 60909 / NBR 5410 §5.3.5) e seletividade entre disjuntores (§5.3.6).",
+                )
+                .size(12.0)
+                .color(TEXT_2),
+            );
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Trafo:");
+                for kva in [45.0, 75.0, 112.5, 150.0, 225.0, 300.0] {
+                    if ui
+                        .selectable_label((sc.transformer_kva - kva).abs() < 0.5, format!("{kva:.0} kVA"))
+                        .clicked()
+                    {
+                        sc.transformer_kva = kva;
+                        changed = true;
+                    }
+                }
+                ui.separator();
+                ui.label("Icn disj.:");
+                for icn in [3.0, 4.5, 6.0, 10.0] {
+                    if ui
+                        .selectable_label((sc.breaker_icn_ka - icn).abs() < 0.05, format!("{} kA", decimal(icn, 1)))
+                        .clicked()
+                    {
+                        sc.breaker_icn_ka = icn;
+                        changed = true;
+                    }
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Z% trafo:");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut sc.transformer_z_pct)
+                            .range(1.5..=8.0)
+                            .speed(0.1)
+                            .max_decimals(1)
+                            .suffix(" %"),
+                    )
+                    .changed();
+                ui.label("Ramal poste:");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut sc.service_drop_length_m)
+                            .range(2.0..=200.0)
+                            .speed(1.0)
+                            .suffix(" m"),
+                    )
+                    .changed();
+                ui.label("Medidor→QDG:");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut sc.entrance_length_m)
+                            .range(1.0..=150.0)
+                            .speed(1.0)
+                            .suffix(" m"),
+                    )
+                    .changed();
+                ui.separator();
+                if secondary_button(ui, "Exportar PDF").clicked() {
+                    export_kind = Some("pdf");
+                }
+                if secondary_button(ui, "Exportar SVG").clicked() {
+                    export_kind = Some("svg");
+                }
+                if secondary_button(ui, "Exportar CSV").clicked() {
+                    export_kind = Some("csv");
+                }
+            });
+
+            ui.add_space(8.0);
+            if report.boards.is_empty() {
+                ui.label(
+                    RichText::new("Gere os circuitos elétricos primeiro para estimar curto-circuito e seletividade.")
+                        .color(MUTED),
+                );
+            } else {
+                ui.label(RichText::new("1. Quadros e níveis de curto-circuito (Icc)").font(strong(13.0)));
+                egui::Grid::new("elec_sc_boards")
+                    .striped(true)
+                    .spacing([12.0, 5.0])
+                    .show(ui, |ui| {
+                        for h in ["Quadro", "Montante", "Alim.", "Disj.", "Icc 3φ", "Icc 1φ", "Icc máx", "Icn mín.", "Situação"] {
+                            ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                        }
+                        ui.end_row();
+                        for b in &report.boards {
+                            let color = match b.light {
+                                Light::Green => SUCCESS,
+                                Light::Yellow => WARNING,
+                                Light::Red => DANGER,
+                            };
+                            ui.label(RichText::new(&b.label).font(strong(12.0)));
+                            ui.label(b.upstream_board.as_deref().unwrap_or("—"));
+                            ui.label(format!(
+                                "{} mm² · {:.0} m",
+                                b.feeder_wire_mm2.map_or("—".to_owned(), section_label),
+                                b.feeder_length_m
+                            ));
+                            ui.label(
+                                b.main_breaker_a
+                                    .map_or("—".to_owned(), |a| format!("{a:.0} A")),
+                            );
+                            ui.label(format!("{} kA", decimal(b.icc_3p_ka, 2)));
+                            ui.label(format!("{} kA", decimal(b.icc_1p_ka, 2)));
+                            ui.label(RichText::new(format!("{} kA", decimal(b.icc_max_ka, 2))).font(strong(12.0)).color(color));
+                            ui.label(format!("{} kA", decimal(b.recommended_icn_ka, 1)));
+                            ui.label(RichText::new(b.light.label()).color(color));
+                            ui.end_row();
+                        }
+                    });
+
+                ui.add_space(10.0);
+                ui.label(RichText::new("2. Seletividade entre disjuntores (Montante → Jusante)").font(strong(13.0)));
+                egui::Grid::new("elec_sc_selectivity")
+                    .striped(true)
+                    .spacing([12.0, 5.0])
+                    .show(ui, |ui| {
+                        for h in ["Montante", "Jusante", "Razão", "Limite Is", "Curto local", "Resultado"] {
+                            ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                        }
+                        ui.end_row();
+                        for s in &report.selectivity {
+                            let color = match s.light {
+                                Light::Green => SUCCESS,
+                                Light::Yellow => WARNING,
+                                Light::Red => DANGER,
+                            };
+                            ui.label(format!("{} ({:.0} A)", s.upstream_label, s.upstream_in_a));
+                            ui.label(format!(
+                                "{} ({:.0} A {})",
+                                s.downstream_label,
+                                s.downstream_in_a,
+                                s.downstream_curve.label()
+                            ));
+                            ui.label(decimal(s.ratio, 2));
+                            ui.label(format!("{} kA", decimal(s.selectivity_limit_ka, 2)));
+                            ui.label(format!("{} kA", decimal(s.icc_downstream_ka, 2)));
+                            ui.label(RichText::new(s.status.label()).color(color));
+                            ui.end_row();
+                        }
+                    });
+
+                ui.add_space(10.0);
+                ui.label(RichText::new("3. Fim de linha, suporte térmico dos cabos e queda acumulada").font(strong(13.0)));
+                egui::Grid::new("elec_sc_circuits")
+                    .striped(true)
+                    .spacing([12.0, 5.0])
+                    .show(ui, |ui| {
+                        for h in ["Circuito", "Quadro", "ΔV total", "Icc mín. fim", "Disparo mag.", "Suporte cabo", "Situação"] {
+                            ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                        }
+                        ui.end_row();
+                        for c in &report.circuits {
+                            let color = match c.light {
+                                Light::Green => SUCCESS,
+                                Light::Yellow => WARNING,
+                                Light::Red => DANGER,
+                            };
+                            ui.label(RichText::new(format!("C{}", c.circuit)).font(strong(12.0)));
+                            ui.label(&c.board);
+                            ui.label(
+                                c.total_drop_percent
+                                    .map_or("—".to_owned(), |d| format!("{} %", decimal(d, 2))),
+                            );
+                            ui.label(format!("{:.0} A", c.icc_min_end_a));
+                            ui.label(format!("{:.0} A ({})", c.mag_trip_max_a, c.curve.label()));
+                            ui.label(format!("{} kA", decimal(c.cable_thermal_ka, 2)));
+                            ui.label(RichText::new(c.light.label()).color(color));
+                            ui.end_row();
+                        }
+                    });
+            }
+
+            if !report.warnings.is_empty() {
+                ui.add_space(6.0);
+                for w in &report.warnings {
+                    ui.label(
+                        RichText::new(format!("• {w}"))
+                            .size(11.5)
+                            .color(DANGER),
+                    );
+                }
+            }
+            ui.add_space(6.0);
+            for note in &report.assumptions {
+                ui.label(RichText::new(note).size(11.0).color(MUTED));
+            }
+        });
+
+        if changed {
+            let previous = self.project.clone();
+            self.project.electrical.short_circuit = sc;
+            self.record_change(previous);
+        }
+        if let Some(kind) = export_kind {
+            self.export_electrical_selectivity(kind);
+        }
+    }
+
+    fn export_electrical_selectivity(&mut self, kind: &str) {
+        let (label, ext) = match kind {
+            "csv" => ("Planilha CSV", "csv"),
+            "pdf" => ("Documento PDF", "pdf"),
+            _ => ("Desenho SVG", "svg"),
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(format!("curto-circuito-seletividade.{ext}"))
+            .save_file()
+        else {
+            return;
+        };
+        let result = match kind {
+            "csv" => std::fs::write(&path, short_circuit_csv(&self.project))
+                .map_err(|e| e.to_string()),
+            "pdf" => {
+                let markup = short_circuit_sheet_svg(&self.project);
+                crate::domain::views::export_view_pdf(&markup, &path)
+            }
+            _ => {
+                let markup = short_circuit_sheet_svg(&self.project);
+                crate::domain::views::export_view_svg(&markup, &path)
+            }
+        };
+        self.message = match result {
+            Ok(()) => format!("Estudo de curto-circuito exportado em {}", path.display()),
+            Err(error) => format!("Erro ao exportar curto-circuito: {error}"),
         };
     }
 }

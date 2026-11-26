@@ -727,8 +727,161 @@ impl FloorPlanApp {
                     Ok(Change::new(rep.summary_sentence))
                 })
             }
+            "seletividade" => {
+                use crate::domain::distribution::selectivity::{
+                    short_circuit_csv, short_circuit_sheet_svg,
+                };
+                let r = self.project.short_circuit_report();
+                let mut exported: Option<String> = None;
+                if let Some(raw) = text(args, "salvar_csv") {
+                    let path = unique_path(resolve_path(&raw, "csv"));
+                    ensure_parent(&path)?;
+                    std::fs::write(&path, short_circuit_csv(&self.project))
+                        .map_err(|e| format!("Não foi possível salvar o CSV: {e}"))?;
+                    exported = Some(path.display().to_string());
+                } else if let Some(raw) = text(args, "salvar_svg") {
+                    let path = unique_path(resolve_path(&raw, "svg"));
+                    ensure_parent(&path)?;
+                    let svg = short_circuit_sheet_svg(&self.project);
+                    crate::domain::views::export_view_svg(&svg, &path)?;
+                    exported = Some(path.display().to_string());
+                } else if let Some(raw) = text(args, "salvar_pdf") {
+                    let path = unique_path(resolve_path(&raw, "pdf"));
+                    ensure_parent(&path)?;
+                    let svg = short_circuit_sheet_svg(&self.project);
+                    crate::domain::views::export_view_pdf(&svg, &path)?;
+                    exported = Some(path.display().to_string());
+                }
+                let msg = format!(
+                    "Curto-circuito e seletividade: {} quadro(s), Icc máx {:.2} kA (Icn adotado {:.1} kA, mín. recomendado {:.1} kA), {} par(es) de seletividade.{}",
+                    r.boards.len(),
+                    r.max_icc_ka,
+                    r.settings.breaker_icn_ka,
+                    r.min_recommended_icn_ka,
+                    r.selectivity.len(),
+                    exported
+                        .as_deref()
+                        .map_or(String::new(), |p| format!(" Exportado em {p}."))
+                );
+                Ok(ToolOutput::ok(msg).with_structured(json!({
+                    "icc_max_ka": (r.max_icc_ka * 100.0).round() / 100.0,
+                    "icn_adotado_ka": r.settings.breaker_icn_ka,
+                    "icn_recomendado_ka": r.min_recommended_icn_ka,
+                    "semaforo": r.light.key(),
+                    "quadros": r.boards.iter().map(|b| json!({
+                        "rotulo": b.label,
+                        "principal": b.is_main,
+                        "comodo": b.room,
+                        "montante": b.upstream_board,
+                        "alimentador_m": (b.feeder_length_m * 10.0).round() / 10.0,
+                        "alimentador_mm2": b.feeder_wire_mm2,
+                        "queda_alimentador_pct": (b.feeder_drop_percent * 100.0).round() / 100.0,
+                        "disjuntor_a": b.main_breaker_a,
+                        "circuitos": b.circuits,
+                        "icc_3f_ka": (b.icc_3p_ka * 100.0).round() / 100.0,
+                        "icc_1f_ka": (b.icc_1p_ka * 100.0).round() / 100.0,
+                        "icc_max_ka": (b.icc_max_ka * 100.0).round() / 100.0,
+                        "icn_recomendado_ka": b.recommended_icn_ka,
+                        "semaforo": b.light.key(),
+                        "observacao": b.note,
+                    })).collect::<Vec<_>>(),
+                    "seletividade": r.selectivity.iter().map(|s| json!({
+                        "montante": s.upstream_label,
+                        "montante_a": s.upstream_in_a,
+                        "jusante": s.downstream_label,
+                        "jusante_a": s.downstream_in_a,
+                        "curva_jusante": s.downstream_curve.label(),
+                        "razao": (s.ratio * 100.0).round() / 100.0,
+                        "limite_is_ka": (s.selectivity_limit_ka * 100.0).round() / 100.0,
+                        "icc_local_ka": (s.icc_downstream_ka * 100.0).round() / 100.0,
+                        "status": s.status.key(),
+                        "semaforo": s.light.key(),
+                        "explicacao": s.explanation,
+                    })).collect::<Vec<_>>(),
+                    "circuitos": r.circuits.iter().map(|c| json!({
+                        "circuito": c.circuit,
+                        "quadro": c.board,
+                        "queda_total_pct": c.total_drop_percent.map(|d| (d * 100.0).round() / 100.0),
+                        "icc_quadro_ka": (c.icc_board_ka * 100.0).round() / 100.0,
+                        "icc_min_fim_a": c.icc_min_end_a.round(),
+                        "disparo_magnetico_a": c.mag_trip_max_a.round(),
+                        "suporte_termico_cabo_ka": (c.cable_thermal_ka * 100.0).round() / 100.0,
+                        "disparo_magnetico_ok": c.magnetic_trip_ok,
+                        "suporte_termico_ok": c.cable_thermal_ok,
+                        "queda_total_ok": c.total_drop_ok,
+                        "semaforo": c.light.key(),
+                    })).collect::<Vec<_>>(),
+                    "arquivo_exportado": exported,
+                    "alertas": r.warnings,
+                    "premissas": r.assumptions,
+                })))
+            }
+            "configurar_curto_circuito" => {
+                let trafo_kva = number(args, "transformador_kva")?;
+                let z_pct = number(args, "impedancia_pct")?;
+                let drop_m = number(args, "ramal_poste_m")?;
+                let drop_mm2 = number(args, "ramal_poste_mm2")?;
+                let ent_m = number(args, "ramal_entrada_m")?;
+                let icn_ka = number(args, "capacidade_icn_ka")?;
+                if let Some(v) = trafo_kva
+                    && !(15.0..=1000.0).contains(&v)
+                {
+                    return Err("'transformador_kva' deve estar entre 15 e 1000 kVA.".to_owned());
+                }
+                if let Some(v) = z_pct
+                    && !(1.5..=10.0).contains(&v)
+                {
+                    return Err("'impedancia_pct' deve estar entre 1,5 e 10 %.".to_owned());
+                }
+                if let Some(v) = drop_m
+                    && !(1.0..=300.0).contains(&v)
+                {
+                    return Err("'ramal_poste_m' deve estar entre 1 e 300 m.".to_owned());
+                }
+                if let Some(v) = drop_mm2
+                    && !(6.0..=240.0).contains(&v)
+                {
+                    return Err("'ramal_poste_mm2' deve estar entre 6 e 240 mm².".to_owned());
+                }
+                if let Some(v) = ent_m
+                    && !(1.0..=150.0).contains(&v)
+                {
+                    return Err("'ramal_entrada_m' deve estar entre 1 e 150 m.".to_owned());
+                }
+                if let Some(v) = icn_ka
+                    && !(1.5..=25.0).contains(&v)
+                {
+                    return Err("'capacidade_icn_ka' deve estar entre 1,5 e 25 kA.".to_owned());
+                }
+                self.apply_change(Some("Os parâmetros de curto-circuito já estavam assim."), |project| {
+                    let sc = &mut project.electrical.short_circuit;
+                    if let Some(v) = trafo_kva {
+                        sc.transformer_kva = v;
+                    }
+                    if let Some(v) = z_pct {
+                        sc.transformer_z_pct = v;
+                    }
+                    if let Some(v) = drop_m {
+                        sc.service_drop_length_m = v;
+                    }
+                    if let Some(v) = drop_mm2 {
+                        sc.service_drop_section_mm2 = v;
+                    }
+                    if let Some(v) = ent_m {
+                        sc.entrance_length_m = v;
+                    }
+                    if let Some(v) = icn_ka {
+                        sc.breaker_icn_ka = v;
+                    }
+                    let rep = project.short_circuit_report();
+                    Ok(Change::new(format!(
+                        "Curto-circuito configurado (trafo {:.0} kVA, Icn {:.1} kA): Icc máx {:.2} kA.",
+                        sc.transformer_kva, sc.breaker_icn_ka, rep.max_icc_ka
+                    )))
+                })
+            }
             _ => Err(
-                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao, definir_concessionaria, demanda_coletiva, lista_materiais, luminotecnico, configurar_iluminacao, fotovoltaico ou configurar_fotovoltaico.".to_owned(),
+                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao, definir_concessionaria, demanda_coletiva, lista_materiais, luminotecnico, configurar_iluminacao, fotovoltaico, configurar_fotovoltaico, seletividade ou configurar_curto_circuito.".to_owned(),
             ),
         }
     }
@@ -915,6 +1068,17 @@ impl FloorPlanApp {
                     "inversor_kw": pv.inverter_kw,
                     "geracao_mensal_kwh": pv.mean_monthly_generation_kwh.round(),
                     "semaforo": pv.light.key(),
+                })
+            }),
+            "curto_circuito": (!schedule.circuits.is_empty()).then(|| {
+                let sc = crate::domain::distribution::selectivity::short_circuit_report(&self.project, &schedule);
+                json!({
+                    "icc_max_ka": (sc.max_icc_ka * 100.0).round() / 100.0,
+                    "icn_adotado_ka": sc.settings.breaker_icn_ka,
+                    "icn_recomendado_ka": sc.min_recommended_icn_ka,
+                    "quadros": sc.boards.len(),
+                    "pares_seletividade": sc.selectivity.len(),
+                    "semaforo": sc.light.key(),
                 })
             }),
             "semaforo": super::structure::verdicts_json(&crate::domain::verdict::electrical_project_verdicts(&self.project, &schedule)),
@@ -1152,5 +1316,42 @@ mod tests {
         assert_eq!(data["cidade"], "São Paulo / SP");
         assert_eq!(data["geracao_mensal"].as_array().unwrap().len(), 12);
         assert!(data["potencia_instalada_kwp"].as_f64().unwrap() > 2.5);
+    }
+
+    #[test]
+    fn mcp_evaluates_sub_boards_short_circuit_and_breaker_selectivity() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        let built = app.run_mcp_tool(
+            "executar_lote",
+            &json!({ "acoes": [
+                { "ferramenta": "definir_terreno", "argumentos": { "largura": 30, "comprimento": 20 } },
+                { "ferramenta": "criar_comodo", "argumentos": { "nome": "Sala", "x": 1, "y": 1, "largura": 6, "comprimento": 4 } },
+                { "ferramenta": "criar_comodo", "argumentos": { "nome": "Edícula", "x": 15, "y": 1, "largura": 5, "comprimento": 4 } },
+                { "ferramenta": "inserir_ponto_eletrico", "argumentos": { "tipo": "quadro", "x": 1.3, "y": 1.3 } },
+                { "ferramenta": "inserir_ponto_eletrico", "argumentos": { "tipo": "quadro", "x": 15.3, "y": 1.3 } },
+                { "ferramenta": "projeto_eletrico", "argumentos": { "acao": "gerar_pontos" } },
+                { "ferramenta": "projeto_eletrico", "argumentos": { "acao": "distribuir_circuitos" } },
+                { "ferramenta": "projeto_eletrico", "argumentos": { "acao": "gerar_eletrodutos" } },
+            ] }),
+        );
+        assert!(!built.is_error, "{}", built.text);
+
+        let cfg = app.run_mcp_tool(
+            "projeto_eletrico",
+            &json!({
+                "acao": "configurar_curto_circuito",
+                "transformador_kva": 150,
+                "ramal_poste_m": 10,
+                "capacidade_icn_ka": 6.0
+            }),
+        );
+        assert!(!cfg.is_error, "{}", cfg.text);
+
+        let res = app.run_mcp_tool("projeto_eletrico", &json!({ "acao": "seletividade" }));
+        assert!(!res.is_error, "{}", res.text);
+        let data = res.structured.unwrap();
+        assert_eq!(data["quadros"].as_array().unwrap().len(), 2);
+        assert!(!data["seletividade"].as_array().unwrap().is_empty());
+        assert!(data["icc_max_ka"].as_f64().unwrap() > 1.0);
     }
 }

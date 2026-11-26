@@ -348,6 +348,7 @@ pub fn single_line_svg(project: &Project) -> String {
         "Barramentos de neutro e de terra (PE) no quadro; PE ligado ao aterramento.",
     );
     if !schedule.sub_boards.is_empty() {
+        let sc = super::selectivity::short_circuit_report(project, &schedule);
         let mut sy = bars_y + 7.0;
         text(
             &mut svg,
@@ -356,7 +357,7 @@ pub fn single_line_svg(project: &Project) -> String {
             2.6,
             true,
             "start",
-            "Quadros secundários (QDC):",
+            "Quadros secundários (QDC) e curto-circuito:",
         );
         for sub in &schedule.sub_boards {
             sy += 4.5;
@@ -369,8 +370,15 @@ pub fn single_line_svg(project: &Project) -> String {
                     .collect::<Vec<_>>()
                     .join(", ")
             };
+            let icc_str = sc
+                .boards
+                .iter()
+                .find(|b| b.label == sub.label)
+                .map_or(String::new(), |b| {
+                    format!(" · Icc {} kA", decimal(b.icc_max_ka, 2))
+                });
             let feeder = format!(
-                "{} ({}) · demanda {} kVA · disj. {} · alim. {} mm²",
+                "{} ({}) · demanda {} kVA · disj. {} · alim. {} mm²{icc_str}",
                 sub.label,
                 circs,
                 decimal(sub.demand_va / 1000.0, 2),
@@ -527,12 +535,15 @@ pub fn single_line_svg(project: &Project) -> String {
         ),
     ];
     if let Some(e) = entrance {
+        let sc = super::selectivity::short_circuit_report(project, &schedule);
         summary.push(format!(
-            "Disjuntor geral: {} · ramal {} mm² · eletroduto Ø{} mm",
+            "Disjuntor geral: {} · ramal {} mm² · eletroduto Ø{} mm · Icc máx {} kA (Icn ≥ {} kA)",
             e.breaker_a
                 .map_or("—".to_owned(), |b| format!("{} {b:.0} A", poles(phases))),
             e.wire_mm2.map_or("—".to_owned(), section_label),
-            e.conduit_mm.map_or("—".to_owned(), |c| c.to_string())
+            e.conduit_mm.map_or("—".to_owned(), |c| c.to_string()),
+            decimal(sc.max_icc_ka, 2),
+            decimal(sc.min_recommended_icn_ka, 1)
         ));
     }
     for (i, item) in summary.iter().enumerate() {

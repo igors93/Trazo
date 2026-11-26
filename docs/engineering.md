@@ -443,6 +443,10 @@ Checked for #125 by `worked_example_office_matches_lumen_method_hand_calculation
 
 Checked for #126 by `worked_example_sao_paulo_400kwh_matches_cresesb_hand_calculation`, `fortaleza_generates_more_than_curitiba_and_gable_roof_prefers_north_plane` and `mcp_presizes_photovoltaic_system_for_project_city`.
 
+| Multi-board short-circuit & selectivity (#127, B09) | Simplified IEC 60909 / NBR 5410 §5.3.5 impedance summation (`Z_tr = (Z%/100)·V_ll²/S`, service drop, entrance cable, QDG→QDC feeders and hot 70 °C terminal circuits) giving `Icc3φ`, `Icc1φ` at each board (`QDG`/`QDC1…`) vs. breaker `Icn` (`3 / 4.5 / 6 / 10 / 15 kA`), adiabatic PVC copper thermal withstand (`k = 115 A·√s/mm²`, 10 ms), minimum end-of-line magnetic trip (`5·In` Curve B / `10·In` Curve C), cumulative `ΔV_feeder + ΔV_terminal ≤ 4 %` (§6.2.7.1) and upstream/downstream breaker selectivity (`In_up/In_down ≥ 1.6` thermal, magnetic limit `Is`, §5.3.6) | IEC 60909 · ABNT NBR 5410:2004, 5.3.5, 5.3.6, 6.2.7.1 · NBR NM 60898 |
+
+Checked for #127 by `worked_example_short_circuit_matches_iec_60909_hand_calculation`, `main_board_with_sub_board_models_attenuated_icc_selectivity_and_cumulative_drop` and `mcp_evaluates_sub_boards_short_circuit_and_breaker_selectivity`.
+
 The regional utility profiles (`src/domain/utility_profiles.rs`: Generic NBR 5410, Enel SP LIG-BT 12ª ed., CPFL GED-13, CEMIG ND 5.1, COPEL NTC 901100) use explicit per-utility residential demand tables and service-entrance thresholds (no hidden scale multipliers) and carry a `UtilityStandardCitation` (standard, edition, tables and local-bulletin verification note) surfaced in the UI, single-line diagram and MCP `quadro_de_cargas` (B21). Because utilities publish periodic technical bulletins (*comunicados técnicos*), designers should still confirm the active local revision before submitting a connection request.
 
 ## Construction quantities

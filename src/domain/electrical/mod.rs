@@ -65,6 +65,12 @@ pub struct ElectricalSettings {
     /// Photovoltaic pre-sizing parameters (NBR 16690 / Lei 14.300, #126).
     #[serde(default, skip_serializing_if = "photovoltaic::PvSettings::is_default")]
     pub pv: photovoltaic::PvSettings,
+    /// Short-circuit & selectivity source parameters (IEC 60909 / NBR 5410, #127).
+    #[serde(
+        default,
+        skip_serializing_if = "crate::domain::distribution::selectivity::ShortCircuitSettings::is_default"
+    )]
+    pub short_circuit: crate::domain::distribution::selectivity::ShortCircuitSettings,
 }
 
 fn default_voltage() -> f64 {
@@ -85,6 +91,7 @@ impl Default for ElectricalSettings {
             custom_rules: None,
             lighting: lighting::LightingSettings::default(),
             pv: photovoltaic::PvSettings::default(),
+            short_circuit: crate::domain::distribution::selectivity::ShortCircuitSettings::default(),
         }
     }
 }

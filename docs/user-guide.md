@@ -225,6 +225,10 @@ The *Iluminação (lux)* tab of *Projeto elétrico* computes each room's maintai
 
 The *Solar (Fotovoltaico)* tab of *Projeto elétrico* pre-sizes a rooftop grid-tied PV array for the project's city (27 Brazilian cities from INPE/CRESESB, or a conservative 4.20 kWh/m²·day fallback when no city is set): enter your monthly bill in kWh/month (or use the automatic estimate), module wattage (default 550 Wp) and Performance Ratio (default 78 %). Trazo packs the modules onto the best-oriented roof planes first (North → East/West → South), sizes the inverter and AC protection, checks the 75 kW microgeneration limit and roof dead load (`0.15 kN/m²`), displays the 12-month generation profile, draws the modules on the plan and exports to PDF, SVG and CSV.
 
+### Multiple boards, short-circuit and breaker selectivity
+
+Place more than one **Quadro** on the plan to model a main board (`QDG`) feeding secondary sub-boards (`QDC1`, `QDC2`, …). The *Curto e seletividade* tab of *Projeto elétrico* estimates the prospective three-phase and single-phase short-circuit currents (`Icc`) at each board from the utility transformer, service drop and feeders, verifies the breakers' breaking capacity (`Icn`), checks cumulative feeder + terminal voltage drop (≤ 4 %) and cable thermal withstand, and evaluates upstream-to-downstream breaker selectivity (`DG → QDC → Ck`), exporting to PDF, SVG and CSV.
+
 ## Structure
 
 The *Estrutura* (structure) tab lays out a first reinforced-concrete structure over the floor plan and pre-sizes it. Columns, beams, slabs and footings are drawn as a formwork plan (*planta de forma*) on their own layer, *Estrutura*, in dark teal.

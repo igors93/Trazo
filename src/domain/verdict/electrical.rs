@@ -330,5 +330,60 @@ pub fn electrical_project_verdicts(
         });
     }
 
+    // #127 Multi-board short-circuit capacity & selectivity verdicts (when circuits exist).
+    if !schedule.circuits.is_empty() {
+        let sc = crate::domain::distribution::selectivity::short_circuit_report(project, schedule);
+        let mut sc_checks = Vec::new();
+        for b in &sc.boards {
+            sc_checks.push(Check::new(
+                &format!("Curto-circuito {}", b.label),
+                b.icc_max_ka / b.installed_icn_ka.max(0.5),
+                b.note.clone(),
+                format!(
+                    "Icc máx = {} kA (3φ {} kA · 1φ {} kA) vs. Icn = {} kA (mín. recomendado {} kA, IEC 60909 / NBR 5410 §5.3.5).",
+                    decimal(b.icc_max_ka, 2),
+                    decimal(b.icc_3p_ka, 2),
+                    decimal(b.icc_1p_ka, 2),
+                    decimal(b.installed_icn_ka, 1),
+                    decimal(b.recommended_icn_ka, 1)
+                ),
+            ));
+        }
+        for pair in sc.selectivity.iter().filter(|s| {
+            s.status == crate::domain::distribution::selectivity::SelectivityStatus::None
+        }) {
+            sc_checks.push(Check::fail(
+                &format!("Seletividade {} → {}", pair.upstream_label, pair.downstream_label),
+                pair.explanation.clone(),
+                format!(
+                    "Razão In_montante / In_jusante = {} < 1,25 (NBR 5410 §5.3.6).",
+                    decimal(pair.ratio, 2)
+                ),
+            ));
+        }
+        for c in sc.circuits.iter().filter(|c| !c.total_drop_ok) {
+            if let Some(td) = c.total_drop_percent {
+                sc_checks.push(Check::new(
+                    &format!("Queda acumulada C{}", c.circuit),
+                    td / MAX_DROP_PERCENT,
+                    format!(
+                        "Circuito C{} ({}) soma {} % de queda (alimentador + terminal), acima dos 4 %: aumente o alimentador do subquadro ou o fio do circuito.",
+                        c.circuit,
+                        c.board,
+                        decimal(td, 2)
+                    ),
+                    format!("ΔV_alimentador + ΔV_terminal = {} % > 4 % (NBR 5410 §6.2.7.1).", decimal(td, 2)),
+                ));
+            }
+        }
+        if !sc_checks.is_empty() {
+            verdicts.push(Verdict {
+                discipline: Discipline::Electrical,
+                element: "Curto-circuito e seletividade".to_owned(),
+                checks: sc_checks,
+            });
+        }
+    }
+
     verdicts
 }

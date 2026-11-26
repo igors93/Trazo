@@ -481,6 +481,7 @@ impl FloorPlanApp {
                         "Lista de materiais",
                         "Iluminação (lux)",
                         "Solar (Fotovoltaico)",
+                        "Curto e seletividade",
                     ]
                     .iter()
                     .enumerate()
@@ -494,7 +495,9 @@ impl FloorPlanApp {
                     }
                 });
                 ui.separator();
-                if tab == 5 {
+                if tab == 6 {
+                    self.electrical_selectivity_tab(ui);
+                } else if tab == 5 {
                     self.electrical_pv_tab(ui);
                 } else if tab == 4 {
                     self.electrical_lighting_tab(ui);
