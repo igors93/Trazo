@@ -28,6 +28,7 @@ fn the_lever_follows_the_textbook_statics() {
     // P1 = 100 kN, l = 4 m, e = 0.30 m: R1 = 100·4/3.7 = 108.1 kN,
     // ΔP = 8.1 kN, M = 30 kN·m, FS = 150 / 8.108 = 18.5.
     let mut project = Project::default();
+    project.structure.settings.soil_kpa = 200.0;
     project.set_terrain(Point::new(0.0, 0.0), Point::new(10.0, 10.0));
     let a = project
         .add_fixture(FixtureKind::Column, Point::new(0.10, 5.0), 0.20, 0.20, 0)

@@ -966,7 +966,10 @@ mod tests {
 
     #[test]
     fn the_pressure_follows_nbr_6123() {
-        let wind = WindSettings::default();
+        let wind = WindSettings {
+            v0_ms: 35.0,
+            ..WindSettings::default()
+        };
         // Category III, class A, z = 10 m: S2 = 0.94; Vk = 32.9 m/s.
         assert!((wind.s2(10.0, 15.0) - 0.94).abs() < 1e-9);
         let q = wind.pressure_kpa(10.0, 15.0);
@@ -1064,7 +1067,7 @@ mod tests {
         );
         let baseline = wind.global.iter().find(|g| g.direction == "+X").unwrap();
         let original_force = baseline.wind_kn;
-        project.structure.wind.v0_ms = 45.0;
+        project.structure.wind.v0_ms = 50.0;
         let stronger = project.structure_report();
         let stronger = stronger
             .wind

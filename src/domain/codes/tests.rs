@@ -173,7 +173,8 @@ fn xml_format2_and_json_export_import_round_trip_with_left_out() {
 #[test]
 fn applying_city_preset_updates_climate_and_syncs_structural_wind_v0() {
     let mut project = Project::default();
-    assert!((project.structure.wind.v0_ms - 35.0).abs() < 1e-6);
+    // While the city is unknown, the wind takes the safe side (#160).
+    assert!((project.structure.wind.v0_ms - 45.0).abs() < 1e-6);
 
     let preset = project.apply_site_preset("florianopolis_sc").unwrap();
     assert_eq!(preset.city, "Florianópolis");

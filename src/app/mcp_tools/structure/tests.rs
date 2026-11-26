@@ -30,7 +30,7 @@ fn pre_dimensionamento_exposes_tall_panel_wind_and_ground_beam_reactions() {
     assert_eq!(report["vento"]["paineis_alvenaria"][0]["rotulo"], "AL1");
     let configured = app.run_mcp_tool(
         "projeto_estrutural",
-        &json!({"acao":"configurar_vento", "v0_ms":40.0}),
+        &json!({"acao":"configurar_vento", "v0_ms":50.0}),
     );
     assert!(!configured.is_error, "{}", configured.text);
     assert!(
@@ -697,7 +697,7 @@ fn mcp_reports_nbr6120_nbr8681_combinations_and_nbr6123_building_wind() {
                 { "ferramenta": "criar_comodo", "argumentos": { "nome": "Sala", "x": 0, "y": 0, "largura": 5.0, "comprimento": 4.0 } },
                 { "ferramenta": "criar_comodo", "argumentos": { "nome": "Garagem", "x": 5.0, "y": 0, "largura": 3.5, "comprimento": 4.0 } },
                 { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "configurar", "ocupacao": "escritorio", "sobrecarga_por_comodo": true } },
-                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "configurar_vento", "v0_ms": 40.0, "categoria_terreno": 3, "s1": 1.0, "s3": 1.0 } },
+                { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "configurar_vento", "v0_ms": 50.0, "categoria_terreno": 3, "s1": 1.0, "s3": 1.0 } },
                 { "ferramenta": "projeto_estrutural", "argumentos": { "acao": "gerar_estrutura" } },
             ]
         }),
@@ -720,7 +720,7 @@ fn mcp_reports_nbr6120_nbr8681_combinations_and_nbr6123_building_wind() {
     assert!(loads["nbr_6120"]["q_total_kn"].as_f64().unwrap() > 0.0);
 
     let wind = &loads["vento_edificacao_nbr_6123"];
-    assert_eq!(wind["v0_ms"], 40.0);
+    assert_eq!(wind["v0_ms"], 50.0);
     assert_eq!(wind["direcoes"].as_array().unwrap().len(), 4);
     assert!(wind["direcoes"][0]["cortante_base_kn"].as_f64().unwrap() > 0.0);
     assert_eq!(wind["direcoes"][0]["atende_tombamento"], true);

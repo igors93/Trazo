@@ -664,13 +664,27 @@ fn build_area_gourmet() -> Project {
     let _ = project.generate_wall_foundations();
     let _ = project.size_footings();
 
-    // NBR 6123 site wind (Trazo's safe V0 while the city is unknown, terrain category III).
+    // NBR 6123 site wind (V0 = 35 m/s, terrain category III).
     let _ = project.set_wind(WindSettings {
         v0_ms: 35.0,
         category: 3,
         s1: 1.0,
         s3: 1.0,
     });
+    // The reference states where its concrete and wind come from (#168).
+    project.structure.settings.fck_mpa = 25.0;
+    for (key, evidence) in [
+        (
+            crate::domain::protection::hypotheses::HypothesisKey::ConcreteStrength,
+            "concreto usinado C25 com nota fiscal (projeto de referência)",
+        ),
+        (
+            crate::domain::protection::hypotheses::HypothesisKey::WindSpeed,
+            "mapa de isopletas da NBR 6123 para o local da obra: 35 m/s (projeto de referência)",
+        ),
+    ] {
+        let _ = crate::domain::protection::hypotheses::give_evidence(&mut project, key, evidence);
+    }
 
     // Sanitary fixtures, gourmet counter/dining furniture and 2D pool outline.
     let _ = project.add_fixture(

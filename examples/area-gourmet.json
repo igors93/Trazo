@@ -1076,7 +1076,27 @@
         "lateral_bracing_kn": 60.0
       }
     ],
-    "post_species": "cumaru"
+    "post_species": "cumaru",
+    "wind": {
+      "v0_ms": 35.0,
+      "category": 3,
+      "s1": 1.0,
+      "s3": 1.0
+    }
+  },
+  "protection": {
+    "hypotheses": {
+      "records": {
+        "concrete_strength": {
+          "source": "person",
+          "evidence": "concreto usinado C25 com nota fiscal (projeto de referência)"
+        },
+        "wind_speed": {
+          "source": "person",
+          "evidence": "mapa de isopletas da NBR 6123 para o local da obra: 35 m/s (projeto de referência)"
+        }
+      }
+    }
   },
   "next_id": 68
 }

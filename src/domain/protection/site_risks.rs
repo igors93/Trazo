@@ -218,7 +218,8 @@ mod tests {
     #[test]
     fn a_no_counts_only_from_the_person_and_a_yes_from_anyone() {
         let mut risks = SiteRisks::default();
-        assert_eq!(risks.unanswered().len(), SiteRisk::ALL.len());
+        // The existing-base question only matters when building on top.
+        assert_eq!(risks.unanswered().len(), SiteRisk::ALL.len() - 1);
         risks.set(SiteRisk::Slope, Some(false), HypothesisSource::Assistant);
         assert_eq!(risks.effective(SiteRisk::Slope), None);
         risks.set(SiteRisk::Slope, Some(false), HypothesisSource::Person);

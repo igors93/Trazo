@@ -13,6 +13,10 @@ fn house() -> Project {
         .add_room(Point::new(4.0, 0.0), Point::new(7.0, 4.0), "Cozinha")
         .unwrap();
     project.generate_structure();
+    // A complete foundation: the walls rest on ground beams or strip
+    // footings, and the footings take their loads (#172 checks the weight).
+    project.generate_wall_foundations();
+    project.size_footings();
     project
 }
 
@@ -40,7 +44,9 @@ fn a_generated_house_has_no_red_and_every_element_is_judged() {
         + report.masonry.bands.len()
         + report.masonry.panels.len()
         + report.frames.len()
-        + 2; // ±X and ±Y building wind verdicts (NBR 6123 / NBR 8681 ELU-EQU)
+        + report.wall_foundations.len()
+        + 2 // ±X and ±Y building wind verdicts (NBR 6123 / NBR 8681 ELU-EQU)
+        + 2; // the site questions (#156) and the independent cross-check (#172)
     assert_eq!(summary.verdicts.len(), elements);
     assert_eq!(summary.red, 0, "{:?}", summary.verdicts);
     assert_eq!(summary.green + summary.yellow, elements);
