@@ -43,6 +43,18 @@ pub(super) fn write_conduits(
             "iluminancia-lux",
         );
     }
+    let pv_marks = project.pv_plan_marks();
+    if !pv_marks.is_empty() {
+        write_marks(
+            svg,
+            &pv_marks,
+            point,
+            unit,
+            widths,
+            "#1565c0",
+            "arranjo-fotovoltaico",
+        );
+    }
 }
 
 /// Writes structural plan marks filtered by `scope` (`All`, `Superstructure`

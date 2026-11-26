@@ -305,6 +305,10 @@ pub(super) fn paint_electrical_extras(painter: &Painter, view: ViewTransform, pr
     if !lux_marks.is_empty() {
         paint_marks(painter, view, &lux_marks, Color32::from_rgb(180, 110, 10), 32.0);
     }
+    let pv_marks = project.pv_plan_marks();
+    if !pv_marks.is_empty() {
+        paint_marks(painter, view, &pv_marks, Color32::from_rgb(21, 101, 192), 20.0);
+    }
 }
 
 pub(super) fn paint_wall_labels(

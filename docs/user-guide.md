@@ -221,6 +221,10 @@ The *Lista de materiais* tab of *Projeto elétrico* consolidates everything to b
 
 The *Iluminação (lux)* tab of *Projeto elétrico* computes each room's maintained illuminance by the Lumen Method against the ABNT NBR ISO/CIE 8995-1 targets (100 lx corridors/garages, 150 lx living/bedrooms, 200 lx bathrooms/dining, 300 lx kitchens/laundries, 500 lx offices). You can set the default ceiling and wall luminaire lumens (or override lumens on any individual light point in *Propriedades*), surface reflectances and maintenance factor `Fd`. Each room shows its calculated lux directly on the electrical plan and exported sheets, feeds the *Segurança* traffic light, and exports to PDF, SVG and CSV.
 
+### Photovoltaic pre-sizing
+
+The *Solar (Fotovoltaico)* tab of *Projeto elétrico* pre-sizes a rooftop grid-tied PV array for the project's city (27 Brazilian cities from INPE/CRESESB, or a conservative 4.20 kWh/m²·day fallback when no city is set): enter your monthly bill in kWh/month (or use the automatic estimate), module wattage (default 550 Wp) and Performance Ratio (default 78 %). Trazo packs the modules onto the best-oriented roof planes first (North → East/West → South), sizes the inverter and AC protection, checks the 75 kW microgeneration limit and roof dead load (`0.15 kN/m²`), displays the 12-month generation profile, draws the modules on the plan and exports to PDF, SVG and CSV.
+
 ## Structure
 
 The *Estrutura* (structure) tab lays out a first reinforced-concrete structure over the floor plan and pre-sizes it. Columns, beams, slabs and footings are drawn as a formwork plan (*planta de forma*) on their own layer, *Estrutura*, in dark teal.

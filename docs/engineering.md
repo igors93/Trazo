@@ -439,6 +439,10 @@ Checked for #124 by `sample_house_shopping_list_matches_manual_takeoff_within_fi
 
 Checked for #125 by `worked_example_office_matches_lumen_method_hand_calculation`, `worked_example_underlit_kitchen_turns_red_and_recommends_luminaires`, `every_room_in_sample_house_shows_lighting_level_and_plan_marks` and `mcp_computes_and_configures_room_lighting_levels`.
 
+| Photovoltaic pre-sizing (#126) | Monthly horizontal irradiation (`HSP`, kWh/m²·day) from INPE Atlas Solar / CRESESB for 27 Brazilian cities (conservative 4.20 kWh/m²·day fallback when city is unset); offsettable target subtracts ANEEL availability cost (30/50/100 kWh for mono/bi/tri); `P_kWp = E_day / (HSP·PR·f_orient)` with conservative `PR = 0.78`; roof-plane packing prioritises North planes (`f ≈ 1.03`), then East/West (`~0.92`), then South (`~0.76`) with 35 cm edge setback; inverter sized for `FDI = P_dc/P_ac ≤ 1.25`, AC breaker/cable per NBR 5410, roof load `0.15 kN/m²` (~15 kg/m²), refused above 75 kW AC (microgeneration limit) | INPE/CRESESB · ABNT NBR 16690 · Lei 14.300 |
+
+Checked for #126 by `worked_example_sao_paulo_400kwh_matches_cresesb_hand_calculation`, `fortaleza_generates_more_than_curitiba_and_gable_roof_prefers_north_plane` and `mcp_presizes_photovoltaic_system_for_project_city`.
+
 The regional utility profiles (`src/domain/utility_profiles.rs`: Generic NBR 5410, Enel SP LIG-BT 12ª ed., CPFL GED-13, CEMIG ND 5.1, COPEL NTC 901100) use explicit per-utility residential demand tables and service-entrance thresholds (no hidden scale multipliers) and carry a `UtilityStandardCitation` (standard, edition, tables and local-bulletin verification note) surfaced in the UI, single-line diagram and MCP `quadro_de_cargas` (B21). Because utilities publish periodic technical bulletins (*comunicados técnicos*), designers should still confirm the active local revision before submitting a connection request.
 
 ## Construction quantities

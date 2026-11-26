@@ -584,8 +584,151 @@ impl FloorPlanApp {
                     )))
                 })
             }
+            "fotovoltaico" => {
+                use crate::domain::electrical::photovoltaic::{
+                    photovoltaic_csv, photovoltaic_sheet_svg,
+                };
+                let r = self.project.photovoltaic_report();
+                let mut exported: Option<String> = None;
+                if let Some(raw) = text(args, "salvar_csv") {
+                    let path = unique_path(resolve_path(&raw, "csv"));
+                    ensure_parent(&path)?;
+                    std::fs::write(&path, photovoltaic_csv(&self.project))
+                        .map_err(|e| format!("Não foi possível salvar o CSV: {e}"))?;
+                    exported = Some(path.display().to_string());
+                } else if let Some(raw) = text(args, "salvar_svg") {
+                    let path = unique_path(resolve_path(&raw, "svg"));
+                    ensure_parent(&path)?;
+                    let svg = photovoltaic_sheet_svg(&self.project);
+                    crate::domain::views::export_view_svg(&svg, &path)?;
+                    exported = Some(path.display().to_string());
+                } else if let Some(raw) = text(args, "salvar_pdf") {
+                    let path = unique_path(resolve_path(&raw, "pdf"));
+                    ensure_parent(&path)?;
+                    let svg = photovoltaic_sheet_svg(&self.project);
+                    crate::domain::views::export_view_pdf(&svg, &path)?;
+                    exported = Some(path.display().to_string());
+                }
+                let msg = format!(
+                    "{}{}",
+                    r.summary_sentence,
+                    exported
+                        .as_deref()
+                        .map_or(String::new(), |p| format!(" Exportado em {p}."))
+                );
+                Ok(ToolOutput::ok(msg).with_structured(json!({
+                    "ativo": r.settings.enabled,
+                    "cidade": r.city_label,
+                    "cidade_padrao_conservador": r.city_is_fallback,
+                    "hsp_media_kwh_m2_dia": (r.mean_hsp_kwh_m2_day * 100.0).round() / 100.0,
+                    "consumo_mensal_kwh": r.monthly_consumption_kwh.round(),
+                    "consumo_estimado": r.consumption_is_estimated,
+                    "custo_disponibilidade_kwh": r.availability_cost_kwh,
+                    "potencia_necessaria_kwp": (r.required_kwp * 100.0).round() / 100.0,
+                    "potencia_instalada_kwp": (r.installed_kwp * 100.0).round() / 100.0,
+                    "modulos_necessarios": r.modules_required,
+                    "modulos_alocados": r.modules_placed,
+                    "modulo_wp": r.settings.module_wp,
+                    "inversor_kw": r.inverter_kw,
+                    "fdi_cc_ca": (r.dc_ac_ratio * 100.0).round() / 100.0,
+                    "corrente_ca_a": (r.ac_current_a * 10.0).round() / 10.0,
+                    "disjuntor_ca_a": r.ac_breaker_a,
+                    "cabo_ca_mm2": r.ac_wire_mm2,
+                    "area_telhado_estimada_m2": (r.required_roof_area_m2 * 10.0).round() / 10.0,
+                    "sobrecarga_telhado_kn_m2": r.roof_load_kn_m2,
+                    "geracao_anual_kwh": r.annual_generation_kwh.round(),
+                    "geracao_media_mensal_kwh": r.mean_monthly_generation_kwh.round(),
+                    "compensacao_pct": r.offset_percent.round(),
+                    "acima_limite_75kw": r.refused_above_limit,
+                    "semaforo": r.light.key(),
+                    "planos_telhado": r.planes.iter().map(|p| json!({
+                        "telhado": p.roof_label,
+                        "agua": p.plane_index,
+                        "orientacao": p.orientation_label,
+                        "inclinacao_pct": p.slope_percent.round(),
+                        "area_m2": (p.area_m2 * 10.0).round() / 10.0,
+                        "fator_orientacao": (p.orientation_factor * 100.0).round() / 100.0,
+                        "capacidade_modulos": p.capacity_panels,
+                        "modulos_alocados": p.placed_panels,
+                    })).collect::<Vec<_>>(),
+                    "geracao_mensal": r.months.iter().map(|m| json!({
+                        "mes": m.month,
+                        "dias": m.days,
+                        "hsp": m.hsp_kwh_m2_day,
+                        "geracao_kwh": m.generation_kwh.round(),
+                        "consumo_kwh": m.consumption_kwh.round(),
+                        "saldo_kwh": m.balance_kwh.round(),
+                    })).collect::<Vec<_>>(),
+                    "arquivo_exportado": exported,
+                    "alertas": r.warnings,
+                    "premissas": r.assumptions,
+                })))
+            }
+            "configurar_fotovoltaico" => {
+                let enabled = args.get("ativo").and_then(Value::as_bool);
+                let show_on_plan = args.get("mostrar_na_planta").and_then(Value::as_bool);
+                let consumption = number(args, "consumo_kwh_mes")?;
+                let module_wp = number(args, "modulo_wp")?;
+                let pr = number(args, "pr")?;
+                let offset = number(args, "compensacao_pct")?;
+                let city_query = text(args, "cidade");
+                if let Some(v) = consumption
+                    && !(0.0..=50_000.0).contains(&v)
+                {
+                    return Err("'consumo_kwh_mes' deve estar entre 0 e 50000 kWh/mês.".to_owned());
+                }
+                if let Some(v) = module_wp
+                    && !(250.0..=800.0).contains(&v)
+                {
+                    return Err("'modulo_wp' deve estar entre 250 e 800 Wp.".to_owned());
+                }
+                if let Some(v) = pr
+                    && !(0.60..=0.88).contains(&v)
+                {
+                    return Err("'pr' deve estar entre 0,60 e 0,88.".to_owned());
+                }
+                if let Some(v) = offset
+                    && !(10.0..=100.0).contains(&v)
+                {
+                    return Err("'compensacao_pct' deve estar entre 10 e 100 %.".to_owned());
+                }
+                let preset = match city_query.as_deref() {
+                    Some(q) => Some(
+                        crate::domain::codes::SiteClimate::find_preset(q).ok_or_else(|| {
+                            format!("Cidade '{q}' não encontrada na base solar brasileira.")
+                        })?,
+                    ),
+                    None => None,
+                };
+                self.apply_change(Some("A configuração fotovoltaica já estava assim."), |project| {
+                    if let Some(p) = preset {
+                        project.codes.site = p.to_site_climate();
+                    }
+                    let pv = &mut project.electrical.pv;
+                    if let Some(en) = enabled {
+                        pv.enabled = en;
+                    }
+                    if let Some(show) = show_on_plan {
+                        pv.show_on_plan = show;
+                    }
+                    if let Some(c) = consumption {
+                        pv.monthly_consumption_kwh = (c > 0.0).then_some(c);
+                    }
+                    if let Some(wp) = module_wp {
+                        pv.module_wp = wp;
+                    }
+                    if let Some(p) = pr {
+                        pv.performance_ratio = p;
+                    }
+                    if let Some(o) = offset {
+                        pv.target_offset_pct = o;
+                    }
+                    let rep = project.photovoltaic_report();
+                    Ok(Change::new(rep.summary_sentence))
+                })
+            }
             _ => Err(
-                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao, definir_concessionaria, demanda_coletiva, lista_materiais, luminotecnico ou configurar_iluminacao.".to_owned(),
+                "Informe 'acao': gerar_pontos, distribuir_circuitos, definir_tensao, gerar_eletrodutos, ligar_pontos, definir_trecho, remover_eletroduto, definir_alimentacao, definir_concessionaria, demanda_coletiva, lista_materiais, luminotecnico, configurar_iluminacao, fotovoltaico ou configurar_fotovoltaico.".to_owned(),
             ),
         }
     }
@@ -763,6 +906,17 @@ impl FloorPlanApp {
                 "meta_lux": r.target_lux,
                 "semaforo": r.light.key(),
             })).collect::<Vec<_>>(),
+            "fotovoltaico": self.project.electrical.pv.enabled.then(|| {
+                let pv = self.project.photovoltaic_report();
+                json!({
+                    "cidade": pv.city_label,
+                    "potencia_kwp": (pv.installed_kwp * 100.0).round() / 100.0,
+                    "modulos": pv.modules_placed.max(pv.modules_required),
+                    "inversor_kw": pv.inverter_kw,
+                    "geracao_mensal_kwh": pv.mean_monthly_generation_kwh.round(),
+                    "semaforo": pv.light.key(),
+                })
+            }),
             "semaforo": super::structure::verdicts_json(&crate::domain::verdict::electrical_project_verdicts(&self.project, &schedule)),
             "alertas": schedule.warnings,
         })))
@@ -974,5 +1128,29 @@ mod tests {
             board["iluminacao"].as_array().unwrap().len(),
             app.project.rooms.len()
         );
+    }
+
+    #[test]
+    fn mcp_presizes_photovoltaic_system_for_project_city() {
+        let mut app = FloorPlanApp::new(&egui::Context::default());
+        app.project = crate::domain::samples::SampleProject::CasaTerrea.build();
+        let cfg = app.run_mcp_tool(
+            "projeto_eletrico",
+            &json!({
+                "acao": "configurar_fotovoltaico",
+                "ativo": true,
+                "cidade": "São Paulo",
+                "consumo_kwh_mes": 420,
+                "modulo_wp": 550
+            }),
+        );
+        assert!(!cfg.is_error, "{}", cfg.text);
+        let res = app.run_mcp_tool("projeto_eletrico", &json!({ "acao": "fotovoltaico" }));
+        assert!(!res.is_error, "{}", res.text);
+        let data = res.structured.unwrap();
+        assert_eq!(data["ativo"], true);
+        assert_eq!(data["cidade"], "São Paulo / SP");
+        assert_eq!(data["geracao_mensal"].as_array().unwrap().len(), 12);
+        assert!(data["potencia_instalada_kwp"].as_f64().unwrap() > 2.5);
     }
 }

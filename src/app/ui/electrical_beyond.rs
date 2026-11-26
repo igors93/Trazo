@@ -11,6 +11,7 @@ use crate::domain::distribution::section_label;
 use crate::domain::electrical::lighting::{
     SurfaceReflectance, lighting_report_csv, lighting_report_svg,
 };
+use crate::domain::electrical::photovoltaic::{photovoltaic_csv, photovoltaic_sheet_svg};
 use crate::domain::electrical::shopping_list::{
     DEFAULT_ELECTRICAL_WASTE_PCT, electrical_shopping_list_csv, electrical_shopping_list_svg,
 };
@@ -423,6 +424,271 @@ impl FloorPlanApp {
         self.message = match result {
             Ok(()) => format!("Cálculo luminotécnico exportado em {}", path.display()),
             Err(error) => format!("Erro ao exportar luminotécnico: {error}"),
+        };
+    }
+
+    /// Tab 5 (#126): Photovoltaic pre-sizing (consumption, kWp, roof planes & monthly generation).
+    pub(super) fn electrical_pv_tab(&mut self, ui: &mut Ui) {
+        let mut settings = self.project.electrical.pv;
+        let mut changed = false;
+        let mut export_kind: Option<&'static str> = None;
+        let report = self.project.photovoltaic_report();
+        let mut consumption_val = settings
+            .monthly_consumption_kwh
+            .unwrap_or(report.monthly_consumption_kwh);
+        let mut consumption_edited = false;
+
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.label(
+                RichText::new(
+                    "Pré-dimensionamento solar fotovoltaico (INPE/CRESESB · NBR 16690 · Lei 14.300): potência em kWp, alocação de módulos nos planos do telhado e geração mensal para a cidade do projeto.",
+                )
+                .size(12.0)
+                .color(TEXT_2),
+            );
+            ui.add_space(6.0);
+            ui.horizontal_wrapped(|ui| {
+                changed |= ui
+                    .checkbox(&mut settings.enabled, "Ativar fotovoltaico no projeto")
+                    .changed();
+                if settings.enabled {
+                    changed |= ui
+                        .checkbox(&mut settings.show_on_plan, "Mostrar placas na planta")
+                        .changed();
+                }
+                ui.separator();
+                if secondary_button(ui, "Exportar PDF").clicked() {
+                    export_kind = Some("pdf");
+                }
+                if secondary_button(ui, "Exportar SVG").clicked() {
+                    export_kind = Some("svg");
+                }
+                if secondary_button(ui, "Exportar CSV").clicked() {
+                    export_kind = Some("csv");
+                }
+            });
+            ui.add_space(4.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.label("Consumo mensal:");
+                consumption_edited |= ui
+                    .add(
+                        egui::DragValue::new(&mut consumption_val)
+                            .range(30.0..=50_000.0)
+                            .speed(10.0)
+                            .suffix(" kWh/mês"),
+                    )
+                    .changed();
+                ui.label("Módulo:");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut settings.module_wp)
+                            .range(250.0..=800.0)
+                            .speed(10.0)
+                            .suffix(" Wp"),
+                    )
+                    .changed();
+                ui.label("PR:");
+                let mut pr_pct = settings.performance_ratio * 100.0;
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut pr_pct)
+                            .range(60.0..=88.0)
+                            .speed(1.0)
+                            .suffix(" %"),
+                    )
+                    .changed()
+                {
+                    settings.performance_ratio = pr_pct / 100.0;
+                    changed = true;
+                }
+                ui.label("Compensação:");
+                changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut settings.target_offset_pct)
+                            .range(10.0..=100.0)
+                            .speed(5.0)
+                            .suffix(" %"),
+                    )
+                    .changed();
+            });
+            ui.add_space(6.0);
+
+            let tone = match report.light {
+                Light::Green => SUCCESS,
+                Light::Yellow => WARNING,
+                Light::Red => DANGER,
+            };
+            ui.label(RichText::new(&report.summary_sentence).font(strong(12.5)).color(tone));
+            ui.add_space(6.0);
+
+            egui::Grid::new("elec_pv_summary")
+                .num_columns(2)
+                .spacing([16.0, 4.0])
+                .show(ui, |ui| {
+                    let row = |ui: &mut Ui, label: &str, value: String| {
+                        ui.label(RichText::new(label).color(TEXT_2));
+                        ui.label(value);
+                        ui.end_row();
+                    };
+                    row(
+                        ui,
+                        "Cidade / HSP média",
+                        format!(
+                            "{} · {} kWh/m²·dia",
+                            report.city_label,
+                            decimal(report.mean_hsp_kwh_m2_day, 2)
+                        ),
+                    );
+                    row(
+                        ui,
+                        "Potência / módulos",
+                        format!(
+                            "{} kWp · {} módulo(s) de {:.0} Wp ({} alocados no telhado)",
+                            decimal(report.installed_kwp, 2),
+                            report.modules_required,
+                            report.settings.module_wp,
+                            report.modules_placed
+                        ),
+                    );
+                    row(
+                        ui,
+                        "Inversor / proteção CA",
+                        format!(
+                            "{} kW (FDI {}) · Disjuntor {} · Cabo {} mm²",
+                            decimal(report.inverter_kw, 1),
+                            decimal(report.dc_ac_ratio, 2),
+                            report
+                                .ac_breaker_a
+                                .map_or("—".to_owned(), |b| format!("{b:.0} A")),
+                            report
+                                .ac_wire_mm2
+                                .map_or("—".to_owned(), section_label)
+                        ),
+                    );
+                    row(
+                        ui,
+                        "Geração anual / mensal",
+                        format!(
+                            "{:.0} kWh/ano (média {:.0} kWh/mês · {:.0} % do consumo)",
+                            report.annual_generation_kwh,
+                            report.mean_monthly_generation_kwh,
+                            report.offset_percent
+                        ),
+                    );
+                    row(
+                        ui,
+                        "Área e carga no telhado",
+                        format!(
+                            "{} m² estimados · sobrecarga {} kN/m² (~15 kg/m²)",
+                            decimal(report.required_roof_area_m2, 1),
+                            decimal(report.roof_load_kn_m2, 2)
+                        ),
+                    );
+                });
+
+            if !report.planes.is_empty() {
+                ui.add_space(8.0);
+                ui.label(RichText::new("Alocação nos planos de telhado").font(strong(12.5)));
+                egui::Grid::new("elec_pv_planes")
+                    .striped(true)
+                    .spacing([12.0, 4.0])
+                    .show(ui, |ui| {
+                        for h in ["Telhado", "Orientação", "Incl.", "Área", "Fator", "Cabem", "Alocados"] {
+                            ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                        }
+                        ui.end_row();
+                        for p in &report.planes {
+                            ui.label(format!("{} · água {}", p.roof_label, p.plane_index));
+                            ui.label(&p.orientation_label);
+                            ui.label(format!("{:.0} %", p.slope_percent));
+                            ui.label(format!("{} m²", decimal(p.area_m2, 1)));
+                            ui.label(decimal(p.orientation_factor, 2));
+                            ui.label(format!("{} un", p.capacity_panels));
+                            ui.label(RichText::new(format!("{} un", p.placed_panels)).font(strong(11.5)));
+                            ui.end_row();
+                        }
+                    });
+            }
+
+            ui.add_space(8.0);
+            ui.label(RichText::new("Geração mensal estimada (Jan–Dez)").font(strong(12.5)));
+            egui::Grid::new("elec_pv_months")
+                .striped(true)
+                .spacing([14.0, 4.0])
+                .show(ui, |ui| {
+                    for h in ["Mês", "HSP (kWh/m²·d)", "Geração (kWh)", "Consumo (kWh)", "Saldo (kWh)"] {
+                        ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                    }
+                    ui.end_row();
+                    for m in &report.months {
+                        let bal_color = if m.balance_kwh >= 0.0 { SUCCESS } else { WARNING };
+                        ui.label(RichText::new(&m.month).font(strong(11.5)));
+                        ui.label(decimal(m.hsp_kwh_m2_day, 2));
+                        ui.label(format!("{:.0}", m.generation_kwh));
+                        ui.label(format!("{:.0}", m.consumption_kwh));
+                        ui.label(RichText::new(format!("{:+.0}", m.balance_kwh)).color(bal_color));
+                        ui.end_row();
+                    }
+                });
+
+            if !report.warnings.is_empty() {
+                ui.add_space(6.0);
+                for w in &report.warnings {
+                    ui.label(
+                        RichText::new(format!("• {w}"))
+                            .size(11.5)
+                            .color(Color32::from_rgb(150, 90, 10)),
+                    );
+                }
+            }
+            ui.add_space(6.0);
+            for note in &report.assumptions {
+                ui.label(RichText::new(note).size(11.0).color(MUTED));
+            }
+        });
+
+        if consumption_edited {
+            settings.monthly_consumption_kwh = Some(consumption_val);
+            changed = true;
+        }
+        if changed {
+            let previous = self.project.clone();
+            self.project.electrical.pv = settings;
+            self.record_change(previous);
+        }
+        if let Some(kind) = export_kind {
+            self.export_electrical_pv(kind);
+        }
+    }
+
+    fn export_electrical_pv(&mut self, kind: &str) {
+        let (label, ext) = match kind {
+            "csv" => ("Planilha CSV", "csv"),
+            "pdf" => ("Documento PDF", "pdf"),
+            _ => ("Desenho SVG", "svg"),
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(format!("pre-dimensionamento-fotovoltaico.{ext}"))
+            .save_file()
+        else {
+            return;
+        };
+        let result = match kind {
+            "csv" => std::fs::write(&path, photovoltaic_csv(&self.project))
+                .map_err(|e| e.to_string()),
+            "pdf" => {
+                let markup = photovoltaic_sheet_svg(&self.project);
+                crate::domain::views::export_view_pdf(&markup, &path)
+            }
+            _ => {
+                let markup = photovoltaic_sheet_svg(&self.project);
+                crate::domain::views::export_view_svg(&markup, &path)
+            }
+        };
+        self.message = match result {
+            Ok(()) => format!("Estudo fotovoltaico exportado em {}", path.display()),
+            Err(error) => format!("Erro ao exportar estudo fotovoltaico: {error}"),
         };
     }
 }

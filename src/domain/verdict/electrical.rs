@@ -257,5 +257,78 @@ pub fn electrical_project_verdicts(
         }
     }
 
+    // #126 Photovoltaic pre-sizing verdicts (when PV is enabled on the project).
+    if project.electrical.pv.enabled {
+        let pv = project.photovoltaic_report();
+        let mut pv_checks = Vec::new();
+        if pv.refused_above_limit {
+            pv_checks.push(Check::fail(
+                "Limite microgeração (75 kW)",
+                format!(
+                    "Inversor de {} kW excede o limite residencial de 75 kW (Lei 14.300): exige projeto de minigeração por engenheiro eletricista.",
+                    decimal(pv.inverter_kw, 1)
+                ),
+                format!(
+                    "P_CA = {} kW > 75 kW (microgeração distribuída BT).",
+                    decimal(pv.inverter_kw, 1)
+                ),
+            ));
+        } else {
+            if !pv.planes.is_empty() {
+                let ratio = if pv.modules_placed > 0 {
+                    pv.modules_required as f64 / pv.modules_placed as f64
+                } else {
+                    f64::INFINITY
+                };
+                pv_checks.push(Check::new(
+                    "Área no telhado",
+                    ratio,
+                    if pv.modules_placed >= pv.modules_required {
+                        format!(
+                            "Cabem todos os {} módulos ({} kWp) nos planos do telhado.",
+                            pv.modules_placed,
+                            decimal(pv.installed_kwp, 2)
+                        )
+                    } else {
+                        format!(
+                            "Falta área no telhado: cabem {} de {} módulos necessários ({} kWp).",
+                            pv.modules_placed,
+                            pv.modules_required,
+                            decimal(pv.installed_kwp, 2)
+                        )
+                    },
+                    format!(
+                        "{} módulos alocados de {} necessários ({} m² estimados, sobrecarga 0,15 kN/m²).",
+                        pv.modules_placed,
+                        pv.modules_required,
+                        decimal(pv.required_roof_area_m2, 1)
+                    ),
+                ));
+            }
+            pv_checks.push(Check::new(
+                "Inversor (FDI CC/CA)",
+                pv.dc_ac_ratio / 1.30,
+                format!(
+                    "Inversor de {} kW atende {} kWp em {} (geração média {:.0} kWh/mês).",
+                    decimal(pv.inverter_kw, 1),
+                    decimal(pv.installed_kwp, 2),
+                    pv.city_label,
+                    pv.mean_monthly_generation_kwh
+                ),
+                format!(
+                    "FDI = {} ≤ 1,30 (NBR 16690), HSP = {} kWh/m²·dia, PR = {:.0} %.",
+                    decimal(pv.dc_ac_ratio, 2),
+                    decimal(pv.mean_hsp_kwh_m2_day, 2),
+                    pv.settings.performance_ratio * 100.0
+                ),
+            ));
+        }
+        verdicts.push(Verdict {
+            discipline: Discipline::Electrical,
+            element: format!("Fotovoltaico ({} kWp)", decimal(pv.installed_kwp, 2)),
+            checks: pv_checks,
+        });
+    }
+
     verdicts
 }

@@ -3,6 +3,7 @@
 
 mod forecast;
 pub mod lighting;
+pub mod photovoltaic;
 mod placement;
 pub mod shopping_list;
 mod sizing;
@@ -61,6 +62,9 @@ pub struct ElectricalSettings {
     /// Room lighting calculation parameters (NBR ISO/CIE 8995-1, #125).
     #[serde(default, skip_serializing_if = "lighting::LightingSettings::is_default")]
     pub lighting: lighting::LightingSettings,
+    /// Photovoltaic pre-sizing parameters (NBR 16690 / Lei 14.300, #126).
+    #[serde(default, skip_serializing_if = "photovoltaic::PvSettings::is_default")]
+    pub pv: photovoltaic::PvSettings,
 }
 
 fn default_voltage() -> f64 {
@@ -80,6 +84,7 @@ impl Default for ElectricalSettings {
             utility: crate::domain::distribution::UtilityProfile::default(),
             custom_rules: None,
             lighting: lighting::LightingSettings::default(),
+            pv: photovoltaic::PvSettings::default(),
         }
     }
 }

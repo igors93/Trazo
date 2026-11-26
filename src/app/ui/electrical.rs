@@ -480,6 +480,7 @@ impl FloorPlanApp {
                         "Demanda coletiva (Multifamiliar)",
                         "Lista de materiais",
                         "Iluminação (lux)",
+                        "Solar (Fotovoltaico)",
                     ]
                     .iter()
                     .enumerate()
@@ -493,7 +494,9 @@ impl FloorPlanApp {
                     }
                 });
                 ui.separator();
-                if tab == 4 {
+                if tab == 5 {
+                    self.electrical_pv_tab(ui);
+                } else if tab == 4 {
                     self.electrical_lighting_tab(ui);
                 } else if tab == 3 {
                     self.electrical_shopping_list_tab(ui, ctx);
