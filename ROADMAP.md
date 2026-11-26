@@ -602,7 +602,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | --- | --- | --- | --- | --- | --- |
 | 53 | Automatic dimension chains locating each door and window along its wall, plus internal room dimensions | P0 | M | M2 | ✅ |
 | 54 | First-course plan and wall elevations with block paging: whole, half and cut blocks, lintels and sills | P1 | L | M2 | ✅ |
-| 55 | Setting-out plan (*locação*): cumulative dimensions from an origin on the lot, for marking out the building | P1 | M | M2 | ⬜ |
+| 55 | Setting-out plan (*locação*): cumulative dimensions from an origin on the lot, for marking out the building | P1 | M | M2 | ✅ |
 | 56 | Construction quantities: blocks with waste, half blocks and U-blocks, lintels per opening, laying mortar, plaster, flooring and wall finishes per room | P0 | M | M2 | ✅ |
 | 57 | One-click construction set: A3 at 1:50 with dimensions, openings, schedules, first course, setting-out and legend | P0 | M | M2 | 🟡 Sheets, scales, templates and title blocks exist |
 | 71 | Roof plan (*planta de cobertura*): roof planes (mono-pitch, gable, hip), slopes with the tile's minimum, ridges, gutters and downpipes | P1 | L | M2 | ⬜ |

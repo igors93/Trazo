@@ -784,6 +784,10 @@ impl FloorPlanApp {
             self.export_paging();
             ui.close();
         }
+        if menu_item(ui, Some(Icon::ExportPdf), "Planta de locação (PDF)...", "").clicked() {
+            self.export_setting_out();
+            ui.close();
+        }
     }
 }
 
