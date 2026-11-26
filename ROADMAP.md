@@ -605,7 +605,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 55 | Setting-out plan (*locação*): cumulative dimensions from an origin on the lot, for marking out the building | P1 | M | M2 | ✅ |
 | 56 | Construction quantities: blocks with waste, half blocks and U-blocks, lintels per opening, laying mortar, plaster, flooring and wall finishes per room | P0 | M | M2 | ✅ |
 | 57 | One-click construction set: A3 at 1:50 with dimensions, openings, schedules, first course, setting-out and legend | P0 | M | M2 | 🟡 Sheets, scales, templates and title blocks exist |
-| 71 | Roof plan (*planta de cobertura*): roof planes (mono-pitch, gable, hip), slopes with the tile's minimum, ridges, gutters and downpipes | P1 | L | M2 | ⬜ |
+| 71 | Roof plan (*planta de cobertura*): roof planes (mono-pitch, gable, hip), slopes with the tile's minimum, ridges, gutters and downpipes | P1 | L | M2 | ✅ Downpipes by the 1 cm²/m² rule; full NBR 10844 sizing joins the rainwater item |
 
 ### B. Engineering safety and trust
 

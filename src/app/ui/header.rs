@@ -788,6 +788,17 @@ impl FloorPlanApp {
             self.export_setting_out();
             ui.close();
         }
+        if menu_item(
+            ui,
+            Some(Icon::ExportPdf),
+            "Planta de cobertura (PDF)...",
+            "",
+        )
+        .clicked()
+        {
+            self.export_roof_plan();
+            ui.close();
+        }
     }
 }
 

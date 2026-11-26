@@ -4,4 +4,5 @@
 //! `io::construction`.
 
 pub mod paging;
+pub mod roof_plan;
 pub mod setting_out;

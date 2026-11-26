@@ -5,6 +5,7 @@
 //! with one SVG unit per millimetre of paper.
 
 pub mod paging;
+pub mod roof_plan;
 pub mod setting_out;
 
 use std::fmt::Write as _;

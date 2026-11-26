@@ -304,4 +304,20 @@ impl FloorPlanApp {
             Err(error) => format!("Erro ao exportar a locação: {error}"),
         };
     }
+
+    /// Saves the roof plan (#71) as a PDF.
+    pub(super) fn export_roof_plan(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Documento PDF", &["pdf"])
+            .set_file_name(format!("{}-cobertura.pdf", self.document_name()))
+            .save_file()
+        else {
+            return;
+        };
+        self.message =
+            match crate::io::construction::roof_plan::export_roof_plan_pdf(&self.project, &path) {
+                Ok(_) => format!("Planta de cobertura salva em {}", path.display()),
+                Err(error) => format!("Erro ao exportar a cobertura: {error}"),
+            };
+    }
 }

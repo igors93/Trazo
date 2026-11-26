@@ -224,6 +224,10 @@ Checked by `cantilever_balcony_matches_nbr6118_table13_2_gamma_n_and_l125_deflec
 
 A red cross-check turns every green structural check yellow, because the detailed result is contested until the model is completed (usually walls without ground beams or strip footings, or missing slabs and loads). The weighing ignores roofs and columns' self weight, so it errs low. It runs only with one real storey (with the *floors* multiplier); with real upper floors drawn, it is skipped.
 
+## Roof plan: gutters and downpipes (#71)
+
+`src/domain/construction/roof_plan.rs` splits each roof into its water planes (one for a mono-pitch roof, two for a gable, four for a hip) and puts a gutter on every eave. Each gutter drains the horizontal area of the plane above it and falls at least 0.5 % to its downpipes (NBR 10844). Downpipes follow the practical rule of 1 cm² of section per m² of roof, so one 100 mm downpipe serves up to 78.5 m², with at least one per gutter, placed at the gutter's ends and spaced evenly. When the city's rainfall intensity `I` is set, the sheet shows the NBR 10844 design flow `Q = I·A/60` (L/min). The roof slope is compared with the tile's usual minimum. This is a layout aid: the final rainwater design (gutter section and length, downpipe capacity for the city's rain) follows NBR 10844.
+
 ## Preliminary reinforcement
 
 `build_reinforcement_report` turns the characteristic forces from `structure_report` into a reviewable reinforcement proposal and a theoretical bar schedule. It uses CA-50 (`fyk = 500 MPa`), steel density 7,850 kg/m³ and the same structural applicability limits. If the whole project or an element is outside those limits, it refuses to emit reinforcement for it.
