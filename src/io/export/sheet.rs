@@ -1247,7 +1247,7 @@ fn write_schedules_on_sheet(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn write_title_block(
+pub(crate) fn write_title_block(
     svg: &mut String,
     project: &Project,
     frame_x: f64,

@@ -8,6 +8,7 @@ pub mod circulation;
 pub mod codes;
 pub mod compare;
 pub mod conduits;
+pub mod construction;
 pub mod curves;
 pub mod dependencies;
 pub mod dimensions;

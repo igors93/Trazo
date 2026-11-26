@@ -267,4 +267,23 @@ impl FloorPlanApp {
             }
         }
     }
+
+    /// Saves the first-course plan and the wall elevations (#54) as a PDF.
+    pub(super) fn export_paging(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Documento PDF", &["pdf"])
+            .set_file_name(format!("{}-primeira-fiada.pdf", self.document_name()))
+            .save_file()
+        else {
+            return;
+        };
+        self.message =
+            match crate::io::construction::paging::export_paging_pdf(&self.project, &path) {
+                Ok(pages) => format!(
+                    "Primeira fiada e paginação das paredes ({pages} prancha(s)) salvas em {}",
+                    path.display()
+                ),
+                Err(error) => format!("Erro ao exportar a paginação: {error}"),
+            };
+    }
 }

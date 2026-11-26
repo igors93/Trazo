@@ -772,6 +772,18 @@ impl FloorPlanApp {
             self.export_csv();
             ui.close();
         }
+        menu_separator(ui);
+        if menu_item(
+            ui,
+            Some(Icon::ExportPdf),
+            "Primeira fiada e paginação (PDF)...",
+            "",
+        )
+        .clicked()
+        {
+            self.export_paging();
+            ui.close();
+        }
     }
 }
 

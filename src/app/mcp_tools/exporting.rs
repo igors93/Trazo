@@ -11,7 +11,7 @@ impl FloorPlanApp {
     pub(super) fn tool_export(&self, args: &Value) -> Result<ToolOutput, String> {
         let format = text(args, "formato")
             .map(|format| format.to_lowercase())
-            .ok_or("Informe 'formato': pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, caderno_familia_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, grelha_svg, grelha_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.")?;
+            .ok_or("Informe 'formato': pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, caderno_familia_pdf, primeira_fiada_svg, paginacao_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, grelha_svg, grelha_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.")?;
         let (ext, suffix) = match format.as_str() {
             "pdf" => ("pdf", ""),
             "pdf_abas" => ("pdf", "-abas"),
@@ -23,6 +23,8 @@ impl FloorPlanApp {
             "prancha_svg" => ("svg", "-prancha"),
             "memorial_pdf" => ("pdf", "-memorial"),
             "caderno_familia_pdf" => ("pdf", "-caderno-da-familia"),
+            "primeira_fiada_svg" => ("svg", "-primeira-fiada"),
+            "paginacao_pdf" => ("pdf", "-paginacao"),
             "unifilar_svg" => ("svg", "-unifilar"),
             "unifilar_pdf" => ("pdf", "-unifilar"),
             "esforcos_svg" => ("svg", "-esforcos"),
@@ -39,7 +41,7 @@ impl FloorPlanApp {
             "tabela_aco_csv" => ("csv", "-tabela-aco"),
             "csv" => ("csv", "-quadros"),
             _ => {
-                return Err("Formato inválido. Use: pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, caderno_familia_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, grelha_svg, grelha_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.".to_owned());
+                return Err("Formato inválido. Use: pdf, pdf_abas, png, dxf, svg, prancha_pdf, prancha_pdf_abas, prancha_svg, memorial_pdf, caderno_familia_pdf, primeira_fiada_svg, paginacao_pdf, unifilar_svg, unifilar_pdf, esforcos_svg, esforcos_pdf, porticos_svg, porticos_pdf, grelha_svg, grelha_pdf, armaduras_svg, armaduras_pdf, quantitativos_csv, quantitativos_svg, quantitativos_pdf, tabela_aco_csv ou csv.".to_owned());
             }
         };
         let explicit_discipline = text(args, "disciplina");
@@ -82,6 +84,16 @@ impl FloorPlanApp {
                 )?);
             }
             "prancha_svg" => export::export_scaled_svg_for_view(&self.project, &view, &path)?,
+            "primeira_fiada_svg" => {
+                let markup = crate::io::construction::paging::first_course_svg(&self.project);
+                std::fs::write(&path, markup)
+                    .map_err(|e| format!("Não foi possível gravar: {e}"))?;
+            }
+            "paginacao_pdf" => {
+                let pages =
+                    crate::io::construction::paging::export_paging_pdf(&self.project, &path)?;
+                extra_pages = Some(pages);
+            }
             "caderno_familia_pdf" => {
                 let date = crate::io::report::today();
                 let pages = crate::io::booklet::export_family_booklet(&self.project, &date, &path)?;
@@ -186,6 +198,10 @@ impl FloorPlanApp {
         let msg = match (format.as_str(), extra_pages) {
             ("memorial_pdf", Some(pages)) => format!(
                 "Memorial técnico ({pages} páginas) exportado em {}",
+                path.display()
+            ),
+            ("paginacao_pdf", Some(pages)) => format!(
+                "Primeira fiada e paginação das paredes ({pages} prancha(s)) exportadas em {}",
                 path.display()
             ),
             ("caderno_familia_pdf", Some(pages)) => format!(
