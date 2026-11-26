@@ -652,7 +652,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 72 | Plumbing points (water, drains, gas) with legend, counts and a fixture schedule | P1 | M | M6 | ⬜ |
+| 72 | Plumbing points (water, drains, gas) with legend, counts and a fixture schedule | P1 | M | M6 | ✅ |
 | 96 | Discipline views: architecture, electrical, plumbing and structure as views of one model, each with its own visibility, colours and sheets | P1 | M | M6 | 🟡 Architecture, electrical and structure on screen and per sheet; plumbing joins with #72 |
 | 118 | Cold water (NBR 5626): daily consumption, water tank volume, pipe diameters by fixture weights and the pressure left at each fixture, so a weak shower shows up before it is built | P1 | L | M6 | ⬜ |
 | 119 | Hot water: electric, gas and solar heater sizing | P2 | M | M6 | ⬜ |

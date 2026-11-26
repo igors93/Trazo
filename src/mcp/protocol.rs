@@ -876,6 +876,15 @@ fn catalogue() -> Vec<Tool> {
             destructive: false,
         },
         Tool {
+            name: "instalacoes_hidraulicas",
+            title: "Instalações hidrossanitárias",
+            description: "Instalações de água, esgoto e gás da planta (NBR 5626, NBR 8160): os pontos de cada aparelho (água fria AF, água quente AQ, esgoto ES com o DN, gás) com posição e altura, a contagem por tipo, o quadro de aparelhos com peso e UHC e as observações. Os aparelhos vêm de inserir_objeto (vaso, lavatorio, chuveiro, pia, lavadora, banheira, fogao).",
+            properties: json!({}),
+            required: &[],
+            read_only: true,
+            destructive: false,
+        },
+        Tool {
             name: "revisar_projeto",
             title: "Revisar o projeto (linguagem simples)",
             description: "Revisão do projeto para a família, em palavras simples: a situação em uma frase, o que não pode ser construído assim e por quê, o que está no limite, as hipóteses contestadas e as propostas esperando a pessoa, as perguntas do terreno sem resposta, a conferência independente, o que precisa de um profissional e onde buscar ajuda. Use depois de cada rodada de mudanças e explique cada ponto à família.",
@@ -1309,9 +1318,9 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "exportar_planta",
             title: "Exportar planta e documentação",
-            description: "Exporta a planta ou a documentação técnica do projeto: pdf, pdf_abas (PDF multipágina com 1 página por aba aberta, igual à tela), png, dxf, svg, prancha_pdf/prancha_pdf_abas/prancha_svg (prancha ABNT em escala com carimbo, uma ou todas as abas), memorial_pdf (memorial técnico completo de pré-dimensionamento e desenhos), caderno_familia_pdf (caderno da família: resumo do semáforo, o que não construir, lista de compras, guia de obra, quando parar e onde buscar ajuda, e a planta, em linguagem simples), conjunto_obra_pdf (conjunto para obra A3 numerado num só PDF: planta cotada com cadeias de aberturas, quadro de esquadrias e legenda, locação, primeira fiada, elevações das paredes, cobertura e quantitativos), primeira_fiada_svg (planta de primeira fiada A3 com blocos inteiros, meios e cortados, vergas e contravergas), paginacao_pdf (primeira fiada e elevações de todas as paredes com a paginação fiada por fiada), locacao_svg/locacao_pdf (planta de locação: cotas acumuladas do canto do terreno até os eixos das paredes e o centro dos pilares, linhas de gabarito e tabela de pontos), cobertura_svg/cobertura_pdf (planta de cobertura: águas com caimento e mínimo da telha, cumeeira, espigões, beirais, calhas e condutores), unifilar_svg/unifilar_pdf (diagrama unifilar elétrico), esforcos_svg/esforcos_pdf (diagramas de momento e cortante das vigas), porticos_svg/porticos_pdf (deformada e momentos dos pórticos planos 2D), grelha_svg/grelha_pdf (mapa de flechas e momentos da analogia de grelha lajes+vigas), armaduras_svg/armaduras_pdf (prancha esquemática de detalhamento preliminar de armaduras e resumo por bitola CA-50), quantitativos_csv/quantitativos_svg/quantitativos_pdf (planilha de quantitativos de obra), tabela_aco_csv ou csv (quadro de áreas e esquadrias). Sem caminho: salva em Documentos\\Trazo.",
+            description: "Exporta a planta ou a documentação técnica do projeto: pdf, pdf_abas (PDF multipágina com 1 página por aba aberta, igual à tela), png, dxf, svg, prancha_pdf/prancha_pdf_abas/prancha_svg (prancha ABNT em escala com carimbo, uma ou todas as abas), memorial_pdf (memorial técnico completo de pré-dimensionamento e desenhos), caderno_familia_pdf (caderno da família: resumo do semáforo, o que não construir, lista de compras, guia de obra, quando parar e onde buscar ajuda, e a planta, em linguagem simples), conjunto_obra_pdf (conjunto para obra A3 numerado num só PDF: planta cotada com cadeias de aberturas, quadro de esquadrias e legenda, locação, primeira fiada, elevações das paredes, cobertura e quantitativos), primeira_fiada_svg (planta de primeira fiada A3 com blocos inteiros, meios e cortados, vergas e contravergas), paginacao_pdf (primeira fiada e elevações de todas as paredes com a paginação fiada por fiada), locacao_svg/locacao_pdf (planta de locação: cotas acumuladas do canto do terreno até os eixos das paredes e o centro dos pilares, linhas de gabarito e tabela de pontos), hidrossanitario_pdf (projeto hidrossanitário A3: pontos de água, esgoto e gás com legenda e quadro de aparelhos), cobertura_svg/cobertura_pdf (planta de cobertura: águas com caimento e mínimo da telha, cumeeira, espigões, beirais, calhas e condutores), unifilar_svg/unifilar_pdf (diagrama unifilar elétrico), esforcos_svg/esforcos_pdf (diagramas de momento e cortante das vigas), porticos_svg/porticos_pdf (deformada e momentos dos pórticos planos 2D), grelha_svg/grelha_pdf (mapa de flechas e momentos da analogia de grelha lajes+vigas), armaduras_svg/armaduras_pdf (prancha esquemática de detalhamento preliminar de armaduras e resumo por bitola CA-50), quantitativos_csv/quantitativos_svg/quantitativos_pdf (planilha de quantitativos de obra), tabela_aco_csv ou csv (quadro de áreas e esquadrias). Sem caminho: salva em Documentos\\Trazo.",
             properties: json!({
-                "formato": { "type": "string", "enum": ["pdf", "pdf_abas", "png", "dxf", "svg", "prancha_pdf", "prancha_pdf_abas", "prancha_svg", "memorial_pdf", "caderno_familia_pdf", "conjunto_obra_pdf", "primeira_fiada_svg", "paginacao_pdf", "locacao_svg", "locacao_pdf", "cobertura_svg", "cobertura_pdf", "unifilar_svg", "unifilar_pdf", "esforcos_svg", "esforcos_pdf", "porticos_svg", "porticos_pdf", "grelha_svg", "grelha_pdf", "armaduras_svg", "armaduras_pdf", "quantitativos_csv", "quantitativos_svg", "quantitativos_pdf", "tabela_aco_csv", "csv"], "description": "Formato de exportação." },
+                "formato": { "type": "string", "enum": ["pdf", "pdf_abas", "png", "dxf", "svg", "prancha_pdf", "prancha_pdf_abas", "prancha_svg", "memorial_pdf", "caderno_familia_pdf", "conjunto_obra_pdf", "primeira_fiada_svg", "paginacao_pdf", "locacao_svg", "locacao_pdf", "cobertura_svg", "cobertura_pdf", "hidrossanitario_pdf", "unifilar_svg", "unifilar_pdf", "esforcos_svg", "esforcos_pdf", "porticos_svg", "porticos_pdf", "grelha_svg", "grelha_pdf", "armaduras_svg", "armaduras_pdf", "quantitativos_csv", "quantitativos_svg", "quantitativos_pdf", "tabela_aco_csv", "csv"], "description": "Formato de exportação." },
                 "caminho": string("Opcional: caminho do arquivo (relativo a Documentos\\Trazo)."),
                 "disciplina": { "type": "string", "enum": ["tudo", "arquitetura", "eletrica", "hidraulica", "estrutura", "fundacoes"], "description": "Opcional: disciplina a exportar (padrão: disciplina da aba ativa)." },
                 "todos_pavimentos": boolean("Opcional para quantitativos_csv/svg/pdf: true inclui todos os pavimentos do projeto (padrão false)."),
@@ -1429,7 +1438,7 @@ mod tests {
     fn tool_catalogue_is_well_formed() {
         let tools = tools();
         let names = tool_names();
-        assert_eq!(tools.len(), 67);
+        assert_eq!(tools.len(), 68);
         let mut unique = names.clone();
         unique.sort_unstable();
         unique.dedup();
@@ -1510,7 +1519,7 @@ mod tests {
             &mut run,
         )
         .unwrap();
-        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 67);
+        assert_eq!(listed["result"]["tools"].as_array().unwrap().len(), 68);
     }
 }
 

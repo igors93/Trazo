@@ -118,6 +118,9 @@ Trazo does not promise that a house will not fall. It does everything it can so 
 </td>
 <td width="50%" valign="top">
 
+**Water, sewage and rain**
+- Plumbing points of every fixture (cold and hot water, drains, gas) with legend, counts and the fixture schedule
+
 **Electrical installation (NBR 5410)**
 - Outlets, switches, lights, distribution board and data points
 - Minimum points per room generated from the standard

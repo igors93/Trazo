@@ -20,6 +20,7 @@ Trazo is built for people who will build or extend their own home without an eng
 - [Review marks](#review-marks)
 - [Electrical design](#electrical-design)
 - [Structure](#structure)
+- [Water, sewage and rain](#water-sewage-and-rain)
 - [Discipline views](#discipline-views)
 - [Documentation and output](#documentation-and-output)
 - [Files and data safety](#files-and-data-safety)
@@ -312,6 +313,12 @@ Two more questions cover building on top of a house that already exists. If you 
 - the drawings: the formwork plan, the beam forces, the electrical plan and the single-line diagram, as available.
 
 The report pages are A4 and numbered; the drawings follow at their own sheet size.
+
+## Water, sewage and rain
+
+The plumbing design starts from the fixtures you place with the *Interiores* tools: toilet, washbasin, shower, kitchen sink, washing machine, bathtub and stove. Nothing else needs drawing.
+
+- **Points** (*Exportar* › **Projeto hidrossanitário (PDF)**): every fixture gets its points at the usual heights from the finished floor: cold water (**AF**), hot water (**AQ**, only when the water is heated by gas or the sun; with electric showers there are no hot-water pipes), the drain (**ES**, with its DN: 100 for the toilet, 50 for the kitchen sink and the washing machine, 40 for the others) and gas for the stove. The sheet has the legend, the count of each kind of point and the fixture schedule (*quadro de aparelhos*) with the rooms, the heights, the weight each fixture adds to the water flow (NBR 5626) and its drainage units (UHC, NBR 8160). The heights are the usual ones: the fixture's manual has the last word.
 
 ## Discipline views
 

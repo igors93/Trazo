@@ -806,6 +806,18 @@ impl FloorPlanApp {
             self.export_roof_plan();
             ui.close();
         }
+        if menu_item(
+            ui,
+            Some(Icon::ExportPdf),
+            "Projeto hidrossanitário (PDF)...",
+            "",
+        )
+        .on_hover_text("Pontos de água, esgoto e gás de cada aparelho, com legenda e quadro de aparelhos")
+        .clicked()
+        {
+            self.export_plumbing();
+            ui.close();
+        }
     }
 }
 

@@ -191,6 +191,13 @@ pub struct Project {
     )]
     pub protection: super::protection::Protection,
 
+    /// Water, sewage and rain: the plumbing design's settings (section E).
+    #[serde(
+        default,
+        skip_serializing_if = "super::plumbing::PlumbingSettings::is_default"
+    )]
+    pub plumbing: super::plumbing::PlumbingSettings,
+
     next_id: u64,
 }
 
@@ -274,6 +281,7 @@ impl Default for Project {
 
             codes: super::codes::BuildingCodes::default(),
             protection: super::protection::Protection::default(),
+            plumbing: super::plumbing::PlumbingSettings::default(),
 
             next_id: 1,
         }

@@ -339,4 +339,23 @@ impl FloorPlanApp {
                 Err(error) => format!("Erro ao exportar o conjunto para obra: {error}"),
             };
     }
+
+    /// Saves the plumbing sheets (section E) as a PDF.
+    pub(super) fn export_plumbing(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Documento PDF", &["pdf"])
+            .set_file_name(format!("{}-hidrossanitario.pdf", self.document_name()))
+            .save_file()
+        else {
+            return;
+        };
+        self.message =
+            match crate::io::construction::plumbing::export_plumbing_pdf(&self.project, &path) {
+                Ok(pages) => format!(
+                    "Projeto hidrossanitário ({pages} prancha(s) A3) salvo em {}",
+                    path.display()
+                ),
+                Err(error) => format!("Erro ao exportar o projeto hidrossanitário: {error}"),
+            };
+    }
 }

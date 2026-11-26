@@ -24,6 +24,7 @@ mod gate_tests;
 mod markups;
 mod openings_fixtures;
 mod paths;
+mod plumbing;
 mod project_docs;
 mod protection;
 mod resources;
@@ -246,6 +247,7 @@ impl FloorPlanApp {
             "editar_ponto_eletrico" => self.tool_edit_electrical(args),
             "projeto_eletrico" => self.tool_electrical_design(args),
             "quadro_de_cargas" => self.tool_load_schedule(),
+            "instalacoes_hidraulicas" => self.tool_plumbing_report(),
             "projeto_estrutural" => self.tool_structural_design(args),
             "pre_dimensionamento" => self.tool_presizing(),
             "abas" => self.tool_tabs(args),

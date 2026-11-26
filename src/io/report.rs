@@ -56,7 +56,7 @@ fn light_color(light: Light) -> &'static str {
 }
 
 /// Splits `text` into lines of about `chars` characters, at spaces.
-fn wrap(text: &str, chars: usize) -> Vec<String> {
+pub(crate) fn wrap(text: &str, chars: usize) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
     for word in text.split_whitespace() {
