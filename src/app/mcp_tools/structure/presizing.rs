@@ -725,6 +725,14 @@ impl FloorPlanApp {
                 "com_risco": self.project.protection.site_risks.risky().iter().map(|r| r.key()).collect::<Vec<_>>(),
                 "sem_resposta": self.project.protection.site_risks.unanswered().iter().map(|r| r.key()).collect::<Vec<_>>(),
             },
+            "listas_concretagem": crate::domain::protection::checklists::pour_checklists(&reinforcement)
+                .iter()
+                .map(|list| json!({
+                    "titulo": list.title,
+                    "elementos": list.elements,
+                    "conferir": list.items,
+                }))
+                .collect::<Vec<_>>(),
             "onde_buscar_ajuda": crate::domain::protection::help::help_lines(
                 &self.project.protection.help_contacts,
             ),

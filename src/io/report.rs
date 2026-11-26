@@ -1859,8 +1859,27 @@ pub fn report_pages(project: &Project, date: &str) -> Vec<String> {
         pages.paragraph(&format!("• {warning}"), 3.0, INK);
     }
 
-    // 7. Where to find help (#159).
-    pages.heading("7. Onde buscar ajuda");
+    // 7. Before each pour (#162).
+    let checklists = crate::domain::protection::checklists::pour_checklists(&reinforcement);
+    if !checklists.is_empty() {
+        pages.heading("7. Antes de concretar");
+        for list in &checklists {
+            pages.subheading(&list.title);
+            for element in &list.elements {
+                pages.paragraph(&format!("• {element}"), 3.0, INK);
+            }
+            for item in &list.items {
+                pages.paragraph(&format!("[  ] {item}"), 3.0, INK);
+            }
+        }
+    }
+
+    // Where to find help (#159).
+    pages.heading(if checklists.is_empty() {
+        "7. Onde buscar ajuda"
+    } else {
+        "8. Onde buscar ajuda"
+    });
     pages.paragraph(
         "Resultado vermelho ou recusado não deve ser construído assim. Se a família não puder pagar um profissional:",
         3.0,

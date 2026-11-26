@@ -301,6 +301,7 @@ Two more questions cover building on top of a house that already exists. If you 
 - the slab, beam, column, footing and circuit tables with their lights;
 - the preliminary reinforcement of beams, columns, slabs and footings, its bar schedule and theoretical steel mass;
 - every check with its margin and what to change, and the warnings;
+- before each pour (footings, columns, beams, slabs): each element's bars and a checklist to tick beside the form;
 - where to find help: free technical assistance, university model offices, the Defesa Civil and the project's local contacts;
 - the drawings: the formwork plan, the beam forces, the electrical plan and the single-line diagram, as available.
 
