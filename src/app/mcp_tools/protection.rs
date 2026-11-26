@@ -1,6 +1,7 @@
 //! What the protection layer adds to every assistant answer (roadmap M0):
 //! the hypotheses Trazo held back for the person (#171) and what the action
-//! made worse (#170); and the building guide tool (#165).
+//! made worse (#170); the building guide (#165) and the plain-language
+//! review (#166) tools.
 
 use serde_json::{Value, json};
 
@@ -135,5 +136,81 @@ impl FloorPlanApp {
             })
             .collect();
         Ok(ToolOutput::ok(guide_text(&guide)).with_structured(json!({ "etapas": stages })))
+    }
+
+    /// `revisar_projeto`: the project reviewed for the family, in plain
+    /// words, with what needs a professional and where to get help.
+    pub(super) fn tool_review_project(&self) -> Result<ToolOutput, String> {
+        use crate::domain::protection::{glossary, help, hypotheses};
+        use crate::domain::verdict::{Light, safety_summary};
+        let project = &self.project;
+        let summary = safety_summary(project);
+        let pick = |light: Light| -> Vec<Value> {
+            summary
+                .verdicts
+                .iter()
+                .filter(|v| v.light() == light)
+                .map(|v| {
+                    let check = v.checks.iter().find(|c| c.light == light);
+                    json!({
+                        "elemento": v.element,
+                        "o_que_fazer": check.map(|c| c.simple.clone()),
+                    })
+                })
+                .collect()
+        };
+        let red = pick(Light::Red);
+        let yellow = pick(Light::Yellow);
+        let contested: Vec<Value> = hypotheses::contests(project)
+            .iter()
+            .map(|c| json!({ "hipotese": c.key.label(), "motivo": c.reason, "o_que_fazer": c.fix }))
+            .collect();
+        let waiting: Vec<Value> = project
+            .protection
+            .hypotheses
+            .proposals()
+            .iter()
+            .map(|p| json!({ "hipotese": p.key.label(), "valor": p.key.format(project, p.value) }))
+            .collect();
+        let risks = &project.protection.site_risks;
+        let headline = glossary::family_summary(&summary);
+        let mut text = vec![headline.clone()];
+        if !red.is_empty() {
+            text.push(format!(
+                "{} ponto(s) vermelho(s): explique cada um à família e corrija o que puder.",
+                red.len()
+            ));
+        }
+        if !contested.is_empty() || !waiting.is_empty() {
+            text.push(format!(
+                "{} hipótese(s) contestada(s) e {} esperando a confirmação da pessoa: peça a prova, não contorne.",
+                contested.len(),
+                waiting.len()
+            ));
+        }
+        if !risks.unanswered().is_empty() {
+            text.push(format!(
+                "{} pergunta(s) sobre o terreno sem resposta: faça-as à família (projeto_estrutural acao riscos_terreno).",
+                risks.unanswered().len()
+            ));
+        }
+        if !risks.risky().is_empty() || risks.unknown_existing_base() {
+            text.push(
+                "O terreno ou a casa existente tem risco que o Trazo não calcula: as fundações ficam paradas até um profissional avaliar."
+                    .to_owned(),
+            );
+        }
+        text.push(help::HELP_SENTENCE.to_owned());
+        Ok(ToolOutput::ok(text.join("\n")).with_structured(json!({
+            "resumo_para_a_familia": headline,
+            "nao_construir_assim": red,
+            "no_limite": yellow,
+            "hipoteses_contestadas": contested,
+            "hipoteses_aguardando_pessoa": waiting,
+            "perguntas_do_terreno_sem_resposta": risks.unanswered().iter().map(|r| r.question()).collect::<Vec<_>>(),
+            "riscos_do_terreno": risks.risky().iter().map(|r| r.danger()).collect::<Vec<_>>(),
+            "base_existente_desconhecida": risks.unknown_existing_base(),
+            "onde_buscar_ajuda": help::help_lines(&project.protection.help_contacts),
+        })))
     }
 }
