@@ -45,7 +45,7 @@ Instructions are not enough: an assistant can be wrong, and an assistant that de
 | A favourable hypothesis without evidence makes the result *contested*, never green; NBR minimums cannot be lowered (#169) | ✅ A red *Hipóteses de cálculo* verdict, green structural checks turn yellow, and `configurar` refuses a live load below NBR 6120 or a V0 below the city's |
 | A hypothesis change by the assistant is proposed, and applied only when the person confirms it with its evidence (#171) | ✅ The answer lists `hipoteses_aguardando_pessoa`; pass `evidencia` so the person sees what backs the value |
 | Each tool answer reports what the edit made worse: checks that changed colour, structural elements removed, hypotheses changed (#170) | ✅ `seguranca_piorou` in the answer, a sentence for the assistant to explain, and a notice in the status bar |
-| Simple independent cross-checks contest a detailed simulation that disagrees (#172) | ⬜ |
+| Simple independent cross-checks contest a detailed simulation that disagrees (#172) | ✅ A *Conferência independente* verdict in `semaforo`; when it is red, no structural result stays green |
 
 > [!NOTE]
 > When an assistant makes a hypothesis more favourable than Trazo's safe value without evidence the project holds (a soil survey, the city's wind), `projeto_estrutural` does not apply it: the change waits in *Segurança* › *Hipóteses de cálculo* until the person confirms it with evidence. Tell the person what is waiting and why, and ask for the soil survey report, the concrete invoice or the source of the value.

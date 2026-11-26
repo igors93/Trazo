@@ -4,6 +4,7 @@
 //! result through a wrong hypothesis. See `docs/proposta.md`.
 
 pub mod action_report;
+pub mod cross_checks;
 pub mod help;
 pub mod hypotheses;
 

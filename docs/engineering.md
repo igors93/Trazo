@@ -213,6 +213,17 @@ Checked by `cantilever_balcony_matches_nbr6118_table13_2_gamma_n_and_l125_deflec
 - **What-if mode (`src/domain/whatif.rs`, #107):** non-destructively clones the active model, applies span scale, beam/column/slab sections, live load, `fck`, soil allowable pressure, wind `V0` and NBR 6120 occupancy, runs Trazo's full structural, reinforcement and verdict engines in under 100 ms on the sample house, and computes colour-coded green/yellow/red safe-range bands per slider.
 - **Background analysis (`src/domain/background.rs`, `src/domain/cache.rs`, #108):** a persistent lazily-spawned worker thread (`trazo-analysis-worker`) with latest-wins edit coalescing populates the content-fingerprinted `RingCache` slots (B04) alongside shared `OnceLock` font databases (B17) so large plans remain interactive.
 
+## Independent cross-checks (#172)
+
+`src/domain/protection/cross_checks.rs` gives a second, simpler opinion on the structure, independent of the detailed load path:
+
+| Check | Rule |
+| --- | --- |
+| House weight | Simple weight `W = (Σ walls L·h·t·γm − openings + Σ slabs A·(g_slab + finish + live)) × floors`. The detailed simulation must carry to the ground (column loads at the foundation plus the walls on ground beams and strip footings) at least `0.6·W`; utilisation `0.6·W / carried`. |
+| Foundations together | Only when the weight check passes: `Σ footing B·L·σadm + Σ strip footing B·L·σadm + Σ pile-cap capacity ≥ max(W, carried)`. |
+
+A red cross-check turns every green structural check yellow, because the detailed result is contested until the model is completed (usually walls without ground beams or strip footings, or missing slabs and loads). The weighing ignores roofs and columns' self weight, so it errs low. It runs only with one real storey (with the *floors* multiplier); with real upper floors drawn, it is skipped.
+
 ## Preliminary reinforcement
 
 `build_reinforcement_report` turns the characteristic forces from `structure_report` into a reviewable reinforcement proposal and a theoretical bar schedule. It uses CA-50 (`fyk = 500 MPa`), steel density 7,850 kg/m³ and the same structural applicability limits. If the whole project or an element is outside those limits, it refuses to emit reinforcement for it.
