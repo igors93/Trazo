@@ -48,6 +48,14 @@ fn slenderness_check(column: &crate::domain::structure::ColumnResult) -> Check {
 /// red verdict instead of any sizing, and an element beyond them gets a red
 /// "Fora dos limites" with no numbers.
 pub fn structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Verdict> {
+    let mut verdicts = limited_structure_verdicts(project, report);
+    // A result that rests on a hypothesis Trazo contests is never green (#169).
+    super::hypotheses::contest(project, &mut verdicts);
+    verdicts
+}
+
+/// The structural verdicts, with the applicability limits applied.
+fn limited_structure_verdicts(project: &Project, report: &StructureReport) -> Vec<Verdict> {
     let project_wide = crate::domain::limits::structure_violations(project);
     if !project_wide.is_empty() {
         return vec![Verdict {

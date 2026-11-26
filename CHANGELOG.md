@@ -7,6 +7,7 @@ All notable changes to Trazo are recorded here. The format follows [Keep a Chang
 ### Added
 
 - **Hypothesis provenance (#168).** Every calculation hypothesis (soil pressure, concrete strength, live and finish loads, masonry weight, occupancy, wind speed, terrain category, S1 and S3) records who set it (Trazo's default, the person or an AI assistant) and its evidence (`src/domain/protection/hypotheses.rs`). Every edit is credited in `record_change`, whether it comes from the window or from MCP; a soil survey and the city's NBR 6123 wind speed count as evidence by themselves. The origins appear in the assumptions of *Segurança* and the review report, and in `pre_dimensionamento` and `projeto_estrutural` → `configurar` (`hipoteses`).
+- **Contested hypotheses (#169).** A hypothesis more favourable than the value Trazo can stand behind without evidence (soil 100 kPa without a survey, fck 20 MPa, the usual finish and masonry weights, V0 45 m/s while the city is unknown, terrain category III, S1 and S3 = 1.0) is contested unless the person or the project gives evidence. A live load below the NBR 6120 minimum, a wind speed below the city's and a soil pressure above the survey's are contested whatever the evidence. Each contested hypothesis is a red check in a new *Hipóteses de cálculo* verdict, and every green structural check that rests on it turns yellow; `projeto_estrutural` refuses a live load below the standard and a wind speed below the city's.
 
 ### Changed
 

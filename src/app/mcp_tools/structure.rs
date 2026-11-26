@@ -437,6 +437,15 @@ impl FloorPlanApp {
                 if let Some(v) = args.get("portico_bases_engastadas").and_then(Value::as_bool) {
                     settings.frame_fixed_bases = v;
                 }
+                // The standard's minimum live load cannot be lowered (#169).
+                let minimum = settings.occupancy.live_kn_m2();
+                if settings.live_kn_m2 + 1e-9 < minimum {
+                    return Err(format!(
+                        "A sobrecarga não pode ficar abaixo do mínimo da NBR 6120 para o uso {} ({} kN/m²).",
+                        settings.occupancy.label(),
+                        crate::domain::protection::decimal(minimum, 1)
+                    ));
+                }
                 self.apply_change(Some("Nada mudou nos materiais e cargas."), |project| {
                     project.structure.settings = settings;
                     Ok(Change::new("Materiais e cargas atualizados.".to_owned())
@@ -632,6 +641,14 @@ impl FloorPlanApp {
                 }
                 if let Some(v) = number(args, "s3")? {
                     wind.s3 = v;
+                }
+                // The city's wind from the NBR 6123 map cannot be lowered (#169).
+                if let Some(city) = self.project.codes.site.wind_v0_ms
+                    && wind.v0_ms + 0.01 < city
+                {
+                    return Err(format!(
+                        "O V0 não pode ficar abaixo do vento da cidade do terreno ({city:.0} m/s, mapa de isopletas da NBR 6123)."
+                    ));
                 }
                 self.apply_change(Some("O vento já era esse."), |project| {
                     project.set_wind(wind)?;

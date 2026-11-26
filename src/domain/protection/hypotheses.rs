@@ -299,6 +299,180 @@ pub fn origin_lines(project: &Project) -> Vec<String> {
         .collect()
 }
 
+/// Allowable soil pressure Trazo can assume without a soil survey: the
+/// traditional conservative 1 kgf/cm² (#160).
+pub const CONSERVATIVE_SOIL_KPA: f64 = 100.0;
+/// Concrete strength Trazo can assume without a specification: the lowest
+/// class NBR 6118 allows for reinforced concrete (C20).
+pub const CONSERVATIVE_FCK_MPA: f64 = 20.0;
+/// Usual floor finish and screed, kN/m².
+pub const USUAL_FINISH_KN_M2: f64 = 1.0;
+/// Usual weight of plastered hollow ceramic block masonry, kN/m³.
+pub const USUAL_MASONRY_KN_M3: f64 = 13.0;
+/// Basic wind speed Trazo can assume while the city is unknown: covers the
+/// NBR 6123 isopleth map almost everywhere outside the far south.
+pub const CONSERVATIVE_V0_MS: f64 = 45.0;
+/// Terrain category assumed for a house among others (III).
+pub const REFERENCE_WIND_CATEGORY: f64 = 3.0;
+
+/// The value Trazo can stand behind without evidence. A hypothesis more
+/// favourable than this needs a reason; `None` when no value is safer than
+/// another (the occupancy is a fact about the building, not a margin).
+pub fn reference(key: HypothesisKey, project: &Project) -> Option<f64> {
+    let settings = &project.structure.settings;
+    match key {
+        HypothesisKey::SoilPressure => {
+            Some(survey_soil_kpa(project).unwrap_or(CONSERVATIVE_SOIL_KPA))
+        }
+        HypothesisKey::ConcreteStrength => Some(CONSERVATIVE_FCK_MPA),
+        HypothesisKey::LiveLoad => Some(settings.occupancy.live_kn_m2()),
+        HypothesisKey::FinishLoad => Some(USUAL_FINISH_KN_M2),
+        HypothesisKey::MasonryWeight => Some(USUAL_MASONRY_KN_M3),
+        HypothesisKey::Occupancy => None,
+        HypothesisKey::WindSpeed => {
+            Some(project.codes.site.wind_v0_ms.unwrap_or(CONSERVATIVE_V0_MS))
+        }
+        HypothesisKey::WindCategory => Some(REFERENCE_WIND_CATEGORY),
+        HypothesisKey::WindTopography | HypothesisKey::WindStatistical => Some(1.0),
+    }
+}
+
+impl HypothesisKey {
+    /// Whether a larger value makes the structure look safer.
+    pub fn favourable_when_higher(self) -> bool {
+        matches!(
+            self,
+            Self::SoilPressure | Self::ConcreteStrength | Self::WindCategory
+        )
+    }
+
+    /// Whether `a` is more favourable (makes the structure look safer) than `b`.
+    pub fn more_favourable(self, a: f64, b: f64) -> bool {
+        let tolerance = 1e-6 * b.abs().max(1.0);
+        if self.favourable_when_higher() {
+            a > b + tolerance
+        } else {
+            a < b - tolerance
+        }
+    }
+}
+
+/// A hypothesis Trazo does not accept as it stands (#169).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Contest {
+    pub key: HypothesisKey,
+    /// Why, in plain words.
+    pub reason: String,
+    /// What to do, in plain words.
+    pub fix: String,
+    /// The value breaks a standard or contradicts the project's own data,
+    /// so no evidence can make it acceptable.
+    pub normative: bool,
+}
+
+/// Every hypothesis Trazo contests: a value more favourable than the one it
+/// can stand behind with no evidence for it, or one beyond what the
+/// standards and the project's own data allow (#169).
+pub fn contests(project: &Project) -> Vec<Contest> {
+    HypothesisKey::ALL
+        .into_iter()
+        .filter_map(|key| contest(key, project))
+        .collect()
+}
+
+fn contest(key: HypothesisKey, project: &Project) -> Option<Contest> {
+    let reference = reference(key, project)?;
+    let value = key.value(project);
+    if !key.more_favourable(value, reference) {
+        return None;
+    }
+    let shown = key.display(project);
+    let safe = key.format(project, reference);
+    let origin = project.protection.hypotheses.record(key).source.label();
+    let normative = match key {
+        HypothesisKey::LiveLoad => true,
+        HypothesisKey::WindSpeed => project.codes.site.wind_v0_ms.is_some(),
+        HypothesisKey::SoilPressure => survey_soil_kpa(project).is_some(),
+        _ => false,
+    };
+    if !normative && evidence(key, project).is_some() {
+        return None;
+    }
+    let (reason, fix) = match key {
+        HypothesisKey::SoilPressure if normative => (
+            format!("O solo foi considerado com {shown}, mais do que a sondagem permite ({safe})."),
+            format!("Use o valor da sondagem: {safe}."),
+        ),
+        HypothesisKey::SoilPressure => (
+            format!("O solo foi considerado com {shown} sem sondagem ou outra prova ({origin})."),
+            format!(
+                "Faça uma sondagem e use o valor dela, ou volte para {safe}, o valor seguro sem sondagem."
+            ),
+        ),
+        HypothesisKey::ConcreteStrength => (
+            format!("O concreto foi considerado com fck {shown} sem prova ({origin})."),
+            format!(
+                "Use {safe}, ou informe a prova: concreto usinado com nota fiscal ou ensaio de resistência."
+            ),
+        ),
+        HypothesisKey::LiveLoad => (
+            format!(
+                "A sobrecarga de {shown} é menor que o mínimo da NBR 6120 para o uso {} ({safe}).",
+                project.structure.settings.occupancy.label()
+            ),
+            format!("Volte para pelo menos {safe}: a norma não permite menos."),
+        ),
+        HypothesisKey::FinishLoad => (
+            format!(
+                "O revestimento foi considerado com {shown}, mais leve que o usual ({safe}), sem prova ({origin})."
+            ),
+            format!("Use {safe}, ou informe o contrapiso e o piso reais."),
+        ),
+        HypothesisKey::MasonryWeight => (
+            format!(
+                "As paredes foram consideradas com {shown}, mais leves que blocos cerâmicos comuns ({safe}), sem prova ({origin})."
+            ),
+            format!(
+                "Use {safe} ou mais (tijolo maciço e bloco de concreto pesam mais), ou informe o bloco real."
+            ),
+        ),
+        HypothesisKey::WindSpeed if normative => (
+            format!(
+                "O vento foi considerado com V0 = {shown}, menor que o da cidade ({safe}, NBR 6123)."
+            ),
+            format!("Use o V0 da cidade: {safe}."),
+        ),
+        HypothesisKey::WindSpeed => (
+            format!("O vento foi considerado com V0 = {shown} sem a cidade definida ({origin})."),
+            format!("Defina a cidade do terreno em Normas › Local e clima, ou use {safe}."),
+        ),
+        HypothesisKey::WindCategory => (
+            format!(
+                "O terreno foi considerado mais protegido do vento ({shown}) sem prova ({origin})."
+            ),
+            format!("Use {safe}, ou informe por que o entorno protege a casa."),
+        ),
+        HypothesisKey::WindTopography => (
+            format!(
+                "O fator topográfico {shown} reduz o vento (vale protegido) sem prova ({origin})."
+            ),
+            "Use 1,00. Em morro ou encosta o vento pode ser maior: procure um profissional."
+                .to_owned(),
+        ),
+        HypothesisKey::WindStatistical => (
+            format!("O fator estatístico {shown} reduz o vento sem prova ({origin})."),
+            "Use 1,00, o valor da norma para residências.".to_owned(),
+        ),
+        HypothesisKey::Occupancy => return None,
+    };
+    Some(Contest {
+        key,
+        reason,
+        fix,
+        normative,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,6 +518,56 @@ mod tests {
             .record(HypothesisKey::ConcreteStrength);
         assert_eq!(record.source, HypothesisSource::Person);
         assert!(record.evidence.is_some());
+    }
+
+    #[test]
+    fn a_favourable_soil_without_evidence_is_contested_and_evidence_settles_it() {
+        let mut project = Project::default();
+        project.structure.settings.soil_kpa = 300.0;
+        assert!(
+            contests(&project)
+                .iter()
+                .any(|c| c.key == HypothesisKey::SoilPressure && !c.normative)
+        );
+        project.protection.hypotheses.set(
+            HypothesisKey::SoilPressure,
+            HypothesisRecord {
+                source: HypothesisSource::Person,
+                evidence: Some("laudo de sondagem SP-01".to_owned()),
+            },
+        );
+        assert!(
+            contests(&project)
+                .iter()
+                .all(|c| c.key != HypothesisKey::SoilPressure)
+        );
+    }
+
+    #[test]
+    fn a_live_load_below_the_standard_is_contested_whatever_the_evidence() {
+        let mut project = Project::default();
+        project.structure.settings.live_kn_m2 = 1.0;
+        project.protection.hypotheses.set(
+            HypothesisKey::LiveLoad,
+            HypothesisRecord {
+                source: HypothesisSource::Assistant,
+                evidence: Some("a família disse que a casa é leve".to_owned()),
+            },
+        );
+        assert!(
+            contests(&project)
+                .iter()
+                .any(|c| c.key == HypothesisKey::LiveLoad && c.normative)
+        );
+    }
+
+    #[test]
+    fn conservative_values_are_never_contested() {
+        let mut project = Project::default();
+        project.structure.settings.soil_kpa = CONSERVATIVE_SOIL_KPA;
+        project.structure.settings.fck_mpa = CONSERVATIVE_FCK_MPA;
+        project.structure.wind.v0_ms = 50.0;
+        assert!(contests(&project).is_empty());
     }
 
     #[test]

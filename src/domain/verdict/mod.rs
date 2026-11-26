@@ -4,6 +4,7 @@
 
 mod codes;
 mod electrical;
+mod hypotheses;
 mod structure;
 
 #[cfg(test)]
