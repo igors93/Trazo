@@ -120,6 +120,7 @@ Trazo does not promise that a house will not fall. It does everything it can so 
 
 **Water, sewage and rain**
 - Plumbing points of every fixture (cold and hot water, drains, gas) with legend, counts and the fixture schedule
+- Cold water: water tank sized for the family, pipes sized by NBR 5626 and the pressure at every fixture, so a weak shower shows up before it is built
 
 **Electrical installation (NBR 5410)**
 - Outlets, switches, lights, distribution board and data points

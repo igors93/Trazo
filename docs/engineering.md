@@ -226,6 +226,17 @@ Checked by `cantilever_balcony_matches_nbr6118_table13_2_gamma_n_and_l125_deflec
 
 A red cross-check turns every green structural check yellow, because the detailed result is contested until the model is completed (usually walls without ground beams or strip footings, or missing slabs and loads). The weighing ignores roofs and columns' self weight, so it errs low. It runs only with one real storey (with the *floors* multiplier); with real upper floors drawn, it is skipped.
 
+## Cold water (#118)
+
+`src/domain/plumbing/cold_water.rs` and `network.rs` follow NBR 5626, with the tables of the plumbing code pack (`data/codes/plumbing/nbr.json`: fixture weights, `c = 0.3`, 3 m/s, 10 kPa, PVC pipes and fittings' equivalent lengths).
+
+- **Water and tank.** Daily use = residents × consumption (two per bedroom and 150 L/person·day by default); the reserve keeps one to three days (one by default) and the tank is the next commercial size (250 L to 20,000 L). Full weight = water + 1.0 kN, compared with the load the structure was checked for.
+- **Network.** From the tank's base, a header (*barrilete*) runs along the slab to a riser (*coluna*) in each wet room, placed at the room's outlet nearest the tank; a branch (*ramal*) runs 10 cm above the room's highest outlet from fixture to fixture, and a drop (*sub-ramal*) reaches each outlet. Fittings: a valve at each riser and at each room, elbows at every turn, tees where a branch splits, and the shower's pressure valve.
+- **Sizing.** Each pipe carries `Q = 0.3·√ΣP` of the fixtures after it and is the smallest PVC pipe (DN 25 for headers and risers, DN 20 for branches and drops) that keeps the speed under 3 m/s. Head loss by Darcy-Weisbach with the Swamee-Jain friction factor (roughness 0.0015 mm, water at 20 °C) over the real length plus the fittings' equivalent lengths.
+- **Pressure.** At each outlet: tank base − outlet height − losses. Below 10 kPa (1.02 m) it fails NBR 5626; a shower below 2.0 m runs but weakly. Where a larger pipe would help, Trazo grows the pipe that loses the most on the weakest outlet's path (headers and risers up to DN 50, branches up to DN 32); where the height alone is too little, it gives the tank base that would serve every fixture, and the one for a good shower.
+
+These are design aids: the tank's support is structural and is checked with its full weight.
+
 ## Roof plan: gutters and downpipes (#71)
 
 `src/domain/construction/roof_plan.rs` splits each roof into its water planes (one for a mono-pitch roof, two for a gable, four for a hip) and puts a gutter on every eave. Each gutter drains the horizontal area of the plane above it and falls at least 0.5 % to its downpipes (NBR 10844). Downpipes follow the practical rule of 1 cm² of section per m² of roof, so one 100 mm downpipe serves up to 78.5 m², with at least one per gutter, placed at the gutter's ends and spaced evenly. When the city's rainfall intensity `I` is set, the sheet shows the NBR 10844 design flow `Q = I·A/60` (L/min). The roof slope is compared with the tile's usual minimum. This is a layout aid: the final rainwater design (gutter section and length, downpipe capacity for the city's rain) follows NBR 10844.
