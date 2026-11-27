@@ -19,7 +19,27 @@ use crate::{
     mcp::ToolOutput,
 };
 
+fn rdec(value: f64, places: i32) -> f64 {
+    let factor = 10_f64.powi(places);
+    (value * factor).round() / factor
+}
+
 impl FloorPlanApp {
+    fn construction_export_path(
+        &self,
+        args: &Value,
+        suffix: &str,
+        ext: &str,
+    ) -> std::path::PathBuf {
+        match text(args, "caminho") {
+            Some(raw) => super::resolve_path(&raw, ext),
+            None => super::unique_path(super::documents_dir().join(format!(
+                "{}-{suffix}.{ext}",
+                super::file_stem(&self.project.name)
+            ))),
+        }
+    }
+
     pub(super) fn tool_construction_plan(&mut self, args: &Value) -> Result<ToolOutput, String> {
         let action = text(args, "acao")
             .unwrap_or_else(|| "catalogo_materiais".to_owned())
@@ -40,13 +60,7 @@ impl FloorPlanApp {
                             ));
                         }
                     };
-                    let path = super::resolve_path(
-                        text(args, "caminho").as_deref(),
-                        &format!(
-                            "{}-catalogo-materiais.{ext}",
-                            super::file_stem(&self.project)
-                        ),
-                    )?;
+                    let path = self.construction_export_path(args, "catalogo-materiais", ext);
                     super::ensure_parent(&path)?;
                     match ext {
                         "csv" => std::fs::write(&path, materials_catalogue_csv(&self.project))
@@ -179,13 +193,7 @@ impl FloorPlanApp {
                             ));
                         }
                     };
-                    let path = super::resolve_path(
-                        text(args, "caminho").as_deref(),
-                        &format!(
-                            "{}-lista-compras-etapas.{ext}",
-                            super::file_stem(&self.project)
-                        ),
-                    )?;
+                    let path = self.construction_export_path(args, "lista-compras-etapas", ext);
                     super::ensure_parent(&path)?;
                     match ext {
                         "csv" => std::fs::write(&path, stage_shopping_list_csv(&self.project))
@@ -217,8 +225,8 @@ impl FloorPlanApp {
                                     "codigo": it.item_code,
                                     "disciplina": it.discipline,
                                     "descricao": it.description,
-                                    "liquido": super::round(it.net_quantity, 2),
-                                    "comprar": super::round(it.buy_quantity, 2),
+                                    "liquido": rdec(it.net_quantity, 2),
+                                    "comprar": rdec(it.buy_quantity, 2),
                                     "perda_pct": it.waste_pct,
                                     "unidade": it.unit,
                                     "observacao_comercial": it.commercial_note,
@@ -261,16 +269,16 @@ impl FloorPlanApp {
                     "resumo": {
                         "cimento_sacos_50kg": list.summary.cement_bags_50kg,
                         "cal_sacos_20kg": list.summary.lime_bags_20kg,
-                        "areia_m3": super::round(list.summary.sand_m3, 2),
-                        "brita_m3": super::round(list.summary.gravel_m3, 2),
-                        "concreto_estrutural_m3": super::round(list.summary.structural_concrete_m3, 2),
-                        "concreto_magro_m3": super::round(list.summary.lean_concrete_m3, 2),
-                        "aco_ca50_kg": super::round(list.summary.steel_ca50_kg, 1),
+                        "areia_m3": rdec(list.summary.sand_m3, 2),
+                        "brita_m3": rdec(list.summary.gravel_m3, 2),
+                        "concreto_estrutural_m3": rdec(list.summary.structural_concrete_m3, 2),
+                        "concreto_magro_m3": rdec(list.summary.lean_concrete_m3, 2),
+                        "aco_ca50_kg": rdec(list.summary.steel_ca50_kg, 1),
                         "aco_barras_12m": list.summary.steel_bars_12m,
                         "blocos_total": list.summary.total_blocks,
-                        "cabos_eletricos_m": super::round(list.summary.wire_total_m, 1),
-                        "eletrodutos_m": super::round(list.summary.conduit_total_m, 1),
-                        "tubos_pvc_m": super::round(list.summary.pvc_pipe_total_m, 1),
+                        "cabos_eletricos_m": rdec(list.summary.wire_total_m, 1),
+                        "eletrodutos_m": rdec(list.summary.conduit_total_m, 1),
+                        "tubos_pvc_m": rdec(list.summary.pvc_pipe_total_m, 1),
                     },
                     "etapas": stages_json,
                     "premissas": list.assumptions,
@@ -289,10 +297,7 @@ impl FloorPlanApp {
                             ));
                         }
                     };
-                    let path = super::resolve_path(
-                        text(args, "caminho").as_deref(),
-                        &format!("{}-orcamento.{ext}", super::file_stem(&self.project)),
-                    )?;
+                    let path = self.construction_export_path(args, "orcamento", ext);
                     super::ensure_parent(&path)?;
                     match ext {
                         "csv" => std::fs::write(&path, cost_estimate_csv(&self.project))
@@ -319,11 +324,11 @@ impl FloorPlanApp {
                             "etapa": st.stage.key(),
                             "rotulo": st.stage.label(),
                             "itens": st.item_count,
-                            "material_brl": super::round(st.material_brl, 2),
-                            "mao_obra_brl": super::round(st.labor_brl, 2),
-                            "bdi_brl": super::round(st.bdi_brl, 2),
-                            "total_brl": super::round(st.total_brl, 2),
-                            "participacao_pct": super::round(st.share_pct, 1),
+                            "material_brl": rdec(st.material_brl, 2),
+                            "mao_obra_brl": rdec(st.labor_brl, 2),
+                            "bdi_brl": rdec(st.bdi_brl, 2),
+                            "total_brl": rdec(st.total_brl, 2),
+                            "participacao_pct": rdec(st.share_pct, 1),
                         })
                     })
                     .collect();
@@ -335,11 +340,11 @@ impl FloorPlanApp {
                             "classe": row.class.to_string(),
                             "codigo": row.item_code,
                             "descricao": row.description,
-                            "quantidade": super::round(row.total_quantity, 2),
+                            "quantidade": rdec(row.total_quantity, 2),
                             "unidade": row.unit,
-                            "total_brl": super::round(row.total_brl, 2),
-                            "participacao_pct": super::round(row.share_pct, 1),
-                            "acumulado_pct": super::round(row.cumulative_pct, 1),
+                            "total_brl": rdec(row.total_brl, 2),
+                            "participacao_pct": rdec(row.share_pct, 1),
+                            "acumulado_pct": rdec(row.cumulative_pct, 1),
                         })
                     })
                     .collect();
@@ -353,13 +358,13 @@ impl FloorPlanApp {
                     "referencia": report.reference_label,
                     "inclui_mao_obra": report.include_labor,
                     "bdi_pct": report.bdi_pct,
-                    "area_util_m2": super::round(report.built_area_m2, 2),
-                    "materiais_brl": super::round(report.material_total_brl, 2),
-                    "mao_obra_brl": super::round(report.labor_total_brl, 2),
-                    "custo_direto_brl": super::round(report.direct_total_brl, 2),
-                    "bdi_brl": super::round(report.bdi_total_brl, 2),
-                    "total_brl": super::round(report.grand_total_brl, 2),
-                    "custo_por_m2_brl": super::round(report.cost_per_m2_brl, 2),
+                    "area_util_m2": rdec(report.built_area_m2, 2),
+                    "materiais_brl": rdec(report.material_total_brl, 2),
+                    "mao_obra_brl": rdec(report.labor_total_brl, 2),
+                    "custo_direto_brl": rdec(report.direct_total_brl, 2),
+                    "bdi_brl": rdec(report.bdi_total_brl, 2),
+                    "total_brl": rdec(report.grand_total_brl, 2),
+                    "custo_por_m2_brl": rdec(report.cost_per_m2_brl, 2),
                     "arquivo_exportado": exported,
                     "etapas": stages_json,
                     "curva_abc": abc_json,
@@ -385,8 +390,8 @@ impl FloorPlanApp {
                     ))
                     .data(json!({
                         "codigo_item": code,
-                        "total_brl": super::round(est.grand_total_brl, 2),
-                        "custo_por_m2_brl": super::round(est.cost_per_m2_brl, 2),
+                        "total_brl": rdec(est.grand_total_brl, 2),
+                        "custo_por_m2_brl": rdec(est.cost_per_m2_brl, 2),
                     })))
                 })
             }
@@ -416,7 +421,7 @@ impl FloorPlanApp {
                         "bdi_pct": est.bdi_pct,
                         "inclui_mao_obra": est.include_labor,
                         "referencia": est.reference_label,
-                        "total_brl": super::round(est.grand_total_brl, 2),
+                        "total_brl": rdec(est.grand_total_brl, 2),
                     })))
                 })
             }
@@ -424,7 +429,7 @@ impl FloorPlanApp {
                 let content = if let Some(csv) = text(args, "conteudo_csv") {
                     csv
                 } else if let Some(raw_path) = text(args, "caminho") {
-                    let resolved = super::resolve_path(Some(&raw_path), "sinapi.csv")?;
+                    let resolved = super::resolve_path(&raw_path, "csv");
                     std::fs::read_to_string(&resolved).map_err(|e| {
                         format!("Não foi possível ler '{}': {e}", resolved.display())
                     })?
@@ -447,8 +452,8 @@ impl FloorPlanApp {
                         "ignorados": res.skipped,
                         "referencia": res.reference_label,
                         "codigos_atualizados": res.matched_codes,
-                        "total_brl": super::round(est.grand_total_brl, 2),
-                        "custo_por_m2_brl": super::round(est.cost_per_m2_brl, 2),
+                        "total_brl": rdec(est.grand_total_brl, 2),
+                        "custo_por_m2_brl": rdec(est.cost_per_m2_brl, 2),
                     })))
                 })
             }
@@ -465,10 +470,7 @@ impl FloorPlanApp {
                             ));
                         }
                     };
-                    let path = super::resolve_path(
-                        text(args, "caminho").as_deref(),
-                        &format!("{}-cronograma.{ext}", super::file_stem(&self.project)),
-                    )?;
+                    let path = self.construction_export_path(args, "cronograma", ext);
                     super::ensure_parent(&path)?;
                     match ext {
                         "csv" => std::fs::write(&path, construction_schedule_csv(&self.project))
@@ -504,7 +506,7 @@ impl FloorPlanApp {
                             "fim_dia": t.early_finish,
                             "folga_dias": t.slack_days,
                             "critica": t.is_critical,
-                            "custo_brl": super::round(t.cost_brl, 2),
+                            "custo_brl": rdec(t.cost_brl, 2),
                         })
                     })
                     .collect();
@@ -515,10 +517,10 @@ impl FloorPlanApp {
                         json!({
                             "semana": p.week,
                             "periodo": p.label,
-                            "desembolso_brl": super::round(p.cost_brl, 2),
-                            "acumulado_brl": super::round(p.cumulative_cost_brl, 2),
-                            "fisico_pct": super::round(p.physical_pct, 1),
-                            "acumulado_pct": super::round(p.cumulative_pct, 1),
+                            "desembolso_brl": rdec(p.cost_brl, 2),
+                            "acumulado_brl": rdec(p.cumulative_cost_brl, 2),
+                            "fisico_pct": rdec(p.physical_pct, 1),
+                            "acumulado_pct": rdec(p.cumulative_pct, 1),
                             "etapas_ativas": p.active_stages,
                         })
                     })
@@ -532,8 +534,8 @@ impl FloorPlanApp {
                     "resumo": report.plain_summary,
                     "dias_uteis_total": report.total_workdays,
                     "semanas_total": report.total_weeks,
-                    "meses_estimados": super::round(report.total_months_est, 1),
-                    "custo_total_brl": super::round(report.total_cost_brl, 2),
+                    "meses_estimados": rdec(report.total_months_est, 1),
+                    "custo_total_brl": rdec(report.total_cost_brl, 2),
                     "caminho_critico": report.critical_path_ids,
                     "arquivo_exportado": exported,
                     "atividades": tasks_json,
@@ -596,13 +598,7 @@ impl FloorPlanApp {
                             ));
                         }
                     };
-                    let path = super::resolve_path(
-                        text(args, "caminho").as_deref(),
-                        &format!(
-                            "{}-seguranca-nr18-licencas.{ext}",
-                            super::file_stem(&self.project)
-                        ),
-                    )?;
+                    let path = self.construction_export_path(args, "seguranca-nr18-licencas", ext);
                     super::ensure_parent(&path)?;
                     let svg = safety_permits_svg(&self.project);
                     if ext == "pdf" {
@@ -703,10 +699,7 @@ impl FloorPlanApp {
                 })
             }
             "pacote_obra" => {
-                let path = super::resolve_path(
-                    text(args, "caminho").as_deref(),
-                    &format!("{}-pacote-obra.pdf", super::file_stem(&self.project)),
-                )?;
+                let path = self.construction_export_path(args, "pacote-obra", "pdf");
                 super::ensure_parent(&path)?;
                 let pages = export_construction_bundle_pdf(&self.project, &path)?;
                 Ok(ToolOutput::ok(format!(
@@ -734,10 +727,7 @@ impl FloorPlanApp {
                             ));
                         }
                     };
-                    let path = super::resolve_path(
-                        text(args, "caminho").as_deref(),
-                        &format!("{}-diario-obra.{ext}", super::file_stem(&self.project)),
-                    )?;
+                    let path = self.construction_export_path(args, "diario-obra", ext);
                     super::ensure_parent(&path)?;
                     match ext {
                         "csv" => std::fs::write(&path, progress_log_csv(&self.project))
@@ -763,14 +753,14 @@ impl FloorPlanApp {
                         json!({
                             "etapa": st.stage.key(),
                             "rotulo": st.stage.label(),
-                            "previsto_pct": super::round(st.planned_pct, 1),
-                            "realizado_pct": super::round(st.actual_pct, 1),
-                            "desvio_pp": super::round(st.variance_pct, 1),
+                            "previsto_pct": rdec(st.planned_pct, 1),
+                            "realizado_pct": rdec(st.actual_pct, 1),
+                            "desvio_pp": rdec(st.variance_pct, 1),
                             "situacao": st.status.key(),
-                            "orcado_brl": super::round(st.budget_brl, 2),
-                            "valor_agregado_brl": super::round(st.earned_budget_brl, 2),
-                            "gasto_real_brl": super::round(st.actual_cost_brl, 2),
-                            "desvio_custo_brl": super::round(st.cost_variance_brl, 2),
+                            "orcado_brl": rdec(st.budget_brl, 2),
+                            "valor_agregado_brl": rdec(st.earned_budget_brl, 2),
+                            "gasto_real_brl": rdec(st.actual_cost_brl, 2),
+                            "desvio_custo_brl": rdec(st.cost_variance_brl, 2),
                             "registros": st.entry_count,
                             "fotos": st.photo_count,
                             "ultima_data": st.last_date,
@@ -802,11 +792,11 @@ impl FloorPlanApp {
                     "resumo": report.plain_summary,
                     "dia_referencia": report.reference_workday,
                     "dias_planejados": report.total_planned_workdays,
-                    "previsto_geral_pct": super::round(report.overall_planned_pct, 1),
-                    "realizado_geral_pct": super::round(report.overall_actual_pct, 1),
-                    "desvio_geral_pp": super::round(report.overall_variance_pct, 1),
-                    "orcado_total_brl": super::round(report.overall_budget_brl, 2),
-                    "gasto_total_brl": super::round(report.overall_actual_cost_brl, 2),
+                    "previsto_geral_pct": rdec(report.overall_planned_pct, 1),
+                    "realizado_geral_pct": rdec(report.overall_actual_pct, 1),
+                    "desvio_geral_pp": rdec(report.overall_variance_pct, 1),
+                    "orcado_total_brl": rdec(report.overall_budget_brl, 2),
+                    "gasto_total_brl": rdec(report.overall_actual_cost_brl, 2),
                     "total_registros": report.total_entries,
                     "total_fotos": report.total_photos,
                     "arquivo_exportado": exported,
@@ -857,8 +847,8 @@ impl FloorPlanApp {
                     ))
                     .data(json!({
                         "registro_id": id,
-                        "realizado_geral_pct": super::round(report.overall_actual_pct, 1),
-                        "previsto_geral_pct": super::round(report.overall_planned_pct, 1),
+                        "realizado_geral_pct": rdec(report.overall_actual_pct, 1),
+                        "previsto_geral_pct": rdec(report.overall_planned_pct, 1),
                         "total_fotos": report.total_photos,
                     })))
                 })
@@ -892,7 +882,7 @@ mod tests {
 
     #[test]
     fn mcp_materials_catalogue_reads_edits_and_resets() {
-        let mut app = FloorPlanApp::default();
+        let mut app = FloorPlanApp::new(&eframe::egui::Context::default());
         app.project = SampleProject::CasaTerrea.build();
         app.project.generate_structure();
         app.project.generate_electrical_points();
@@ -907,6 +897,8 @@ mod tests {
         assert!(data["total"].as_u64().unwrap() >= 10);
         assert!(data["em_uso"].as_u64().unwrap() >= 6);
 
+        // Raising fck above the safe default (20 MPa) via MCP is held for human
+        // confirmation by Trazo's #171 safety contract, while waste_pct applies.
         let edit = app.run_mcp_tool(
             "planejamento_obra",
             &json!({
@@ -917,7 +909,22 @@ mod tests {
             }),
         );
         assert!(!edit.is_error, "{}", edit.text);
-        assert!((app.project.structure.settings.fck_mpa - 25.0).abs() < 1e-6);
+        let edit_data = edit.structured.unwrap();
+        assert!(
+            edit_data.get("hipoteses_aguardando_pessoa").is_some(),
+            "AI raising fck via catalogue must be held by #171"
+        );
+        assert!((app.project.structure.settings.fck_mpa - 20.0).abs() < 1e-6);
+        assert!(
+            (app.project
+                .materials_catalogue()
+                .find("concrete_structural")
+                .unwrap()
+                .waste_pct
+                - 6.0)
+                .abs()
+                < 1e-6
+        );
 
         let reset = app.run_mcp_tool(
             "planejamento_obra",

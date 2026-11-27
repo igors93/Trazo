@@ -108,8 +108,7 @@ impl ConstructionStage {
         let norm = key
             .replace('ç', "c")
             .replace('õ', "o")
-            .replace('ã', "a")
-            .replace('á', "a")
+            .replace(['ã', 'á'], "a")
             .replace('é', "e")
             .replace('í', "i");
         match norm.as_str() {
@@ -239,16 +238,27 @@ pub fn expand_mix_volume(
     )
 }
 
+struct MixSpec<'a> {
+    stage: ConstructionStage,
+    discipline: &'static str,
+    context_label: &'a str,
+    volume_net_m3: f64,
+    material_id: &'a str,
+}
+
 fn push_mix_items(
     items: &mut Vec<ShoppingItem>,
     summary: &mut BulkShoppingSummary,
-    stage: ConstructionStage,
-    discipline: &'static str,
-    context_label: &str,
-    volume_net_m3: f64,
     catalogue: &MaterialsCatalogue,
-    material_id: &str,
+    spec: MixSpec<'_>,
 ) {
+    let MixSpec {
+        stage,
+        discipline,
+        context_label,
+        volume_net_m3,
+        material_id,
+    } = spec;
     if volume_net_m3 <= 1e-6 {
         return;
     }
@@ -466,22 +476,26 @@ pub fn build_stage_shopping_list(project: &Project) -> StageShoppingList {
         push_mix_items(
             stage2,
             &mut summary,
-            ConstructionStage::Foundations,
-            "Estrutura",
-            "concreto estrutural de fundações e baldrames",
-            found_concrete_m3,
             &catalogue,
-            "concrete_structural",
+            MixSpec {
+                stage: ConstructionStage::Foundations,
+                discipline: "Estrutura",
+                context_label: "concreto estrutural de fundações e baldrames",
+                volume_net_m3: found_concrete_m3,
+                material_id: "concrete_structural",
+            },
         );
         push_mix_items(
             stage2,
             &mut summary,
-            ConstructionStage::Foundations,
-            "Estrutura",
-            "concreto magro / lastro (5 cm)",
-            lean_concrete_m3,
             &catalogue,
-            "concrete_lean",
+            MixSpec {
+                stage: ConstructionStage::Foundations,
+                discipline: "Estrutura",
+                context_label: "concreto magro / lastro (5 cm)",
+                volume_net_m3: lean_concrete_m3,
+                material_id: "concrete_lean",
+            },
         );
         if found_steel_net_kg > 0.5 {
             let buy_kg = (found_steel_net_kg * (1.0 + steel_waste_pct / 100.0)).ceil();
@@ -591,12 +605,14 @@ pub fn build_stage_shopping_list(project: &Project) -> StageShoppingList {
         push_mix_items(
             stage3,
             &mut summary,
-            ConstructionStage::Structure,
-            "Estrutura",
-            "concreto estrutural de pilares, vigas e lajes",
-            super_concrete_m3,
             &catalogue,
-            "concrete_structural",
+            MixSpec {
+                stage: ConstructionStage::Structure,
+                discipline: "Estrutura",
+                context_label: "concreto estrutural de pilares, vigas e lajes",
+                volume_net_m3: super_concrete_m3,
+                material_id: "concrete_structural",
+            },
         );
         if super_steel_net_kg > 0.5 {
             let buy_kg = (super_steel_net_kg * (1.0 + steel_waste_pct / 100.0)).ceil();
@@ -735,24 +751,28 @@ pub fn build_stage_shopping_list(project: &Project) -> StageShoppingList {
         push_mix_items(
             stage4,
             &mut summary,
-            ConstructionStage::Masonry,
-            "Alvenaria",
-            "argamassa de assentamento (traço 1:2:8)",
-            mortar_net,
             &catalogue,
-            "mortar_laying",
+            MixSpec {
+                stage: ConstructionStage::Masonry,
+                discipline: "Alvenaria",
+                context_label: "argamassa de assentamento (traço 1:2:8)",
+                volume_net_m3: mortar_net,
+                material_id: "mortar_laying",
+            },
         );
         // U-block grout fill.
         let grout_net = takeoff.grout_m3 / 1.10;
         push_mix_items(
             stage4,
             &mut summary,
-            ConstructionStage::Masonry,
-            "Alvenaria",
-            "graute / microconcreto de canaletas e vergas",
-            grout_net,
             &catalogue,
-            "mortar_grout",
+            MixSpec {
+                stage: ConstructionStage::Masonry,
+                discipline: "Alvenaria",
+                context_label: "graute / microconcreto de canaletas e vergas",
+                volume_net_m3: grout_net,
+                material_id: "mortar_grout",
+            },
         );
     }
 
@@ -769,7 +789,7 @@ pub fn build_stage_shopping_list(project: &Project) -> StageShoppingList {
         let total_gutter_m: f64 = rplans
             .iter()
             .flat_map(|rp| rp.gutters.iter())
-            .map(|g| g.length_m)
+            .map(|g| g.length_m())
             .sum();
         let total_downpipes: usize = rplans
             .iter()
@@ -1078,12 +1098,14 @@ pub fn build_stage_shopping_list(project: &Project) -> StageShoppingList {
         push_mix_items(
             stage7,
             &mut summary,
-            ConstructionStage::PlasterAndWaterproofing,
-            "Revestimento",
-            "chapisco e reboco de paredes (traço 1:2:6)",
-            plaster_net,
             &catalogue,
-            "mortar_plaster",
+            MixSpec {
+                stage: ConstructionStage::PlasterAndWaterproofing,
+                discipline: "Revestimento",
+                context_label: "chapisco e reboco de paredes (traço 1:2:6)",
+                volume_net_m3: plaster_net,
+                material_id: "mortar_plaster",
+            },
         );
         if takeoff.waterproofing_m2 > 0.5 {
             let kg = (takeoff.waterproofing_m2 * 3.5 * 1.10).ceil();

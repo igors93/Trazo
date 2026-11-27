@@ -32,7 +32,7 @@ impl FloorPlanApp {
         let mut export_bundle = false;
         let mut settings_changed = false;
 
-        let tab_id = egui::Id::new("trazo_construction_hub_tab");
+        let tab_id = egui::Id::unique("trazo_construction_hub_tab");
         let mut active_tab: ConstructionHubTab =
             ctx.data(|data| data.get_temp(tab_id)).unwrap_or_default();
 

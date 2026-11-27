@@ -691,7 +691,10 @@ fn price_shopping_item(item: &ShoppingItem, settings: &CostSettings) -> PricedIt
 pub fn build_cost_estimate(project: &Project) -> CostEstimateReport {
     let shopping = build_stage_shopping_list(project);
     let settings = &project.construction.cost;
-    let built_area_m2: f64 = project.rooms.iter().map(|r| r.area()).sum::<f64>().max(1.0);
+    let built_area_m2: f64 = project
+        .construction_takeoff_with_options(project.floors.levels.len() > 1, None)
+        .floor_m2
+        .max(1.0);
 
     let mut items = Vec::new();
     let mut stage_map: BTreeMap<ConstructionStage, (usize, f64, f64)> = BTreeMap::new();

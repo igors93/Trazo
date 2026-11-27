@@ -27,8 +27,8 @@ use crate::domain::construction::{
 impl FloorPlanApp {
     /// Tab 1: Editable model-detected materials catalogue (#135).
     pub(super) fn materials_catalogue_tab(&mut self, ui: &mut egui::Ui) {
-        let filter_id = egui::Id::new("trazo_materials_category_filter");
-        let selected_id = egui::Id::new("trazo_materials_selected_id");
+        let filter_id = egui::Id::unique("trazo_materials_category_filter");
+        let selected_id = egui::Id::unique("trazo_materials_selected_id");
         let mut category_filter: Option<MaterialCategory> =
             ui.ctx().data(|d| d.get_temp(filter_id)).unwrap_or(None);
         let mut selected_mat: String = ui
@@ -385,7 +385,7 @@ impl FloorPlanApp {
 
     /// Tab 2: Stage-by-stage shopping list across all disciplines (#136).
     pub(super) fn stage_shopping_tab(&mut self, ui: &mut egui::Ui) {
-        let filter_id = egui::Id::new("trazo_shopping_stage_filter");
+        let filter_id = egui::Id::unique("trazo_shopping_stage_filter");
         let mut stage_filter: Option<ConstructionStage> =
             ui.ctx().data(|d| d.get_temp(filter_id)).unwrap_or(None);
 
@@ -541,7 +541,7 @@ impl FloorPlanApp {
 
     /// Tab 3: Cost estimate from quantities with editable price tables & SINAPI import (#87).
     pub(super) fn cost_estimate_tab(&mut self, ui: &mut egui::Ui) {
-        let sel_id = egui::Id::new("trazo_cost_selected_code");
+        let sel_id = egui::Id::unique("trazo_cost_selected_code");
         let mut selected_code: String = ui
             .ctx()
             .data(|d| d.get_temp(sel_id))
@@ -552,7 +552,7 @@ impl FloorPlanApp {
         ui.label(
             RichText::new(&report.plain_summary)
                 .font(strong(12.5))
-                .color(TEXT_1),
+                .color(TEXT),
         );
         ui.label(
             RichText::new(format!(
@@ -822,7 +822,7 @@ impl FloorPlanApp {
         ui.label(
             RichText::new(&report.plain_summary)
                 .font(strong(12.5))
-                .color(TEXT_1),
+                .color(TEXT),
         );
         ui.add_space(4.0);
 
@@ -1140,7 +1140,7 @@ impl FloorPlanApp {
                         RichText::new(format!("{} — {} ({})", p.title, p.authority, p.when_needed))
                             .font(strong(12.0))
                             .color(if p.mandatory {
-                                TEXT_1
+                                TEXT
                             } else {
                                 egui::Color32::from_rgb(27, 94, 32)
                             }),
@@ -1190,12 +1190,12 @@ impl FloorPlanApp {
 
     /// Tab 6: Site progress log with photos, notes and plan-vs-actual comparison (#139).
     pub(super) fn site_progress_tab(&mut self, ui: &mut egui::Ui) {
-        let stage_id = egui::Id::new("trazo_progress_form_stage");
-        let date_id = egui::Id::new("trazo_progress_form_date");
-        let pct_id = egui::Id::new("trazo_progress_form_pct");
-        let cost_id = egui::Id::new("trazo_progress_form_cost");
-        let note_id = egui::Id::new("trazo_progress_form_note");
-        let photos_id = egui::Id::new("trazo_progress_form_photos");
+        let stage_id = egui::Id::unique("trazo_progress_form_stage");
+        let date_id = egui::Id::unique("trazo_progress_form_date");
+        let pct_id = egui::Id::unique("trazo_progress_form_pct");
+        let cost_id = egui::Id::unique("trazo_progress_form_cost");
+        let note_id = egui::Id::unique("trazo_progress_form_note");
+        let photos_id = egui::Id::unique("trazo_progress_form_photos");
 
         let mut form_stage: ConstructionStage = ui
             .ctx()
@@ -1223,7 +1223,7 @@ impl FloorPlanApp {
         ui.label(
             RichText::new(&report.plain_summary)
                 .font(strong(12.0))
-                .color(TEXT_1),
+                .color(TEXT),
         );
         ui.add_space(4.0);
 

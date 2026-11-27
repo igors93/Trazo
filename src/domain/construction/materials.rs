@@ -406,7 +406,10 @@ pub fn detect_materials_catalogue(project: &Project) -> MaterialsCatalogue {
             timber_fc0k, timber_density
         ),
         used_in_model: !project.structure.roofs.is_empty()
-            || !project.structure.timber_posts.is_empty(),
+            || project
+                .fixtures
+                .iter()
+                .any(|f| f.kind == crate::domain::fixtures::FixtureKind::TimberPost),
         usage_summary: if project.structure.roofs.is_empty() {
             "Padrão estrutural (sem telhado modelado)".to_owned()
         } else {
