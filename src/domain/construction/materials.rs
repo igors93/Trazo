@@ -885,11 +885,14 @@ pub struct ConstructionPlan {
     /// Editable unit prices, BDI and SINAPI import settings (#87).
     #[serde(skip_serializing_if = "super::cost::CostSettings::is_default")]
     pub cost: super::cost::CostSettings,
+    /// Crew size and calendar settings for the construction schedule (#137).
+    #[serde(skip_serializing_if = "super::schedule::ScheduleSettings::is_default")]
+    pub schedule: super::schedule::ScheduleSettings,
 }
 
 impl ConstructionPlan {
     pub fn is_default(&self) -> bool {
-        self.material_overrides.is_empty() && self.cost.is_default()
+        self.material_overrides.is_empty() && self.cost.is_default() && self.schedule.is_default()
     }
 }
 

@@ -11,6 +11,7 @@ use crate::{
     domain::construction::{
         cost::{cost_estimate_csv, cost_estimate_svg, edit_unit_price, format_brl},
         materials::{MaterialOverride, materials_catalogue_csv, materials_catalogue_svg},
+        schedule::{construction_schedule_csv, construction_schedule_gantt_svg},
         shopping::{ConstructionStage, stage_shopping_list_csv, stage_shopping_list_svg},
     },
     mcp::ToolOutput,
@@ -449,8 +450,132 @@ impl FloorPlanApp {
                     })))
                 })
             }
+            "cronograma" => {
+                let report = self.project.construction_schedule();
+                let exported = if let Some(fmt) = text(args, "formato").map(|f| f.to_lowercase()) {
+                    let ext = match fmt.as_str() {
+                        "csv" => "csv",
+                        "svg" => "svg",
+                        "pdf" => "pdf",
+                        other => {
+                            return Err(format!(
+                                "Formato '{other}' inválido; use csv, svg ou pdf."
+                            ));
+                        }
+                    };
+                    let path = super::resolve_path(
+                        text(args, "caminho").as_deref(),
+                        &format!("{}-cronograma.{ext}", super::file_stem(&self.project)),
+                    )?;
+                    super::ensure_parent(&path)?;
+                    match ext {
+                        "csv" => std::fs::write(&path, construction_schedule_csv(&self.project))
+                            .map_err(|e| e.to_string())?,
+                        "svg" => {
+                            let svg = construction_schedule_gantt_svg(&self.project);
+                            crate::domain::views::export_view_svg(&svg, &path)?;
+                        }
+                        _ => {
+                            let svg = construction_schedule_gantt_svg(&self.project);
+                            crate::domain::views::export_view_pdf(&svg, &path)?;
+                        }
+                    }
+                    Some(path.display().to_string())
+                } else {
+                    None
+                };
+
+                let tasks_json: Vec<Value> = report
+                    .tasks
+                    .iter()
+                    .map(|t| {
+                        json!({
+                            "id": t.id,
+                            "etapa": t.stage.key(),
+                            "atividade": t.title,
+                            "tipo": t.kind.key(),
+                            "equipe": t.crew_label,
+                            "produtividade": t.productivity_note,
+                            "dependencias": t.dependencies,
+                            "duracao_dias": t.duration_days,
+                            "inicio_dia": t.early_start + 1,
+                            "fim_dia": t.early_finish,
+                            "folga_dias": t.slack_days,
+                            "critica": t.is_critical,
+                            "custo_brl": super::round(t.cost_brl, 2),
+                        })
+                    })
+                    .collect();
+                let periods_json: Vec<Value> = report
+                    .periods
+                    .iter()
+                    .map(|p| {
+                        json!({
+                            "semana": p.week,
+                            "periodo": p.label,
+                            "desembolso_brl": super::round(p.cost_brl, 2),
+                            "acumulado_brl": super::round(p.cumulative_cost_brl, 2),
+                            "fisico_pct": super::round(p.physical_pct, 1),
+                            "acumulado_pct": super::round(p.cumulative_pct, 1),
+                            "etapas_ativas": p.active_stages,
+                        })
+                    })
+                    .collect();
+
+                let msg = match &exported {
+                    Some(p) => format!("{} Exportado em {p}.", report.plain_summary),
+                    None => report.plain_summary.clone(),
+                };
+                Ok(ToolOutput::ok(msg).with_structured(json!({
+                    "resumo": report.plain_summary,
+                    "dias_uteis_total": report.total_workdays,
+                    "semanas_total": report.total_weeks,
+                    "meses_estimados": super::round(report.total_months_est, 1),
+                    "custo_total_brl": super::round(report.total_cost_brl, 2),
+                    "caminho_critico": report.critical_path_ids,
+                    "arquivo_exportado": exported,
+                    "atividades": tasks_json,
+                    "fisico_financeiro": periods_json,
+                    "premissas": report.assumptions,
+                })))
+            }
+            "configurar_cronograma" => {
+                let wpw = super::optional_count(args, "dias_semana")?;
+                let masons = super::optional_count(args, "pedreiros")?;
+                let helpers = super::optional_count(args, "serventes")?;
+                let elec = super::optional_count(args, "eletricistas")?;
+                let plumb = super::optional_count(args, "encanadores")?;
+                let start_date = text(args, "data_inicio");
+                self.apply_change(None, |project| {
+                    let s = &mut project.construction.schedule;
+                    if let Some(v) = wpw {
+                        s.workdays_per_week = (v as u8).clamp(5, 6);
+                    }
+                    if let Some(v) = masons {
+                        s.masons = (v as u32).clamp(1, 10);
+                    }
+                    if let Some(v) = helpers {
+                        s.helpers = (v as u32).clamp(1, 12);
+                    }
+                    if let Some(v) = elec {
+                        s.electricians = (v as u32).clamp(1, 4);
+                    }
+                    if let Some(v) = plumb {
+                        s.plumbers = (v as u32).clamp(1, 4);
+                    }
+                    if let Some(d) = &start_date {
+                        s.start_date = (!d.trim().is_empty()).then(|| d.trim().to_owned());
+                    }
+                    let sched = project.construction_schedule();
+                    Ok(Change::new(sched.plain_summary.clone()).data(json!({
+                        "dias_uteis_total": sched.total_workdays,
+                        "semanas_total": sched.total_weeks,
+                        "caminho_critico": sched.critical_path_ids,
+                    })))
+                })
+            }
             other => Err(format!(
-                "Ação '{other}' desconhecida em planejamento_obra. Use: catalogo_materiais, editar_material, restaurar_material, lista_compras, orcamento, editar_preco, configurar_orcamento ou importar_sinapi."
+                "Ação '{other}' desconhecida em planejamento_obra. Use: catalogo_materiais, editar_material, restaurar_material, lista_compras, orcamento, editar_preco, configurar_orcamento, importar_sinapi, cronograma ou configurar_cronograma."
             )),
         }
     }
@@ -527,5 +652,11 @@ mod tests {
         let idata = imported.structured.unwrap();
         assert_eq!(idata["importados"].as_u64().unwrap(), 2);
         assert!(idata["total_brl"].as_f64().unwrap() > total_before);
+
+        let sched = app.run_mcp_tool("planejamento_obra", &json!({ "acao": "cronograma" }));
+        assert!(!sched.is_error, "{}", sched.text);
+        let sc = sched.structured.unwrap();
+        assert!(sc["dias_uteis_total"].as_u64().unwrap() >= 30);
+        assert!(!sc["fisico_financeiro"].as_array().unwrap().is_empty());
     }
 }

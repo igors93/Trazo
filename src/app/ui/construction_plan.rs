@@ -13,6 +13,7 @@ use crate::domain::construction::{
     materials::{
         MaterialCategory, MaterialOverride, materials_catalogue_csv, materials_catalogue_svg,
     },
+    schedule::{ScheduleTaskKind, construction_schedule_csv, construction_schedule_gantt_svg},
     shopping::{ConstructionStage, stage_shopping_list_csv, stage_shopping_list_svg},
 };
 
@@ -804,6 +805,219 @@ impl FloorPlanApp {
         self.message = match res {
             Ok(()) => format!("Orçamento exportado em {}", path.display()),
             Err(error) => format!("Erro ao exportar orçamento: {error}"),
+        };
+    }
+
+    /// Tab 4: Construction schedule, curing/shoring waits and physical-financial timeline (#137).
+    pub(super) fn construction_schedule_tab(&mut self, ui: &mut egui::Ui) {
+        let report = self.project.construction_schedule();
+
+        ui.label(
+            RichText::new(&report.plain_summary)
+                .font(strong(12.5))
+                .color(TEXT_1),
+        );
+        ui.add_space(4.0);
+
+        let mut cfg = self.project.construction.schedule.clone();
+        let mut changed = false;
+        let mut export_kind: Option<&'static str> = None;
+
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Dias/sem:");
+            changed |= ui
+                .selectable_value(&mut cfg.workdays_per_week, 5, "5 d (seg–sex)")
+                .changed();
+            changed |= ui
+                .selectable_value(&mut cfg.workdays_per_week, 6, "6 d (seg–sáb)")
+                .changed();
+            ui.separator();
+            ui.label("Pedreiros:");
+            changed |= ui
+                .add(egui::DragValue::new(&mut cfg.masons).range(1..=10))
+                .changed();
+            ui.label("Serventes:");
+            changed |= ui
+                .add(egui::DragValue::new(&mut cfg.helpers).range(1..=12))
+                .changed();
+            ui.label("Eletric.:");
+            changed |= ui
+                .add(egui::DragValue::new(&mut cfg.electricians).range(1..=4))
+                .changed();
+            ui.label("Encan.:");
+            changed |= ui
+                .add(egui::DragValue::new(&mut cfg.plumbers).range(1..=4))
+                .changed();
+        });
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            if secondary_button(ui, "Exportar Gantt PDF").clicked() {
+                export_kind = Some("pdf");
+            }
+            if secondary_button(ui, "Exportar Gantt SVG").clicked() {
+                export_kind = Some("svg");
+            }
+            if secondary_button(ui, "Exportar CSV").clicked() {
+                export_kind = Some("csv");
+            }
+        });
+        ui.separator();
+
+        let total_days = f32::from(report.total_workdays.max(1) as u16);
+
+        egui::ScrollArea::both()
+            .id_salt("construction_schedule_scroll")
+            .show(ui, |ui| {
+                ui.label(
+                    RichText::new(format!(
+                        "1. Etapas, caminho crítico ({}) e tempos de cura/escoramento",
+                        report.critical_path_ids.join(" → ")
+                    ))
+                    .font(strong(13.0)),
+                );
+                egui::Grid::new("schedule_tasks_grid")
+                    .striped(true)
+                    .spacing([10.0, 5.0])
+                    .show(ui, |ui| {
+                        for h in [
+                            "ID",
+                            "Atividade",
+                            "Tipo",
+                            "Dias",
+                            "Início–Fim",
+                            "Linha do tempo (Gantt)",
+                            "Custo etapa",
+                        ] {
+                            ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                        }
+                        ui.end_row();
+
+                        for t in &report.tasks {
+                            let badge_color = match t.kind {
+                                ScheduleTaskKind::Curing | ScheduleTaskKind::Shoring => {
+                                    egui::Color32::from_rgb(180, 110, 0)
+                                }
+                                ScheduleTaskKind::Work if t.is_critical => {
+                                    egui::Color32::from_rgb(183, 28, 28)
+                                }
+                                ScheduleTaskKind::Work => egui::Color32::from_rgb(25, 118, 210),
+                            };
+                            ui.label(RichText::new(&t.id).font(strong(11.5)).color(badge_color));
+                            ui.label(&t.title).on_hover_text(&t.productivity_note);
+                            ui.label(RichText::new(t.kind.label()).size(11.0).color(badge_color));
+                            ui.label(format!("{} d", t.duration_days));
+                            ui.label(format!("D{}–D{}", t.early_start + 1, t.early_finish));
+
+                            // Compact inline Gantt bar
+                            let bar_w = 180.0_f32;
+                            let bar_h = 12.0_f32;
+                            let (rect, _) = ui.allocate_exact_size(
+                                egui::vec2(bar_w, bar_h),
+                                egui::Sense::hover(),
+                            );
+                            let painter = ui.painter();
+                            painter.rect_filled(rect, 2.0, egui::Color32::from_rgb(238, 242, 247));
+                            let x0 = rect.left() + (t.early_start as f32 / total_days) * bar_w;
+                            let w = ((t.duration_days as f32 / total_days) * bar_w).max(4.0);
+                            painter.rect_filled(
+                                egui::Rect::from_min_size(
+                                    egui::pos2(x0, rect.top() + 1.0),
+                                    egui::vec2(w, bar_h - 2.0),
+                                ),
+                                2.0,
+                                badge_color,
+                            );
+
+                            ui.label(if t.cost_brl > 0.01 {
+                                format_brl(t.cost_brl)
+                            } else {
+                                "—".to_owned()
+                            });
+                            ui.end_row();
+                        }
+                    });
+
+                ui.add_space(10.0);
+                ui.label(
+                    RichText::new("2. Cronograma físico-financeiro semanal (desembolso e Curva S)")
+                        .font(strong(13.0)),
+                );
+                egui::Grid::new("schedule_financial_grid")
+                    .striped(true)
+                    .spacing([12.0, 4.0])
+                    .show(ui, |ui| {
+                        for h in [
+                            "Semana",
+                            "Desembolso",
+                            "Acumulado",
+                            "% Sem.",
+                            "% Acum.",
+                            "Etapas em andamento",
+                        ] {
+                            ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                        }
+                        ui.end_row();
+                        for p in &report.periods {
+                            ui.label(RichText::new(&p.label).font(strong(11.5)));
+                            ui.label(format_brl(p.cost_brl));
+                            ui.label(
+                                RichText::new(format_brl(p.cumulative_cost_brl)).font(strong(11.5)),
+                            );
+                            ui.label(format!("{:.1} %", p.physical_pct));
+                            ui.label(format!("{:.1} %", p.cumulative_pct));
+                            ui.label(
+                                RichText::new(p.active_stages.join(" · "))
+                                    .size(11.0)
+                                    .color(MUTED),
+                            );
+                            ui.end_row();
+                        }
+                    });
+
+                ui.add_space(6.0);
+                for note in &report.assumptions {
+                    ui.label(RichText::new(format!("• {note}")).size(11.0).color(MUTED));
+                }
+            });
+
+        if changed {
+            let before = self.project.clone();
+            self.project.construction.schedule = cfg;
+            self.record_change(before);
+        }
+        if let Some(kind) = export_kind {
+            self.export_construction_schedule(kind);
+        }
+    }
+
+    fn export_construction_schedule(&mut self, kind: &str) {
+        let (label, ext, filename) = match kind {
+            "csv" => ("Planilha CSV", "csv", "cronograma-obra.csv"),
+            "pdf" => ("Documento PDF", "pdf", "cronograma-gantt.pdf"),
+            _ => ("Desenho SVG", "svg", "cronograma-gantt.svg"),
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(filename)
+            .save_file()
+        else {
+            return;
+        };
+        let res = match kind {
+            "csv" => std::fs::write(&path, construction_schedule_csv(&self.project))
+                .map_err(|e| e.to_string()),
+            "pdf" => {
+                let svg = construction_schedule_gantt_svg(&self.project);
+                crate::domain::views::export_view_pdf(&svg, &path)
+            }
+            _ => {
+                let svg = construction_schedule_gantt_svg(&self.project);
+                crate::domain::views::export_view_svg(&svg, &path)
+            }
+        };
+        self.message = match res {
+            Ok(()) => format!("Cronograma exportado em {}", path.display()),
+            Err(error) => format!("Erro ao exportar cronograma: {error}"),
         };
     }
 }

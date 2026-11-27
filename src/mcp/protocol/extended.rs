@@ -184,11 +184,11 @@ pub(super) fn catalogue() -> Vec<Tool> {
         ),
         tool(
             "planejamento_obra",
-            "Planejamento de obra, materiais, compras e orçamento SINAPI",
-            "Planejamento de obra (seção H): catálogo editável de materiais (#135), lista de compras por etapa (#136) e orçamento estimativo com curva ABC, edição de preços e importação SINAPI CSV/TSV (#87), com exportação CSV/SVG/PDF.",
+            "Planejamento de obra: materiais, compras, orçamento SINAPI e cronograma",
+            "Planejamento de obra (seção H): catálogo editável de materiais (#135), lista de compras por etapa (#136), orçamento estimativo com curva ABC e importação SINAPI (#87) e cronograma físico-financeiro com caminho crítico, cura 7 d e escoramento 21 d (#137), com exportação CSV/SVG/PDF.",
             merge(
                 json!({
-                    "acao":choices(&["catalogo_materiais","editar_material","restaurar_material","lista_compras","orcamento","editar_preco","configurar_orcamento","importar_sinapi"]),
+                    "acao":choices(&["catalogo_materiais","editar_material","restaurar_material","lista_compras","orcamento","editar_preco","configurar_orcamento","importar_sinapi","cronograma","configurar_cronograma"]),
                     "material_id":string("Id do material no catálogo (ex.: concrete_structural, block_default, mortar_laying)."),
                     "etapa":choices(&["preliminares","fundacoes","estrutura","alvenaria","cobertura","instalacoes","reboco","acabamentos"]),
                     "nome":string("Nome personalizado do material."),
@@ -208,6 +208,12 @@ pub(super) fn catalogue() -> Vec<Tool> {
                     "incluir_mao_obra":boolean("Inclui mão de obra estimada no orçamento."),
                     "referencia":string("Nome da referência SINAPI/tabela de preços."),
                     "conteudo_csv":string("Conteúdo CSV/TSV SINAPI para importar_sinapi."),
+                    "dias_semana":integer("Dias úteis por semana no cronograma (5 ou 6)."),
+                    "pedreiros":integer("Número de pedreiros na equipe (1 a 10)."),
+                    "serventes":integer("Número de serventes na equipe (1 a 12)."),
+                    "eletricistas":integer("Número de eletricistas (1 a 4)."),
+                    "encanadores":integer("Número de encanadores (1 a 4)."),
+                    "data_inicio":string("Data prevista de início (YYYY-MM-DD)."),
                     "formato":choices(&["csv","svg","pdf"]),
                     "caminho":string("Opcional: caminho de arquivo para exportação ou importação SINAPI.")
                 }),

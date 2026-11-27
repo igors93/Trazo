@@ -16,6 +16,7 @@ enum ConstructionHubTab {
     Materials,
     Shopping,
     Cost,
+    Schedule,
 }
 
 impl FloorPlanApp {
@@ -69,6 +70,11 @@ impl FloorPlanApp {
                         &mut active_tab,
                         ConstructionHubTab::Cost,
                         "Orçamento e SINAPI",
+                    );
+                    ui.selectable_value(
+                        &mut active_tab,
+                        ConstructionHubTab::Schedule,
+                        "Cronograma",
                     );
                 });
                 ui.separator();
@@ -178,6 +184,9 @@ impl FloorPlanApp {
                     }
                     ConstructionHubTab::Cost => {
                         self.cost_estimate_tab(ui);
+                    }
+                    ConstructionHubTab::Schedule => {
+                        self.construction_schedule_tab(ui);
                     }
                 }
             });
