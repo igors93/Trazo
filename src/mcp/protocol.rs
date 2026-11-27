@@ -909,7 +909,7 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "instalacoes_hidraulicas",
             title: "Instalações hidrossanitárias",
-            description: "Instalações de água, esgoto e gás da planta (NBR 5626, NBR 8160): os pontos de cada aparelho (água fria AF, água quente AQ, esgoto ES com o DN, gás) com posição e altura, a contagem por tipo, o quadro de aparelhos com peso e UHC e as observações; a água fria: consumo, caixa-d'água e o peso dela cheia, colunas, tubos com DN, vazão e perda, e a pressão em cada aparelho (boa, fraca ou insuficiente), com o que subir quando falta pressão. Os aparelhos vêm de inserir_objeto (vaso, lavatorio, chuveiro, pia, lavadora, banheira, fogao).",
+            description: "Instalações de água, esgoto e gás da planta (NBR 5626, NBR 8160): os pontos de cada aparelho (água fria AF, água quente AQ, esgoto ES com o DN, gás) com posição e altura, a contagem por tipo, o quadro de aparelhos com peso e UHC e as observações; a água fria: consumo, caixa-d'água e o peso dela cheia, colunas, tubos com DN, vazão e perda, e a pressão em cada aparelho (boa, fraca ou insuficiente), com o que subir quando falta pressão; a água quente: tomada de cada chuveiro elétrico, aquecedor a gás (L/min, kW, GLP) ou solar (reservatório e coletores) e os tubos de água quente com a pressão. Os aparelhos vêm de inserir_objeto (vaso, lavatorio, chuveiro, pia, lavadora, banheira, fogao).",
             properties: json!({}),
             required: &[],
             read_only: true,
@@ -918,7 +918,7 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "projeto_hidraulico",
             title: "Projeto hidrossanitário (configurar)",
-            description: "Configura o projeto de água, esgoto e chuva. configurar: moradores (padrão: 2 por quarto), consumo_l_pessoa_dia (padrão 150 L), dias_reserva (1 a 3, padrão 1; use 2 onde a água da rua falta), caixa_x e caixa_y (posição da caixa-d'água; padrão: a caixa do projeto estrutural ou sobre as áreas molhadas), altura_base_caixa_m (base da caixa sobre o piso; padrão: paredes + 0,20 m) e aquecimento (chuveiro_eletrico, gas ou solar). restaurar: devolve ao padrão do Trazo os campos listados em 'campos'. configurar_fossa: onde não há rede de esgoto, dimensiona o tanque séptico (NBR 7229) e o sumidouro (NBR 13969) e confere as distâncias da norma: fossa_x/fossa_y (centro do tanque), sumidouros [{x, y}], diametro_sumidouro_m (padrão 1,50), padrao (alto, medio, baixo), intervalo_limpeza_anos (1 a 5), clima (frio, ameno, quente: o mês mais frio), pessoas_extras (visitas frequentes da área de lazer) e taxa_infiltracao_l_m2_dia (só do teste de infiltração no terreno; null apaga). remover_fossa. Depois confira a caixa, a pressão de cada aparelho e a fossa em instalacoes_hidraulicas e explique à família o que subir ou mudar.",
+            description: "Configura o projeto de água, esgoto e chuva. configurar: moradores (padrão: 2 por quarto), consumo_l_pessoa_dia (padrão 150 L), dias_reserva (1 a 3, padrão 1; use 2 onde a água da rua falta), caixa_x e caixa_y (posição da caixa-d'água; padrão: a caixa do projeto estrutural ou sobre as áreas molhadas), altura_base_caixa_m (base da caixa sobre o piso; padrão: paredes + 0,20 m) e aquecimento (chuveiro_eletrico, gas ou solar) com aquecedor_x e aquecedor_y (onde fica o aquecedor a gás ou o reservatório solar). restaurar: devolve ao padrão do Trazo os campos listados em 'campos'. configurar_fossa: onde não há rede de esgoto, dimensiona o tanque séptico (NBR 7229) e o sumidouro (NBR 13969) e confere as distâncias da norma: fossa_x/fossa_y (centro do tanque), sumidouros [{x, y}], diametro_sumidouro_m (padrão 1,50), padrao (alto, medio, baixo), intervalo_limpeza_anos (1 a 5), clima (frio, ameno, quente: o mês mais frio), pessoas_extras (visitas frequentes da área de lazer) e taxa_infiltracao_l_m2_dia (só do teste de infiltração no terreno; null apaga). remover_fossa. Depois confira a caixa, a pressão de cada aparelho e a fossa em instalacoes_hidraulicas e explique à família o que subir ou mudar.",
             properties: json!({
                 "acao": { "type": "string", "enum": ["configurar", "restaurar", "configurar_fossa", "remover_fossa"], "description": "O que fazer." },
                 "fossa_x": number("Para configurar_fossa: X do centro do tanque séptico, metros."),
@@ -937,7 +937,9 @@ fn catalogue() -> Vec<Tool> {
                 "caixa_y": number("Posição Y da caixa-d'água, metros."),
                 "altura_base_caixa_m": number("Altura da base da caixa-d'água sobre o piso, metros."),
                 "aquecimento": { "type": "string", "enum": ["chuveiro_eletrico", "gas", "solar"], "description": "Como a água é aquecida." },
-                "campos": { "type": "array", "items": { "type": "string", "enum": ["moradores", "consumo_l_pessoa_dia", "dias_reserva", "caixa", "altura_base_caixa_m", "aquecimento"] }, "description": "Para restaurar: os campos que voltam ao padrão." },
+                "aquecedor_x": number("Posição X do aquecedor a gás (área ventilada, nunca no banheiro) ou do reservatório solar, metros."),
+                "aquecedor_y": number("Posição Y do aquecedor a gás ou do reservatório solar, metros."),
+                "campos": { "type": "array", "items": { "type": "string", "enum": ["moradores", "consumo_l_pessoa_dia", "dias_reserva", "caixa", "altura_base_caixa_m", "aquecimento", "aquecedor"] }, "description": "Para restaurar: os campos que voltam ao padrão." },
             }),
             required: &["acao"],
             read_only: false,

@@ -14,6 +14,7 @@ use super::{Check, Discipline, Light, Verdict, decimal};
 
 pub fn plumbing_verdicts(project: &Project) -> Vec<Verdict> {
     let mut verdicts: Vec<Verdict> = septic_verdict(project).into_iter().collect();
+    verdicts.extend(hot_water_verdicts(project));
     let Some(cold) = cold_water(project) else {
         return verdicts;
     };
@@ -260,4 +261,100 @@ fn septic_verdict(project: &Project) -> Option<Verdict> {
         element: "Fossa séptica e sumidouro".to_owned(),
         checks,
     })
+}
+
+/// Hot water (#119): each electric shower's outlet in the electrical design
+/// and the pressure left at the hot taps. A shower without its own outlet is
+/// yellow (the design is incomplete); an outlet too weak for the shower is
+/// red: its wire and breaker would come out too small and heat up.
+fn hot_water_verdicts(project: &Project) -> Vec<Verdict> {
+    use crate::domain::plumbing::hot_water::{SHOWER_MIN_POWER_W, hot_water};
+    let Some(hot) = hot_water(project) else {
+        return Vec::new();
+    };
+    let mut verdicts = Vec::new();
+    if hot.electrical_design {
+        for shower in &hot.showers {
+            let (light, utilisation, simple) = match shower.outlet_va {
+                None => (
+                    Light::Yellow,
+                    1.0,
+                    format!(
+                        "O chuveiro não tem tomada de uso específico no projeto elétrico: gere os pontos elétricos para ele ganhar circuito próprio (cerca de {} W).",
+                        decimal(hot.shower_power_w, 0)
+                    ),
+                ),
+                Some(va) if va + 1e-6 < SHOWER_MIN_POWER_W => (
+                    Light::Red,
+                    SHOWER_MIN_POWER_W / va.max(1.0),
+                    format!(
+                        "A tomada do chuveiro tem {} VA, mas um chuveiro elétrico pede pelo menos {} W: corrija a potência para o fio e o disjuntor saírem certos.",
+                        decimal(va, 0),
+                        decimal(SHOWER_MIN_POWER_W, 0)
+                    ),
+                ),
+                Some(va) => (
+                    Light::Green,
+                    SHOWER_MIN_POWER_W / va.max(1.0),
+                    format!("Tomada própria de {} VA para o chuveiro.", decimal(va, 0)),
+                ),
+            };
+            verdicts.push(Verdict {
+                discipline: Discipline::Plumbing,
+                element: match &shower.room {
+                    Some(room) => format!("Chuveiro elétrico · {room}"),
+                    None => "Chuveiro elétrico".to_owned(),
+                },
+                checks: vec![Check {
+                    name: "Tomada de uso específico".to_owned(),
+                    utilisation,
+                    light,
+                    simple,
+                    detail: format!(
+                        "NBR 5410: aparelho de mais de 10 A em circuito próprio; chuveiro de referência {} W.",
+                        decimal(hot.shower_power_w, 0)
+                    ),
+                }],
+            });
+        }
+    }
+    if let Some(network) = &hot.network {
+        let checks: Vec<Check> = network
+            .outlets
+            .iter()
+            .map(|outlet| Check {
+                name: format!("Água quente · {}", outlet.fixture.label()),
+                utilisation: if outlet.pressure_m > 0.0 {
+                    outlet.target_m(network.min_m) / outlet.pressure_m
+                } else {
+                    f64::INFINITY
+                },
+                light: if outlet.state == Pressure::Good {
+                    Light::Green
+                } else {
+                    Light::Yellow
+                },
+                simple: format!(
+                    "A água quente chega com {} m de pressão ({}).",
+                    decimal(outlet.pressure_m.max(0.0), 2),
+                    outlet.state.label()
+                ),
+                detail: format!(
+                    "Desnível = {} m; perdas = {} m; pressão dinâmica = {} m (mínimo NBR 5626 = {} m).",
+                    decimal(outlet.static_m, 2),
+                    decimal(outlet.loss_m, 2),
+                    decimal(outlet.pressure_m, 2),
+                    decimal(network.min_m, 2)
+                ),
+            })
+            .collect();
+        if !checks.is_empty() {
+            verdicts.push(Verdict {
+                discipline: Discipline::Plumbing,
+                element: format!("Água quente · {}", hot.heater.label()),
+                checks,
+            });
+        }
+    }
+    verdicts
 }

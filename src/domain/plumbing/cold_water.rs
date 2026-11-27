@@ -257,7 +257,14 @@ pub fn cold_water(project: &Project) -> Option<ColdWater> {
     let tank_base_m = settings
         .tank_base_m
         .unwrap_or(project.wall_height + TANK_OVER_WALLS_M);
-    let network = build_network(&cold, Node::new(tank_at, tank_base_m), "AF", &table, &rules);
+    let network = build_network(
+        &cold,
+        Node::new(tank_at, tank_base_m),
+        tank_base_m,
+        "AF",
+        &table,
+        &rules,
+    );
     let needed_base_m = network.needed_source_z(false);
     let comfort_base_m = network.needed_source_z(true);
 

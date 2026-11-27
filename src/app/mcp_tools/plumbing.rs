@@ -8,6 +8,7 @@ use super::{Change, ToolOutput, number, optional_count, round, text, to_model, x
 use crate::app::FloorPlanApp;
 use crate::domain::plumbing::Heater;
 use crate::domain::plumbing::cold_water::{ColdWater, TankPlace, cold_water};
+use crate::domain::plumbing::hot_water::{HotWater, hot_water};
 use crate::domain::plumbing::points::{PointKind, plumbing_points};
 use crate::domain::plumbing::septic::{
     AbsorptionSource, ColdestMonth, SepticDesign, SewageStandard, septic_design,
@@ -121,6 +122,16 @@ impl FloorPlanApp {
             .iter()
             .map(|k| (k.key().to_owned(), json!(points.count(*k))))
             .collect();
+        let hot = hot_water(project);
+        if let Some(hot) = &hot {
+            text.push_str(&format!(
+                "\nÁgua quente: {}.",
+                hot.heater.label().to_lowercase()
+            ));
+            for line in hot.notes.iter().chain(&hot.warnings) {
+                text.push_str(&format!("\n{line}"));
+            }
+        }
         let septic = septic_design(project);
         if let Some(design) = &septic {
             text.push_str(&format!(
@@ -143,6 +154,7 @@ impl FloorPlanApp {
             "soma_uhc": round(points.total_uhc),
             "observacoes": points.notes,
             "agua_fria": cold.as_ref().map(cold_water_json),
+            "agua_quente": hot.as_ref().map(hot_water_json),
             "fossa_septica": septic.as_ref().map(septic_json),
         })))
     }
@@ -200,13 +212,14 @@ pub(super) fn septic_json(design: &SepticDesign) -> Value {
 }
 
 /// The settings `restaurar` can put back to Trazo's defaults.
-const FIELDS: [&str; 6] = [
+const FIELDS: [&str; 7] = [
     "moradores",
     "consumo_l_pessoa_dia",
     "dias_reserva",
     "caixa",
     "altura_base_caixa_m",
     "aquecimento",
+    "aquecedor",
 ];
 
 impl FloorPlanApp {
@@ -290,6 +303,11 @@ impl FloorPlanApp {
                     (None, None) => None,
                     _ => return Err("Informe caixa_x e caixa_y juntos.".to_owned()),
                 };
+                let heater_at = match (number(args, "aquecedor_x")?, number(args, "aquecedor_y")?) {
+                    (Some(x), Some(y)) => Some(to_model(x, y)),
+                    (None, None) => None,
+                    _ => return Err("Informe aquecedor_x e aquecedor_y juntos.".to_owned()),
+                };
                 let heater = match text(args, "aquecimento") {
                     Some(key) => Some(
                         Heater::from_key(&key)
@@ -339,6 +357,9 @@ impl FloorPlanApp {
                         if let Some(heater) = heater {
                             settings.heater = heater;
                         }
+                        if heater_at.is_some() {
+                            settings.heater_at = heater_at;
+                        }
                         Ok(Change::new("Projeto hidrossanitário configurado."))
                     },
                 )?
@@ -371,6 +392,7 @@ impl FloorPlanApp {
                             "dias_reserva" => settings.reserve_days = None,
                             "caixa" => settings.tank_at = None,
                             "altura_base_caixa_m" => settings.tank_base_m = None,
+                            "aquecedor" => settings.heater_at = None,
                             _ => settings.heater = Heater::default(),
                         }
                     }
@@ -468,5 +490,56 @@ pub(super) fn cold_water_json(cold: &ColdWater) -> Value {
             .collect::<Vec<_>>(),
         "alertas": cold.warnings,
         "observacoes": cold.notes,
+    })
+}
+
+/// The hot-water design for the report.
+pub(super) fn hot_water_json(hot: &HotWater) -> Value {
+    let network = hot.network.as_ref().map(|network| {
+        json!({
+            "colunas": network.groups.iter().map(|g| json!({
+                "coluna": g.label,
+                "comodo": g.room,
+                "posicao": xy(g.riser_at),
+            })).collect::<Vec<_>>(),
+            "tubos_por_dn_m": network
+                .lengths_by_dn()
+                .iter()
+                .map(|(dn, m)| json!({ "dn": dn, "metros": round(*m) }))
+                .collect::<Vec<_>>(),
+            "pontos": network.outlets.iter().map(|o| json!({
+                "aparelho_id": o.fixture_id,
+                "aparelho": o.fixture.key(),
+                "comodo": o.room,
+                "pressao_m": round(o.pressure_m),
+                "pressao": o.state.label(),
+            })).collect::<Vec<_>>(),
+        })
+    });
+    json!({
+        "aquecimento": hot.heater.key(),
+        "agua_quente_por_dia_l": round(hot.daily_l),
+        "chuveiros_eletricos": hot.showers.iter().map(|s| json!({
+            "aparelho_id": s.fixture_id,
+            "comodo": s.room,
+            "tomada_va": s.outlet_va.map(round),
+            "atende": s.ok(),
+        })).collect::<Vec<_>>(),
+        "potencia_chuveiro_w": round(hot.shower_power_w),
+        "gas": {
+            "vazao_simultanea_l_min": round(hot.gas_flow_l_min),
+            "aquecedor_l_min": round(hot.gas_heater_l_min),
+            "potencia_kw": round(hot.gas_power_kw),
+            "glp_kg_h": round(hot.gas_kg_h),
+        },
+        "solar": {
+            "reservatorio_l": round(hot.boiler_l),
+            "coletores_m2": round(hot.collector_m2),
+            "reservatorio_cheio_kn": round(hot.boiler_full_kn),
+        },
+        "aquecedor_posicao": hot.heater_at.map(xy),
+        "rede": network,
+        "alertas": hot.warnings,
+        "observacoes": hot.notes,
     })
 }

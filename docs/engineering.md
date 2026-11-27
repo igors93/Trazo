@@ -237,6 +237,10 @@ A red cross-check turns every green structural check yellow, because the detaile
 
 These are design aids: the tank's support is structural and is checked with its full weight.
 
+## Hot water (#119)
+
+`src/domain/plumbing/hot_water.rs`. Electric showers: each shower needs a specific-use outlet in its room of at least 4,400 W (reference 5,500 W at 127 V, 7,500 W at 220 V); the check is red when the outlet is weaker (wire and breaker undersized) and yellow when there is none. Gas: simultaneous hot use = up to two showers of 8 L/min and a tap of 4 L/min, rounded to a commercial heater (7.5 to 43 L/min); power = `Q·4.186·ΔT/η` with ΔT = 20 K and η = 0.80; LPG at 12.8 kWh/kg. The heater takes about 1 m of head; the hot network starts at it, 1.60 m high, with the tank's head less that loss. Solar: 50 L/person·day at 40 °C, the next commercial hot-water tank, 1 m² of collector per 80 L (a Brazilian average) and the full tank's weight (+15 %); the hot network starts at the tank, 0.30 m under the cold tank's base. The hot pipes are sized and checked like the cold ones (NBR 5626 weights, 3 m/s, Darcy-Weisbach).
+
 ## Roof plan: gutters and downpipes (#71)
 
 `src/domain/construction/roof_plan.rs` splits each roof into its water planes (one for a mono-pitch roof, two for a gable, four for a hip) and puts a gutter on every eave. Each gutter drains the horizontal area of the plane above it and falls at least 0.5 % to its downpipes (NBR 10844). Downpipes follow the practical rule of 1 cm² of section per m² of roof, so one 100 mm downpipe serves up to 78.5 m², with at least one per gutter, placed at the gutter's ends and spaced evenly. When the city's rainfall intensity `I` is set, the sheet shows the NBR 10844 design flow `Q = I·A/60` (L/min). The roof slope is compared with the tile's usual minimum. This is a layout aid: the final rainwater design (gutter section and length, downpipe capacity for the city's rain) follows NBR 10844.

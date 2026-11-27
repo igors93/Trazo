@@ -8,6 +8,7 @@ use super::ViewTransform;
 use crate::domain::layers::LayerCategory;
 use crate::domain::model::Project;
 use crate::domain::plumbing::cold_water::cold_water;
+use crate::domain::plumbing::hot_water::hot_water;
 use crate::domain::plumbing::network::{Network, PipeRole, Pressure};
 use crate::domain::plumbing::points::{PointKind, plumbing_points};
 
@@ -84,6 +85,10 @@ pub(super) fn paint_plumbing(painter: &Painter, view: ViewTransform, project: &P
                 );
             }
         }
+    }
+    // The hot water, under the cold.
+    if let Some(network) = hot_water(project).and_then(|h| h.network) {
+        paint_network(painter, view, &network, color(PointKind::Hot));
     }
     // The cold water: the network, the tank and the pressure at each outlet.
     let cold = cold_water(project);

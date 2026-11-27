@@ -361,10 +361,14 @@ fn l_path(from: Point, to: Point, z: f64) -> (Vec<Node>, usize) {
 }
 
 /// Lays and sizes the network from `source` to the `points` (one per
-/// outlet), labelling each room's riser `prefix-1`, `prefix-2`…
+/// outlet), labelling each room's riser `prefix-1`, `prefix-2`… The water
+/// leaves the source with the pressure of a free surface at `head_z` (the
+/// tank's base for cold water; the tank, less the heater's loss, for a gas
+/// heater on a wall).
 pub fn build_network(
     points: &[&PlumbingPoint],
     source: Node,
+    head_z: f64,
     prefix: &str,
     table: &FixtureTable,
     rules: &ColdWaterRules,
@@ -495,7 +499,7 @@ pub fn build_network(
                 room: point.room.clone(),
                 node,
                 path,
-                static_m: source.z - point.height_m,
+                static_m: head_z - point.height_m,
                 loss_m: 0.0,
                 pressure_m: 0.0,
                 state: Pressure::Good,

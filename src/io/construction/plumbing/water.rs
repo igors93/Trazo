@@ -6,6 +6,7 @@ use super::{Plan, draw_building, label, wrap};
 use crate::domain::geometry::Point;
 use crate::domain::model::Project;
 use crate::domain::plumbing::cold_water::{ColdWater, cold_water};
+use crate::domain::plumbing::hot_water::hot_water;
 use crate::domain::plumbing::network::{Network, PipeRole, Pressure};
 use crate::domain::plumbing::points::PointKind;
 use crate::io::construction::{Drawn, INK, MUTED, Sheet, decimal};
@@ -131,6 +132,29 @@ pub(crate) fn water_drawing(project: &Project) -> Option<Drawn> {
     let blue = PointKind::Cold.hex();
     draw_network(&mut sheet, &plan, network, &blue);
     draw_tank(&mut sheet, &plan, &cold);
+    let hot = hot_water(project);
+    let red = PointKind::Hot.hex();
+    if let Some(hot) = &hot
+        && let Some(hot_network) = &hot.network
+    {
+        draw_network(&mut sheet, &plan, hot_network, &red);
+        if let Some(at) = hot.heater_at {
+            let (x, y) = plan.pt(at);
+            sheet.rect((x - 2.0, y - 2.0, 4.0, 4.0), "#fdecea", &red, 0.45);
+            label(
+                &mut sheet,
+                (x + 2.6, y + 0.8),
+                1.9,
+                &red,
+                &match hot.heater {
+                    crate::domain::plumbing::Heater::Gas => {
+                        format!("Aquecedor a gás {} L/min", decimal(hot.gas_heater_l_min, 1))
+                    }
+                    _ => format!("Reservatório solar {} L", decimal(hot.boiler_l, 0)),
+                },
+            );
+        }
+    }
     for outlet in &network.outlets {
         let (x, y) = plan.pt(outlet.node.at);
         let color = pressure_color(outlet.state);
@@ -243,6 +267,53 @@ pub(crate) fn water_drawing(project: &Project) -> Option<Drawn> {
         ty += 3.0;
     }
     ty += 3.0;
+    if let Some(hot) = &hot {
+        sheet.text(
+            tx,
+            ty,
+            3.0,
+            true,
+            INK,
+            &format!("Água quente · {}", hot.heater.label()),
+        );
+        ty += 4.6;
+        for line in &hot.notes {
+            for text in wrap(line, 78) {
+                sheet.text(tx, ty, 1.9, false, INK, &text);
+                ty += 2.6;
+            }
+            ty += 0.8;
+        }
+        for shower in hot
+            .showers
+            .iter()
+            .filter(|s| hot.electrical_design && !s.ok())
+        {
+            let text = format!(
+                "Chuveiro ({}) sem tomada própria suficiente no projeto elétrico",
+                shower.room.clone().unwrap_or_default()
+            );
+            sheet.text(tx, ty, 1.9, false, LOW, &text);
+            ty += 2.8;
+        }
+        if let Some(network) = &hot.network {
+            for outlet in &network.outlets {
+                let text = format!(
+                    "AQ {}{}: {} m ({})",
+                    outlet.fixture.label().to_lowercase(),
+                    outlet
+                        .room
+                        .as_ref()
+                        .map_or(String::new(), |r| format!(" · {r}")),
+                    decimal(outlet.pressure_m, 2),
+                    outlet.state.label()
+                );
+                sheet.text(tx, ty, 1.9, false, pressure_color(outlet.state), &text);
+                ty += 2.8;
+            }
+        }
+        ty += 2.0;
+    }
     sheet.text(tx, ty, 3.0, true, INK, "Tubos de PVC soldável");
     ty += 4.6;
     let lengths = network
@@ -271,9 +342,33 @@ pub(crate) fn water_drawing(project: &Project) -> Option<Drawn> {
         ty += 0.8;
     }
 
+    let lengths_hot = hot
+        .as_ref()
+        .and_then(|h| h.network.as_ref())
+        .map(|n| n.lengths_by_dn());
+    if let Some(lengths) = lengths_hot {
+        let text = lengths
+            .iter()
+            .map(|(dn, m)| format!("Ø{dn}: {} m", decimal(*m, 1)))
+            .collect::<Vec<_>>()
+            .join(" · ");
+        sheet.text(
+            tx,
+            ty,
+            2.0,
+            false,
+            &red,
+            &format!("Água quente (PPR ou CPVC): {text}"),
+        );
+    }
+    let titled_hot = hot.as_ref().is_some_and(|h| h.network.is_some());
     Some(Drawn {
         sheet,
-        title: "Água fria".to_owned(),
+        title: if titled_hot {
+            "Água fria e quente".to_owned()
+        } else {
+            "Água fria".to_owned()
+        },
         scale: plan.scale.label(),
     })
 }
