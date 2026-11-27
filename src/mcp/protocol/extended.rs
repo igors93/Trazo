@@ -184,11 +184,12 @@ pub(super) fn catalogue() -> Vec<Tool> {
         ),
         tool(
             "planejamento_obra",
-            "Planejamento de obra e catálogo de materiais",
-            "Consulta e edita o catálogo de materiais detectado do modelo (#135), com sincronização de propriedades de cálculo (fck, densidade, perdas e traços) e exportação CSV/SVG/PDF.",
+            "Planejamento de obra, materiais e compras",
+            "Planejamento de obra (seção H): catálogo editável de materiais detectado do modelo (#135) e lista de compras consolidada por etapa com conversão de unidades comerciais (#136), com exportação CSV/SVG/PDF.",
             json!({
-                "acao":choices(&["catalogo_materiais","editar_material","restaurar_material"]),
+                "acao":choices(&["catalogo_materiais","editar_material","restaurar_material","lista_compras"]),
                 "material_id":string("Id do material no catálogo (ex.: concrete_structural, block_default, mortar_laying)."),
+                "etapa":choices(&["preliminares","fundacoes","estrutura","alvenaria","cobertura","instalacoes","reboco","acabamentos"]),
                 "nome":string("Nome personalizado do material."),
                 "densidade_kg_m3":number("Densidade em kg/m³."),
                 "resistencia_mpa":number("Resistência característica em MPa (ex.: fck 15–50 MPa)."),

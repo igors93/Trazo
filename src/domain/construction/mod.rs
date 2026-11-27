@@ -7,5 +7,6 @@ pub mod materials;
 pub mod paging;
 pub mod roof_plan;
 pub mod setting_out;
+pub mod shopping;
 
 pub use materials::ConstructionPlan;

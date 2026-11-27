@@ -14,6 +14,7 @@ enum ConstructionHubTab {
     #[default]
     Takeoff,
     Materials,
+    Shopping,
 }
 
 impl FloorPlanApp {
@@ -57,6 +58,11 @@ impl FloorPlanApp {
                         &mut active_tab,
                         ConstructionHubTab::Materials,
                         "Catálogo de materiais",
+                    );
+                    ui.selectable_value(
+                        &mut active_tab,
+                        ConstructionHubTab::Shopping,
+                        "Lista de compras",
                     );
                 });
                 ui.separator();
@@ -160,6 +166,9 @@ impl FloorPlanApp {
                     }
                     ConstructionHubTab::Materials => {
                         self.materials_catalogue_tab(ui);
+                    }
+                    ConstructionHubTab::Shopping => {
+                        self.stage_shopping_tab(ui);
                     }
                 }
             });

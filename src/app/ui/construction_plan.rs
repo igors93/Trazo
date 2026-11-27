@@ -8,8 +8,11 @@ use eframe::egui::{self, RichText};
 
 use super::super::{FloorPlanApp, theme::*};
 use super::widgets::secondary_button;
-use crate::domain::construction::materials::{
-    MaterialCategory, MaterialOverride, materials_catalogue_csv, materials_catalogue_svg,
+use crate::domain::construction::{
+    materials::{
+        MaterialCategory, MaterialOverride, materials_catalogue_csv, materials_catalogue_svg,
+    },
+    shopping::{ConstructionStage, stage_shopping_list_csv, stage_shopping_list_svg},
 };
 
 impl FloorPlanApp {
@@ -368,6 +371,162 @@ impl FloorPlanApp {
         self.message = match res {
             Ok(()) => format!("Catálogo de materiais exportado em {}", path.display()),
             Err(error) => format!("Erro ao exportar o catálogo de materiais: {error}"),
+        };
+    }
+
+    /// Tab 2: Stage-by-stage shopping list across all disciplines (#136).
+    pub(super) fn stage_shopping_tab(&mut self, ui: &mut egui::Ui) {
+        let filter_id = egui::Id::new("trazo_shopping_stage_filter");
+        let mut stage_filter: Option<ConstructionStage> =
+            ui.ctx().data(|d| d.get_temp(filter_id)).unwrap_or(None);
+
+        let list = self.project.stage_shopping_list();
+
+        ui.label(
+            RichText::new(
+                "Lista de compras consolidada de todas as disciplinas (estrutura, alvenaria, cobertura, elétrica, hidráulica e acabamentos), organizada por etapa de execução com conversão para unidades comerciais (sacos de cimento 50 kg, cal 20 kg, areia/brita em m³, barras de 12 m, rolos de 100 m e tubos de 6 m).",
+            )
+            .size(12.0)
+            .color(TEXT_2),
+        );
+        ui.add_space(6.0);
+
+        let mut export_kind: Option<&'static str> = None;
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                RichText::new(format!(
+                    "Totais: {} sc cimento 50 kg · {} sc cal 20 kg · {:.1} m³ areia · {:.1} m³ brita · {:.0} kg aço CA-50 ({} barras 12 m) · {} blocos",
+                    list.summary.cement_bags_50kg,
+                    list.summary.lime_bags_20kg,
+                    list.summary.sand_m3,
+                    list.summary.gravel_m3,
+                    list.summary.steel_ca50_kg,
+                    list.summary.steel_bars_12m,
+                    list.summary.total_blocks
+                ))
+                .font(strong(11.5)),
+            );
+        });
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            if secondary_button(ui, "Exportar CSV").clicked() {
+                export_kind = Some("csv");
+            }
+            if secondary_button(ui, "Exportar PDF").clicked() {
+                export_kind = Some("pdf");
+            }
+            if secondary_button(ui, "Exportar SVG").clicked() {
+                export_kind = Some("svg");
+            }
+        });
+        ui.add_space(4.0);
+
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(&mut stage_filter, None, "Todas as etapas");
+            for st in ConstructionStage::ALL {
+                ui.selectable_value(
+                    &mut stage_filter,
+                    Some(st),
+                    format!("{}. {}", st.number(), st.short_label()),
+                );
+            }
+        });
+        ui.separator();
+
+        egui::ScrollArea::both()
+            .id_salt("stage_shopping_scroll")
+            .show(ui, |ui| {
+                if list.stages.is_empty() {
+                    ui.label(
+                        RichText::new("Desenhe cômodos e gere a estrutura/instalações para ver a lista de compras por etapa.")
+                            .color(MUTED),
+                    );
+                }
+                for group in &list.stages {
+                    if let Some(f) = stage_filter
+                        && group.stage != f
+                    {
+                        continue;
+                    }
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(group.stage.label()).font(strong(13.0)));
+                    egui::Grid::new(("shopping_stage_grid", group.stage.key()))
+                        .striped(true)
+                        .spacing([10.0, 4.0])
+                        .show(ui, |ui| {
+                            for h in [
+                                "Disciplina",
+                                "Material",
+                                "Líquido",
+                                "Comprar",
+                                "Unid.",
+                                "Observação comercial",
+                            ] {
+                                ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                            }
+                            ui.end_row();
+                            for item in &group.items {
+                                ui.label(RichText::new(item.discipline).size(11.0).color(MUTED));
+                                ui.label(&item.description);
+                                ui.label(format!("{:.1}", item.net_quantity).replace('.', ","));
+                                ui.label(
+                                    RichText::new(
+                                        format!("{:.1}", item.buy_quantity).replace('.', ","),
+                                    )
+                                    .font(strong(11.5)),
+                                );
+                                ui.label(&item.unit);
+                                ui.label(
+                                    RichText::new(&item.commercial_note)
+                                        .size(11.0)
+                                        .color(MUTED),
+                                );
+                                ui.end_row();
+                            }
+                        });
+                }
+                ui.add_space(8.0);
+                for note in &list.assumptions {
+                    ui.label(RichText::new(format!("• {note}")).size(11.0).color(MUTED));
+                }
+            });
+
+        ui.ctx()
+            .data_mut(|d| d.insert_temp(filter_id, stage_filter));
+
+        if let Some(kind) = export_kind {
+            self.export_stage_shopping(kind);
+        }
+    }
+
+    fn export_stage_shopping(&mut self, kind: &str) {
+        let (label, ext, filename) = match kind {
+            "csv" => ("Planilha CSV", "csv", "lista-compras-etapas.csv"),
+            "pdf" => ("Documento PDF", "pdf", "lista-compras-etapas.pdf"),
+            _ => ("Desenho SVG", "svg", "lista-compras-etapas.svg"),
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(filename)
+            .save_file()
+        else {
+            return;
+        };
+        let res = match kind {
+            "csv" => std::fs::write(&path, stage_shopping_list_csv(&self.project))
+                .map_err(|e| e.to_string()),
+            "pdf" => {
+                let svg = stage_shopping_list_svg(&self.project);
+                crate::domain::views::export_view_pdf(&svg, &path)
+            }
+            _ => {
+                let svg = stage_shopping_list_svg(&self.project);
+                crate::domain::views::export_view_svg(&svg, &path)
+            }
+        };
+        self.message = match res {
+            Ok(()) => format!("Lista de compras por etapa exportada em {}", path.display()),
+            Err(error) => format!("Erro ao exportar lista de compras: {error}"),
         };
     }
 }
