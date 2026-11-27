@@ -1,6 +1,6 @@
 [package]
 name = "trazo"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Free house-planning tool that guides families with little money and no engineering training toward a safer home, with an MCP server that puts AI assistants at its centre and checks their decisions"
 license = "MIT OR Apache-2.0"

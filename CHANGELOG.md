@@ -4,6 +4,10 @@ All notable changes to Trazo are recorded here. The format follows [Keep a Chang
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-27
+
+Trazo now protects the family as well as the house. Every calculation hypothesis carries its origin, and Trazo contests the ones nothing backs up: safe defaults, site-risk questions, independent cross-checks and plain-language reviews. It also delivers the drawings a builder works from: first course, setting-out, roof plan and the one-click construction set. Plumbing becomes a full discipline: points, cold water with the pressure at every fixture, hot water, sewage, septic system, rainwater and the isometric. The electrical design gains its shopping list, lighting, photovoltaics, short circuit and earthing. The construction is planned with materials, costs, schedule, safety and a progress log. Portable archives for Windows, Linux and macOS remain unsigned community builds with SHA-256 checksums; no installer or code-signing certificate is required.
+
 ### Added
 
 - **Site progress log (#139).** `src/domain/construction/progress.rs` persists dated diary entries per stage (physical completion %, notes, photo paths and actual expenses) inside `Project::construction`, compares execution against the planned schedule (#137) and earned budget (#87) at any reference workday, exports CSV / A3 SVG / PDF and is available in *Quantitativos e planejamento de obra* › *Diário de obra* and MCP `planejamento_obra` (`diario_obra`, `registrar_avanco`, `remover_registro`). This completes all of section H of the roadmap.
@@ -199,5 +203,6 @@ First public release. Portable archives for Windows, Linux and macOS are distrib
 - Switching, adding or removing a floor cleared only the primary selection. A following `Delete` could remove selected elements on another floor.
 - Switching floors left conduits, beams and slabs behind, and the next edit on another floor deleted them. They now travel with their floor.
 
-[Unreleased]: https://github.com/igors93/Trazo/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/igors93/Trazo/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/igors93/Trazo/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/igors93/Trazo/releases/tag/v0.1.0

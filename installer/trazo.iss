@@ -1,9 +1,9 @@
 ; Trazo Windows Installer (Inno Setup 6)
 ; Build with:
-;   iscc /DMyAppVersion=0.1.0 /DMyExePath=..\target\x86_64-pc-windows-msvc\release\trazo.exe installer\trazo.iss
+;   iscc /DMyAppVersion=0.2.0 /DMyExePath=..\target\x86_64-pc-windows-msvc\release\trazo.exe installer\trazo.iss
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.1.0"
+  #define MyAppVersion "0.2.0"
 #endif
 
 #ifndef MyExePath
