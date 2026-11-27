@@ -882,11 +882,14 @@ pub struct ConstructionPlan {
     /// Editable material overrides keyed by catalogue material id (#135).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub material_overrides: BTreeMap<String, MaterialOverride>,
+    /// Editable unit prices, BDI and SINAPI import settings (#87).
+    #[serde(skip_serializing_if = "super::cost::CostSettings::is_default")]
+    pub cost: super::cost::CostSettings,
 }
 
 impl ConstructionPlan {
     pub fn is_default(&self) -> bool {
-        self.material_overrides.is_empty()
+        self.material_overrides.is_empty() && self.cost.is_default()
     }
 }
 

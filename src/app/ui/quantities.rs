@@ -15,6 +15,7 @@ enum ConstructionHubTab {
     Takeoff,
     Materials,
     Shopping,
+    Cost,
 }
 
 impl FloorPlanApp {
@@ -63,6 +64,11 @@ impl FloorPlanApp {
                         &mut active_tab,
                         ConstructionHubTab::Shopping,
                         "Lista de compras",
+                    );
+                    ui.selectable_value(
+                        &mut active_tab,
+                        ConstructionHubTab::Cost,
+                        "Orçamento e SINAPI",
                     );
                 });
                 ui.separator();
@@ -169,6 +175,9 @@ impl FloorPlanApp {
                     }
                     ConstructionHubTab::Shopping => {
                         self.stage_shopping_tab(ui);
+                    }
+                    ConstructionHubTab::Cost => {
+                        self.cost_estimate_tab(ui);
                     }
                 }
             });

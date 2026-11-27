@@ -6,9 +6,10 @@
 use serde_json::{Value, json};
 
 use super::super::FloorPlanApp;
-use super::{Change, number, text};
+use super::{Change, flag, number, text};
 use crate::{
     domain::construction::{
+        cost::{cost_estimate_csv, cost_estimate_svg, edit_unit_price, format_brl},
         materials::{MaterialOverride, materials_catalogue_csv, materials_catalogue_svg},
         shopping::{ConstructionStage, stage_shopping_list_csv, stage_shopping_list_svg},
     },
@@ -272,8 +273,184 @@ impl FloorPlanApp {
                     "premissas": list.assumptions,
                 })))
             }
+            "orcamento" => {
+                let report = self.project.cost_estimate();
+                let exported = if let Some(fmt) = text(args, "formato").map(|f| f.to_lowercase()) {
+                    let ext = match fmt.as_str() {
+                        "csv" => "csv",
+                        "svg" => "svg",
+                        "pdf" => "pdf",
+                        other => {
+                            return Err(format!(
+                                "Formato '{other}' inválido; use csv, svg ou pdf."
+                            ));
+                        }
+                    };
+                    let path = super::resolve_path(
+                        text(args, "caminho").as_deref(),
+                        &format!("{}-orcamento.{ext}", super::file_stem(&self.project)),
+                    )?;
+                    super::ensure_parent(&path)?;
+                    match ext {
+                        "csv" => std::fs::write(&path, cost_estimate_csv(&self.project))
+                            .map_err(|e| e.to_string())?,
+                        "svg" => {
+                            let svg = cost_estimate_svg(&self.project);
+                            crate::domain::views::export_view_svg(&svg, &path)?;
+                        }
+                        _ => {
+                            let svg = cost_estimate_svg(&self.project);
+                            crate::domain::views::export_view_pdf(&svg, &path)?;
+                        }
+                    }
+                    Some(path.display().to_string())
+                } else {
+                    None
+                };
+
+                let stages_json: Vec<Value> = report
+                    .stages
+                    .iter()
+                    .map(|st| {
+                        json!({
+                            "etapa": st.stage.key(),
+                            "rotulo": st.stage.label(),
+                            "itens": st.item_count,
+                            "material_brl": super::round(st.material_brl, 2),
+                            "mao_obra_brl": super::round(st.labor_brl, 2),
+                            "bdi_brl": super::round(st.bdi_brl, 2),
+                            "total_brl": super::round(st.total_brl, 2),
+                            "participacao_pct": super::round(st.share_pct, 1),
+                        })
+                    })
+                    .collect();
+                let abc_json: Vec<Value> = report
+                    .abc_curve
+                    .iter()
+                    .map(|row| {
+                        json!({
+                            "classe": row.class.to_string(),
+                            "codigo": row.item_code,
+                            "descricao": row.description,
+                            "quantidade": super::round(row.total_quantity, 2),
+                            "unidade": row.unit,
+                            "total_brl": super::round(row.total_brl, 2),
+                            "participacao_pct": super::round(row.share_pct, 1),
+                            "acumulado_pct": super::round(row.cumulative_pct, 1),
+                        })
+                    })
+                    .collect();
+
+                let msg = match &exported {
+                    Some(p) => format!("{} Exportado em {p}.", report.plain_summary),
+                    None => report.plain_summary.clone(),
+                };
+                Ok(ToolOutput::ok(msg).with_structured(json!({
+                    "resumo": report.plain_summary,
+                    "referencia": report.reference_label,
+                    "inclui_mao_obra": report.include_labor,
+                    "bdi_pct": report.bdi_pct,
+                    "area_util_m2": super::round(report.built_area_m2, 2),
+                    "materiais_brl": super::round(report.material_total_brl, 2),
+                    "mao_obra_brl": super::round(report.labor_total_brl, 2),
+                    "custo_direto_brl": super::round(report.direct_total_brl, 2),
+                    "bdi_brl": super::round(report.bdi_total_brl, 2),
+                    "total_brl": super::round(report.grand_total_brl, 2),
+                    "custo_por_m2_brl": super::round(report.cost_per_m2_brl, 2),
+                    "arquivo_exportado": exported,
+                    "etapas": stages_json,
+                    "curva_abc": abc_json,
+                    "premissas": report.assumptions,
+                })))
+            }
+            "editar_preco" => {
+                let code = text(args, "codigo_item")
+                    .ok_or("Informe 'codigo_item' (ex.: cimento_50kg, aco_ca50_kg, areia_m3).")?;
+                let mat = number(args, "preco_material_brl")?;
+                let lab = number(args, "preco_mao_obra_brl")?;
+                if mat.is_none() && lab.is_none() {
+                    return Err(
+                        "Informe 'preco_material_brl' e/ou 'preco_mao_obra_brl'.".to_owned()
+                    );
+                }
+                self.apply_change(None, |project| {
+                    let msg = edit_unit_price(project, &code, mat, lab)?;
+                    let est = project.cost_estimate();
+                    Ok(Change::new(format!(
+                        "{msg} Novo total estimado: {}.",
+                        format_brl(est.grand_total_brl)
+                    ))
+                    .data(json!({
+                        "codigo_item": code,
+                        "total_brl": super::round(est.grand_total_brl, 2),
+                        "custo_por_m2_brl": super::round(est.cost_per_m2_brl, 2),
+                    })))
+                })
+            }
+            "configurar_orcamento" => {
+                let bdi = number(args, "bdi_pct")?;
+                let include_labor = args
+                    .get("incluir_mao_obra")
+                    .map(|_| flag(args, "incluir_mao_obra"));
+                let reference = text(args, "referencia");
+                if let Some(v) = bdi
+                    && !(0.0..=50.0).contains(&v)
+                {
+                    return Err("O BDI deve ficar entre 0 e 50 %.".to_owned());
+                }
+                self.apply_change(None, |project| {
+                    if let Some(v) = bdi {
+                        project.construction.cost.bdi_pct = v;
+                    }
+                    if let Some(il) = include_labor {
+                        project.construction.cost.include_labor = il;
+                    }
+                    if let Some(r) = &reference {
+                        project.construction.cost.sinapi_reference = r.clone();
+                    }
+                    let est = project.cost_estimate();
+                    Ok(Change::new(est.plain_summary.clone()).data(json!({
+                        "bdi_pct": est.bdi_pct,
+                        "inclui_mao_obra": est.include_labor,
+                        "referencia": est.reference_label,
+                        "total_brl": super::round(est.grand_total_brl, 2),
+                    })))
+                })
+            }
+            "importar_sinapi" => {
+                let content = if let Some(csv) = text(args, "conteudo_csv") {
+                    csv
+                } else if let Some(raw_path) = text(args, "caminho") {
+                    let resolved = super::resolve_path(Some(&raw_path), "sinapi.csv")?;
+                    std::fs::read_to_string(&resolved).map_err(|e| {
+                        format!("Não foi possível ler '{}': {e}", resolved.display())
+                    })?
+                } else {
+                    return Err(
+                        "Informe 'conteudo_csv' ou 'caminho' com a tabela SINAPI (CSV/TSV)."
+                            .to_owned(),
+                    );
+                };
+                let reference = text(args, "referencia");
+                self.apply_change(None, |project| {
+                    let res = project.import_sinapi_table(&content, reference.as_deref())?;
+                    let est = project.cost_estimate();
+                    Ok(Change::new(format!(
+                        "SINAPI '{}' importado: {} preços atualizados ({} ignorados). {}",
+                        res.reference_label, res.imported, res.skipped, est.plain_summary
+                    ))
+                    .data(json!({
+                        "importados": res.imported,
+                        "ignorados": res.skipped,
+                        "referencia": res.reference_label,
+                        "codigos_atualizados": res.matched_codes,
+                        "total_brl": super::round(est.grand_total_brl, 2),
+                        "custo_por_m2_brl": super::round(est.cost_per_m2_brl, 2),
+                    })))
+                })
+            }
             other => Err(format!(
-                "Ação '{other}' desconhecida em planejamento_obra. Use: catalogo_materiais, editar_material, restaurar_material ou lista_compras."
+                "Ação '{other}' desconhecida em planejamento_obra. Use: catalogo_materiais, editar_material, restaurar_material, lista_compras, orcamento, editar_preco, configurar_orcamento ou importar_sinapi."
             )),
         }
     }
@@ -330,5 +507,25 @@ mod tests {
         let sdata = shop.structured.unwrap();
         assert!(sdata["total_itens"].as_u64().unwrap() >= 10);
         assert!(sdata["resumo"]["cimento_sacos_50kg"].as_u64().unwrap() >= 20);
+
+        let cost_before = app.run_mcp_tool("planejamento_obra", &json!({ "acao": "orcamento" }));
+        assert!(!cost_before.is_error, "{}", cost_before.text);
+        let total_before = cost_before.structured.unwrap()["total_brl"]
+            .as_f64()
+            .unwrap();
+        assert!(total_before > 10_000.0);
+
+        let imported = app.run_mcp_tool(
+            "planejamento_obra",
+            &json!({
+                "acao": "importar_sinapi",
+                "referencia": "SINAPI MG 2026-01",
+                "conteudo_csv": "codigo;descricao;unidade;preco\n00001379;CIMENTO CP II 50KG;UN;58,00\n00000034;ACO CA-50;KG;15,00\n"
+            }),
+        );
+        assert!(!imported.is_error, "{}", imported.text);
+        let idata = imported.structured.unwrap();
+        assert_eq!(idata["importados"].as_u64().unwrap(), 2);
+        assert!(idata["total_brl"].as_f64().unwrap() > total_before);
     }
 }

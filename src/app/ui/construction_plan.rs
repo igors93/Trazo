@@ -9,6 +9,7 @@ use eframe::egui::{self, RichText};
 use super::super::{FloorPlanApp, theme::*};
 use super::widgets::secondary_button;
 use crate::domain::construction::{
+    cost::{cost_estimate_csv, cost_estimate_svg, edit_unit_price, format_brl},
     materials::{
         MaterialCategory, MaterialOverride, materials_catalogue_csv, materials_catalogue_svg,
     },
@@ -527,6 +528,282 @@ impl FloorPlanApp {
         self.message = match res {
             Ok(()) => format!("Lista de compras por etapa exportada em {}", path.display()),
             Err(error) => format!("Erro ao exportar lista de compras: {error}"),
+        };
+    }
+
+    /// Tab 3: Cost estimate from quantities with editable price tables & SINAPI import (#87).
+    pub(super) fn cost_estimate_tab(&mut self, ui: &mut egui::Ui) {
+        let sel_id = egui::Id::new("trazo_cost_selected_code");
+        let mut selected_code: String = ui
+            .ctx()
+            .data(|d| d.get_temp(sel_id))
+            .unwrap_or_else(|| "cimento_50kg".to_owned());
+
+        let report = self.project.cost_estimate();
+
+        ui.label(
+            RichText::new(&report.plain_summary)
+                .font(strong(12.5))
+                .color(TEXT_1),
+        );
+        ui.label(
+            RichText::new(format!(
+                "Materiais: {} · Mão de obra: {} · BDI ({:.0} %): {} · Base: {}",
+                format_brl(report.material_total_brl),
+                format_brl(report.labor_total_brl),
+                report.bdi_pct,
+                format_brl(report.bdi_total_brl),
+                report.reference_label
+            ))
+            .size(11.5)
+            .color(TEXT_2),
+        );
+        ui.add_space(6.0);
+
+        let mut include_labor = self.project.construction.cost.include_labor;
+        let mut bdi_pct = self.project.construction.cost.bdi_pct;
+        let mut settings_changed = false;
+        let mut do_import_sinapi = false;
+        let mut do_reset_prices = false;
+        let mut export_kind: Option<&'static str> = None;
+
+        ui.horizontal_wrapped(|ui| {
+            settings_changed |= ui
+                .checkbox(&mut include_labor, "Incluir mão de obra estimada")
+                .changed();
+            ui.separator();
+            ui.label("BDI:");
+            settings_changed |= ui
+                .add(
+                    egui::DragValue::new(&mut bdi_pct)
+                        .range(0.0..=40.0)
+                        .speed(0.5)
+                        .max_decimals(1)
+                        .suffix(" %"),
+                )
+                .changed();
+            ui.separator();
+            if secondary_button(ui, "Importar SINAPI (CSV)...").clicked() {
+                do_import_sinapi = true;
+            }
+            if !self.project.construction.cost.unit_prices.is_empty()
+                && secondary_button(ui, "Restaurar preços padrão").clicked()
+            {
+                do_reset_prices = true;
+            }
+        });
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            if secondary_button(ui, "Exportar CSV").clicked() {
+                export_kind = Some("csv");
+            }
+            if secondary_button(ui, "Exportar PDF").clicked() {
+                export_kind = Some("pdf");
+            }
+            if secondary_button(ui, "Exportar SVG").clicked() {
+                export_kind = Some("svg");
+            }
+        });
+        ui.separator();
+
+        egui::ScrollArea::both()
+            .id_salt("cost_estimate_scroll")
+            .max_height(330.0)
+            .show(ui, |ui| {
+                ui.label(RichText::new("1. Resumo por etapa").font(strong(13.0)));
+                egui::Grid::new("cost_stages_grid")
+                    .striped(true)
+                    .spacing([12.0, 4.0])
+                    .show(ui, |ui| {
+                        for h in ["Etapa", "Materiais", "Mão de obra", "BDI", "Total", "%"] {
+                            ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                        }
+                        ui.end_row();
+                        for st in &report.stages {
+                            ui.label(RichText::new(st.stage.label()).font(strong(11.5)));
+                            ui.label(format_brl(st.material_brl));
+                            ui.label(format_brl(st.labor_brl));
+                            ui.label(format_brl(st.bdi_brl));
+                            ui.label(RichText::new(format_brl(st.total_brl)).font(strong(11.5)));
+                            ui.label(format!("{:.1} %", st.share_pct));
+                            ui.end_row();
+                        }
+                    });
+
+                ui.add_space(10.0);
+                ui.label(
+                    RichText::new(
+                        "2. Curva ABC (clique em um insumo para editar seu preço unitário)",
+                    )
+                    .font(strong(13.0)),
+                );
+                egui::Grid::new("cost_abc_grid")
+                    .striped(true)
+                    .spacing([10.0, 4.0])
+                    .show(ui, |ui| {
+                        for h in ["Classe", "Insumo", "Qtd.", "Unid.", "Total", "% Acum."] {
+                            ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                        }
+                        ui.end_row();
+                        for row in &report.abc_curve {
+                            let cls_color = match row.class {
+                                'A' => egui::Color32::from_rgb(183, 28, 28),
+                                'B' => egui::Color32::from_rgb(178, 106, 0),
+                                _ => egui::Color32::from_rgb(27, 94, 32),
+                            };
+                            ui.label(
+                                RichText::new(row.class.to_string())
+                                    .font(strong(11.5))
+                                    .color(cls_color),
+                            );
+                            if ui
+                                .selectable_label(selected_code == row.item_code, &row.description)
+                                .clicked()
+                            {
+                                selected_code = row.item_code.clone();
+                            }
+                            ui.label(format!("{:.1}", row.total_quantity).replace('.', ","));
+                            ui.label(&row.unit);
+                            ui.label(RichText::new(format_brl(row.total_brl)).font(strong(11.5)));
+                            ui.label(format!("{:.1} %", row.cumulative_pct));
+                            ui.end_row();
+                        }
+                    });
+
+                ui.add_space(6.0);
+                for note in &report.assumptions {
+                    ui.label(RichText::new(format!("• {note}")).size(11.0).color(MUTED));
+                }
+            });
+
+        // Inline unit-price editor for the selected item_code
+        if let Some(sample_item) = report.items.iter().find(|i| i.item_code == selected_code) {
+            ui.add_space(6.0);
+            ui.separator();
+            ui.label(
+                RichText::new(format!(
+                    "Editar preço unitário: {} (código {} · SINAPI {} · fonte: {})",
+                    sample_item.description,
+                    sample_item.item_code,
+                    sample_item.sinapi_code,
+                    sample_item.source
+                ))
+                .font(strong(12.0)),
+            );
+            let mut mat_u = sample_item.material_unit_brl;
+            let mut lab_u = sample_item.labor_unit_brl;
+            let mut price_changed = false;
+            ui.horizontal_wrapped(|ui| {
+                ui.label(format!("Material (R$/{}):", sample_item.unit));
+                price_changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut mat_u)
+                            .range(0.0..=50_000.0)
+                            .speed(0.5)
+                            .max_decimals(2),
+                    )
+                    .changed();
+                ui.separator();
+                ui.label(format!("Mão de obra (R$/{}):", sample_item.unit));
+                price_changed |= ui
+                    .add(
+                        egui::DragValue::new(&mut lab_u)
+                            .range(0.0..=50_000.0)
+                            .speed(0.5)
+                            .max_decimals(2),
+                    )
+                    .changed();
+            });
+            if price_changed {
+                let before = self.project.clone();
+                if let Ok(msg) = edit_unit_price(
+                    &mut self.project,
+                    &sample_item.item_code,
+                    Some(mat_u),
+                    Some(lab_u),
+                ) {
+                    self.record_change(before);
+                    self.message = msg;
+                }
+            }
+        }
+
+        if settings_changed {
+            let before = self.project.clone();
+            self.project.construction.cost.include_labor = include_labor;
+            self.project.construction.cost.bdi_pct = bdi_pct;
+            self.record_change(before);
+        }
+        if do_reset_prices {
+            let before = self.project.clone();
+            self.project.construction.cost = Default::default();
+            self.record_change(before);
+            self.message =
+                "Preços unitários restaurados para a referência SINAPI padrão.".to_owned();
+        }
+        if do_import_sinapi
+            && let Some(path) = rfd::FileDialog::new()
+                .add_filter("Tabela SINAPI (CSV/TSV/TXT)", &["csv", "tsv", "txt"])
+                .pick_file()
+        {
+            match std::fs::read_to_string(&path) {
+                Ok(content) => {
+                    let ref_name = path
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("SINAPI importado");
+                    let before = self.project.clone();
+                    match self.project.import_sinapi_table(&content, Some(ref_name)) {
+                        Ok(res) => {
+                            self.record_change(before);
+                            self.message = format!(
+                                "Tabela SINAPI '{}' importada: {} preços atualizados ({} ignorados).",
+                                res.reference_label, res.imported, res.skipped
+                            );
+                        }
+                        Err(err) => self.message = format!("Erro ao importar SINAPI: {err}"),
+                    }
+                }
+                Err(err) => self.message = format!("Erro ao ler arquivo SINAPI: {err}"),
+            }
+        }
+
+        ui.ctx().data_mut(|d| d.insert_temp(sel_id, selected_code));
+
+        if let Some(kind) = export_kind {
+            self.export_cost_estimate(kind);
+        }
+    }
+
+    fn export_cost_estimate(&mut self, kind: &str) {
+        let (label, ext, filename) = match kind {
+            "csv" => ("Planilha CSV", "csv", "orcamento-obra.csv"),
+            "pdf" => ("Documento PDF", "pdf", "orcamento-obra.pdf"),
+            _ => ("Desenho SVG", "svg", "orcamento-obra.svg"),
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(filename)
+            .save_file()
+        else {
+            return;
+        };
+        let res = match kind {
+            "csv" => {
+                std::fs::write(&path, cost_estimate_csv(&self.project)).map_err(|e| e.to_string())
+            }
+            "pdf" => {
+                let svg = cost_estimate_svg(&self.project);
+                crate::domain::views::export_view_pdf(&svg, &path)
+            }
+            _ => {
+                let svg = cost_estimate_svg(&self.project);
+                crate::domain::views::export_view_svg(&svg, &path)
+            }
+        };
+        self.message = match res {
+            Ok(()) => format!("Orçamento exportado em {}", path.display()),
+            Err(error) => format!("Erro ao exportar orçamento: {error}"),
         };
     }
 }
