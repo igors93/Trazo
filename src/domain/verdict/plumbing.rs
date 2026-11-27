@@ -416,10 +416,14 @@ fn sewage_verdict(project: &Project) -> Option<Verdict> {
 
 /// Rainwater (#122): a roof over the neighbour's lot is red (Código Civil,
 /// art. 1.300); an eave next to the boundary, a roof draining into a pool
-/// and too few downpipes are yellow.
+/// and too few downpipes are yellow. Only drawn roofs are judged: without
+/// one, the slab's estimate is in the report and on the sheet, not here.
 fn rainwater_verdict(project: &Project) -> Option<Verdict> {
     use crate::domain::plumbing::rainwater::rainwater;
     let rain = rainwater(project)?;
+    if rain.flat_slab {
+        return None;
+    }
     let mut checks = Vec::new();
     for name in &rain.over_boundary {
         checks.push(Check::fail(
