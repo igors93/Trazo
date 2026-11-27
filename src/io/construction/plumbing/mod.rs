@@ -1,7 +1,10 @@
 //! The plumbing sheets (roadmap section E), A3 landscape in one PDF: the
 //! points plan with its legend and fixture schedule (#72) and the water
-//! plan with the pressure at every fixture (#118).
+//! plan with the pressure at every fixture (#118, #119), the sewage and
+//! septic plan (#120, #121), the rainwater plan (#122) and the isometric
+//! and riser diagrams (#123).
 
+pub mod isometric;
 pub mod points;
 pub mod rain;
 pub mod sewage;
@@ -134,6 +137,7 @@ pub(crate) fn plumbing_drawings(project: &Project) -> Vec<Drawn> {
         .chain(water::water_drawing(project))
         .chain(sewage::sewage_drawing(project))
         .chain(rain::rain_drawing(project))
+        .chain(isometric::isometric_drawing(project))
         .collect()
 }
 
@@ -173,10 +177,11 @@ mod tests {
             project.add_fixture(kind, at, w, d, 0).unwrap();
         }
         let pages = plumbing_pages(&project);
-        assert_eq!(pages.len(), 4);
+        assert_eq!(pages.len(), 5);
         assert!(pages[0].contains("Quadro de aparelhos"));
         assert!(pages[0].contains("Vaso sanitário"));
-        assert!(pages[0].contains("01/04"));
+        assert!(pages[0].contains("01/05"));
+        assert!(pages[4].contains("Esquema vertical"));
         assert!(pages[3].contains("Cisterna"));
         assert!(pages[2].contains("Caixas e ventilação"));
         assert!(pages[1].contains("Pressão nos aparelhos"));

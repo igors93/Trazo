@@ -88,8 +88,8 @@ Engineering features follow these rules. They apply to everything in milestones 
 | Construction site (#53–#57, #71) | ✅ Complete: opening dimension chains, first-course plan and wall elevations with block paging, setting-out plan, construction quantities, roof plan with gutters and downpipes, and the one-click A3 construction set |
 | Electrical design (#88–#91, #124–#129) | ✅ Complete (M7): devices, NBR 5410 forecast, circuits, conduits with wiring, intermediate switches & boundary room assignment, phase balancing, voltage drop, demand, service entrance, single-line diagram, electrical shopping list by wire section & colour, Lumen Method room lighting (NBR ISO/CIE 8995-1), photovoltaic pre-sizing with roof-plane placement & monthly generation (INPE/CRESESB), multi-board short-circuit (`Icc`) & breaker selectivity, and earthing layout + simplified NBR 5419-2 SPDA risk check |
 | Structure (#92–#94, #105–#117, #143–#147, #150) | ✅ Complete from foundation to roof (M4 & M5): columns/beams/slabs/footings, 2D plane-frame analysis with NBR 6120/6123/8681 combinations, coupled slab+beam grid analogy, overlays, What-if, background cache, reinforcement & steel schedule, lintels/sills & NBR 16868 masonry, SPT & 4-way foundation study, ground beams & strip footings, boundary balance beams, per-wall sloped tops, timber roofs (mono-pitch/gable/hip/trusses/overhangs/uplift), timber posts & eave beams, stairs/balconies/cantilevers, tall-wall wind/sliding/bolts/ties/jambs and the end-to-end gourmet reference project (`examples/area-gourmet.json`) |
-| Discipline views (#96) | ✅ Architecture, electrical, structure, foundations and prepared plumbing views on synchronized linked tabs sharing a single live model; hydraulic pipe calculations join with #72 |
-| Plumbing (#72) | ⬜ Not started (sanitary fixture view discipline and dependency tracking prepared) |
+| Discipline views (#96) | ✅ Architecture, electrical, plumbing, structure and foundations as views of one live model, each with its own layer, colours, ribbon tab and sheets, on synchronized linked tabs |
+| Water, sewage and rain (#72, #118–#123) | ✅ Complete (M6): plumbing points and fixture schedule, cold water with the tank and the pressure at every fixture, electric, gas and solar hot water, sewage with traps, boxes and vents, septic tank, filter and soakaways against wells and boundaries, rainwater with a reuse cistern and the neighbour and pool warnings, and the isometric and riser diagrams |
 | Simulation, materials and planning | 🟡 Simulation core (M4: #94, #105–#109) complete; materials catalogue, costs and construction schedule remain |
 | AI (#46–#52, #74–#76) | 🟡 45 MCP tools (including synchronized tabs/views, floors, cross-discipline dependencies, regional utility/soil profiles, beam-on-beam supports and target `projeto_id` guard), real-time sync, tunnel token; no approval or read-only mode |
 | Experience (#65–#69) | 🟡 Synchronized multi-view tabs (#95) with `.trazo` workspace persistence shipped; levels, guided flows and English interface not started |
@@ -659,7 +659,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 120 | Sewage (NBR 8160): fixture units, pipe diameters and slopes, inspection boxes and vents | P1 | L | M6 | ✅ |
 | 121 | Septic tank, filter and soakaway (NBR 7229, NBR 13969), with the distances to wells and boundaries | P1 | M | M6 | ✅ |
 | 122 | Rainwater (NBR 10844): gutters and downpipes from the roof area and local rainfall, and a cistern for reuse; a warning when a roof drains into a pool or onto a neighbour | P1 | M | M6 | ✅ |
-| 123 | Plumbing isometric and riser diagrams generated from the model | P2 | M | M6 | ⬜ |
+| 123 | Plumbing isometric and riser diagrams generated from the model | P2 | M | M6 | ✅ |
 
 ### F. Electrical, beyond the basics
 
