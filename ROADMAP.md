@@ -658,7 +658,7 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 | 119 | Hot water: electric, gas and solar heater sizing | P2 | M | M6 | ✅ |
 | 120 | Sewage (NBR 8160): fixture units, pipe diameters and slopes, inspection boxes and vents | P1 | L | M6 | ✅ |
 | 121 | Septic tank, filter and soakaway (NBR 7229, NBR 13969), with the distances to wells and boundaries | P1 | M | M6 | ✅ |
-| 122 | Rainwater (NBR 10844): gutters and downpipes from the roof area and local rainfall, and a cistern for reuse; a warning when a roof drains into a pool or onto a neighbour | P1 | M | M6 | ⬜ |
+| 122 | Rainwater (NBR 10844): gutters and downpipes from the roof area and local rainfall, and a cistern for reuse; a warning when a roof drains into a pool or onto a neighbour | P1 | M | M6 | ✅ |
 | 123 | Plumbing isometric and riser diagrams generated from the model | P2 | M | M6 | ⬜ |
 
 ### F. Electrical, beyond the basics

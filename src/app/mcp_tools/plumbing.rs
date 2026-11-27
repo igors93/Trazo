@@ -10,6 +10,7 @@ use crate::domain::plumbing::Heater;
 use crate::domain::plumbing::cold_water::{ColdWater, TankPlace, cold_water};
 use crate::domain::plumbing::hot_water::{HotWater, hot_water};
 use crate::domain::plumbing::points::{PointKind, plumbing_points};
+use crate::domain::plumbing::rainwater::{Rainwater, rainwater};
 use crate::domain::plumbing::septic::{
     AbsorptionSource, ColdestMonth, SepticDesign, SewageStandard, septic_design,
 };
@@ -150,6 +151,19 @@ impl FloorPlanApp {
                 text.push_str(&format!("\n{warning}"));
             }
         }
+        let rain = rainwater(project);
+        if let Some(rain) = &rain {
+            text.push_str(&format!(
+                "\nÁguas pluviais: {} mm/h, {} m² de cobertura, {} L/min; cisterna de {} L.",
+                round(rain.intensity_mm_h),
+                round(rain.roof_area_m2),
+                round(rain.total_flow_l_min),
+                round(rain.cistern_l)
+            ));
+            for warning in &rain.warnings {
+                text.push_str(&format!("\n{warning}"));
+            }
+        }
         let septic = septic_design(project);
         if let Some(design) = &septic {
             text.push_str(&format!(
@@ -174,6 +188,7 @@ impl FloorPlanApp {
             "agua_fria": cold.as_ref().map(cold_water_json),
             "agua_quente": hot.as_ref().map(hot_water_json),
             "esgoto": drains.as_ref().map(sewage_json),
+            "aguas_pluviais": rain.as_ref().map(rainwater_json),
             "fossa_septica": septic.as_ref().map(septic_json),
         })))
     }
@@ -238,7 +253,7 @@ pub(super) fn septic_json(design: &SepticDesign) -> Value {
 }
 
 /// The settings `restaurar` can put back to Trazo's defaults.
-const FIELDS: [&str; 9] = [
+const FIELDS: [&str; 10] = [
     "moradores",
     "consumo_l_pessoa_dia",
     "dias_reserva",
@@ -248,6 +263,7 @@ const FIELDS: [&str; 9] = [
     "aquecedor",
     "saida_esgoto",
     "pocos",
+    "chuva_anual_mm",
 ];
 
 impl FloorPlanApp {
@@ -337,6 +353,12 @@ impl FloorPlanApp {
                 let consumption = number(args, "consumo_l_pessoa_dia")?;
                 let days = number(args, "dias_reserva")?;
                 let base = number(args, "altura_base_caixa_m")?;
+                let annual_rain = number(args, "chuva_anual_mm")?;
+                if let Some(r) = annual_rain
+                    && !(200.0..=4000.0).contains(&r)
+                {
+                    return Err("chuva_anual_mm deve ficar entre 200 e 4000 mm.".to_owned());
+                }
                 let tank = match (number(args, "caixa_x")?, number(args, "caixa_y")?) {
                     (Some(x), Some(y)) => Some(to_model(x, y)),
                     (None, None) => None,
@@ -427,6 +449,9 @@ impl FloorPlanApp {
                         if let Some(wells) = wells {
                             settings.wells = wells;
                         }
+                        if annual_rain.is_some() {
+                            settings.annual_rain_mm = annual_rain;
+                        }
                         Ok(Change::new("Projeto hidrossanitário configurado."))
                     },
                 )?
@@ -462,6 +487,7 @@ impl FloorPlanApp {
                             "aquecedor" => settings.heater_at = None,
                             "saida_esgoto" => settings.sewer_exit = None,
                             "pocos" => settings.wells.clear(),
+                            "chuva_anual_mm" => settings.annual_rain_mm = None,
                             _ => settings.heater = Heater::default(),
                         }
                     }
@@ -643,5 +669,40 @@ pub(super) fn sewage_json(design: &Sewage) -> Value {
         })).collect::<Vec<_>>(),
         "alertas": design.warnings,
         "observacoes": design.notes,
+    })
+}
+
+/// The rainwater design for the report.
+pub(super) fn rainwater_json(rain: &Rainwater) -> Value {
+    json!({
+        "chuva_mm_h": round(rain.intensity_mm_h),
+        "chuva_da_cidade": rain.city_intensity,
+        "laje_sem_telhado": rain.flat_slab,
+        "area_cobertura_m2": round(rain.roof_area_m2),
+        "vazao_total_l_min": round(rain.total_flow_l_min),
+        "calhas": rain.gutters.iter().map(|g| json!({
+            "telhado": g.roof,
+            "de": xy(g.from),
+            "ate": xy(g.to),
+            "area_m2": round(g.area_m2),
+            "vazao_l_min": round(g.flow_l_min),
+            "calha_mm": g.gutter_mm,
+            "descidas_desenhadas": g.downpipes.len(),
+            "descidas_necessarias": g.downpipes_needed,
+            "descida_mm": g.downpipe_mm,
+        })).collect::<Vec<_>>(),
+        "cisterna": {
+            "chuva_anual_mm": round(rain.annual_rain_mm),
+            "chuva_anual_informada": rain.annual_rain_given,
+            "captacao_ano_l": round(rain.yearly_yield_l),
+            "uso_nao_potavel_ano_l": round(rain.yearly_use_l),
+            "volume_l": round(rain.cistern_l),
+            "descarte_primeiras_aguas_l": round(rain.first_flush_l),
+        },
+        "sobre_o_vizinho": rain.over_boundary,
+        "junto_da_divisa": rain.onto_neighbour,
+        "perto_da_piscina": rain.into_pool,
+        "alertas": rain.warnings,
+        "observacoes": rain.notes,
     })
 }

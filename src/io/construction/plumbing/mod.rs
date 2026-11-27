@@ -3,6 +3,7 @@
 //! plan with the pressure at every fixture (#118).
 
 pub mod points;
+pub mod rain;
 pub mod sewage;
 pub mod water;
 
@@ -132,6 +133,7 @@ pub(crate) fn plumbing_drawings(project: &Project) -> Vec<Drawn> {
         .into_iter()
         .chain(water::water_drawing(project))
         .chain(sewage::sewage_drawing(project))
+        .chain(rain::rain_drawing(project))
         .collect()
 }
 
@@ -171,10 +173,11 @@ mod tests {
             project.add_fixture(kind, at, w, d, 0).unwrap();
         }
         let pages = plumbing_pages(&project);
-        assert_eq!(pages.len(), 3);
+        assert_eq!(pages.len(), 4);
         assert!(pages[0].contains("Quadro de aparelhos"));
         assert!(pages[0].contains("Vaso sanitário"));
-        assert!(pages[0].contains("01/03"));
+        assert!(pages[0].contains("01/04"));
+        assert!(pages[3].contains("Cisterna"));
         assert!(pages[2].contains("Caixas e ventilação"));
         assert!(pages[1].contains("Pressão nos aparelhos"));
         assert!(plumbing_pages(&Project::default()).is_empty());

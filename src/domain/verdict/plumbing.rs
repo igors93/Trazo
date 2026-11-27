@@ -16,6 +16,7 @@ pub fn plumbing_verdicts(project: &Project) -> Vec<Verdict> {
     let mut verdicts: Vec<Verdict> = septic_verdict(project).into_iter().collect();
     verdicts.extend(hot_water_verdicts(project));
     verdicts.extend(sewage_verdict(project));
+    verdicts.extend(rainwater_verdict(project));
     let Some(cold) = cold_water(project) else {
         return verdicts;
     };
@@ -409,6 +410,77 @@ fn sewage_verdict(project: &Project) -> Option<Verdict> {
     Some(Verdict {
         discipline: Discipline::Plumbing,
         element: "Esgoto".to_owned(),
+        checks,
+    })
+}
+
+/// Rainwater (#122): a roof over the neighbour's lot is red (Código Civil,
+/// art. 1.300); an eave next to the boundary, a roof draining into a pool
+/// and too few downpipes are yellow.
+fn rainwater_verdict(project: &Project) -> Option<Verdict> {
+    use crate::domain::plumbing::rainwater::rainwater;
+    let rain = rainwater(project)?;
+    let mut checks = Vec::new();
+    for name in &rain.over_boundary {
+        checks.push(Check::fail(
+            "Água no vizinho",
+            format!("{name} fica sobre o lote do vizinho: recue o beiral para dentro do seu lote. A lei proíbe a água do telhado cair no terreno dele."),
+            "Código Civil, art. 1.300: o proprietário construirá de maneira que o seu prédio não despeje águas, diretamente, sobre o prédio vizinho.".to_owned(),
+        ));
+    }
+    for name in &rain.onto_neighbour {
+        checks.push(Check {
+            name: "Beiral na divisa".to_owned(),
+            utilisation: 1.0,
+            light: Light::Yellow,
+            simple: format!("{name} fica junto da divisa: a calha é obrigatória e a descida despeja no seu lote."),
+            detail: "Código Civil, art. 1.300.".to_owned(),
+        });
+    }
+    for name in &rain.into_pool {
+        checks.push(Check {
+            name: "Água na piscina".to_owned(),
+            utilisation: 1.0,
+            light: Light::Yellow,
+            simple: format!("{name} despeja perto da piscina: leve a descida para longe dela."),
+            detail:
+                "A água do telhado traz folhas e sujeira e desequilibra o tratamento da piscina."
+                    .to_owned(),
+        });
+    }
+    for gutter in &rain.gutters {
+        let short = !rain.flat_slab && gutter.downpipes_needed > gutter.downpipes.len();
+        checks.push(Check {
+            name: format!("Calha · {}", gutter.roof),
+            utilisation: gutter.downpipes_needed as f64 / gutter.downpipes.len().max(1) as f64,
+            light: if short { Light::Yellow } else { Light::Green },
+            simple: if short {
+                format!(
+                    "Para {} mm/h, esta calha precisa de {} descida(s) de {} mm; a planta tem {}.",
+                    decimal(rain.intensity_mm_h, 0),
+                    gutter.downpipes_needed,
+                    decimal(gutter.downpipe_mm, 0),
+                    gutter.downpipes.len()
+                )
+            } else {
+                format!(
+                    "Calha de {} mm com {} descida(s) de {} mm para {} L/min.",
+                    decimal(gutter.gutter_mm, 0),
+                    gutter.downpipes_needed,
+                    decimal(gutter.downpipe_mm, 0),
+                    decimal(gutter.flow_l_min, 0)
+                )
+            },
+            detail: format!(
+                "NBR 10844: Q = I·A/60 = {}·{}/60; calha semicircular a 0,5 % (Manning) e condutor pela Figura 3.",
+                decimal(rain.intensity_mm_h, 0),
+                decimal(gutter.area_m2, 1)
+            ),
+        });
+    }
+    (!checks.is_empty()).then(|| Verdict {
+        discipline: Discipline::Plumbing,
+        element: "Águas pluviais".to_owned(),
         checks,
     })
 }

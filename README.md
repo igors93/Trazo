@@ -123,6 +123,7 @@ Trazo does not promise that a house will not fall. It does everything it can so 
 - Cold water: water tank sized for the family, pipes sized by NBR 5626 and the pressure at every fixture, so a weak shower shows up before it is built
 - Hot water: each electric shower checked against its outlet; gas heater or solar tank and collectors sized, with the hot pipes
 - Sewage by NBR 8160: floor traps, grease trap, inspection boxes with their depths, vents and the main to the street or the septic tank
+- Septic tank, anaerobic filter and soakaways checked against wells and boundaries; rainwater gutters, downpipes and a reuse cistern, with a warning when a roof drains onto the neighbour or into a pool
 
 **Electrical installation (NBR 5410)**
 - Outlets, switches, lights, distribution board and data points

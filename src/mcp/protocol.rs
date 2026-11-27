@@ -909,7 +909,7 @@ fn catalogue() -> Vec<Tool> {
         Tool {
             name: "instalacoes_hidraulicas",
             title: "Instalações hidrossanitárias",
-            description: "Instalações de água, esgoto e gás da planta (NBR 5626, NBR 8160): os pontos de cada aparelho (água fria AF, água quente AQ, esgoto ES com o DN, gás) com posição e altura, a contagem por tipo, o quadro de aparelhos com peso e UHC e as observações; a água fria: consumo, caixa-d'água e o peso dela cheia, colunas, tubos com DN, vazão e perda, e a pressão em cada aparelho (boa, fraca ou insuficiente), com o que subir quando falta pressão; a água quente: tomada de cada chuveiro elétrico, aquecedor a gás (L/min, kW, GLP) ou solar (reservatório e coletores) e os tubos de água quente com a pressão; o esgoto (NBR 8160): UHC, caixas sifonadas, caixa de gordura, caixas de inspeção com profundidade, tubos ventiladores, ramais e coletor com DN e caimento até a rede ou a fossa. Os aparelhos vêm de inserir_objeto (vaso, lavatorio, chuveiro, pia, lavadora, banheira, fogao).",
+            description: "Instalações de água, esgoto e gás da planta (NBR 5626, NBR 8160): os pontos de cada aparelho (água fria AF, água quente AQ, esgoto ES com o DN, gás) com posição e altura, a contagem por tipo, o quadro de aparelhos com peso e UHC e as observações; a água fria: consumo, caixa-d'água e o peso dela cheia, colunas, tubos com DN, vazão e perda, e a pressão em cada aparelho (boa, fraca ou insuficiente), com o que subir quando falta pressão; a água quente: tomada de cada chuveiro elétrico, aquecedor a gás (L/min, kW, GLP) ou solar (reservatório e coletores) e os tubos de água quente com a pressão; o esgoto (NBR 8160): UHC, caixas sifonadas, caixa de gordura, caixas de inspeção com profundidade, tubos ventiladores, ramais e coletor com DN e caimento até a rede ou a fossa; as águas pluviais (NBR 10844): vazão de cada calha pela chuva da cidade, calha e descidas necessárias, cisterna de reúso (NBR 15527) e alertas de água caindo no vizinho ou na piscina. Os aparelhos vêm de inserir_objeto (vaso, lavatorio, chuveiro, pia, lavadora, banheira, fogao).",
             properties: json!({}),
             required: &[],
             read_only: true,
@@ -945,7 +945,8 @@ fn catalogue() -> Vec<Tool> {
                 "aquecedor_y": number("Posição Y do aquecedor a gás ou do reservatório solar, metros."),
                 "saida_esgoto_x": number("Posição X da ligação do esgoto na rede pública (padrão: frente do lote), metros."),
                 "saida_esgoto_y": number("Posição Y da ligação do esgoto na rede pública, metros."),
-                "campos": { "type": "array", "items": { "type": "string", "enum": ["moradores", "consumo_l_pessoa_dia", "dias_reserva", "caixa", "altura_base_caixa_m", "aquecimento", "aquecedor", "saida_esgoto", "pocos"] }, "description": "Para restaurar: os campos que voltam ao padrão." },
+                "chuva_anual_mm": number("Chuva da cidade num ano, mm, para a cisterna (padrão 1200)."),
+                "campos": { "type": "array", "items": { "type": "string", "enum": ["moradores", "consumo_l_pessoa_dia", "dias_reserva", "caixa", "altura_base_caixa_m", "aquecimento", "aquecedor", "saida_esgoto", "pocos", "chuva_anual_mm"] }, "description": "Para restaurar: os campos que voltam ao padrão." },
             }),
             required: &["acao"],
             read_only: false,
