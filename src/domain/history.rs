@@ -88,6 +88,7 @@ struct ProjectMetadata {
     workspace_tabs: Vec<WorkspaceTab>,
     guids: GuidRegistry,
     codes: super::codes::BuildingCodes,
+    construction: super::construction::ConstructionPlan,
     next_id: u64,
     markup_settings: super::markups::MarkupSettings,
 }
@@ -122,6 +123,7 @@ impl ProjectMetadata {
             workspace_tabs: project.workspace_tabs.clone(),
             guids: project.guids.clone(),
             codes: project.codes.clone(),
+            construction: project.construction.clone(),
             next_id: project.next_id(),
             markup_settings: project.markup_settings,
         }
@@ -156,6 +158,7 @@ impl ProjectMetadata {
             && self.workspace_tabs == project.workspace_tabs
             && self.guids == project.guids
             && self.codes == project.codes
+            && self.construction == project.construction
             && self.markup_settings == project.markup_settings
     }
 
@@ -320,6 +323,7 @@ impl ProjectSnapshot {
         project.workspace_tabs = meta.workspace_tabs.clone();
         project.guids = meta.guids.clone();
         project.codes = meta.codes.clone();
+        project.construction = meta.construction.clone();
         project.set_next_id(meta.next_id);
         project
     }

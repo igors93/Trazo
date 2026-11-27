@@ -1,8 +1,11 @@
-//! What the construction site needs from the plan (roadmap M2): block
-//! paging course by course (#54), the setting-out of the building on the
-//! lot (#55) and the roof plan (#71). Pure data: the sheets are drawn in
-//! `io::construction`.
+//! What the construction site needs from the plan: block paging course by
+//! course (#54), setting-out (#55), roof plan (#71) and Section H construction
+//! planning (materials catalogue #135, stage shopping list #136, cost estimate
+//! #87, schedule #137, site safety & permits #138 and site progress log #139).
 
+pub mod materials;
 pub mod paging;
 pub mod roof_plan;
 pub mod setting_out;
+
+pub use materials::ConstructionPlan;

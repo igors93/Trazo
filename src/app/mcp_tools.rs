@@ -15,6 +15,7 @@ use super::{FloorPlanApp, OpenResult, Selection};
 mod args;
 mod batch;
 mod codes;
+mod construction_plan;
 mod drawings;
 mod editing;
 mod electrical;
@@ -255,6 +256,7 @@ impl FloorPlanApp {
             "pavimentos" => self.tool_floors(args),
             "dependencias" => self.tool_dependencies(args),
             "quantitativos" => self.tool_quantities(args),
+            "planejamento_obra" => self.tool_construction_plan(args),
             "ergonomia" => self.tool_ergonomics(args),
             "camadas" => self.tool_layers(args),
             "anotacoes" => self.tool_notes(args),

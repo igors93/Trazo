@@ -198,6 +198,15 @@ pub struct Project {
     )]
     pub plumbing: super::plumbing::PlumbingSettings,
 
+    /// From model to construction (section H): editable materials catalogue
+    /// overrides (#135), price table & SINAPI settings (#87), schedule settings
+    /// (#137), NR-18 safety checklists (#138) and site progress log (#139).
+    #[serde(
+        default,
+        skip_serializing_if = "super::construction::ConstructionPlan::is_default"
+    )]
+    pub construction: super::construction::ConstructionPlan,
+
     next_id: u64,
 }
 
@@ -282,6 +291,7 @@ impl Default for Project {
             codes: super::codes::BuildingCodes::default(),
             protection: super::protection::Protection::default(),
             plumbing: super::plumbing::PlumbingSettings::default(),
+            construction: super::construction::ConstructionPlan::default(),
 
             next_id: 1,
         }

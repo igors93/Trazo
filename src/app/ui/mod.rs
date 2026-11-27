@@ -8,6 +8,7 @@ mod compare;
 pub(in crate::app) use compare::CompareUiState;
 mod connect;
 mod constraints;
+mod construction_plan;
 mod dialogs;
 mod dimensions;
 mod electrical;
