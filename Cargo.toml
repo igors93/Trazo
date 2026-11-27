@@ -15,7 +15,7 @@ rfd = "0.18"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 base64 = "0.23"
-getrandom = "0.3"
+getrandom = "0.4"
 cap = "0.1"
 sysinfo = { version = "0.40", default-features = false, features = ["system"] }
 flate2 = "1"
@@ -28,7 +28,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 skrifa = { version = "0.44", default-features = false, features = ["std"] }
 svg2pdf = "0.13"
 # Several SVG pages in one PDF (the pre-sizing report); the version svg2pdf uses.
-pdf-writer = "0.12"
+pdf-writer = "0.15"
 
 [dev-dependencies]
 egui_kittest = "0.37"
