@@ -345,6 +345,7 @@ The plumbing design starts from the fixtures you place with the *Interiores* or 
 ## Discipline views
 
 Architecture, electrical, plumbing and structure are views of the same model. The tabs choose what the plan shows:
+- **Sewage** (NBR 8160, the *Esgoto sanitário* sheet): in each wet room the washbasin, shower, bathtub and washing machine drain to a floor trap (**CS**), the toilet on its own in DN 100, and the kitchen sink to a grease trap (**CG**) outside. Each room leaves the house to an inspection box (**CI**); a buried main joins the boxes, with a box at every turn and at most 25 m apart, and runs at 1 % to the street sewer on the lot's front (or to the septic tank, when there is one). The sheet gives every pipe's DN and fall, each box's depth (deeper than 1 m is a manhole), the bathrooms' vents (**TV**, 30 cm above the roof) and how deep the main reaches the street: the street sewer must be deeper. Rainwater never goes into the sewer.
 
 - **Só elétrica** (on the *Elétrica* tab) puts the architecture behind a veil and draws the electrical design on top, without the structure.
 - **Só hidráulica** (on the *Hidráulica* tab) does the same for the fixtures that take water and the water (blue), hot water (red), drain (brown) and gas (amber) points, with their heights when you zoom in.

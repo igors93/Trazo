@@ -1,6 +1,7 @@
 //! Water, sewage and rain (roadmap section E, milestone M6): the plumbing
-//! points of every fixture (#72), cold water (#118), hot water (#119), and
-//! the settings the plumbing design keeps with the project.
+//! points of every fixture (#72), cold water (#118), hot water (#119),
+//! sewage (#120), and the settings the plumbing design keeps with the
+//! project.
 //!
 //! The tables come from the plumbing building code pack (NBR 5626, NBR 8160
 //! and NBR 10844, `data/codes/plumbing/nbr.json`); the few the pack does not
@@ -12,6 +13,7 @@ pub mod network;
 pub mod points;
 pub mod rules;
 pub mod septic;
+pub mod sewage;
 
 #[cfg(test)]
 mod tests;
@@ -91,6 +93,9 @@ pub struct PlumbingSettings {
     /// Where the gas heater, or the solar hot-water tank, stands.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub heater_at: Option<Point>,
+    /// Where the sewage main meets the street sewer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sewer_exit: Option<Point>,
     /// Septic tank and soakaway, where there is no public sewer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub septic: Option<septic::SepticSettings>,

@@ -13,6 +13,7 @@ use crate::domain::plumbing::points::{PointKind, plumbing_points};
 use crate::domain::plumbing::septic::{
     AbsorptionSource, ColdestMonth, SepticDesign, SewageStandard, septic_design,
 };
+use crate::domain::plumbing::sewage::{Outfall, Sewage, sewage};
 
 impl FloorPlanApp {
     /// `instalacoes_hidraulicas`: the plumbing points, their counts and
@@ -132,6 +133,23 @@ impl FloorPlanApp {
                 text.push_str(&format!("\n{line}"));
             }
         }
+        let drains = sewage(project);
+        if let Some(design) = &drains {
+            text.push_str(&format!(
+                "\nEsgoto: {} UHC, coletor DN {} a 1 %, {} caixa(s) até {}; chega a {} m de profundidade.",
+                round(design.total_uhc),
+                round(design.main_dn),
+                design.devices.len(),
+                match design.outfall {
+                    Outfall::PublicSewer => "a rede pública",
+                    Outfall::Septic => "a fossa séptica",
+                },
+                round(design.exit_depth_m)
+            ));
+            for warning in &design.warnings {
+                text.push_str(&format!("\n{warning}"));
+            }
+        }
         let septic = septic_design(project);
         if let Some(design) = &septic {
             text.push_str(&format!(
@@ -155,6 +173,7 @@ impl FloorPlanApp {
             "observacoes": points.notes,
             "agua_fria": cold.as_ref().map(cold_water_json),
             "agua_quente": hot.as_ref().map(hot_water_json),
+            "esgoto": drains.as_ref().map(sewage_json),
             "fossa_septica": septic.as_ref().map(septic_json),
         })))
     }
@@ -212,7 +231,7 @@ pub(super) fn septic_json(design: &SepticDesign) -> Value {
 }
 
 /// The settings `restaurar` can put back to Trazo's defaults.
-const FIELDS: [&str; 7] = [
+const FIELDS: [&str; 8] = [
     "moradores",
     "consumo_l_pessoa_dia",
     "dias_reserva",
@@ -220,6 +239,7 @@ const FIELDS: [&str; 7] = [
     "altura_base_caixa_m",
     "aquecimento",
     "aquecedor",
+    "saida_esgoto",
 ];
 
 impl FloorPlanApp {
@@ -303,6 +323,14 @@ impl FloorPlanApp {
                     (None, None) => None,
                     _ => return Err("Informe caixa_x e caixa_y juntos.".to_owned()),
                 };
+                let sewer_exit = match (
+                    number(args, "saida_esgoto_x")?,
+                    number(args, "saida_esgoto_y")?,
+                ) {
+                    (Some(x), Some(y)) => Some(to_model(x, y)),
+                    (None, None) => None,
+                    _ => return Err("Informe saida_esgoto_x e saida_esgoto_y juntos.".to_owned()),
+                };
                 let heater_at = match (number(args, "aquecedor_x")?, number(args, "aquecedor_y")?) {
                     (Some(x), Some(y)) => Some(to_model(x, y)),
                     (None, None) => None,
@@ -360,6 +388,9 @@ impl FloorPlanApp {
                         if heater_at.is_some() {
                             settings.heater_at = heater_at;
                         }
+                        if sewer_exit.is_some() {
+                            settings.sewer_exit = sewer_exit;
+                        }
                         Ok(Change::new("Projeto hidrossanitário configurado."))
                     },
                 )?
@@ -393,6 +424,7 @@ impl FloorPlanApp {
                             "caixa" => settings.tank_at = None,
                             "altura_base_caixa_m" => settings.tank_base_m = None,
                             "aquecedor" => settings.heater_at = None,
+                            "saida_esgoto" => settings.sewer_exit = None,
                             _ => settings.heater = Heater::default(),
                         }
                     }
@@ -541,5 +573,38 @@ pub(super) fn hot_water_json(hot: &HotWater) -> Value {
         "rede": network,
         "alertas": hot.warnings,
         "observacoes": hot.notes,
+    })
+}
+
+/// The sewage design for the report.
+pub(super) fn sewage_json(design: &Sewage) -> Value {
+    json!({
+        "uhc_total": round(design.total_uhc),
+        "destino": match design.outfall {
+            Outfall::PublicSewer => "rede_publica",
+            Outfall::Septic => "fossa_septica",
+        },
+        "saida": xy(design.exit_at),
+        "saida_informada": design.exit_given,
+        "profundidade_saida_m": round(design.exit_depth_m),
+        "coletor_dn": design.main_dn,
+        "coletor_capacidade_uhc": round(design.main_capacity_uhc),
+        "dispositivos": design.devices.iter().map(|d| json!({
+            "rotulo": d.label,
+            "tipo": d.kind.label(),
+            "posicao": xy(d.at),
+            "comodo": d.room,
+            "dn": d.dn,
+            "profundidade_m": d.depth_m.map(round),
+        })).collect::<Vec<_>>(),
+        "tubos": design.drains.iter().map(|d| json!({
+            "funcao": d.role.label(),
+            "dn": d.dn,
+            "caimento_pct": round(d.slope * 100.0),
+            "uhc": round(d.uhc),
+            "comprimento_m": round(d.length_m),
+        })).collect::<Vec<_>>(),
+        "alertas": design.warnings,
+        "observacoes": design.notes,
     })
 }

@@ -15,6 +15,7 @@ use super::{Check, Discipline, Light, Verdict, decimal};
 pub fn plumbing_verdicts(project: &Project) -> Vec<Verdict> {
     let mut verdicts: Vec<Verdict> = septic_verdict(project).into_iter().collect();
     verdicts.extend(hot_water_verdicts(project));
+    verdicts.extend(sewage_verdict(project));
     let Some(cold) = cold_water(project) else {
         return verdicts;
     };
@@ -357,4 +358,57 @@ fn hot_water_verdicts(project: &Project) -> Vec<Verdict> {
         }
     }
     verdicts
+}
+
+/// Sewage (#120): the main's capacity in drainage units and the depth of
+/// the inspection boxes. A box deeper than a metre is yellow: it needs a
+/// manhole, nothing falls.
+fn sewage_verdict(project: &Project) -> Option<Verdict> {
+    use crate::domain::plumbing::sewage::{DeviceKind, MAX_BOX_DEPTH_M, sewage};
+    let design = sewage(project)?;
+    let mut checks = vec![Check::new(
+        "Capacidade do coletor",
+        design.total_uhc / design.main_capacity_uhc.max(1e-9),
+        format!(
+            "Coletor DN {} leva {} UHC; a casa tem {} UHC.",
+            decimal(design.main_dn, 0),
+            decimal(design.main_capacity_uhc, 0),
+            decimal(design.total_uhc, 0)
+        ),
+        "NBR 8160 Tabela 7: capacidade do subcoletor e do coletor predial pela declividade."
+            .to_owned(),
+    )];
+    let deepest = design
+        .devices
+        .iter()
+        .filter(|d| d.kind == DeviceKind::InspectionBox)
+        .filter_map(|d| d.depth_m.map(|z| (d.label.clone(), z)))
+        .max_by(|a, b| a.1.total_cmp(&b.1));
+    if let Some((label, depth)) = deepest {
+        let deep = depth > MAX_BOX_DEPTH_M + 1e-6;
+        checks.push(Check {
+            name: "Profundidade das caixas".to_owned(),
+            utilisation: depth / MAX_BOX_DEPTH_M,
+            light: if deep { Light::Yellow } else { Light::Green },
+            simple: if deep {
+                format!(
+                    "A {label} fica a {} m: acima de {} m é poço de visita, não caixa de inspeção.",
+                    decimal(depth, 2),
+                    decimal(MAX_BOX_DEPTH_M, 2)
+                )
+            } else {
+                format!(
+                    "A caixa mais funda ({label}) fica a {} m.",
+                    decimal(depth, 2)
+                )
+            },
+            detail: "Caixas de inspeção de 60 × 60 cm até 1,00 m de profundidade (NBR 8160)."
+                .to_owned(),
+        });
+    }
+    Some(Verdict {
+        discipline: Discipline::Plumbing,
+        element: "Esgoto".to_owned(),
+        checks,
+    })
 }

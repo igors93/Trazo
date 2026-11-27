@@ -11,6 +11,7 @@ use crate::domain::plumbing::cold_water::cold_water;
 use crate::domain::plumbing::hot_water::hot_water;
 use crate::domain::plumbing::network::{Network, PipeRole, Pressure};
 use crate::domain::plumbing::points::{PointKind, plumbing_points};
+use crate::domain::plumbing::sewage::{DeviceKind, DrainRole, sewage};
 
 fn pressure_color(state: Pressure) -> Color32 {
     match state {
@@ -82,6 +83,60 @@ pub(super) fn paint_plumbing(painter: &Painter, view: ViewTransform, project: &P
                     Color32::WHITE,
                     Stroke::new(1.6, ink),
                     egui::StrokeKind::Middle,
+                );
+            }
+        }
+    }
+    // The sewage, under the water.
+    if let Some(design) = sewage(project) {
+        let brown = color(PointKind::Drain);
+        for drain in &design.drains {
+            let stroke = Stroke::new(
+                match drain.role {
+                    DrainRole::Fixture => 1.0,
+                    DrainRole::Branch => 1.5,
+                    DrainRole::Main => 2.0,
+                },
+                brown,
+            );
+            for leg in drain.path.windows(2) {
+                let (a, b) = (view.to_screen(leg[0]), view.to_screen(leg[1]));
+                if drain.role == DrainRole::Main {
+                    painter.extend(Shape::dashed_line(&[a, b], stroke, 8.0, 3.0));
+                } else {
+                    painter.line_segment([a, b], stroke);
+                }
+            }
+        }
+        for device in &design.devices {
+            let at = view.to_screen(device.at);
+            let side = match device.kind {
+                DeviceKind::FloorTrap | DeviceKind::Vent => 8.0,
+                DeviceKind::GreaseTrap | DeviceKind::InspectionBox => 12.0,
+            };
+            if device.kind == DeviceKind::Vent {
+                painter.circle(
+                    at,
+                    side / 2.0,
+                    Color32::WHITE,
+                    Stroke::new(1.5, Color32::from_rgb(61, 139, 79)),
+                );
+            } else {
+                painter.rect(
+                    Rect::from_center_size(at, vec2(side, side)),
+                    0.0,
+                    Color32::WHITE,
+                    Stroke::new(1.5, brown),
+                    egui::StrokeKind::Middle,
+                );
+            }
+            if view.scale >= 60.0 {
+                painter.text(
+                    at + vec2(side / 2.0 + 3.0, -side / 2.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    &device.label,
+                    FontId::proportional(10.0),
+                    brown,
                 );
             }
         }

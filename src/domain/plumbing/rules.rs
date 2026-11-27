@@ -233,3 +233,92 @@ impl ReservoirRules {
         section(project, "reservoir").unwrap_or_default()
     }
 }
+
+/// Sewage rules (NBR 8160): the pipes, the branches' and mains' capacities
+/// in drainage units, and the vents.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct DrainageRules {
+    /// Commercial DNs, mm.
+    pub dns: Vec<f64>,
+    /// The least DN of a main (*subcoletor*, *coletor predial*).
+    pub main_min_dn: f64,
+    /// Branches (*ramais de esgoto*): DN and the most units it takes.
+    pub branch: Vec<[f64; 2]>,
+    /// The slopes of the mains' table, as fractions.
+    pub main_slopes: Vec<f64>,
+    /// Mains: DN, then the most units at each slope (0 where not allowed).
+    pub main: Vec<Vec<f64>>,
+    /// Branch vents without a water closet: most units, DN.
+    pub branch_vent_no_wc: Vec<[f64; 2]>,
+    /// Branch vents with a water closet: most units, DN.
+    pub branch_vent_wc: Vec<[f64; 2]>,
+}
+
+impl Default for DrainageRules {
+    fn default() -> Self {
+        Self {
+            dns: vec![40.0, 50.0, 75.0, 100.0, 150.0, 200.0],
+            main_min_dn: 100.0,
+            branch: vec![[40.0, 3.0], [50.0, 6.0], [75.0, 20.0], [100.0, 160.0]],
+            main_slopes: vec![0.005, 0.01, 0.02, 0.04],
+            main: vec![
+                vec![100.0, 0.0, 180.0, 216.0, 250.0],
+                vec![150.0, 0.0, 700.0, 840.0, 1000.0],
+                vec![200.0, 1400.0, 1600.0, 1920.0, 2300.0],
+            ],
+            branch_vent_no_wc: vec![[12.0, 40.0], [18.0, 50.0], [36.0, 75.0]],
+            branch_vent_wc: vec![[17.0, 50.0], [60.0, 75.0]],
+        }
+    }
+}
+
+impl DrainageRules {
+    pub fn for_project(project: &Project) -> Self {
+        section(project, "drainage").unwrap_or_default()
+    }
+
+    /// The least branch that takes `uhc` units, DN.
+    pub fn branch_dn(&self, uhc: f64) -> f64 {
+        self.branch
+            .iter()
+            .find(|[_, most]| *most >= uhc - 1e-9)
+            .map_or(self.main_min_dn, |[dn, _]| *dn)
+    }
+
+    /// The least main that takes `uhc` units at `slope`: DN and its capacity.
+    pub fn main_dn(&self, uhc: f64, slope: f64) -> (f64, f64) {
+        let column = self
+            .main_slopes
+            .iter()
+            .rposition(|s| *s <= slope + 1e-9)
+            .map_or(1, |i| i + 1);
+        self.main
+            .iter()
+            .filter(|row| row.first().is_some_and(|dn| *dn >= self.main_min_dn - 1e-9))
+            .find_map(|row| {
+                let most = row.get(column).copied().unwrap_or(0.0);
+                (most >= uhc - 1e-9 && most > 0.0).then(|| (row[0], most))
+            })
+            .unwrap_or_else(|| {
+                let last = self.main.last().cloned().unwrap_or_default();
+                (
+                    last.first().copied().unwrap_or(self.main_min_dn),
+                    last.get(column).copied().unwrap_or(0.0),
+                )
+            })
+    }
+
+    /// The vent of a branch of `uhc` units, DN.
+    pub fn vent_dn(&self, uhc: f64, with_wc: bool) -> f64 {
+        let table = if with_wc {
+            &self.branch_vent_wc
+        } else {
+            &self.branch_vent_no_wc
+        };
+        table
+            .iter()
+            .find(|[most, _]| *most >= uhc - 1e-9)
+            .or(table.last())
+            .map_or(50.0, |[_, dn]| *dn)
+    }
+}
