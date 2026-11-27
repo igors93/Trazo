@@ -18,6 +18,7 @@ enum ConstructionHubTab {
     Cost,
     Schedule,
     SafetyPermits,
+    Progress,
 }
 
 impl FloorPlanApp {
@@ -82,6 +83,11 @@ impl FloorPlanApp {
                         &mut active_tab,
                         ConstructionHubTab::SafetyPermits,
                         "Segurança e licenças",
+                    );
+                    ui.selectable_value(
+                        &mut active_tab,
+                        ConstructionHubTab::Progress,
+                        "Diário de obra",
                     );
                     ui.separator();
                     if secondary_button(ui, "Pacote de obra (PDF)").clicked() {
@@ -201,6 +207,9 @@ impl FloorPlanApp {
                     }
                     ConstructionHubTab::SafetyPermits => {
                         self.safety_and_permits_tab(ui);
+                    }
+                    ConstructionHubTab::Progress => {
+                        self.site_progress_tab(ui);
                     }
                 }
             });

@@ -284,6 +284,18 @@ On a wall along the lot line, columns and footings stand flush inside the lot, s
 
 Warnings name each element that needs attention, including a support that a short span next to a long one would lift. Sheets that show the structure add a *Quadro de pilares e sapatas* table. This is pre-sizing for a first layout: the structural design belongs to a licensed engineer. If the family cannot pay for one, free technical assistance (ATHIS, Lei 11.888/2008) is available through the municipality, CAU or CREA; see [where to find free help](proposta.md#onde-encontrar-ajuda-gratuita).
 
+### Materials catalogue and construction planning
+
+**Quantitativos** (on the *Saída* tab) opens *Quantitativos e planejamento de obra*, a tabbed hub covering the whole path from model to site (Section H / M9) plus a one-click **Pacote de obra (PDF)** export combining all 5 A3 planning sheets:
+
+- **Quantitativos:** consolidated masonry, lintels, mortars and room-finishes takeoff.
+- **Catálogo de materiais (#135):** every material detected across structure, masonry, mortars, roof, plumbing and electrical calculations, with Brazilian standards, density, strength, waste % and mix ratios; edits synchronize with live calculations and persist in `.trazo`.
+- **Lista de compras (#136):** consolidated bill of materials across all disciplines grouped into 8 execution stages and converted to commercial units (50 kg cement bags, 20 kg lime bags, m³ sand/gravel by catalogue mix, 12 m steel bars, 100 m wire rolls, 50 m conduit coils, 6 m PVC pipes and 18 L paint cans).
+- **Orçamento e SINAPI (#87):** per-stage cost estimate (materials + optional labour + BDI), cost per m², ABC curve, inline unit-price editing and direct SINAPI CSV/TSV table import.
+- **Cronograma (#137):** CPM schedule sized by SINAPI crew productivities with mandatory NBR 14931 curing (7 days) and shoring (21 days) waits, Gantt chart and weekly physical-financial S-curve.
+- **Segurança e licenças (#138):** per-stage NR-18 / NR-10 / NR-35 safety checklists and PPE tailored to the model, plus ART/RRT, *alvará*, CNO/INSS, *habite-se*, ATHIS (Lei 11.888/2008) and Defesa Civil (199).
+- **Diário de obra (#139):** record completion %, notes, actual spend and site photo attachments per stage, compared side by side with the planned schedule and budget.
+
 ### Safety and limits
 
 **Segurança** (on the *Estrutura* and *Elétrica* tabs) shows every engineering check as a traffic light:

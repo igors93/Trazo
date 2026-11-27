@@ -184,11 +184,11 @@ pub(super) fn catalogue() -> Vec<Tool> {
         ),
         tool(
             "planejamento_obra",
-            "Planejamento de obra: materiais, compras, orçamento, cronograma e segurança NR-18",
-            "Planejamento completo de obra (seção H): catálogo editável de materiais (#135), lista de compras por etapa (#136), orçamento com curva ABC e importação SINAPI (#87), cronograma físico-financeiro com cura/escoramento (#137), guia de segurança NR-18/NR-10/NR-35 e licenças ART/RRT/alvará/habite-se (#138), e exportação do pacote completo em 1 clique (pacote_obra).",
+            "Planejamento de obra: materiais, compras, orçamento, cronograma, NR-18 e diário",
+            "Planejamento completo de obra (seção H): catálogo editável de materiais (#135), lista de compras por etapa (#136), orçamento com curva ABC e importação SINAPI (#87), cronograma físico-financeiro com cura/escoramento (#137), guia de segurança NR-18/NR-10/NR-35 e licenças ART/RRT/alvará/habite-se (#138), pacote completo em 1 clique (pacote_obra) e diário de obra com fotos, notas e comparação previsto × realizado (#139).",
             merge(
                 json!({
-                    "acao":choices(&["catalogo_materiais","editar_material","restaurar_material","lista_compras","orcamento","editar_preco","configurar_orcamento","importar_sinapi","cronograma","configurar_cronograma","seguranca_licencas","marcar_checklist","pacote_obra"]),
+                    "acao":choices(&["catalogo_materiais","editar_material","restaurar_material","lista_compras","orcamento","editar_preco","configurar_orcamento","importar_sinapi","cronograma","configurar_cronograma","seguranca_licencas","marcar_checklist","pacote_obra","diario_obra","registrar_avanco","remover_registro"]),
                     "material_id":string("Id do material no catálogo (ex.: concrete_structural, block_default, mortar_laying)."),
                     "etapa":choices(&["preliminares","fundacoes","estrutura","alvenaria","cobertura","instalacoes","reboco","acabamentos"]),
                     "nome":string("Nome personalizado do material."),
@@ -216,6 +216,13 @@ pub(super) fn catalogue() -> Vec<Tool> {
                     "eletricistas":integer("Número de eletricistas (1 a 4)."),
                     "encanadores":integer("Número de encanadores (1 a 4)."),
                     "data_inicio":string("Data prevista de início (YYYY-MM-DD)."),
+                    "data":string("Data do registro no diário de obra (YYYY-MM-DD)."),
+                    "avanco_pct":number("Avanço físico acumulado da etapa (0 a 100%)."),
+                    "gasto_brl":number("Gasto real anotado no registro (R$)."),
+                    "nota":string("Anotação do diário de obra."),
+                    "fotos":{"type":"array","items":{"type":"string"},"description":"Caminhos ou descrições das fotos anexadas."},
+                    "dia_referencia":integer("Dia útil de referência para comparar previsto × realizado."),
+                    "registro_id":integer("Id do registro para remover_registro."),
                     "formato":choices(&["csv","svg","pdf"]),
                     "caminho":string("Opcional: caminho de arquivo para exportação ou importação SINAPI.")
                 }),

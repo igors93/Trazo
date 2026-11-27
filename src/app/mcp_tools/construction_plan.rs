@@ -11,6 +11,7 @@ use crate::{
     domain::construction::{
         cost::{cost_estimate_csv, cost_estimate_svg, edit_unit_price, format_brl},
         materials::{MaterialOverride, materials_catalogue_csv, materials_catalogue_svg},
+        progress::{add_progress_entry, progress_log_csv, progress_log_svg, remove_progress_entry},
         safety_guide::{export_construction_bundle_pdf, safety_permits_svg, set_safety_check},
         schedule::{construction_schedule_csv, construction_schedule_gantt_svg},
         shopping::{ConstructionStage, stage_shopping_list_csv, stage_shopping_list_svg},
@@ -717,8 +718,166 @@ impl FloorPlanApp {
                     "paginas": pages,
                 })))
             }
+            "diario_obra" => {
+                if let Some(day) = super::optional_count(args, "dia_referencia")? {
+                    self.project.construction.progress_reference_day = day as u32;
+                }
+                let report = self.project.progress_report();
+                let exported = if let Some(fmt) = text(args, "formato").map(|f| f.to_lowercase()) {
+                    let ext = match fmt.as_str() {
+                        "csv" => "csv",
+                        "svg" => "svg",
+                        "pdf" => "pdf",
+                        other => {
+                            return Err(format!(
+                                "Formato '{other}' inválido; use csv, svg ou pdf."
+                            ));
+                        }
+                    };
+                    let path = super::resolve_path(
+                        text(args, "caminho").as_deref(),
+                        &format!("{}-diario-obra.{ext}", super::file_stem(&self.project)),
+                    )?;
+                    super::ensure_parent(&path)?;
+                    match ext {
+                        "csv" => std::fs::write(&path, progress_log_csv(&self.project))
+                            .map_err(|e| e.to_string())?,
+                        "svg" => {
+                            let svg = progress_log_svg(&self.project);
+                            crate::domain::views::export_view_svg(&svg, &path)?;
+                        }
+                        _ => {
+                            let svg = progress_log_svg(&self.project);
+                            crate::domain::views::export_view_pdf(&svg, &path)?;
+                        }
+                    }
+                    Some(path.display().to_string())
+                } else {
+                    None
+                };
+
+                let stages_json: Vec<Value> = report
+                    .stages
+                    .iter()
+                    .map(|st| {
+                        json!({
+                            "etapa": st.stage.key(),
+                            "rotulo": st.stage.label(),
+                            "previsto_pct": super::round(st.planned_pct, 1),
+                            "realizado_pct": super::round(st.actual_pct, 1),
+                            "desvio_pp": super::round(st.variance_pct, 1),
+                            "situacao": st.status.key(),
+                            "orcado_brl": super::round(st.budget_brl, 2),
+                            "valor_agregado_brl": super::round(st.earned_budget_brl, 2),
+                            "gasto_real_brl": super::round(st.actual_cost_brl, 2),
+                            "desvio_custo_brl": super::round(st.cost_variance_brl, 2),
+                            "registros": st.entry_count,
+                            "fotos": st.photo_count,
+                            "ultima_data": st.last_date,
+                            "ultima_nota": st.last_note,
+                        })
+                    })
+                    .collect();
+                let entries_json: Vec<Value> = report
+                    .entries
+                    .iter()
+                    .map(|e| {
+                        json!({
+                            "id": e.id,
+                            "data": e.date,
+                            "etapa": e.stage.key(),
+                            "avanco_pct": e.reported_pct,
+                            "nota": e.note,
+                            "fotos": e.photo_paths,
+                            "gasto_brl": e.actual_cost_brl,
+                        })
+                    })
+                    .collect();
+
+                let msg = match &exported {
+                    Some(p) => format!("{} Exportado em {p}.", report.plain_summary),
+                    None => report.plain_summary.clone(),
+                };
+                Ok(ToolOutput::ok(msg).with_structured(json!({
+                    "resumo": report.plain_summary,
+                    "dia_referencia": report.reference_workday,
+                    "dias_planejados": report.total_planned_workdays,
+                    "previsto_geral_pct": super::round(report.overall_planned_pct, 1),
+                    "realizado_geral_pct": super::round(report.overall_actual_pct, 1),
+                    "desvio_geral_pp": super::round(report.overall_variance_pct, 1),
+                    "orcado_total_brl": super::round(report.overall_budget_brl, 2),
+                    "gasto_total_brl": super::round(report.overall_actual_cost_brl, 2),
+                    "total_registros": report.total_entries,
+                    "total_fotos": report.total_photos,
+                    "arquivo_exportado": exported,
+                    "etapas": stages_json,
+                    "registros": entries_json,
+                })))
+            }
+            "registrar_avanco" => {
+                let raw_stage = text(args, "etapa")
+                    .ok_or("Informe 'etapa' (ex.: preliminares, fundacoes, estrutura, alvenaria, cobertura, instalacoes, reboco ou acabamentos).")?;
+                let stage = ConstructionStage::parse(&raw_stage)
+                    .ok_or_else(|| format!("Etapa '{raw_stage}' inválida."))?;
+                let date = text(args, "data").unwrap_or_else(|| "2026-11-27".to_owned());
+                let pct = number(args, "avanco_pct")?.ok_or("Informe 'avanco_pct' (0 a 100).")?;
+                let note = text(args, "nota").unwrap_or_default();
+                let cost_brl = number(args, "gasto_brl")?;
+                let ref_day = super::optional_count(args, "dia_referencia")?;
+                let photos: Vec<String> = args
+                    .get("fotos")
+                    .and_then(Value::as_array)
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_owned)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                self.apply_change(None, |project| {
+                    if let Some(d) = ref_day {
+                        project.construction.progress_reference_day = d as u32;
+                    }
+                    let id = add_progress_entry(
+                        project,
+                        date.clone(),
+                        stage,
+                        pct,
+                        note.clone(),
+                        photos.clone(),
+                        cost_brl,
+                    )?;
+                    let report = project.progress_report();
+                    Ok(Change::new(format!(
+                        "Registro #{id} salvo no diário de obra ({} — {:.0} %). {}",
+                        stage.short_label(),
+                        pct,
+                        report.plain_summary
+                    ))
+                    .data(json!({
+                        "registro_id": id,
+                        "realizado_geral_pct": super::round(report.overall_actual_pct, 1),
+                        "previsto_geral_pct": super::round(report.overall_planned_pct, 1),
+                        "total_fotos": report.total_photos,
+                    })))
+                })
+            }
+            "remover_registro" => {
+                let id = super::optional_count(args, "registro_id")?
+                    .ok_or("Informe 'registro_id' para remover do diário de obra.")?;
+                self.apply_change(Some("Registro não encontrado."), |project| {
+                    let removed = remove_progress_entry(project, id);
+                    Ok(Change::new(if removed {
+                        format!("Registro #{id} removido do diário de obra.")
+                    } else {
+                        format!("Registro #{id} não encontrado no diário de obra.")
+                    })
+                    .data(json!({ "registro_id": id, "removido": removed })))
+                })
+            }
             other => Err(format!(
-                "Ação '{other}' desconhecida em planejamento_obra. Use: catalogo_materiais, editar_material, restaurar_material, lista_compras, orcamento, editar_preco, configurar_orcamento, importar_sinapi, cronograma, configurar_cronograma, seguranca_licencas, marcar_checklist ou pacote_obra."
+                "Ação '{other}' desconhecida em planejamento_obra. Use: catalogo_materiais, editar_material, restaurar_material, lista_compras, orcamento, editar_preco, configurar_orcamento, importar_sinapi, cronograma, configurar_cronograma, seguranca_licencas, marcar_checklist, pacote_obra, diario_obra, registrar_avanco ou remover_registro."
             )),
         }
     }
@@ -821,5 +980,34 @@ mod tests {
         );
         assert!(!mark.is_error, "{}", mark.text);
         assert_eq!(mark.structured.unwrap()["conferidos"].as_u64().unwrap(), 1);
+
+        let log_add = app.run_mcp_tool(
+            "planejamento_obra",
+            &json!({
+                "acao": "registrar_avanco",
+                "etapa": "fundacoes",
+                "data": "2026-11-27",
+                "avanco_pct": 75.0,
+                "gasto_brl": 9500.0,
+                "dia_referencia": 10,
+                "nota": "Sapatas concretadas",
+                "fotos": ["fotos/sapatas-01.jpg"]
+            }),
+        );
+        assert!(!log_add.is_error, "{}", log_add.text);
+        let lid = log_add.structured.unwrap()["registro_id"].as_u64().unwrap();
+
+        let diary = app.run_mcp_tool("planejamento_obra", &json!({ "acao": "diario_obra" }));
+        assert!(!diary.is_error, "{}", diary.text);
+        let ddata = diary.structured.unwrap();
+        assert_eq!(ddata["total_registros"].as_u64().unwrap(), 1);
+        assert_eq!(ddata["total_fotos"].as_u64().unwrap(), 1);
+
+        let rem = app.run_mcp_tool(
+            "planejamento_obra",
+            &json!({ "acao": "remover_registro", "registro_id": lid }),
+        );
+        assert!(!rem.is_error, "{}", rem.text);
+        assert!(rem.structured.unwrap()["removido"].as_bool().unwrap());
     }
 }

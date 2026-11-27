@@ -891,6 +891,16 @@ pub struct ConstructionPlan {
     /// Checked NR-18 site-safety item ids (#138).
     #[serde(skip_serializing_if = "BTreeSet::is_empty")]
     pub checked_safety_items: BTreeSet<String>,
+    /// Current elapsed workday used for planned-vs-actual comparison (#139).
+    #[serde(skip_serializing_if = "is_zero_u32")]
+    pub progress_reference_day: u32,
+    /// Site progress diary entries with photos, notes and actual costs (#139).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub progress_log: Vec<super::progress::ProgressEntry>,
+}
+
+fn is_zero_u32(v: &u32) -> bool {
+    *v == 0
 }
 
 impl ConstructionPlan {
@@ -899,6 +909,8 @@ impl ConstructionPlan {
             && self.cost.is_default()
             && self.schedule.is_default()
             && self.checked_safety_items.is_empty()
+            && self.progress_reference_day == 0
+            && self.progress_log.is_empty()
     }
 }
 

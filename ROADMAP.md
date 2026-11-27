@@ -90,7 +90,7 @@ Engineering features follow these rules. They apply to everything in milestones 
 | Structure (#92–#94, #105–#117, #143–#147, #150) | ✅ Complete from foundation to roof (M4 & M5): columns/beams/slabs/footings, 2D plane-frame analysis with NBR 6120/6123/8681 combinations, coupled slab+beam grid analogy, overlays, What-if, background cache, reinforcement & steel schedule, lintels/sills & NBR 16868 masonry, SPT & 4-way foundation study, ground beams & strip footings, boundary balance beams, per-wall sloped tops, timber roofs (mono-pitch/gable/hip/trusses/overhangs/uplift), timber posts & eave beams, stairs/balconies/cantilevers, tall-wall wind/sliding/bolts/ties/jambs and the end-to-end gourmet reference project (`examples/area-gourmet.json`) |
 | Discipline views (#96) | ✅ Architecture, electrical, plumbing, structure and foundations as views of one live model, each with its own layer, colours, ribbon tab and sheets, on synchronized linked tabs |
 | Water, sewage and rain (#72, #118–#123) | ✅ Complete (M6): plumbing points and fixture schedule, cold water with the tank and the pressure at every fixture, electric, gas and solar hot water, sewage with traps, boxes and vents, septic tank, filter and soakaways against wells and boundaries, rainwater with a reuse cistern and the neighbour and pool warnings, and the isometric and riser diagrams |
-| Simulation, materials and planning | 🟡 Simulation core (M4: #94, #105–#109) complete; materials catalogue, costs and construction schedule remain |
+| Simulation, materials and planning | ✅ Simulation core (M4: #94, #105–#109) and construction planning (M9: #135–#139, #87) complete: editable model-detected materials catalogue, stage shopping list with mix/unit conversions, cost estimate with ABC curve & SINAPI CSV/TSV import, CPM schedule with curing/shoring waits & physical-financial S-curve, per-stage NR-18 safety checklists & permits guide, one-click M9 bundle PDF and site progress diary |
 | AI (#46–#52, #74–#76) | 🟡 45 MCP tools (including synchronized tabs/views, floors, cross-discipline dependencies, regional utility/soil profiles, beam-on-beam supports and target `projeto_id` guard), real-time sync, tunnel token; no approval or read-only mode |
 | Experience (#65–#69) | 🟡 Synchronized multi-view tabs (#95) with `.trazo` workspace persistence shipped; levels, guided flows and English interface not started |
 
@@ -686,12 +686,12 @@ Worth prototyping when the core is solid: #85, #86, #109, #139.
 
 | # | Item | Priority | Size | Milestone | Status |
 | --- | --- | --- | --- | --- | --- |
-| 135 | Materials catalogue: properties of concretes, steels, blocks, mortars, timbers, tiles, pipes and wires, detected from the model and used by every calculation; editable | P0 | M | M9 | 🟡 Masonry, wall layers and finishes have their own materials |
-| 136 | Shopping list by construction stage from every discipline, with waste and unit conversion (cement bags, sand and gravel by mix) | P1 | M | M9 | ⬜ |
-| 137 | Construction schedule: stages, dependencies, curing and shoring times, crews (SINAPI productivity) and a physical-financial timeline | P1 | L | M9 | ⬜ |
-| 138 | Site safety and permits guide: a checklist per stage (NR-18: excavations, shoring, scaffolding, protective equipment) and what needs a professional or a permit (ART or RRT, *alvará*, *habite-se*) | P0 | M | M9 | ⬜ |
-| 87 | Cost estimate from the quantities, with editable price tables (SINAPI import) | P1 | M | M9 | ⬜ |
-| 139 | Site progress log: photos and notes per stage, compared with the plan | P2 | M | Exploratory | ⬜ |
+| 135 | Materials catalogue: properties of concretes, steels, blocks, mortars, timbers, tiles, pipes and wires, detected from the model and used by every calculation; editable | P0 | M | M9 | ✅ |
+| 136 | Shopping list by construction stage from every discipline, with waste and unit conversion (cement bags, sand and gravel by mix) | P1 | M | M9 | ✅ |
+| 137 | Construction schedule: stages, dependencies, curing and shoring times, crews (SINAPI productivity) and a physical-financial timeline | P1 | L | M9 | ✅ |
+| 138 | Site safety and permits guide: a checklist per stage (NR-18: excavations, shoring, scaffolding, protective equipment) and what needs a professional or a permit (ART or RRT, *alvará*, *habite-se*) | P0 | M | M9 | ✅ |
+| 87 | Cost estimate from the quantities, with editable price tables (SINAPI import) | P1 | M | M9 | ✅ |
+| 139 | Site progress log: photos and notes per stage, compared with the plan | P2 | M | Exploratory | ✅ |
 
 ### I. AI assistants
 

@@ -6,6 +6,7 @@
 pub mod cost;
 pub mod materials;
 pub mod paging;
+pub mod progress;
 pub mod roof_plan;
 pub mod safety_guide;
 pub mod schedule;

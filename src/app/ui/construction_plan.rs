@@ -13,6 +13,10 @@ use crate::domain::construction::{
     materials::{
         MaterialCategory, MaterialOverride, materials_catalogue_csv, materials_catalogue_svg,
     },
+    progress::{
+        StageProgressStatus, add_progress_entry, progress_log_csv, progress_log_svg,
+        remove_progress_entry,
+    },
     safety_guide::{
         SafetyPriority, export_construction_bundle_pdf, safety_permits_svg, set_safety_check,
     },
@@ -1182,5 +1186,300 @@ impl FloorPlanApp {
                 }
             }
         }
+    }
+
+    /// Tab 6: Site progress log with photos, notes and plan-vs-actual comparison (#139).
+    pub(super) fn site_progress_tab(&mut self, ui: &mut egui::Ui) {
+        let stage_id = egui::Id::new("trazo_progress_form_stage");
+        let date_id = egui::Id::new("trazo_progress_form_date");
+        let pct_id = egui::Id::new("trazo_progress_form_pct");
+        let cost_id = egui::Id::new("trazo_progress_form_cost");
+        let note_id = egui::Id::new("trazo_progress_form_note");
+        let photos_id = egui::Id::new("trazo_progress_form_photos");
+
+        let mut form_stage: ConstructionStage = ui
+            .ctx()
+            .data(|d| d.get_temp(stage_id))
+            .unwrap_or(ConstructionStage::SiteAndSettingOut);
+        let mut form_date: String = ui
+            .ctx()
+            .data(|d| d.get_temp(date_id))
+            .unwrap_or_else(|| "2026-11-27".to_owned());
+        let mut form_pct: f64 = ui.ctx().data(|d| d.get_temp(pct_id)).unwrap_or(50.0);
+        let mut form_cost: f64 = ui.ctx().data(|d| d.get_temp(cost_id)).unwrap_or(0.0);
+        let mut form_note: String = ui.ctx().data(|d| d.get_temp(note_id)).unwrap_or_default();
+        let mut form_photos: Vec<String> =
+            ui.ctx().data(|d| d.get_temp(photos_id)).unwrap_or_default();
+
+        let report = self.project.progress_report();
+        let mut ref_day = self.project.construction.progress_reference_day;
+        let max_day = report.total_planned_workdays.max(1);
+        let mut ref_day_changed = false;
+        let mut add_clicked = false;
+        let mut pick_photos = false;
+        let mut remove_id: Option<u64> = None;
+        let mut export_kind: Option<&'static str> = None;
+
+        ui.label(
+            RichText::new(&report.plain_summary)
+                .font(strong(12.0))
+                .color(TEXT_1),
+        );
+        ui.add_space(4.0);
+
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Dia útil de referência (cronograma):");
+            ref_day_changed |= ui
+                .add(egui::Slider::new(&mut ref_day, 0..=max_day).suffix(" d"))
+                .changed();
+            ui.separator();
+            if secondary_button(ui, "Exportar PDF").clicked() {
+                export_kind = Some("pdf");
+            }
+            if secondary_button(ui, "Exportar SVG").clicked() {
+                export_kind = Some("svg");
+            }
+            if secondary_button(ui, "Exportar CSV").clicked() {
+                export_kind = Some("csv");
+            }
+        });
+        ui.separator();
+
+        // Compact form to add a new progress entry
+        ui.label(RichText::new("Novo registro no diário de obra").font(strong(12.5)));
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Etapa:");
+            egui::ComboBox::from_id_salt("progress_stage_combo")
+                .selected_text(form_stage.short_label())
+                .show_ui(ui, |ui| {
+                    for st in ConstructionStage::ALL {
+                        ui.selectable_value(&mut form_stage, st, st.label());
+                    }
+                });
+            ui.label("Data:");
+            ui.add(egui::TextEdit::singleline(&mut form_date).desired_width(88.0));
+            ui.label("Avanço:");
+            ui.add(
+                egui::DragValue::new(&mut form_pct)
+                    .range(0.0..=100.0)
+                    .speed(1.0)
+                    .max_decimals(0)
+                    .suffix(" %"),
+            );
+            ui.label("Gasto (R$):");
+            ui.add(
+                egui::DragValue::new(&mut form_cost)
+                    .range(0.0..=5_000_000.0)
+                    .speed(50.0)
+                    .max_decimals(2),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
+            ui.label("Nota:");
+            ui.add(
+                egui::TextEdit::singleline(&mut form_note)
+                    .hint_text(
+                        "Ex.: Sapatas concretadas, clima bom, entrega de 40 sacos de cimento",
+                    )
+                    .desired_width(360.0),
+            );
+            if secondary_button(ui, &format!("Anexar fotos ({})", form_photos.len())).clicked() {
+                pick_photos = true;
+            }
+            if secondary_button(ui, "Registrar avanço").clicked() {
+                add_clicked = true;
+            }
+        });
+        if !form_photos.is_empty() {
+            ui.label(
+                RichText::new(format!("Fotos anexadas: {}", form_photos.join(" · ")))
+                    .size(11.0)
+                    .color(MUTED),
+            );
+        }
+        ui.separator();
+
+        egui::ScrollArea::both()
+            .id_salt("site_progress_scroll")
+            .show(ui, |ui| {
+                ui.label(RichText::new("1. Previsto × Realizado por etapa").font(strong(13.0)));
+                egui::Grid::new("progress_stages_grid")
+                    .striped(true)
+                    .spacing([10.0, 4.0])
+                    .show(ui, |ui| {
+                        for h in [
+                            "Etapa",
+                            "Previsto",
+                            "Realizado",
+                            "Desvio",
+                            "Situação",
+                            "Gasto / Orçado",
+                            "Fotos",
+                        ] {
+                            ui.label(RichText::new(h).font(strong(11.5)).color(TEXT_2));
+                        }
+                        ui.end_row();
+                        for st in &report.stages {
+                            let col = match st.status {
+                                StageProgressStatus::Completed | StageProgressStatus::Ahead => {
+                                    egui::Color32::from_rgb(27, 94, 32)
+                                }
+                                StageProgressStatus::Behind => {
+                                    egui::Color32::from_rgb(183, 28, 28)
+                                }
+                                StageProgressStatus::OnTrack => {
+                                    egui::Color32::from_rgb(21, 101, 192)
+                                }
+                                StageProgressStatus::NotStarted => MUTED,
+                            };
+                            ui.label(RichText::new(st.stage.short_label()).font(strong(11.5)));
+                            ui.label(format!("{:.0} %", st.planned_pct));
+                            ui.label(
+                                RichText::new(format!("{:.0} %", st.actual_pct)).font(strong(11.5)),
+                            );
+                            ui.label(format!("{:+.0} pp", st.variance_pct));
+                            ui.label(RichText::new(st.status.label()).color(col));
+                            ui.label(format!(
+                                "{} / {}",
+                                format_brl(st.actual_cost_brl),
+                                format_brl(st.budget_brl)
+                            ));
+                            ui.label(st.photo_count.to_string());
+                            ui.end_row();
+                        }
+                    });
+
+                ui.add_space(10.0);
+                ui.label(
+                    RichText::new(format!("2. Registros do diário ({})", report.entries.len()))
+                        .font(strong(13.0)),
+                );
+                if report.entries.is_empty() {
+                    ui.label(
+                        RichText::new(
+                            "Nenhum registro ainda. Use o formulário acima para registrar avanço, gastos e fotos do canteiro.",
+                        )
+                        .color(MUTED),
+                    );
+                } else {
+                    for e in report.entries.iter().rev() {
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                RichText::new(format!(
+                                    "#{} · {} · {} ({:.0} %)",
+                                    e.id,
+                                    e.date,
+                                    e.stage.short_label(),
+                                    e.reported_pct
+                                ))
+                                .font(strong(11.5)),
+                            );
+                            if let Some(c) = e.actual_cost_brl {
+                                ui.label(RichText::new(format_brl(c)).color(TEXT_2));
+                            }
+                            if !e.photo_paths.is_empty() {
+                                ui.label(
+                                    RichText::new(format!("📷 {} foto(s)", e.photo_paths.len()))
+                                        .size(11.0)
+                                        .color(TEXT_2),
+                                )
+                                .on_hover_text(e.photo_paths.join("\n"));
+                            }
+                            if ui.small_button("Remover").clicked() {
+                                remove_id = Some(e.id);
+                            }
+                        });
+                        if !e.note.is_empty() {
+                            ui.label(RichText::new(&e.note).size(11.5).color(TEXT_2));
+                        }
+                        ui.add_space(3.0);
+                    }
+                }
+            });
+
+        if pick_photos
+            && let Some(paths) = rfd::FileDialog::new()
+                .add_filter("Imagens", &["jpg", "jpeg", "png", "webp"])
+                .pick_files()
+        {
+            for p in paths {
+                let s = p.display().to_string();
+                if !form_photos.contains(&s) {
+                    form_photos.push(s);
+                }
+            }
+        }
+        if ref_day_changed {
+            let before = self.project.clone();
+            self.project.construction.progress_reference_day = ref_day;
+            self.record_change(before);
+        }
+        if add_clicked {
+            let before = self.project.clone();
+            let cost_opt = (form_cost > 0.0).then_some(form_cost);
+            match add_progress_entry(
+                &mut self.project,
+                form_date.clone(),
+                form_stage,
+                form_pct,
+                form_note.clone(),
+                form_photos.clone(),
+                cost_opt,
+            ) {
+                Ok(id) => {
+                    self.record_change(before);
+                    self.message = format!("Registro #{id} adicionado ao diário de obra.");
+                    form_note.clear();
+                    form_photos.clear();
+                    form_cost = 0.0;
+                }
+                Err(err) => self.message = err,
+            }
+        }
+        if let Some(id) = remove_id {
+            let before = self.project.clone();
+            if remove_progress_entry(&mut self.project, id) {
+                self.record_change(before);
+                self.message = format!("Registro #{id} removido do diário de obra.");
+            }
+        }
+        if let Some(kind) = export_kind {
+            let (label, ext, filename) = match kind {
+                "csv" => ("Planilha CSV", "csv", "diario-obra.csv"),
+                "pdf" => ("Documento PDF", "pdf", "diario-obra.pdf"),
+                _ => ("Desenho SVG", "svg", "diario-obra.svg"),
+            };
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter(label, &[ext])
+                .set_file_name(filename)
+                .save_file()
+            {
+                let res = match kind {
+                    "csv" => std::fs::write(&path, progress_log_csv(&self.project))
+                        .map_err(|e| e.to_string()),
+                    "pdf" => {
+                        let svg = progress_log_svg(&self.project);
+                        crate::domain::views::export_view_pdf(&svg, &path)
+                    }
+                    _ => {
+                        let svg = progress_log_svg(&self.project);
+                        crate::domain::views::export_view_svg(&svg, &path)
+                    }
+                };
+                self.message = match res {
+                    Ok(()) => format!("Diário de obra exportado em {}", path.display()),
+                    Err(error) => format!("Erro ao exportar diário de obra: {error}"),
+                };
+            }
+        }
+
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(stage_id, form_stage);
+            d.insert_temp(date_id, form_date);
+            d.insert_temp(pct_id, form_pct);
+            d.insert_temp(cost_id, form_cost);
+            d.insert_temp(note_id, form_note);
+            d.insert_temp(photos_id, form_photos);
+        });
     }
 }

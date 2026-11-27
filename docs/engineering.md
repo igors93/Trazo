@@ -611,6 +611,9 @@ Further checks live next to their modules: `nbr_5410_minimums_for_lighting_and_o
 
 ## Known limitations
 
+- **Materials catalogue (#135):** standard concrete mix recipes (C20: 315 kg/m³ cement, 0.62 m³ sand, 0.84 m³ gravel; C25: 360 / 0.58 / 0.82; C30: 410 / 0.56 / 0.80) and mortar recipes (laying 1:2:8, plaster 1:2:6, grout 1:2:2) follow ABNT NBR 12655 / TCPO / SINAPI reference figures and are fully editable per project; real site batching must be validated with local aggregates and lab mix design (*traço experimental*).
+- **Stage shopping list, SINAPI cost estimate, schedule and NR-18 safety (#136, #87, #137, #138, #139):** commercial conversions round up to standard Brazilian packaging (50 kg cement bags, 20 kg lime bags, 12 m CA-50 bars, 100 m wire rolls, 50 m conduit coils, 6 m PVC bars, 18 L paint cans). Reference unit prices and SINAPI crew productivities are parametric estimates for small residential works and must be replaced with local quotes or the state's official SINAPI CSV before committing funds. CPM schedules enforce ABNT NBR 14931 minimum 7-day wet curing and 21-day slab/beam shoring waits; NR-18/NR-10/NR-35 checklists and permit notes (ART/RRT, *alvará*, CNO/INSS, *habite-se*) never replace a licensed professional or site safety officer.
+
 - Beams are analysed on pinned supports; frame action with the columns arrives with #94.
 - Columns are sized for axial load with a position factor; no slenderness or biaxial bending check.
 - Solid-slab tables assume four simply supported edges. Edge fixity, openings, torsion reinforcement and compatibility between adjacent panels still require the licensed engineer's model; lattice slabs require manufacturer data.
