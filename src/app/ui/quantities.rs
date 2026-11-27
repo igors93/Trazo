@@ -17,6 +17,7 @@ enum ConstructionHubTab {
     Shopping,
     Cost,
     Schedule,
+    SafetyPermits,
 }
 
 impl FloorPlanApp {
@@ -27,6 +28,7 @@ impl FloorPlanApp {
         let mut open = true;
         let mut export_csv = false;
         let mut export_sheet: Option<bool> = None; // Some(true) = PDF, Some(false) = SVG
+        let mut export_bundle = false;
         let mut settings_changed = false;
 
         let tab_id = egui::Id::new("trazo_construction_hub_tab");
@@ -76,6 +78,15 @@ impl FloorPlanApp {
                         ConstructionHubTab::Schedule,
                         "Cronograma",
                     );
+                    ui.selectable_value(
+                        &mut active_tab,
+                        ConstructionHubTab::SafetyPermits,
+                        "Segurança e licenças",
+                    );
+                    ui.separator();
+                    if secondary_button(ui, "Pacote de obra (PDF)").clicked() {
+                        export_bundle = true;
+                    }
                 });
                 ui.separator();
 
@@ -188,6 +199,9 @@ impl FloorPlanApp {
                     ConstructionHubTab::Schedule => {
                         self.construction_schedule_tab(ui);
                     }
+                    ConstructionHubTab::SafetyPermits => {
+                        self.safety_and_permits_tab(ui);
+                    }
                 }
             });
 
@@ -198,6 +212,9 @@ impl FloorPlanApp {
 
         if settings_changed {
             self.mark_edited_outside_history();
+        }
+        if export_bundle {
+            self.export_construction_bundle_dialog();
         }
         if export_csv
             && let Some(path) = rfd::FileDialog::new()

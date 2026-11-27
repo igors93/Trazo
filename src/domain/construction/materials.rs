@@ -4,7 +4,7 @@
 //! overrides on `Project::construction`, propagates engineering property edits
 //! back to the model and exports CSV / A3 SVG.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};
@@ -888,11 +888,17 @@ pub struct ConstructionPlan {
     /// Crew size and calendar settings for the construction schedule (#137).
     #[serde(skip_serializing_if = "super::schedule::ScheduleSettings::is_default")]
     pub schedule: super::schedule::ScheduleSettings,
+    /// Checked NR-18 site-safety item ids (#138).
+    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
+    pub checked_safety_items: BTreeSet<String>,
 }
 
 impl ConstructionPlan {
     pub fn is_default(&self) -> bool {
-        self.material_overrides.is_empty() && self.cost.is_default() && self.schedule.is_default()
+        self.material_overrides.is_empty()
+            && self.cost.is_default()
+            && self.schedule.is_default()
+            && self.checked_safety_items.is_empty()
     }
 }
 

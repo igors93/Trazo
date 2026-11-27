@@ -13,6 +13,9 @@ use crate::domain::construction::{
     materials::{
         MaterialCategory, MaterialOverride, materials_catalogue_csv, materials_catalogue_svg,
     },
+    safety_guide::{
+        SafetyPriority, export_construction_bundle_pdf, safety_permits_svg, set_safety_check,
+    },
     schedule::{ScheduleTaskKind, construction_schedule_csv, construction_schedule_gantt_svg},
     shopping::{ConstructionStage, stage_shopping_list_csv, stage_shopping_list_svg},
 };
@@ -1019,5 +1022,165 @@ impl FloorPlanApp {
             Ok(()) => format!("Cronograma exportado em {}", path.display()),
             Err(error) => format!("Erro ao exportar cronograma: {error}"),
         };
+    }
+
+    /// One-click M9 bundle PDF export (catalogue + stage shopping + cost + Gantt + NR-18 safety).
+    pub(super) fn export_construction_bundle_dialog(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Documento PDF", &["pdf"])
+            .set_file_name("pacote-planejamento-obra.pdf")
+            .save_file()
+        else {
+            return;
+        };
+        self.message = match export_construction_bundle_pdf(&self.project, &path) {
+            Ok(pages) => format!(
+                "Pacote completo de obra ({pages} páginas A3: catálogo, compras, orçamento, cronograma e segurança NR-18) salvo em {}",
+                path.display()
+            ),
+            Err(error) => format!("Erro ao exportar pacote de obra: {error}"),
+        };
+    }
+
+    /// Tab 5: Site safety (NR-18 / NR-10 / NR-35) checklists & Brazilian permits guide (#138).
+    pub(super) fn safety_and_permits_tab(&mut self, ui: &mut egui::Ui) {
+        let guide = self.project.site_safety_and_permits();
+        let mut toggle: Option<(String, bool)> = None;
+        let mut export_kind: Option<&'static str> = None;
+
+        ui.label(
+            RichText::new(format!(
+                "Guia de segurança no canteiro (NR-18, NR-10, NR-35 e EPIs) e licenças obrigatórias (ART/RRT, alvará, CNO e habite-se) · {}/{} itens conferidos.",
+                guide.completed_checks, guide.total_checks
+            ))
+            .font(strong(12.0)),
+        );
+        ui.label(RichText::new(&guide.help_guidance).size(11.5).color(TEXT_2));
+        ui.add_space(4.0);
+
+        ui.horizontal_wrapped(|ui| {
+            if secondary_button(ui, "Exportar guia (PDF)").clicked() {
+                export_kind = Some("pdf");
+            }
+            if secondary_button(ui, "Exportar guia (SVG)").clicked() {
+                export_kind = Some("svg");
+            }
+            ui.separator();
+            if secondary_button(ui, "Pacote completo de obra (PDF — 5 pranchas A3)").clicked() {
+                export_kind = Some("bundle");
+            }
+        });
+        ui.separator();
+
+        egui::ScrollArea::both()
+            .id_salt("safety_permits_scroll")
+            .show(ui, |ui| {
+                for alert in &guide.site_alerts {
+                    ui.label(
+                        RichText::new(format!("⚠ {alert}"))
+                            .font(strong(11.5))
+                            .color(egui::Color32::from_rgb(183, 28, 28)),
+                    );
+                    ui.add_space(3.0);
+                }
+
+                ui.label(
+                    RichText::new(
+                        "1. Checklists de segurança e EPIs por etapa (NR-18 / NR-10 / NR-35)",
+                    )
+                    .font(strong(13.0)),
+                );
+                for st in &guide.stages {
+                    ui.add_space(6.0);
+                    ui.label(RichText::new(st.stage.label()).font(strong(12.0)));
+                    ui.label(
+                        RichText::new(format!("EPIs recomendados: {}", st.ppe.join(" · ")))
+                            .size(11.0)
+                            .color(TEXT_2),
+                    );
+                    for item in &st.items {
+                        let mut val = item.checked;
+                        let badge_col = if item.priority == SafetyPriority::Critical {
+                            egui::Color32::from_rgb(183, 28, 28)
+                        } else {
+                            TEXT_2
+                        };
+                        ui.horizontal_wrapped(|ui| {
+                            if ui.checkbox(&mut val, "").changed() {
+                                toggle = Some((item.id.clone(), val));
+                            }
+                            ui.label(
+                                RichText::new(format!(
+                                    "[{} · {}]",
+                                    item.norm,
+                                    item.priority.label()
+                                ))
+                                .size(11.0)
+                                .font(strong(11.0))
+                                .color(badge_col),
+                            );
+                            ui.label(&item.text);
+                        });
+                    }
+                }
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.label(
+                    RichText::new("2. Profissional habilitado, licenças e regularização da obra")
+                        .font(strong(13.0)),
+                );
+                for p in &guide.permits {
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(format!("{} — {} ({})", p.title, p.authority, p.when_needed))
+                            .font(strong(12.0))
+                            .color(if p.mandatory {
+                                TEXT_1
+                            } else {
+                                egui::Color32::from_rgb(27, 94, 32)
+                            }),
+                    );
+                    ui.label(RichText::new(&p.why_it_matters).size(11.5).color(TEXT_2));
+                }
+            });
+
+        if let Some((id, val)) = toggle {
+            let before = self.project.clone();
+            if let Ok(msg) = set_safety_check(&mut self.project, &id, val) {
+                self.record_change(before);
+                self.message = msg;
+            }
+        }
+        if let Some(kind) = export_kind {
+            if kind == "bundle" {
+                self.export_construction_bundle_dialog();
+            } else {
+                let (label, ext, filename) = if kind == "pdf" {
+                    ("Documento PDF", "pdf", "seguranca-nr18-licencas.pdf")
+                } else {
+                    ("Desenho SVG", "svg", "seguranca-nr18-licencas.svg")
+                };
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter(label, &[ext])
+                    .set_file_name(filename)
+                    .save_file()
+                {
+                    let svg = safety_permits_svg(&self.project);
+                    let res = if kind == "pdf" {
+                        crate::domain::views::export_view_pdf(&svg, &path)
+                    } else {
+                        crate::domain::views::export_view_svg(&svg, &path)
+                    };
+                    self.message = match res {
+                        Ok(()) => format!(
+                            "Guia de segurança e licenças exportado em {}",
+                            path.display()
+                        ),
+                        Err(error) => format!("Erro ao exportar guia de segurança: {error}"),
+                    };
+                }
+            }
+        }
     }
 }

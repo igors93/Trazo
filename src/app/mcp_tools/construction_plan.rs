@@ -11,6 +11,7 @@ use crate::{
     domain::construction::{
         cost::{cost_estimate_csv, cost_estimate_svg, edit_unit_price, format_brl},
         materials::{MaterialOverride, materials_catalogue_csv, materials_catalogue_svg},
+        safety_guide::{export_construction_bundle_pdf, safety_permits_svg, set_safety_check},
         schedule::{construction_schedule_csv, construction_schedule_gantt_svg},
         shopping::{ConstructionStage, stage_shopping_list_csv, stage_shopping_list_svg},
     },
@@ -574,8 +575,150 @@ impl FloorPlanApp {
                     })))
                 })
             }
+            "seguranca_licencas" => {
+                let stage_filter = match text(args, "etapa") {
+                    Some(raw) => Some(ConstructionStage::parse(&raw).ok_or_else(|| {
+                        format!(
+                            "Etapa '{raw}' inválida. Use: preliminares, fundacoes, estrutura, alvenaria, cobertura, instalacoes, reboco ou acabamentos."
+                        )
+                    })?),
+                    None => None,
+                };
+                let guide = self.project.site_safety_and_permits();
+                let exported = if let Some(fmt) = text(args, "formato").map(|f| f.to_lowercase()) {
+                    let ext = match fmt.as_str() {
+                        "svg" => "svg",
+                        "pdf" => "pdf",
+                        other => {
+                            return Err(format!(
+                                "Formato '{other}' inválido para seguranca_licencas; use svg ou pdf."
+                            ));
+                        }
+                    };
+                    let path = super::resolve_path(
+                        text(args, "caminho").as_deref(),
+                        &format!(
+                            "{}-seguranca-nr18-licencas.{ext}",
+                            super::file_stem(&self.project)
+                        ),
+                    )?;
+                    super::ensure_parent(&path)?;
+                    let svg = safety_permits_svg(&self.project);
+                    if ext == "pdf" {
+                        crate::domain::views::export_view_pdf(&svg, &path)?;
+                    } else {
+                        crate::domain::views::export_view_svg(&svg, &path)?;
+                    }
+                    Some(path.display().to_string())
+                } else {
+                    None
+                };
+
+                let stages_json: Vec<Value> = guide
+                    .stages
+                    .iter()
+                    .filter(|s| stage_filter.is_none_or(|f| s.stage == f))
+                    .map(|st| {
+                        let items: Vec<Value> = st
+                            .items
+                            .iter()
+                            .map(|it| {
+                                json!({
+                                    "id": it.id,
+                                    "norma": it.norm,
+                                    "prioridade": it.priority.key(),
+                                    "texto": it.text,
+                                    "conferido": it.checked,
+                                })
+                            })
+                            .collect();
+                        json!({
+                            "etapa": st.stage.key(),
+                            "rotulo": st.stage.label(),
+                            "epis": st.ppe,
+                            "itens": items,
+                        })
+                    })
+                    .collect();
+                let permits_json: Vec<Value> = guide
+                    .permits
+                    .iter()
+                    .map(|p| {
+                        json!({
+                            "id": p.id,
+                            "titulo": p.title,
+                            "orgao": p.authority,
+                            "quando": p.when_needed,
+                            "motivo": p.why_it_matters,
+                            "obrigatorio": p.mandatory,
+                        })
+                    })
+                    .collect();
+
+                let msg = match &exported {
+                    Some(p) => format!(
+                        "Guia de segurança NR-18 e licenças: {}/{} itens conferidos ({} etapas, {} licenças/documentos); exportado em {p}.",
+                        guide.completed_checks,
+                        guide.total_checks,
+                        guide.stages.len(),
+                        guide.permits.len()
+                    ),
+                    None => format!(
+                        "Guia de segurança NR-18 e licenças: {}/{} itens conferidos em {} etapas e {} requisitos legais (ART/RRT, alvará, CNO, habite-se e ATHIS).",
+                        guide.completed_checks,
+                        guide.total_checks,
+                        guide.stages.len(),
+                        guide.permits.len()
+                    ),
+                };
+
+                Ok(ToolOutput::ok(msg).with_structured(json!({
+                    "conferidos": guide.completed_checks,
+                    "total_itens": guide.total_checks,
+                    "alertas_terreno": guide.site_alerts,
+                    "ajuda_gratuita": guide.help_guidance,
+                    "arquivo_exportado": exported,
+                    "etapas": stages_json,
+                    "licencas": permits_json,
+                })))
+            }
+            "marcar_checklist" => {
+                let item_id = text(args, "item_id").ok_or(
+                    "Informe 'item_id' do item de segurança NR-18 (ex.: nr18_s2_escoramento_vala).",
+                )?;
+                let checked = args
+                    .get("conferido")
+                    .map(|_| flag(args, "conferido"))
+                    .unwrap_or(true);
+                self.apply_change(None, |project| {
+                    let msg = set_safety_check(project, &item_id, checked)?;
+                    let g = project.site_safety_and_permits();
+                    Ok(Change::new(msg).data(json!({
+                        "item_id": item_id,
+                        "conferido": checked,
+                        "conferidos": g.completed_checks,
+                        "total_itens": g.total_checks,
+                    })))
+                })
+            }
+            "pacote_obra" => {
+                let path = super::resolve_path(
+                    text(args, "caminho").as_deref(),
+                    &format!("{}-pacote-obra.pdf", super::file_stem(&self.project)),
+                )?;
+                super::ensure_parent(&path)?;
+                let pages = export_construction_bundle_pdf(&self.project, &path)?;
+                Ok(ToolOutput::ok(format!(
+                    "Pacote completo de planejamento de obra ({pages} páginas A3: catálogo de materiais, compras por etapa, orçamento SINAPI, cronograma Gantt e guia NR-18/licenças) exportado em {}.",
+                    path.display()
+                ))
+                .with_structured(json!({
+                    "arquivo": path.display().to_string(),
+                    "paginas": pages,
+                })))
+            }
             other => Err(format!(
-                "Ação '{other}' desconhecida em planejamento_obra. Use: catalogo_materiais, editar_material, restaurar_material, lista_compras, orcamento, editar_preco, configurar_orcamento, importar_sinapi, cronograma ou configurar_cronograma."
+                "Ação '{other}' desconhecida em planejamento_obra. Use: catalogo_materiais, editar_material, restaurar_material, lista_compras, orcamento, editar_preco, configurar_orcamento, importar_sinapi, cronograma, configurar_cronograma, seguranca_licencas, marcar_checklist ou pacote_obra."
             )),
         }
     }
@@ -658,5 +801,25 @@ mod tests {
         let sc = sched.structured.unwrap();
         assert!(sc["dias_uteis_total"].as_u64().unwrap() >= 30);
         assert!(!sc["fisico_financeiro"].as_array().unwrap().is_empty());
+
+        let safety = app.run_mcp_tool(
+            "planejamento_obra",
+            &json!({ "acao": "seguranca_licencas" }),
+        );
+        assert!(!safety.is_error, "{}", safety.text);
+        let sf = safety.structured.unwrap();
+        assert_eq!(sf["etapas"].as_array().unwrap().len(), 8);
+        assert!(sf["licencas"].as_array().unwrap().len() >= 5);
+
+        let mark = app.run_mcp_tool(
+            "planejamento_obra",
+            &json!({
+                "acao": "marcar_checklist",
+                "item_id": "nr18_s2_escoramento_vala",
+                "conferido": true
+            }),
+        );
+        assert!(!mark.is_error, "{}", mark.text);
+        assert_eq!(mark.structured.unwrap()["conferidos"].as_u64().unwrap(), 1);
     }
 }

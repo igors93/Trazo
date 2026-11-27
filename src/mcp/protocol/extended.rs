@@ -184,11 +184,11 @@ pub(super) fn catalogue() -> Vec<Tool> {
         ),
         tool(
             "planejamento_obra",
-            "Planejamento de obra: materiais, compras, orçamento SINAPI e cronograma",
-            "Planejamento de obra (seção H): catálogo editável de materiais (#135), lista de compras por etapa (#136), orçamento estimativo com curva ABC e importação SINAPI (#87) e cronograma físico-financeiro com caminho crítico, cura 7 d e escoramento 21 d (#137), com exportação CSV/SVG/PDF.",
+            "Planejamento de obra: materiais, compras, orçamento, cronograma e segurança NR-18",
+            "Planejamento completo de obra (seção H): catálogo editável de materiais (#135), lista de compras por etapa (#136), orçamento com curva ABC e importação SINAPI (#87), cronograma físico-financeiro com cura/escoramento (#137), guia de segurança NR-18/NR-10/NR-35 e licenças ART/RRT/alvará/habite-se (#138), e exportação do pacote completo em 1 clique (pacote_obra).",
             merge(
                 json!({
-                    "acao":choices(&["catalogo_materiais","editar_material","restaurar_material","lista_compras","orcamento","editar_preco","configurar_orcamento","importar_sinapi","cronograma","configurar_cronograma"]),
+                    "acao":choices(&["catalogo_materiais","editar_material","restaurar_material","lista_compras","orcamento","editar_preco","configurar_orcamento","importar_sinapi","cronograma","configurar_cronograma","seguranca_licencas","marcar_checklist","pacote_obra"]),
                     "material_id":string("Id do material no catálogo (ex.: concrete_structural, block_default, mortar_laying)."),
                     "etapa":choices(&["preliminares","fundacoes","estrutura","alvenaria","cobertura","instalacoes","reboco","acabamentos"]),
                     "nome":string("Nome personalizado do material."),
@@ -198,7 +198,9 @@ pub(super) fn catalogue() -> Vec<Tool> {
                     "traco_cimento_kg_m3":number("Consumo de cimento no traço (kg/m³)."),
                     "traco_cal_kg_m3":number("Consumo de cal hidratada no traço (kg/m³)."),
                     "traco_areia_m3":number("Consumo de areia no traço (m³/m³)."),
-                    "traco_brita_m3":number("Consumo de brita/pedrisco no traço (m³/m³).")
+                    "traco_brita_m3":number("Consumo de brita/pedrisco no traço (m³/m³)."),
+                    "item_id":string("Id do item de checklist NR-18 para marcar_checklist."),
+                    "conferido":boolean("Estado conferido/pendente para marcar_checklist.")
                 }),
                 json!({
                     "codigo_item":string("Código do item para editar_preco (ex.: cimento_50kg, aco_ca50_kg)."),

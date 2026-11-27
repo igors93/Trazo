@@ -7,6 +7,7 @@ pub mod cost;
 pub mod materials;
 pub mod paging;
 pub mod roof_plan;
+pub mod safety_guide;
 pub mod schedule;
 pub mod setting_out;
 pub mod shopping;
