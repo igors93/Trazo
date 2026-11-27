@@ -5,6 +5,7 @@
 use super::{Plan, draw_building, label, wrap};
 use crate::domain::model::Project;
 use crate::domain::plumbing::points::PointKind;
+use crate::domain::plumbing::septic::{SepticDesign, WELL_SOAKAWAY_M, WELL_TANK_M, septic_design};
 use crate::domain::plumbing::sewage::{DeviceKind, DrainRole, Outfall, Sewage, sewage};
 use crate::io::construction::{Drawn, INK, MUTED, Sheet, decimal};
 
@@ -102,18 +103,193 @@ pub(crate) fn draw_sewage(sheet: &mut Sheet, plan: &Plan, design: &Sewage) {
     label(sheet, (x + 2.2, y + 0.6), 1.9, &brown, text);
 }
 
+fn circle(
+    sheet: &mut Sheet,
+    (x, y): (f64, f64),
+    r: f64,
+    fill: &str,
+    stroke: &str,
+    width: f64,
+    dash: Option<&str>,
+) {
+    let dash = dash.map_or(String::new(), |d| format!(" stroke-dasharray=\"{d}\""));
+    let _ = std::fmt::Write::write_fmt(
+        &mut sheet.svg,
+        format_args!(
+            "<circle cx=\"{x:.2}\" cy=\"{y:.2}\" r=\"{r:.2}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"{width:.2}\"{dash}/>\n"
+        ),
+    );
+}
+
+/// The septic tank, the filter and the soakaways where they were placed,
+/// joined in order, and every well with the 15 m and 20 m it keeps clear.
+pub(crate) fn draw_septic(
+    sheet: &mut Sheet,
+    plan: &Plan,
+    project: &Project,
+    design: &SepticDesign,
+) {
+    let brown = PointKind::Drain.hex();
+    let water = "#3d8b4f";
+    for (index, well) in project.plumbing.wells.iter().enumerate() {
+        let at = plan.pt(*well);
+        circle(
+            sheet,
+            at,
+            plan.mm(WELL_SOAKAWAY_M),
+            "none",
+            water,
+            0.25,
+            Some("2 1.5"),
+        );
+        circle(
+            sheet,
+            at,
+            plan.mm(WELL_TANK_M),
+            "none",
+            water,
+            0.25,
+            Some("1 1"),
+        );
+        circle(sheet, at, 1.4, "#e6f4ea", water, 0.4, None);
+        label(
+            sheet,
+            (at.0 + 1.8, at.1 - 1.2),
+            1.8,
+            water,
+            &format!("Poço {}", index + 1),
+        );
+    }
+    let Some(settings) = project.plumbing.septic.as_ref() else {
+        return;
+    };
+    let mut chain = Vec::new();
+    if let Some(tank) = settings.tank_at {
+        let at = plan.pt(tank);
+        circle(
+            sheet,
+            at,
+            plan.mm(design.diameter_m / 2.0).max(1.0),
+            "#f3e6d8",
+            &brown,
+            0.45,
+            None,
+        );
+        label(
+            sheet,
+            (at.0 + plan.mm(design.diameter_m / 2.0) + 1.0, at.1),
+            1.8,
+            &brown,
+            &format!("Tanque séptico {} L", decimal(design.volume_l, 0)),
+        );
+        chain.push(tank);
+    }
+    if design.filter
+        && let Some(filter) = settings.filter_at
+    {
+        let at = plan.pt(filter);
+        circle(
+            sheet,
+            at,
+            plan.mm(design.filter_diameter_m / 2.0).max(1.0),
+            "#efe7dc",
+            &brown,
+            0.4,
+            Some("1 0.6"),
+        );
+        label(
+            sheet,
+            (
+                at.0 + plan.mm(design.filter_diameter_m / 2.0) + 1.0,
+                at.1 + 2.4,
+            ),
+            1.7,
+            &brown,
+            &format!("Filtro anaeróbio {} L", decimal(design.filter_volume_l, 0)),
+        );
+        chain.push(filter);
+    }
+    for (index, soakaway) in settings.soakaways_at.iter().enumerate() {
+        let at = plan.pt(*soakaway);
+        circle(
+            sheet,
+            at,
+            plan.mm(design.soakaway_diameter_m / 2.0).max(1.0),
+            "#ffffff",
+            &brown,
+            0.4,
+            Some("0.8 0.5"),
+        );
+        label(
+            sheet,
+            (
+                at.0 + plan.mm(design.soakaway_diameter_m / 2.0) + 1.0,
+                at.1 + 0.6,
+            ),
+            1.7,
+            &brown,
+            &format!(
+                "Sumidouro {} · {} m",
+                index + 1,
+                decimal(design.soakaway_depth_m, 1)
+            ),
+        );
+        if let Some(previous) = chain.last() {
+            sheet.line(plan.pt(*previous), at, &brown, 0.35, Some("3 1"));
+        }
+    }
+    for pair in chain.windows(2) {
+        sheet.line(
+            plan.pt(pair[0]),
+            plan.pt(pair[1]),
+            &brown,
+            0.35,
+            Some("3 1"),
+        );
+    }
+}
+
 pub(crate) fn sewage_drawing(project: &Project) -> Option<Drawn> {
     let design = sewage(project)?;
     let mut sheet = Sheet::new();
     let (ax, ay, aw, ah) = sheet.area;
+    let septic = septic_design(project);
+    let septic_points: Vec<_> = project
+        .plumbing
+        .septic
+        .iter()
+        .flat_map(|s| {
+            s.tank_at
+                .into_iter()
+                .chain(s.filter_at)
+                .chain(s.soakaways_at.clone())
+        })
+        .chain(project.plumbing.wells.clone())
+        .collect();
     let extent = project
         .walls
         .iter()
         .flat_map(|w| [w.start, w.end])
         .chain(design.devices.iter().map(|d| d.at))
-        .chain([design.exit_at]);
+        .chain([design.exit_at])
+        .chain(septic_points);
     let plan = Plan::new(extent, (ax, ay, aw - TABLE_W - 6.0, ah));
     draw_building(&mut sheet, project, &plan);
+    if let Some(septic) = &septic {
+        draw_septic(&mut sheet, &plan, project, septic);
+    } else if !project.plumbing.wells.is_empty() {
+        for (index, well) in project.plumbing.wells.iter().enumerate() {
+            let at = plan.pt(*well);
+            circle(&mut sheet, at, 1.4, "#e6f4ea", "#3d8b4f", 0.4, None);
+            label(
+                &mut sheet,
+                (at.0 + 1.8, at.1 - 1.2),
+                1.8,
+                "#3d8b4f",
+                &format!("Poço {}", index + 1),
+            );
+        }
+    }
     draw_sewage(&mut sheet, &plan, &design);
 
     let tx = ax + aw - TABLE_W;
@@ -169,6 +345,68 @@ pub(crate) fn sewage_drawing(project: &Project) -> Option<Drawn> {
         ty += 2.9;
     }
     ty += 3.0;
+    if let Some(septic) = &septic {
+        sheet.text(
+            tx,
+            ty,
+            3.0,
+            true,
+            INK,
+            "Fossa séptica (NBR 7229, NBR 13969)",
+        );
+        ty += 4.6;
+        let mut lines = vec![
+            format!(
+                "Tanque de {} L úteis: anéis de {} m × {} m de água, ou {} × {} m com {} m",
+                decimal(septic.volume_l, 0),
+                decimal(septic.diameter_m, 2),
+                decimal(septic.cylinder_depth_m, 2),
+                decimal(septic.length_m, 2),
+                decimal(septic.width_m, 2),
+                decimal(septic.depth_m, 2)
+            ),
+            format!(
+                "{} sumidouro(s) de {} m, {} m de altura útil ({} m²)",
+                septic.soakaway_count,
+                decimal(septic.soakaway_diameter_m, 2),
+                decimal(septic.soakaway_height_m, 1),
+                decimal(septic.area_needed_m2, 1)
+            ),
+        ];
+        if septic.filter {
+            lines.push(format!(
+                "Filtro anaeróbio de {} L, {} m de diâmetro",
+                decimal(septic.filter_volume_l, 0),
+                decimal(septic.filter_diameter_m, 2)
+            ));
+        }
+        for line in lines {
+            sheet.text(tx, ty, 2.0, false, INK, &line);
+            ty += 3.0;
+        }
+        for distance in septic.distances.iter().filter(|d| !d.ok()) {
+            let text = format!(
+                "{} a {} m da {}: mínimo {} m",
+                distance.element,
+                decimal(distance.distance_m, 2),
+                distance.to,
+                decimal(distance.normative_m, 1)
+            );
+            sheet.text(tx, ty, 1.9, false, LOW, &text);
+            ty += 2.8;
+        }
+        for note in septic
+            .notes
+            .iter()
+            .filter(|n| n.contains("poço") || n.contains("Filtro") || n.contains("filtro"))
+        {
+            for text in wrap(note, 78) {
+                sheet.text(tx, ty, 1.8, false, MUTED, &text);
+                ty += 2.5;
+            }
+        }
+        ty += 3.0;
+    }
     for warning in &design.warnings {
         for text in wrap(warning, 78) {
             sheet.text(tx, ty, 1.9, false, LOW, &text);
@@ -186,7 +424,11 @@ pub(crate) fn sewage_drawing(project: &Project) -> Option<Drawn> {
 
     Some(Drawn {
         sheet,
-        title: "Esgoto sanitário".to_owned(),
+        title: if septic.is_some() {
+            "Esgoto sanitário e fossa séptica".to_owned()
+        } else {
+            "Esgoto sanitário".to_owned()
+        },
         scale: plan.scale.label(),
     })
 }

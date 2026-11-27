@@ -9,6 +9,9 @@
 //! - Least distances: 1.50 m from buildings, lot limits, soakaways and the
 //!   water service pipe; 3.0 m from trees and the public water network;
 //!   15 m from wells and water bodies.
+//! - Anaerobic filter (NBR 13969), when chosen: useful volume
+//!   `Vu = 1.6·N·C·T` (at least 1000 L) with the detention time of its
+//!   Table 4, a bed 1.20 m high with its false bottom.
 //! - Soakaway: infiltration area `A = Q / TAS`, counting the wall below the
 //!   inlet and the bottom (`π·D²/4 + π·D·H`); bottom at least 1.50 m above
 //!   the highest water table; 20 m from wells. The absorption rate `TAS`
@@ -40,6 +43,12 @@ const RING_WALL_M: f64 = 0.10;
 pub const MAX_SOAKAWAY_DEPTH_M: f64 = 6.0;
 /// Bottom of the soakaway above the water table, m.
 pub const WATER_TABLE_CLEARANCE_M: f64 = 1.50;
+/// Least distance from a well or a spring to the tank and the filter
+/// (NBR 7229) and to a soakaway (NBR 13969), m.
+pub const WELL_TANK_M: f64 = 15.0;
+pub const WELL_SOAKAWAY_M: f64 = 20.0;
+/// Height of the anaerobic filter's bed with its false bottom (NBR 13969), m.
+pub const FILTER_BED_M: f64 = 1.20;
 
 /// The house's standard (NBR 7229 Table 1).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -155,6 +164,12 @@ pub struct SepticSettings {
     /// Absorption rate measured on site (percolation test), L/m²·dia.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tested_absorption_l_m2_day: Option<f64>,
+    /// An anaerobic filter between the tank and the soakaways (NBR 13969).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub filter: bool,
+    /// Centre of the filter in the plan.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter_at: Option<Point>,
 }
 
 impl Default for SepticSettings {
@@ -168,6 +183,8 @@ impl Default for SepticSettings {
             coldest_month: ColdestMonth::default(),
             extra_people: 0,
             tested_absorption_l_m2_day: None,
+            filter: false,
+            filter_at: None,
         }
     }
 }
@@ -267,7 +284,34 @@ pub struct SepticDesign {
     pub collapsible: bool,
     pub distances: Vec<SepticDistance>,
     pub placed: bool,
+    /// The anaerobic filter, when chosen: useful volume (L), detention time
+    /// (days) and the diameter of a round one (m).
+    pub filter: bool,
+    pub filter_volume_l: f64,
+    pub filter_detention_days: f64,
+    pub filter_diameter_m: f64,
+    /// Wells the distances were measured to.
+    pub wells: usize,
     pub notes: Vec<String>,
+}
+
+/// Detention time of the anaerobic filter for a daily contribution and the
+/// coldest month (NBR 13969 Table 4: below 15 °C, 15 to 25 °C, above 25 °C).
+pub fn filter_detention_days(daily_l: f64, coldest: ColdestMonth) -> f64 {
+    let row: [f64; 3] = match daily_l {
+        d if d <= 1500.0 => [1.17, 1.00, 0.92],
+        d if d <= 3000.0 => [1.08, 0.92, 0.83],
+        d if d <= 4500.0 => [1.00, 0.83, 0.75],
+        d if d <= 6000.0 => [0.92, 0.75, 0.67],
+        d if d <= 7500.0 => [0.83, 0.67, 0.58],
+        d if d <= 9000.0 => [0.75, 0.58, 0.50],
+        _ => [0.75, 0.50, 0.50],
+    };
+    match coldest {
+        ColdestMonth::Cold => row[0],
+        ColdestMonth::Mild => row[1],
+        ColdestMonth::Warm => row[2],
+    }
 }
 
 /// Detention time `T` in days for a daily contribution (Table 2).
@@ -376,10 +420,26 @@ pub fn septic_design(project: &Project) -> Option<SepticDesign> {
         .unwrap_or_default();
     // Measured from the outer face of the ring tank (10 cm walls).
     let tank_radius = diameter / 2.0 + RING_WALL_M;
+    // The anaerobic filter.
+    let filter_detention = filter_detention_days(daily_l, settings.coldest_month);
+    let filter_volume_l = (1.6 * n * per_person_l * filter_detention).max(1000.0);
+    let filter_diameter = round_up(
+        (4.0 * filter_volume_l / 1000.0 / FILTER_BED_M / std::f64::consts::PI)
+            .sqrt()
+            .max(0.95),
+        0.05,
+    );
+    let filter_radius = filter_diameter / 2.0 + RING_WALL_M;
     let elements: Vec<(String, Point, f64, bool)> = settings
         .tank_at
         .map(|at| ("tanque".to_owned(), at, tank_radius, false))
         .into_iter()
+        .chain(
+            settings
+                .filter_at
+                .filter(|_| settings.filter)
+                .map(|at| ("filtro".to_owned(), at, filter_radius, false)),
+        )
         .chain(settings.soakaways_at.iter().enumerate().map(|(i, at)| {
             (
                 format!("sumidouro {}", i + 1),
@@ -439,6 +499,25 @@ pub fn septic_design(project: &Project) -> Option<SepticDesign> {
             });
         }
     }
+    // Wells and springs: 15 m from the tank and the filter, 20 m from a
+    // soakaway, measured from their edges.
+    let wells = &project.plumbing.wells;
+    for (name, at, radius, soakaway) in &elements {
+        for (index, well) in wells.iter().enumerate() {
+            let needed = if *soakaway {
+                WELL_SOAKAWAY_M
+            } else {
+                WELL_TANK_M
+            };
+            distances.push(SepticDistance {
+                element: name.clone(),
+                to: format!("boca do poço {}", index + 1),
+                distance_m: (at.distance(*well) - radius).max(0.0),
+                needed_m: needed,
+                normative_m: needed,
+            });
+        }
+    }
     for (i, a) in elements.iter().enumerate() {
         for b in elements.iter().skip(i + 1) {
             let distance = a.1.distance(b.1) - a.2 - b.2;
@@ -483,6 +562,29 @@ pub fn septic_design(project: &Project) -> Option<SepticDesign> {
             decimal(MIN_DISTANCE_M, 1)
         ));
     }
+    if settings.filter {
+        notes.push(format!(
+            "Filtro anaeróbio (NBR 13969): Vu = 1,6·N·C·T = 1,6·{people}·{}·{} = {} L úteis; redondo de {} m de diâmetro com leito de brita de {} m (fundo falso incluso), entre o tanque e o sumidouro.",
+            decimal(per_person_l, 0),
+            decimal(filter_detention, 2),
+            decimal(filter_volume_l, 0),
+            decimal(filter_diameter, 2),
+            decimal(FILTER_BED_M, 2)
+        ));
+    } else if !wells.is_empty() || absorption < 40.0 {
+        notes.push(format!(
+            "Com poço por perto ou solo que absorve pouco, ponha um filtro anaeróbio depois do tanque (NBR 13969): {} L úteis, {} m de diâmetro. Ele limpa o esgoto antes de chegar ao solo.",
+            decimal(filter_volume_l, 0),
+            decimal(filter_diameter, 2)
+        ));
+    }
+    if wells.is_empty() {
+        notes.push(format!(
+            "Marque os poços e nascentes do lote e dos vizinhos: o tanque precisa ficar a {} m e o sumidouro a {} m deles, ou a água de beber se contamina.",
+            decimal(WELL_TANK_M, 0),
+            decimal(WELL_SOAKAWAY_M, 0)
+        ));
+    }
     if water_table.is_none() {
         notes.push(format!(
             "Confirme a profundidade do lençol freático: o fundo do sumidouro ({} m) precisa ficar {} m acima dele.",
@@ -519,6 +621,11 @@ pub fn septic_design(project: &Project) -> Option<SepticDesign> {
         collapsible,
         distances,
         placed,
+        filter: settings.filter,
+        filter_volume_l,
+        filter_detention_days: filter_detention,
+        filter_diameter_m: filter_diameter,
+        wells: wells.len(),
         notes,
     })
 }
@@ -589,5 +696,27 @@ mod tests {
         // The tank is 2.5 m from the back boundary minus its half length.
         assert!(boundary.distance_m < 2.5);
         assert!(design.distances.iter().any(|d| d.to == "sumidouro 1"));
+    }
+
+    #[test]
+    fn a_well_near_the_soakaway_fails_and_the_filter_is_sized() {
+        let mut project = house(4);
+        project.plumbing.wells = vec![Point::new(7.0, 15.0)];
+        let settings = project.plumbing.septic.as_mut().unwrap();
+        settings.tank_at = Some(Point::new(3.0, 27.5));
+        settings.soakaways_at = vec![Point::new(7.0, 27.5)];
+        settings.filter = true;
+        settings.filter_at = Some(Point::new(5.0, 27.5));
+        let design = septic_design(&project).unwrap();
+        let well = design
+            .distances
+            .iter()
+            .find(|d| d.element == "sumidouro 1" && d.to == "boca do poço 1")
+            .unwrap();
+        assert!((well.normative_m - WELL_SOAKAWAY_M).abs() < 1e-9);
+        assert!(!well.ok());
+        // N = 4, C = 130, daily = 520 L → T = 1.00: 1.6·4·130·1 = 832 L → 1000 L.
+        assert!((design.filter_volume_l - 1000.0).abs() < 1e-9);
+        assert!(design.distances.iter().any(|d| d.element == "filtro"));
     }
 }

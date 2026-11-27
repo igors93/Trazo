@@ -182,6 +182,13 @@ impl FloorPlanApp {
 /// The septic tank and soakaway for the report.
 pub(super) fn septic_json(design: &SepticDesign) -> Value {
     json!({
+        "filtro_anaerobio": design.filter.then(|| json!({
+            "volume_util_l": round(design.filter_volume_l),
+            "tempo_detencao_dias": round(design.filter_detention_days),
+            "diametro_m": round(design.filter_diameter_m),
+            "altura_leito_m": crate::domain::plumbing::septic::FILTER_BED_M,
+        })),
+        "pocos_conferidos": design.wells,
         "padrao": design.standard.key(),
         "padrao_nome": design.standard.label(),
         "clima": design.coldest_month.key(),
@@ -231,7 +238,7 @@ pub(super) fn septic_json(design: &SepticDesign) -> Value {
 }
 
 /// The settings `restaurar` can put back to Trazo's defaults.
-const FIELDS: [&str; 8] = [
+const FIELDS: [&str; 9] = [
     "moradores",
     "consumo_l_pessoa_dia",
     "dias_reserva",
@@ -240,6 +247,7 @@ const FIELDS: [&str; 8] = [
     "aquecimento",
     "aquecedor",
     "saida_esgoto",
+    "pocos",
 ];
 
 impl FloorPlanApp {
@@ -268,6 +276,17 @@ impl FloorPlanApp {
                 }
                 if let Some(d) = number(args, "diametro_sumidouro_m")? {
                     settings.soakaway_diameter_m = d;
+                }
+                if let Some(filter) = args.get("filtro").and_then(Value::as_bool) {
+                    settings.filter = filter;
+                }
+                match (number(args, "filtro_x")?, number(args, "filtro_y")?) {
+                    (Some(x), Some(y)) => {
+                        settings.filter = true;
+                        settings.filter_at = Some(to_model(x, y));
+                    }
+                    (None, None) => {}
+                    _ => return Err("Informe filtro_x e filtro_y juntos.".to_owned()),
                 }
                 if let Some(raw) = text(args, "padrao") {
                     settings.standard = SewageStandard::parse(&raw)
@@ -322,6 +341,20 @@ impl FloorPlanApp {
                     (Some(x), Some(y)) => Some(to_model(x, y)),
                     (None, None) => None,
                     _ => return Err("Informe caixa_x e caixa_y juntos.".to_owned()),
+                };
+                let wells = match args.get("pocos").and_then(Value::as_array) {
+                    Some(list) => {
+                        let mut points = Vec::with_capacity(list.len());
+                        for (i, item) in list.iter().take(20).enumerate() {
+                            let x = number(item, "x")?
+                                .ok_or_else(|| format!("Poço {}: falta 'x'.", i + 1))?;
+                            let y = number(item, "y")?
+                                .ok_or_else(|| format!("Poço {}: falta 'y'.", i + 1))?;
+                            points.push(to_model(x, y));
+                        }
+                        Some(points)
+                    }
+                    None => None,
                 };
                 let sewer_exit = match (
                     number(args, "saida_esgoto_x")?,
@@ -391,6 +424,9 @@ impl FloorPlanApp {
                         if sewer_exit.is_some() {
                             settings.sewer_exit = sewer_exit;
                         }
+                        if let Some(wells) = wells {
+                            settings.wells = wells;
+                        }
                         Ok(Change::new("Projeto hidrossanitário configurado."))
                     },
                 )?
@@ -425,6 +461,7 @@ impl FloorPlanApp {
                             "altura_base_caixa_m" => settings.tank_base_m = None,
                             "aquecedor" => settings.heater_at = None,
                             "saida_esgoto" => settings.sewer_exit = None,
+                            "pocos" => settings.wells.clear(),
                             _ => settings.heater = Heater::default(),
                         }
                     }

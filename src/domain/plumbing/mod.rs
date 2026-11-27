@@ -96,6 +96,9 @@ pub struct PlumbingSettings {
     /// Where the sewage main meets the street sewer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sewer_exit: Option<Point>,
+    /// Wells and springs on the lot and next to it (the neighbours' too).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wells: Vec<Point>,
     /// Septic tank and soakaway, where there is no public sewer.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub septic: Option<septic::SepticSettings>,
